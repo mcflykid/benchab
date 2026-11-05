@@ -1,6 +1,6 @@
 # Changements
 
-Versions enregistrées : aucune version livrée.
+Version livrée : 1.0.0 (tag `v1.0.0`).
 
 ## 1.0.1
 
@@ -18,3 +18,4 @@ Versions enregistrées : aucune version livrée.
 - `trancher-temporaires` — ZIP relu avant remplacement atomique et nettoyage des échecs de restauration.
 - `decisions-statuts` — Portée explicite des règles et confinement des preuves et références durables.
 - `petits-defauts` — Arrondi des durées, diagnostic SystemExit, export UTF-8, initialisation SQLite et nettoyage du manifeste temporaire.
+- `feuille-1-0-1` — Ordre de correction traçable et installation complète par défaut, vérifiée sur clone neuf.

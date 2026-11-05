@@ -14,6 +14,9 @@ uv run benchab --help
 ```
 
 `uv sync --locked` installe les dépendances dans l’environnement du dépôt.
+Les groupes de développement et de recette sont installés par défaut.
+Pour exécuter les scénarios de recette qui ouvrent Chromium, installer le
+navigateur avec `uv run playwright install chromium`.
 L’entrée du skill est le lien `benchab` vers ce checkout : ses docs et son code
 suivent les changements de cette même racine sans copie. Cette opération ne
 synchronise pas les dossiers de skills copiés d’autres projets.
