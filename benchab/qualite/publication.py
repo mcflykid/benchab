@@ -45,7 +45,8 @@ def empreinte(fichier):
         return hashlib.file_digest(flux, "sha256").hexdigest()
 
 
-def controler_modeles(racine, exclus):
+def controler_modeles(racine, exclus, *, racines_privees=()):
+    """Contrôle les modèles publics et les fixtures déclarées ; erreurs FAIL, aucune donnée privée lue."""
     racine = Path(racine).resolve()
     manifeste = racine / "benchab/reference/fixtures-atelier.json"
     erreurs = []
@@ -54,7 +55,10 @@ def controler_modeles(racine, exclus):
     except (OSError, ValueError, KeyError):
         return ["Manifeste des fixtures générées absent de structure valide"]
     for dossier, sous_dossiers, fichiers in os.walk(racine, followlinks=False):
-        sous_dossiers[:] = [n for n in sous_dossiers if n not in exclus and not n.endswith(".egg-info")]
+        sous_dossiers[:] = [
+            n for n in sous_dossiers
+            if n not in exclus and not n.endswith(".egg-info") and Path(dossier) / n not in racines_privees
+        ]
         for nom in fichiers:
             fichier = Path(dossier) / nom
             if fichier.suffix.lower() not in EXTENSIONS_3D and not nom.lower().endswith((".gcode.gz", ".gco.gz")):

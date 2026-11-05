@@ -7,7 +7,7 @@ import re
 import sqlite3
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 EXCLUS = {"prive", ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", "dist", "build"}
 CHEMIN_PERSONNEL = re.compile(r"/Users/[A-Za-z0-9_.-]+/")
@@ -189,10 +189,15 @@ def verifier(racine, *, prive=None):
     if not racine.is_dir():
         return ["Racine publique absente ou non accessible"]
     erreurs = []
+    from benchab.chemins import atelier_prive
     from benchab.qualite.confidentialite import contient, motifs
 
     try:
-        expressions = motifs(prive or racine / "prive")
+        racine_privee = atelier_prive(prive if prive is not None else racine / "prive")
+        if racine_privee == racine:
+            return ["L’atelier privé recouvre la racine publique"]
+        privees = {racine / "prive", racine_privee}
+        expressions = motifs(racine_privee)
     except (OSError, ValueError, sqlite3.Error):
         return ["Confidentialité NON VÉRIFIÉE : base privée illisible"]
 
@@ -200,13 +205,16 @@ def verifier(racine, *, prive=None):
         erreurs.append("Parcours public incomplet : répertoire inaccessible")
 
     for dossier, sous_dossiers, fichiers in os.walk(racine, followlinks=False, onerror=erreur_parcours):
-        sous_dossiers[:] = [n for n in sous_dossiers if n not in EXCLUS and not n.endswith(".egg-info")]
+        sous_dossiers[:] = [
+            n for n in sous_dossiers
+            if n not in EXCLUS and not n.endswith(".egg-info") and Path(dossier) / n not in privees
+        ]
         for nom in [*sous_dossiers, *fichiers]:
             chemin = Path(dossier) / nom
             relatif = chemin.relative_to(racine).as_posix()
             if chemin.is_symlink():
                 cible = chemin.resolve()
-                if not cible.is_relative_to(racine) or cible.is_relative_to(racine / "prive"):
+                if not cible.is_relative_to(racine) or any(cible.is_relative_to(p) for p in privees):
                     erreurs.append(f"{relatif} : lien public sortant ou privé")
                 continue
             if chemin.suffix in {".sqlite", ".sqlite3", ".db"}:
@@ -251,9 +259,13 @@ def verifier(racine, *, prive=None):
             erreurs.append("Délai de lecture de l’index Git dépassé : frontière non vérifiée")
         elif code:
             erreurs.append("Index Git illisible : frontière des fichiers suivis non vérifiée")
-        elif any(nom.startswith("prive/") for nom in suivi):
-            erreurs.append("Un fichier privé est suivi par Git")
+        else:
+            # Garder l’ancien préfixe protégé même si l’atelier actif est déplacé.
+            # Voir docs/decisions/2026-11-04-frontiere-public-prive.md.
+            prefixes = [p.relative_to(racine).as_posix() for p in privees if p.is_relative_to(racine)]
+            if any(PurePosixPath(nom).is_relative_to(prefixe) for nom in suivi for prefixe in prefixes):
+                erreurs.append("Un fichier privé est suivi par Git")
     from benchab.qualite.publication import controler_modeles
 
-    erreurs.extend(controler_modeles(racine, EXCLUS))
+    erreurs.extend(controler_modeles(racine, EXCLUS, racines_privees=privees))
     return erreurs

@@ -125,3 +125,27 @@ def test_zip_hors_budget_et_archive_incomplete_echouent_avec_diagnostic_public(t
     (racine / "tronque.3mf").write_bytes(b"PK\x03\x04incomplet")
     erreurs = verifier(racine)
     assert any("tronque.3mf" in erreur and "archive ZIP illisible" in erreur for erreur in erreurs), erreurs
+
+
+def test_index_refuse_atelier_prive_deplace_dans_le_depot(tmp_path):
+    """La racine privée résolue et le préfixe historique restent exclus du suivi Git."""
+    import subprocess
+
+    from benchab.donnees.base import Base
+
+    depot = tmp_path / "depot"
+    depot.mkdir()
+    subprocess.run(["git", "init", "-q", str(depot)], check=True)
+    prive = depot / "ateliers/donnees"
+    base = Base(prive)
+    base.fermer()
+    modele = prive / "fixture.stl"
+    modele.write_bytes(b"fixture jetable")
+    public = depot / "ateliers/donnees-guide.md"
+    public.write_text("Guide de fixture\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(depot), "add", str(public)], check=True)
+    subprocess.run(["git", "-C", str(depot), "add", str(modele)], check=True)
+    assert verifier(depot, prive=prive) == ["Un fichier privé est suivi par Git"]
+    subprocess.run(["git", "-C", str(depot), "rm", "--cached", "-q", str(modele)], check=True)
+    assert verifier(depot, prive=prive) == []
+    assert modele.is_file()
