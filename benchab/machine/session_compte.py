@@ -22,7 +22,7 @@ import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 
-from benchab.chemins import atelier_prive, est_temporaire, sans_lien
+from benchab.chemins import atelier_prive, est_temporaire_hors_depot, sans_lien
 from benchab.machine.cloud_lecture import CloudErreur, SansRedirection, _json, _octets
 
 ISSUER = "https://uc.makeronline.com"
@@ -39,7 +39,7 @@ def _location(path):
     except ValueError as erreur:
         raise CloudErreur("COMPTE_HORS_DEPOT_REQUIS") from erreur
     prive = atelier_prive()
-    if not value.is_relative_to(prive) and not est_temporaire(value):
+    if not value.is_relative_to(prive) and not est_temporaire_hors_depot(value):
         raise CloudErreur("COMPTE_HORS_DEPOT_REQUIS")
     return value
 

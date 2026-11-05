@@ -19,7 +19,7 @@ import json
 import sys
 from pathlib import Path
 
-from benchab.qualite.ecritures import PublicationNeuve, valider_chemins
+from benchab.qualite.ecritures import PublicationNeuve, sortie_durable, valider_chemins
 from benchab.qualite.empreintes import sha256_fichier as sha
 
 
@@ -31,9 +31,10 @@ def interne(d, rel):
     return p
 
 
-def figer(d, motifs, version="", note=""):
-    d = Path(d).resolve()
-    manifest = d / "LIVRABLES.json"
+def figer(d, motifs, version="", note="", *, prive=None):
+    """Fige des références relatives et leurs tailles en octets sous l’atelier, sans écraser de preuve."""
+    manifest = sortie_durable(Path(d) / "LIVRABLES.json", prive=prive)
+    d = manifest.parent
     valider_chemins([], [manifest])
     for m in motifs:
         interne(d, m)

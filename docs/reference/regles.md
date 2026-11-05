@@ -28,3 +28,8 @@ illisible laisse U20 NON VÉRIFIÉ avec le motif de lecture.
 U36 accepte dans `qualite.json` un objet `protegees` indexé par nom ou chemin.
 Une valeur SHA-256 de 64 caractères hexadécimaux protège aussi la copie
 renommée. Le format structuré avec `fichier` et `sha256` reste lisible.
+
+U24 et U36 sans contexte projet sont NON VÉRIFIÉES dans `hors_portee`. Le
+code 0 concerne les seules règles exécutables et sans donnée manquante.
+Une absence de G-code ou de plafond maintient U25 NON VÉRIFIÉ et code 2.
+Voir [la décision sur la portée](../decisions/2026-11-06-portee-controles-et-ecritures.md).

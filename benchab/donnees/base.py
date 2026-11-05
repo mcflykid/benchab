@@ -83,11 +83,23 @@ class Base:
 
     @contextmanager
     def transaction(self):
+        """Valide les données et leurs références durables avant le commit, puis exporte."""
+        from benchab.qualite.ecritures import verifier_references_durables
+
         with self.connexion:
             yield self.connexion
             for table in TABLES:
                 for ligne in self.connexion.execute(f'SELECT * FROM "{table}"'):
                     json.dumps(dict(ligne), allow_nan=False)
+                    for cle, valeur in dict(ligne).items():
+                        if not isinstance(valeur, str):
+                            continue
+                        if cle.endswith("_json") and "/" in valeur:
+                            try:
+                                valeur = json.loads(valeur)
+                            except ValueError:
+                                pass
+                        verifier_references_durables(valeur, self.prive)
         self.exporter()
 
     def exporter(self):

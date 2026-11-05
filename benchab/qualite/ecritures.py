@@ -27,13 +27,46 @@ from benchab.qualite.empreintes import sha256_fichier as _sha
 
 def sortie_privee(chemin, *, prive=None):
     """Valide un rapport privé/temporaire neuf ; Path sans unité, FAIL hors périmètre ou lien, aucune écriture."""
-    from benchab.chemins import atelier_prive, est_temporaire
+    from benchab.chemins import atelier_prive, est_temporaire_hors_depot
 
     chemin = _sans_lien(chemin)
     racine = atelier_prive(prive)
-    if not chemin.is_relative_to(racine) and not est_temporaire(chemin):
-        raise ValueError("Le rapport doit rester dans l'atelier privé ou /tmp.")
+    if not chemin.is_relative_to(racine) and not est_temporaire_hors_depot(chemin):
+        raise ValueError("Le rapport doit rester dans l'atelier privé ou temporaire système.")
     return chemin
+
+
+def sortie_durable(chemin, *, prive=None):
+    """Réserve un chemin de preuve ou d’archive à l’atelier choisi ; FAIL hors atelier ou lien."""
+    from benchab.chemins import atelier_prive
+
+    racine = atelier_prive(prive)
+    cible = _sans_lien(chemin)
+    if not cible.is_relative_to(racine):
+        raise ValueError("Une sortie durable doit rester dans l’atelier privé.")
+    return cible
+
+
+def verifier_references_durables(valeur, prive, *, champ=None):
+    """Refuse les chemins durables hors atelier, sans transformer les citations de provenance."""
+    if isinstance(valeur, dict):
+        for cle, item in valeur.items():
+            verifier_references_durables(cle, prive)
+            verifier_references_durables(item, prive, champ=cle)
+    elif isinstance(valeur, (tuple, list)):
+        for item in valeur:
+            verifier_references_durables(item, prive, champ=champ)
+    elif isinstance(valeur, str):
+        champs = {"fichier", "chemin", "rapport", "manifeste", "envoi_markdown"}
+        chemin = Path(valeur)
+        temporaire = valeur.startswith(("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"))
+        temporaire |= chemin.is_absolute() and chemin.is_relative_to(tempfile.gettempdir())
+        if chemin.is_absolute() and (temporaire or champ in champs):
+            # Même sous le temporaire, un atelier de test possède sa racine
+            # de confiance (docs/reference/donnees.md).
+            sortie_durable(chemin, prive=prive)
+        elif champ in champs and ".." in chemin.parts:
+            sortie_durable(Path(prive) / chemin, prive=prive)
 
 
 def ouvrir_verrou(nom, directory):

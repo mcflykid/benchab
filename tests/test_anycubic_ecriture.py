@@ -121,8 +121,12 @@ def test_nommer_plaques_refuse_livrable_protege_sans_appeler_writer(tmp_path):
 
 
 def test_nommer_plaques_refuse_chemin_public_sans_appeler_writer(tmp_path):
+    """Un chemin public reste refusé, même si le checkout réside sous le temporaire système."""
     cible = __file__
-    with patch.object(anycubic, "restaurer_noms") as writer, pytest.raises(ValueError, match="atelier privé ou /tmp"):
+    with (
+        patch.object(anycubic, "restaurer_noms") as writer,
+        pytest.raises(ValueError, match="atelier privé ou temporaire système"),
+    ):
         anycubic.nommer_plaques(cible, ["Nom original"])
     writer.assert_not_called()
 

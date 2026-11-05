@@ -67,12 +67,14 @@ ou une applicabilité inconnue ne devient pas une validation physique.
 
 L’export JSONL ne remplace pas une sauvegarde des modèles et documents. Le module
 de sauvegarde reçoit une source explicitement située dans l’atelier privé et une
-archive neuve, hors de cette source. Exemple sur macOS, dans son dossier temporaire
-canonique (sur Linux : `/tmp`) :
+archive neuve dans l’atelier. Une sauvegarde de l’atelier entier peut être
+écrite directement à sa racine. Pour un export d’essai destiné à être jeté,
+utiliser explicitement `--jetable` dans le temporaire système.
 
 ```sh
-uv run benchab donnees sauvegarder --source . --sortie /private/tmp/benchab-atelier.tar
-uv run benchab donnees restaurer /private/tmp/benchab-atelier.tar --destination restauree-v01
+uv run benchab donnees sauvegarder --source . --sortie benchab-atelier.tar
+uv run benchab donnees sauvegarder --source . --sortie /tmp/benchab-essai.tar --jetable
+uv run benchab donnees restaurer /tmp/benchab-essai.tar --destination restauree-v01
 ```
 
 Le parent de sortie doit exister, sans lien symbolique. La restauration reste dans
@@ -144,3 +146,8 @@ par un verrou et remplacé atomiquement.
 
 Une mesure reprise conserve le même identifiant et les durées déjà inscrites.
 Son code et l'export sont mis à jour ensemble par le chemin commun d'écriture.
+
+Les sorties jetables sont permises dans le temporaire système hors partie
+publique du checkout. Une preuve durable ou une référence enregistrée ne
+sort pas de la racine privée de son atelier. Voir
+[la décision sur la portée](../decisions/2026-11-06-portee-controles-et-ecritures.md).

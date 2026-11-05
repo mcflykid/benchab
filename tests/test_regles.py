@@ -59,10 +59,11 @@ def test_rapport_agrege_ne_cree_aucun_pass_si_debit_non_verifiable(tmp_path, mon
 
     rapport = controler(source)
 
-    assert rapport["statut"] == "NON VÉRIFIÉ"
-    assert [resultat["controle"] for resultat in rapport["resultats"]] == ["U20", "U22", "U24", "U25"]
+    assert rapport["statut"] == "NON VÉRIFIÉ" and rapport["code"] == 2
+    assert [resultat["controle"] for resultat in rapport["resultats"]] == ["U20", "U22", "U25"]
+    assert [resultat["controle"] for resultat in rapport["hors_portee"]] == ["U24", "U36"]
+    assert all(r["statut"] == "NON VÉRIFIÉ" and r["motif"] for r in rapport["hors_portee"])
     assert rapport["resultats"][2]["statut"] == "NON VÉRIFIÉ"
-    assert rapport["resultats"][3]["statut"] == "NON VÉRIFIÉ"
     assert any("aucun plafond universel" in limite for limite in rapport["limites"])
 
 
@@ -78,8 +79,12 @@ def test_main_utilise_base_prive_et_refuse_sortie_exterieure(tmp_path, monkeypat
         lambda _source: {"conforme": True},
     )
 
-    assert main([str(source)], prive=prive) == 2
+    assert main([str(source)], prive=prive) == 0
     assert (prive / "rapports/regles-lot4.json").is_file()
-    assert json.loads((prive / "rapports/regles-lot4.json").read_text())["statut"] == "NON VÉRIFIÉ"
+    rapport = json.loads((prive / "rapports/regles-lot4.json").read_text())
+    assert rapport["statut"] == "PASS" and rapport["code"] == 0
+    assert rapport["portee"] == {"evalues": ["U20", "U22", "U25"], "hors_portee": ["U24", "U36"]}
+    assert all(r["statut"] == "PASS" for r in rapport["resultats"])
+    assert all(r["statut"] == "NON VÉRIFIÉ" and r["motif"] for r in rapport["hors_portee"])
     assert main([str(source), "--sortie", str(tmp_path / "public.json")], prive=prive) == 2
     assert "espace privé" in capsys.readouterr().err

@@ -81,3 +81,13 @@ def est_temporaire(chemin):
     """Indique si le chemin est sous un temporaire reconnu ; booléen sans unité, refuse les liens internes."""
     p = sans_lien(chemin)
     return any(p.is_relative_to(sans_lien(r)) for r in (_alias_systeme('/tmp'), _alias_systeme(tempfile.gettempdir())))
+
+
+def est_temporaire_hors_depot(chemin):
+    """Vérifie qu’un chemin est jetable et hors de la partie publique du checkout, sans écrire."""
+    cible = sans_lien(chemin)
+    try:
+        racine = racine_depot()
+    except ValueError:
+        racine = None
+    return est_temporaire(cible) and (racine is None or not cible.is_relative_to(racine))
