@@ -1,0 +1,12 @@
+{
+  "licence": "MIT",
+  "auteur": "Mohsen Esmaeili",
+  "origine": "3d-print-modeling/scripts",
+  "sources_sha256": {
+    "assembly_check.py": "a06c9accb1e8c98168ca30914c678d43359ba06a26164fb85fb03991897b3f3a",
+    "wallcheck.py": "2a16c7b811ca70b579cad83d8782e86e83a8a3c92b076048a7034d76dfab86c0",
+    "fitmap.py": "42024594e63ee39f1f326074d80cd5e4901913ddcedfa11de89a7ad45d0b6e63",
+    "checks_template.py": "c28a2027c932ea0ba305bcb779db98b4cc9428bc7d1caa9165bcfe8fde600c84"
+  },
+  "adaptations": "Fonctions sélectionnées sans CLI, imports groupés ; alias commun vide (affectation Source fitmap erronée non reprise) ; graine explicite pour échantillonnage déterministe. Aucune constante de seuil changée."
+}

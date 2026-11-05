@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.33", "editables>=0.5"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchab"
+version = "1.0.0"
+description = "Atelier personnel de conception et de préparation d'impression 3D"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "build123d>=0.9",
+    "cadgen @ git+https://github.com/earthtojake/text-to-cad.git@5a5dab9503d140b8cf62a28d21ba2573a722d2d6#subdirectory=packages/cadgen",
+    "cryptography>=44,<47",
+    "manifold3d>=3.5.4",
+    "mapbox-earcut>=1.0",
+    "meshoptimizer==0.2.30a0",
+    "networkx>=3.7",
+    "numpy>=2.5.4",
+    "pillow>=11",
+    "pymeshlab==2025.7.post1",
+    "rtree>=1.4.1",
+    "scipy>=1.18.1",
+    "shapely>=2.2.0",
+    "trimesh>=5.2.0",
+]
+
+[project.scripts]
+benchab = "benchab.cli:main"
+
+[tool.hatch.build.targets.wheel.force-include]
+"config/kobra-s1.toml" = "benchab/reference/kobra-s1.toml"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/benchab", "/config", "/docs", "/tests", "/.github", "/.python-version",
+    "/pyproject.toml", "/uv.lock", "/README.md", "/LICENSE", "/TIERS.md", "/CHANGELOG.md",
+    "/AGENTS.md", "/SKILL.md",
+]
+
+[dependency-groups]
+dev = [
+    "editables>=0.5",
+    "hatchling>=1.33",
+    "pytest>=8",
+    "ruff>=0.14",
+]
+reception = [
+    "playwright>=1.64.1",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv.sources]
+cadgen = { git = "https://github.com/earthtojake/text-to-cad.git", subdirectory = "packages/cadgen", rev = "5a5dab9503d140b8cf62a28d21ba2573a722d2d6" }
+
+[tool.hatch.metadata]
+allow-direct-references = true

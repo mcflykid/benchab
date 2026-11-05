@@ -1,0 +1,120 @@
+"""Tests de revue_locale.py (chantier K, lot 2) : G-code synthétique, aucun fichier réel touché."""
+
+import json
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+from benchab.controles import revue_locale as RL
+from benchab.controles import zones_locales as ZL
+
+
+def couche(z, longueur, f=600, support=None):
+    """Une couche : un aller-retour de `longueur` mm à F (mm/min), éventuellement un dépôt de support en (x, y)."""
+    lignes = [f";Z:{z}", ";TYPE:Outer wall", f"G1 X0 Y0 F{f}", f"G1 X{longueur} Y0 E1", "G1 X0 Y0 E1"]
+    if support:
+        lignes += [";TYPE:Support", f"G1 X{support[0]} Y{support[1]} E0.5"]
+    return lignes
+
+
+class Revue(unittest.TestCase):
+    def setUp(self):
+        self.t = tempfile.TemporaryDirectory()
+        self.d = Path(self.t.name)
+        # F600 = 10 mm/s : 100 mm aller-retour = 20 s ; 30 mm = 6 s (sous 8 s)
+        g = (
+            ["M83"]
+            + couche(0.2, 100)
+            + couche(0.4, 100, support=(50, 50))
+            + couche(0.6, 100)
+            + couche(20.0, 100)
+            + couche(20.2, 30)
+            + ["EXCLUDE_OBJECT_START NAME=Piece"]
+        )
+        self.tr = self.d / "tranche.3mf"
+        with zipfile.ZipFile(self.tr, "w") as z:
+            z.writestr("Metadata/plate_1.gcode", "\n".join(g))
+
+        def zone(identifier, z_min, bbox):
+            return {
+                "id": identifier,
+                "plaque": 1,
+                "type": "Bridge",
+                "z_min_mm": z_min,
+                "z_max_mm": z_min,
+                "bbox_xy_mm": bbox,
+                "vitesse_max_mm_s": 10,
+                "separation_support_max_mm": 0.21,
+            }
+
+        self.zones = [
+            zone("soutenu", 0.6, [45, 45, 60, 60]),  # support à la couche 0.4 sous la zone
+            zone("court", 20.0, [0, 0, 5, 5]),  # 7,1 mm, couche 20 s
+            zone("long-haut", 20.0, [0, 0, 30, 30]),  # 42 mm à Z 20 : aucun critère
+            zone("couche-courte", 20.2, [0, 0, 2, 2]),  # couche de 6 s : jamais justifiée
+            zone("pont-bas", 0.6, [0, 0, 15, 10]),
+        ]  # 18 mm, Z 0,6, couche 20 s
+        self.env = self.d / "envoi.json"
+        self.env.write_text(
+            json.dumps(
+                {"zones_locales": {"tranche_sha256": RL.sha(self.tr), "geometrie_sha256": None, "zones": self.zones}}
+            )
+        )
+
+    def tearDown(self):
+        self.t.cleanup()
+
+    def test_criteres_de_p07(self):
+        r = RL.revoir(self.tr, self.env, self.d / "absente.json", self.d / "faits.json")
+        self.assertEqual(set(r["auto"]), {"soutenu", "court", "pont-bas"})
+        self.assertEqual(sorted(r["reste"]), ["couche-courte", "long-haut"])
+        self.assertEqual(r["plaques"][1]["min_s"], 6.0)
+
+    def test_revue_ecrite_acceptee_par_controle_envoi_et_humain_conserve(self):
+        revue = self.d / "REVUE-ZONES-LOCALES.json"
+        revue.write_text(
+            json.dumps(
+                {
+                    "tranche_sha256": RL.sha(self.tr),
+                    "geometrie_sha256": None,
+                    "zones": {
+                        "long-haut": {
+                            "decision": "corrige",
+                            "justification": "humain",
+                            "derniere_couche_verifiee": True,
+                            "preuves": [],
+                        }
+                    },
+                }
+            )
+        )
+        res = RL.revoir(self.tr, self.env, revue, self.d / "preuves/faits.json")
+        RL.ecrire(res, revue, self.d / "preuves/faits.json")
+        doc = json.loads(revue.read_text())
+        self.assertEqual(doc["zones"]["long-haut"]["justification"], "humain")  # jamais écrasée
+        self.assertTrue(doc["zones"]["court"]["automatique"])
+        ev = ZL.evaluer(self.zones, [], self.tr, None, revue)
+        self.assertEqual(
+            sorted(ev["non_revues"]), ["couche-courte", "long-haut"]
+        )  # long-haut : preuve humaine vide, donc refusée
+
+    def test_geometrie_justifiee_seulement_avec_supports_et_couches_suffisantes(self):
+        z = {"id": "geometrie:Piece.stl:surplombs", "type": "surplombs", "fichier": "Piece.stl"}
+        pl = {1: RL.mesurer_plaque(zipfile.ZipFile(self.tr).read("Metadata/plate_1.gcode").decode())}
+        g = {1: zipfile.ZipFile(self.tr).read("Metadata/plate_1.gcode").decode()}
+        self.assertIsNone(RL.juger_geometrie(z, pl, g))  # couche de 6 s sur la plaque
+        pl[1]["min_s"] = 9.0
+        self.assertIsNone(RL.juger_geometrie(z, pl, g))  # support global sans repère de la zone : insuffisant
+        local = dict(z, bbox_xy_mm=[45, 45, 60, 60], z_min_mm=0.6, z_max_mm=0.6, separation_support_max_mm=0.21)
+        self.assertIn("supports localisés", RL.juger_geometrie(local, pl, g))
+        self.assertIsNone(RL.juger_geometrie(dict(z, fichier="Autre.stl"), pl, g))  # objet absent du G-code
+
+    def test_tranchage_different_refuse(self):
+        self.env.write_text(json.dumps({"zones_locales": {"tranche_sha256": "autre", "zones": []}}))
+        with self.assertRaises(SystemExit):
+            RL.revoir(self.tr, self.env, self.d / "r.json", self.d / "f.json")
+
+
+if __name__ == "__main__":
+    unittest.main()

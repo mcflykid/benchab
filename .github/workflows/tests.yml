@@ -1,0 +1,20 @@
+name: Tests unitaires
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: macos-14
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CADGEN_TELEMETRY: "0"
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run pytest -q

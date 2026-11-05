@@ -1,0 +1,11 @@
+prive/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+!benchab/visualisation/vendor/three-0.160.0/build/
+!benchab/visualisation/vendor/three-0.160.0/build/three.module.js
+.DS_Store
