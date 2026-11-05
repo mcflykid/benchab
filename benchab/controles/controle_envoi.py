@@ -104,6 +104,15 @@ def p99(v):
     return v[-1][0] if v else 0
 
 
+def _reglage_filament(reglages, cle, numero):
+    valeur = schema_reglages.valeur_indice(reglages, cle, numero - 1, lecteur="index_exact")
+    return valeur if valeur is not None and math.isfinite(valeur) and valeur > 0 else None
+
+
+def _texte_reglage(valeur):
+    return f"{valeur:g}" if valeur is not None else "NON VÉRIFIÉ (indice ou valeur absent)"
+
+
 def ajouter_note(resultats, pl, controle, statut, detail, source, obligatoire=True):
     resultats.append(
         {
@@ -166,6 +175,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
     }
     ref = ressources.enter_context(zipfile.ZipFile(REFF)) if REFF else None
     res = []
+    indices_absents = set()
     bed = ps.get("curr_bed_type")
     ajouter_note(
         res,
@@ -258,11 +268,19 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                     f"déclaré {fd['temp_1re']} / {fd['plateau_c']} (fiche {fd.get('fiche')})",
                     "G-code : G9111",
                 )
+            # Le contrôle rapproche l’outil déclaré et la case exacte de son
+            # réglage ; un repli sur le filament 1 fausserait la preuve d’envoi.
+            # Voir docs/reference/reglages-et-integrite.md.
+            temp_3mf = _reglage_filament(ps, "nozzle_temperature", e)
+            debit_3mf = _reglage_filament(ps, "filament_max_volumetric_speed", e)
             valeurs = temperatures.get(e - 1, set())
             tv = sorted(v for v in valeurs if v is not None)
+            controle_temperature = f"température après la 1re couche (filament {e})"
+            if temp_3mf is None:
+                indices_absents.add((pl, controle_temperature))
             etat = (
                 "NON VÉRIFIÉ"
-                if not valeurs or None in valeurs
+                if temp_3mf is None or not valeurs or None in valeurs
                 else "PASS"
                 if all(v == fd["temp"] for v in tv)
                 else "WARN"
@@ -270,10 +288,10 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
             ajouter_note(
                 res,
                 pl,
-                f"température après la 1re couche (filament {e})",
+                controle_temperature,
                 etat,
                 f"Cibles de chauffe pendant extrusion après couche 1 : {tv} ; déclaré {fd['temp']} ; "
-                f"réglage du 3MF {ps['nozzle_temperature'][e - 1]}",
+                f"réglage du 3MF {_texte_reglage(temp_3mf)}",
                 "G-code : G9111/M104/M109, état modal par outil ; pas de température physique mesurée",
             )
             q = p99(flux.get(e - 1, []))
@@ -285,13 +303,19 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                 and math.isfinite(plafond)
                 and plafond > 0
             )
+            controle_debit = f"débit commandé (filament {e})"
+            debit_conforme = plafond_valide and flux.get(e - 1) and q <= plafond * 1.05
+            statut_debit = "PASS" if debit_conforme else "FAIL"
+            if debit_conforme and debit_3mf is None:
+                statut_debit = "NON VÉRIFIÉ"
+                indices_absents.add((pl, controle_debit))
             ajouter_note(
                 res,
                 pl,
-                f"débit commandé (filament {e})",
-                "PASS" if plafond_valide and flux.get(e - 1) and q <= plafond * 1.05 else "FAIL",
+                controle_debit,
+                statut_debit,
                 f"99 % de la longueur sous {q:.2f} mm³/s, maximum ponctuel {mx:.2f} ; plafond déclaré {plafond} ; "
-                f"réglage du 3MF {ps['filament_max_volumetric_speed'][e - 1]}",
+                f"réglage du 3MF {_texte_reglage(debit_3mf)}",
                 "G-code (calcul ; ce n'est pas une mesure sur la machine)",
             )
             vide = not any(slots.values())
@@ -359,8 +383,14 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         if r["statut"] == "NON VÉRIFIÉ" and r["obligatoire"]
         else {"FAIL": 2, "WARN": 1, "NON VÉRIFIÉ": 0, "PASS": 0}[r["statut"]]
         for r in res
+        if (r["plaque"], r["controle"]) not in indices_absents
     )
-    statut_global = "FAIL" if pire == 2 else "WARN" if any(r["statut"] != "PASS" for r in res) else "PASS"
+    if pire == 2:
+        statut_global = "FAIL"
+    elif indices_absents:
+        statut_global = "NON VÉRIFIÉ"
+    else:
+        statut_global = "WARN" if any(r["statut"] != "PASS" for r in res) else "PASS"
     if RAPPORT:
         try:
             rapport.publier(
@@ -368,7 +398,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                     "fichier": str(T3MF),
                     "statut": statut_global,
                     "code": code_statut(statut_global),
-                    "conforme_numerique": pire == 0,
+                    "conforme_numerique": pire == 0 and not indices_absents,
                     "resultats": res,
                     "zones_locales": local,
                 }
@@ -379,7 +409,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         "code": code_statut(statut_global),
         "fichier": str(T3MF),
         "statut": statut_global,
-        "conforme_numerique": pire == 0,
+        "conforme_numerique": pire == 0 and not indices_absents,
         "resultats": res,
         "zones_locales": local,
     }

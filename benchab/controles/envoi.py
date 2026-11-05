@@ -60,7 +60,9 @@ def controler(
             }
     if any(r["statut"] == "FAIL" for r in resultats) or historique and historique["statut"] == "FAIL":
         statut = "FAIL"
-    elif historique is None or any(r["statut"] == "NON VÉRIFIÉ" for r in resultats):
+    elif historique is None or historique["statut"] == "NON VÉRIFIÉ" or any(
+        r["statut"] == "NON VÉRIFIÉ" for r in resultats
+    ):
         statut = "NON VÉRIFIÉ"
     elif historique["statut"] == "WARN" or any(r["statut"] == "WARN" for r in resultats):
         statut = "WARN"
