@@ -24,3 +24,7 @@ La grille complète U01–U68, son sort, sa destination et sa justification sont
 U20 lit les éléments XML des modèles et les liaisons de plaque, quel que soit
 l’ordre des attributs. Un `transform` absent représente l’identité. Un XML
 illisible laisse U20 NON VÉRIFIÉ avec le motif de lecture.
+
+U36 accepte dans `qualite.json` un objet `protegees` indexé par nom ou chemin.
+Une valeur SHA-256 de 64 caractères hexadécimaux protège aussi la copie
+renommée. Le format structuré avec `fichier` et `sha256` reste lisible.
