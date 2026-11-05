@@ -494,7 +494,8 @@ class Couverture(unittest.TestCase):
         out = self.d / "out.json"
         r = self.runcli("controle_envoi.py", p, "--declaration", dec, "--json", out)
         data = json.loads(out.read_text())
-        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertEqual(data["code"], r.returncode)
         self.assertEqual(data["statut"], "WARN")
         self.assertTrue(data["conforme_numerique"])
         self.assertTrue(all(not x["obligatoire"] for x in data["resultats"] if x["statut"] == "NON VÉRIFIÉ"))

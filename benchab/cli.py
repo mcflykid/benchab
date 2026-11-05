@@ -17,6 +17,7 @@ from benchab.donnees.base import Base
 from benchab.machine.configuration import charger
 from benchab.mesure.collecte import Mesure
 from benchab.qualite.frontiere import verifier
+from benchab.qualite.statuts import code_statut
 
 SECRETS = {"--token", "--password", "--secret", "--api-key", "--access-token", "--refresh-token"}
 CONTROLES_DIRECTS = {
@@ -346,7 +347,7 @@ def executer(arguments, base):
                 arguments.sortie or base.prive / "rapports/routine",
             )
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
-            return 0 if rapport["conforme"] else 1
+            return rapport["code"]
         if arguments.controle in {"continuite-paroi", "continuite_paroi"}:
             from benchab.controles.continuite_paroi import controler
 
@@ -366,8 +367,9 @@ def executer(arguments, base):
                     "identifiant": arguments.reference.name,
                 }
             rapport = controler(arguments.fichier, arguments.plaque, fenetre, reference=reference)
+            rapport["code"] = code_statut(rapport["statut"])
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
-            return {"PASS": 0, "WARN": 2, "NON VÉRIFIÉ": 2, "FAIL": 1}[rapport["statut"]]
+            return rapport["code"]
         if arguments.controle == "complet":
             from benchab.qualite.complet import executer
 
@@ -379,8 +381,9 @@ def executer(arguments, base):
                 index_filament=arguments.index_filament,
                 declaration_envoi=arguments.declaration_envoi,
             )
+            rapport["code"] = code_statut(rapport["statut"])
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
-            return {"PASS": 0, "WARN": 1}.get(rapport["statut"], 2)
+            return rapport["code"]
         if arguments.controle == "envoi":
             from benchab.controles.envoi import controler
 
@@ -393,7 +396,7 @@ def executer(arguments, base):
                 relation_reference=arguments.relation_reference,
             )
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
-            return {"PASS": 0, "WARN": 2, "NON VÉRIFIÉ": 2, "FAIL": 1}[rapport["statut"]]
+            return rapport["code"]
         if arguments.controle == "typographie":
             from benchab.qualite.edition import typographie
 
@@ -470,7 +473,7 @@ def executer(arguments, base):
                 arguments.projet, base.prive, optimiser=arguments.optimiser, objectif=arguments.objectif
             )
             print(json.dumps(resultat, ensure_ascii=False, indent=2))
-            return {"PASS": 0, "WARN": 1}.get(resultat["statut"], 2)
+            return resultat["code"]
         if arguments.action == "comparer-remplissages":
             from benchab.fabrication.comparer_remplissages import cli
 
@@ -645,8 +648,9 @@ def executer(arguments, base):
             commande.add_argument("projet", help="Identifiant explicite du projet privé")
             directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
             rapport = verifier_scripts_projet(base, commande.parse_args(directs).projet)
+            rapport["code"] = code_statut(rapport["statut"])
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
-            return {"PASS": 0, "FAIL": 2, "NON VÉRIFIÉ": 3}[rapport["statut"]]
+            return rapport["code"]
         if arguments.action in {"archives", "comparer-fabrication"}:
             module = importlib.import_module("benchab.qualite." + arguments.action.replace("-", "_"))
             directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments

@@ -19,6 +19,7 @@ from benchab.donnees.base import Base
 from benchab.fabrication.chaine import executer as executer_chaine
 from benchab.projets.nouveau import creer
 from benchab.qualite import coherence, edition, publication, references
+from benchab.qualite.statuts import code_statut
 
 ORDRE = ("ruff", "coherence", "references_docs_savoir_publication", "reimpression", "pytest")
 STATUTS = {"PASS", "WARN", "FAIL", "NON VÉRIFIÉ", "NON APPLICABLE"}
@@ -355,6 +356,7 @@ def executer(
         if not journal.exists():
             journal.write_text(json.dumps(resultat, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         rapport["statut"] = _statut_rapport(rapport)
+        rapport["code"] = code_statut(rapport["statut"])
         Path(rapport["rapport"]).write_text(json.dumps(rapport, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     rapport["statut"] = _statut_rapport(rapport)
     return rapport
@@ -379,7 +381,7 @@ def main(argv=None):
         declaration_envoi=args.declaration_envoi,
     )
     print(json.dumps(rapport, ensure_ascii=False, indent=2))
-    return {"PASS": 0, "WARN": 1}.get(rapport["statut"], 2)
+    return rapport["code"]
 
 
 if __name__ == "__main__":

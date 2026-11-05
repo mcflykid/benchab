@@ -20,6 +20,7 @@ from benchab.controles import zones_locales as ZL
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.rapports import RapportCourant
 from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.qualite.statuts import code_statut
 
 
 class RapportRefuse(ValueError):
@@ -366,6 +367,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                 {
                     "fichier": str(T3MF),
                     "statut": statut_global,
+                    "code": code_statut(statut_global),
                     "conforme_numerique": pire == 0,
                     "resultats": res,
                     "zones_locales": local,
@@ -374,7 +376,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         except (ValueError, OSError) as error:
             raise RapportRefuse(str(error)) from error
     return {
-        "code": pire,
+        "code": code_statut(statut_global),
         "fichier": str(T3MF),
         "statut": statut_global,
         "conforme_numerique": pire == 0,

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from benchab.controles import debit_gcode, disposition_reelle, plaques_interface, verifier_reglages
 from benchab.qualite.ecritures import _sans_lien
+from benchab.qualite.statuts import code_statut
 
 
 def controler(plaques, tranche, placement, sortie):
@@ -54,6 +55,7 @@ def controler(plaques, tranche, placement, sortie):
     conforme = all(r["statut"] == "PASS" for r in resultats)
     return {
         "statut": "PASS" if conforme else "FAIL",
+        "code": code_statut("PASS" if conforme else "FAIL"),
         "conforme": conforme,
         "resultats": resultats,
         "validation_physique": False,

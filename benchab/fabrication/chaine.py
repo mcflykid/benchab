@@ -27,6 +27,7 @@ from benchab.mesure import environnement
 from benchab.qualite import coherence
 from benchab.qualite import qualite as qualite_projet
 from benchab.qualite.ecritures import _sans_lien, ecrire_json_neuf
+from benchab.qualite.statuts import code_statut
 
 
 class _Arret(Exception):
@@ -166,6 +167,7 @@ def executer(projet, prive=None, *, optimiser=False, objectif=None):
     except Exception as erreur:
         rapport.update(statut="FAIL", erreur=str(erreur))
         (dossier / "erreur.log").write_text(traceback.format_exc())
+    rapport["code"] = code_statut(rapport["statut"])
     ecrire_json_neuf(dossier / "rapport.json", rapport)
     return rapport
 
@@ -180,7 +182,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     rapport = executer(args.projet, args.prive, optimiser=args.optimiser, objectif=args.objectif)
     print(json.dumps(rapport, ensure_ascii=False, indent=2))
-    return {"PASS": 0, "WARN": 1}.get(rapport["statut"], 2)
+    return rapport["code"]
 
 
 if __name__ == "__main__":

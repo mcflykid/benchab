@@ -62,3 +62,19 @@ appelant et de ses enfants cumulés sont présentés séparément.
 `prive/projets/PROJET` hors dépendances et archives de projet, sans les exécuter ni créer de `.pyc`. Un script illisible
 ou invalide donne FAIL ; l'absence de script reste NON VÉRIFIÉE. Le projet doit
 être choisi explicitement et les liens internes restent refusés.
+
+## Codes de sortie des verdicts
+
+Les rapports numériques de l’envoi, des règles, de la continuité, de la routine,
+du contrôle complet et de la chaîne portent le code que retourne leur commande.
+
+| Verdict | Code |
+| --- | ---: |
+| PASS | 0 |
+| WARN ou WARNING | 1 |
+| FAIL | 2 |
+| NON VÉRIFIÉ | 2 |
+| INCONNU, BLOQUE ou ATTENTE HUMAINE | 2 |
+
+Lire le statut du rapport pour distinguer les situations qui partagent le code
+2. Les codes natifs des processus enfants restent disponibles dans leurs traces.

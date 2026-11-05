@@ -61,7 +61,7 @@ class MonoNatif(unittest.TestCase):
     def test_implicite_identique_explicite_et_debit_non_nul(self):
         c, a = self.controler()
         d, b = self.controler(lambda p, x, g: (p, x, g.replace("M83", "T0\nM83")))
-        self.assertEqual((c, d), (0, 0))
+        self.assertEqual((c, d), (1, 1))
         r = self.resultat(a, "outils utilisés")
         self.assertIn("T0 implicite", r["detail"])
         self.assertEqual(r["statut"], "PASS")

@@ -254,6 +254,24 @@ class Automatisation(unittest.TestCase):
         self.assertEqual(result["ouverture"], "INCONNUE")
         self.assertEqual(run.call_count, 1)
 
+    def test_code_cli_ouverture_inconnue(self):
+        """Le délai simulé rend le code 2 et un rapport INCONNU, sans ouvrir le slicer."""
+        import contextlib
+        import io
+
+        sortie = io.StringIO()
+        with (
+            patch.object(A, "informations", return_value={"present": True}),
+            patch.object(A, "demander_ouverture", side_effect=A.subprocess.TimeoutExpired("slicer", 20)),
+            contextlib.redirect_stdout(sortie),
+        ):
+            code = A.main(["ouvrir-slicer", "--projet", "test", "--ouvrir", "--sortie", str(self.out)],
+                          prive=self.root)
+        rapport = json.loads(sortie.getvalue())
+        self.assertEqual(rapport["statut"], "INCONNU")
+        self.assertEqual(code, 2)
+        self.assertEqual(rapport["code"], code)
+
     def test_environnement_reel_ne_modifie_pas_projet(self):
         before = self.snapshot()
         result = A.environnement(self.root)

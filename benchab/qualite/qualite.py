@@ -19,6 +19,7 @@ from pathlib import Path
 from benchab import reglages as schema_reglages
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 from benchab.machine.configuration import charger as configuration_machine
+from benchab.qualite.statuts import code_statut
 
 OK, KO, AV, NV = "PASS", "FAIL", "WARNING", "NON VÉRIFIÉ"
 
@@ -427,7 +428,7 @@ def main(argv=None):
         print(__doc__)
         return 2
     s = f(a[1])
-    return 1 if s == KO else 2 if s == NV else 0
+    return code_statut(s) if s is not None else 0
 
 
 if __name__ == "__main__":

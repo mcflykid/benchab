@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from benchab.controles.rapports import RapportCourant
+from benchab.qualite.statuts import code_statut
 
 AXES = (
     "supports",
@@ -367,12 +368,13 @@ def main(argv=None, *, base=None, prive=None) -> int:
         entrees = _entrees_manifeste(racine, source, donnees)
         rapport = RapportCourant(chemin_sortie, entrees, "opportunite_decoupe")
         resultat = evaluer(racine, donnees)
+        resultat["code"] = code_statut(resultat["statut"])
         rapport.publier(resultat)
     except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as erreur:
         print(f"Contrôle refusé : {erreur}", file=sys.stderr)
         return 2
     print(json.dumps(resultat, ensure_ascii=False, indent=1))
-    return 0 if resultat["statut"] == "PASS" else 1
+    return resultat["code"]
 
 
 if __name__ == "__main__":
