@@ -850,10 +850,9 @@ def main(argv=None):
                 print("BENCHAB : impossible d'enregistrer la mesure et son export.", file=sys.stderr)
                 code = 1
                 try:
-                    base.connexion.execute("UPDATE mesures SET code = 1 WHERE id = ?", (mesure.identifiant,))
-                    base.connexion.commit()
-                except sqlite3.Error:
-                    pass
+                    mesure.enregistrer(base, commande, code, seance_id)
+                except (OSError, ValueError, sqlite3.Error):
+                    print("BENCHAB : reprise de la mesure ou de son export incomplète.", file=sys.stderr)
             finally:
                 base.fermer()
     return code

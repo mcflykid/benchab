@@ -3,12 +3,13 @@ Usage : benchab connaissances bobine importer DONNEES.json
 """
 
 import argparse
+import hashlib
 import json
 import re
 import sys
 from pathlib import Path
 
-from benchab.qualite.ecritures import _sans_lien
+from benchab.qualite.ecritures import _sans_lien, publier_texte_repris, remplacer_texte, verrou_publication
 
 
 def reference_fiche(donnees):
@@ -70,20 +71,8 @@ def importer(root, donnees):
 
     natif = native(root)
     p = _sans_lien(root / "donnees/filaments/references.json")
-    if natif:
-        base = Base(root, creer=False)
-        try:
-            reg = {"filaments": [dict(row) for row in base.connexion.execute("SELECT id,nom FROM filaments")]}
-        finally:
-            base.fermer()
-    else:
-        reg = json.loads(p.read_text())
     rel = "docs/reference/filaments/" + d["marque"] + "/" + d["id"] + ".md"
     fiche = _sans_lien(root / rel)
-    if fiche.exists() or any(
-        x["id"] == d["id"] or x["nom"].casefold() == d["nom"].casefold() for x in reg["filaments"]
-    ):
-        raise ValueError("référence déjà présente")
     entry = {
         "id": d["id"],
         "nom": d["nom"],
@@ -99,39 +88,68 @@ def importer(root, donnees):
         "preuves_empreintes": {},
     }
     entry["fiche_contrat"] = "recherche-sources-v1"
-    text = texte_fiche(entry)
-    fiche.parent.mkdir(parents=True, exist_ok=True)
-    if natif:
-        from benchab.qualite.ecritures import PublicationNeuve
-
-        base = Base(root, creer=False)
-        try:
-            with PublicationNeuve([], [fiche]) as publication:
-                publication.temporaire(fiche).write_text(text, encoding="utf-8")
-                with base.transaction() as connexion:
-                    connexion.execute("BEGIN IMMEDIATE")
-                    if any(row[0] == d["id"] or row[1].casefold() == d["nom"].casefold()
-                           for row in connexion.execute("SELECT id,nom FROM filaments")):
-                        raise ValueError("référence déjà présente")
-                    connexion.execute("INSERT INTO filaments VALUES (?,?,?,?,?)", (
-                        d["id"], d["nom"], d.get("matiere", "inconnue"), d["marque"],
-                        json.dumps(entry, ensure_ascii=False, allow_nan=False),
-                    ))
-                    connexion.execute("INSERT INTO bobines VALUES (?,?,NULL,NULL,?)", (
-                        "bobine:" + d["id"], d["id"], json.dumps({"possession": d["possession"],
-                                                               "quantites": "non mesurées"}, ensure_ascii=False),
-                    ))
-                    publication.publier()
-        finally:
-            base.fermer()
-        return rel
-    with fiche.open("x") as f:
-        f.write(text)
-    reg["filaments"].append(entry)
-    tmp = p.with_suffix(".json.en-cours")
-    tmp.write_text(json.dumps(reg, indent=2, ensure_ascii=False) + "\n")
-    tmp.replace(p)
+    matiere = d.get("matiere", "inconnue")
+    empreinte = hashlib.sha256(
+        json.dumps([matiere, entry], sort_keys=True, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    dossier = root / "cache" if natif else p.parent
+    with verrou_publication(dossier, "bobines.lock"):
+        recu = _sans_lien(dossier / f"bobine-{d['id']}.en-cours")
+        reprise = recu.exists()
+        if reprise and recu.read_text(encoding="utf-8").strip() != empreinte:
+            raise ValueError("Référence en cours avec des données différentes")
+        if natif:
+            base = Base(root, creer=False)
+            try:
+                _inscrire_native(base, entry, matiere, fiche, recu, reprise, empreinte)
+            finally:
+                base.fermer()
+        else:
+            _inscrire_historique(p, entry, fiche, recu, reprise, empreinte)
+        # La fiche est une vue des données canoniques déjà persistées.
+        # Voir docs/reference/donnees.md.
+        publier_texte_repris(fiche, texte_fiche(entry))
+        recu.unlink()
     return rel
+
+
+def _inscrire_native(base, entry, matiere, fiche, recu, reprise, empreinte):
+    with base.transaction() as connexion:
+        connexion.execute("BEGIN IMMEDIATE")
+        anciens = connexion.execute("SELECT id,nom,matiere,donnees_json FROM filaments").fetchall()
+        double = next((r for r in anciens if r[0] == entry["id"] or r[1].casefold() == entry["nom"].casefold()), None)
+        if double:
+            if not reprise or double[0] != entry["id"] or double[2] != matiere or json.loads(double[3]) != entry:
+                raise ValueError("référence déjà présente")
+            return
+        if fiche.exists():
+            raise ValueError("référence déjà présente")
+        if not reprise:
+            remplacer_texte(recu, empreinte + "\n")
+        connexion.execute("INSERT INTO filaments VALUES (?,?,?,?,?)", (
+            entry["id"], entry["nom"], matiere, fiche.parent.name,
+            json.dumps(entry, ensure_ascii=False, allow_nan=False),
+        ))
+        connexion.execute("INSERT INTO bobines VALUES (?,?,NULL,NULL,?)", (
+            "bobine:" + entry["id"], entry["id"],
+            json.dumps({"possession": entry["possession"], "quantites": "non mesurées"}, ensure_ascii=False),
+        ))
+
+
+def _inscrire_historique(p, entry, fiche, recu, reprise, empreinte):
+    reg = json.loads(p.read_text(encoding="utf-8"))
+    double = next((r for r in reg["filaments"] if r["id"] == entry["id"]
+                   or r["nom"].casefold() == entry["nom"].casefold()), None)
+    if double:
+        if not reprise or double != entry:
+            raise ValueError("référence déjà présente")
+        return
+    if fiche.exists():
+        raise ValueError("référence déjà présente")
+    if not reprise:
+        remplacer_texte(recu, empreinte + "\n")
+    reg["filaments"].append(entry)
+    remplacer_texte(p, json.dumps(reg, indent=2, ensure_ascii=False) + "\n")
 
 
 def main(argv=None, *, racine=None):
