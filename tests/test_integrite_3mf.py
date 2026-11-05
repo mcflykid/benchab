@@ -148,3 +148,46 @@ def test_couches_variables_ne_supprime_pas_un_autre_reglage_de_plage(tmp_path):
     with pytest.raises(ValueError, match='seules hauteurs'):
         ecrire_profils(source, destination, {1: [0, .24, 4, .24]})
     assert source.read_bytes() == avant and not destination.exists()
+
+
+def _archive_structure(path, plaque=0, transform="1 0 0 0 1 0 0 0 1 0 0 0", oid="1"):
+    from xml.etree import ElementTree as ET
+
+    racine = ET.Element("config")
+    objet = ET.SubElement(racine, "object", id=oid)
+    ET.SubElement(objet, "metadata", key="name", value="Fixture")
+    for rang in range(2):
+        p = ET.SubElement(racine, "plate")
+        if rang == plaque:
+            i = ET.SubElement(p, "model_instance")
+            for cle, valeur in (("object_id", oid), ("instance_id", "0"), ("identify_id", "8")):
+                ET.SubElement(i, "metadata", key=cle, value=valeur)
+    assemblage = ET.SubElement(racine, "assemble")
+    ET.SubElement(assemblage, "assemble_item", object_id=oid, instance_id="0", transform=transform)
+    with ZipFile(path, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", ET.tostring(racine))
+    return path
+
+
+def test_affectation_d_instance_exige_la_declaration_exacte(tmp_path):
+    """Déplacement ou suppression d'une instance : FAIL par défaut, déplacement exact déclaré : PASS."""
+    source = _archive_structure(tmp_path / "source.3mf")
+    deplace = _archive_structure(tmp_path / "deplace.3mf", plaque=1)
+    absent = _archive_structure(tmp_path / "sans-instance.3mf", plaque=None)
+    for fichier in (deplace, absent):
+        with pytest.raises(ValueError, match="structure/plaque"):
+            integrite_3mf.verifier(source, fichier)
+    a, b = integrite_3mf.instantane(source), integrite_3mf.instantane(deplace)
+    permis = integrite_3mf.difference(a, b)
+    assert {d["chemin"] for d in permis} == {"structure/plaque/0/instance/0", "structure/plaque/1/instance/0"}
+    assert integrite_3mf.verifier(source, deplace, permis)["statut"] == "PASS"
+
+
+def test_renumerotation_et_placement_d_assemblage(tmp_path):
+    """La renumérotation d'un objet nommé préserve sa liaison, sa translation de 8 mm reste une différence."""
+    source = _archive_structure(tmp_path / "source.3mf")
+    renumerote = _archive_structure(tmp_path / "renumerote.3mf", oid="42")
+    assert integrite_3mf.verifier(source, renumerote)["differences"] == []
+    translate = _archive_structure(tmp_path / "translate.3mf", transform="1 0 0 0 1 0 0 0 1 8 0 0")
+    with pytest.raises(ValueError, match="structure/assemblage"):
+        integrite_3mf.verifier(source, translate)

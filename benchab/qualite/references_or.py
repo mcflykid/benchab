@@ -31,9 +31,13 @@ def relever(chemin):
             commandes[nom] = {"sha256": digest.hexdigest(), "nombre": nombre}
     with chemin.open("rb") as flux:
         digest = hashlib.file_digest(flux, "sha256").hexdigest()
+    # Le manifeste fixe la liste historique des réglages. La structure ajoutée
+    # au différentiel de transformation reste liée au SHA intégral de l’archive.
+    # Voir docs/reference/integrite-3mf.md.
+    reglages = {cle: valeur for cle, valeur in instantane(chemin).items() if not cle.startswith("structure/")}
     return {
         "sha256": digest,
-        "reglages": instantane(chemin),
+        "reglages": reglages,
         "commandes": commandes,
         "analyse_demarrage": commandes_machine(chemin) if commandes else None,
     }
