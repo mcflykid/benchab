@@ -79,16 +79,60 @@ def instantane_config(projet, modele=None, *, plages_couches=None, avec_types=Fa
             lire(part, chemin_noeud + "/part/" + str(index), partie=True)
 
     vus = set()
+    objets = {}
     for index, obj in enumerate(root.findall("object")):
         ident = obj.find("metadata[@key='name']")
         nom = ident.get("value") if ident is not None else obj.get("id", str(index))
         if nom in vus:
             raise ValueError("Intégrité : objets homonymes, correspondance explicite requise")
         vus.add(nom)
+        if (identifiant := obj.get("id")) is not None:
+            if identifiant in objets:
+                raise ValueError("Intégrité : identifiants d’objet dupliqués")
+            objets[identifiant] = nom
         lire(obj, "objet/" + nom)
     for index, plaque in enumerate(root.findall("plate")):
         lire(plaque, "plaque/" + str(index))
+        cle_presence = f"structure/plaque/{index}/@present"
+        etat[cle_presence] = True
+        types[cle_presence] = {"type": "structure", "longueur": None}
+        for rang, instance in enumerate(plaque.findall("model_instance")):
+            cle = f"structure/plaque/{index}/instance/{rang}"
+            etat[cle] = _structure(instance, objets)
+            types[cle] = {"type": "structure", "longueur": None}
+    for index, assemblage in enumerate(root.findall("assemble")):
+        # Le moteur écrit parfois un conteneur vide. Il ne porte alors aucun
+        # placement. Voir docs/reference/integrite-3mf.md.
+        if len(assemblage) or assemblage.attrib or (assemblage.text or "").strip():
+            cle = f"structure/assemblage/{index}"
+            etat[cle] = _structure(assemblage, objets)
+            types[cle] = {"type": "structure", "longueur": None}
     return (etat, types) if avec_types else etat
+
+
+def _structure(noeud, objets):
+    """Décrit les liaisons XML dans l’ordre, avec les identités stables des objets connus."""
+    def reference(identifiant):
+        # Les témoins réels renumérotent les objets au tranchage. Comparer
+        # leurs noms uniques conserve l’affectation, même après renumérotation.
+        return {"nom": objets[identifiant]} if identifiant in objets else {"id": identifiant}
+
+    attributs = dict(noeud.attrib)
+    if "object_id" in attributs:
+        attributs["object_id"] = reference(attributs["object_id"])
+    texte = (noeud.text or "").strip()
+    if noeud.tag == "metadata" and attributs.get("key") == "object_id":
+        if "value" in attributs:
+            attributs["value"] = reference(attributs["value"])
+        elif texte:
+            texte = reference(texte)
+    enfants = list(noeud)
+    if enfants and all(e.tag == "metadata" for e in enfants):
+        enfants.sort(key=lambda e: e.get("key", ""))
+    return {
+        "tag": noeud.tag, "attributs": attributs, "texte": texte,
+        "enfants": [_structure(enfant, objets) for enfant in enfants],
+    }
 
 
 def _lire_plages(contenu, etat, types):

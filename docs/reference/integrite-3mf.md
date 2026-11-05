@@ -97,3 +97,14 @@ une option inconnue présente dans les anciennes plages. Le membre opaque
 et signalé NON VÉRIFIÉ ; une modification, même déclarée, est refusée.
 Un PASS d’intégrité atteste l’égalité avec le plan déclaré ; les clés inconnues
 conservées restent listées séparément comme NON VÉRIFIÉES.
+
+### Affectation des instances et assemblage
+
+Le différentiel compare la présence de chaque plaque, les instances dans leur
+ordre (objet, indice d’instance et métadonnées) et les liaisons et matrices du
+bloc `assemble` de `Metadata/model_settings.config`. Une renumérotation
+technique préserve la liaison si l’identifiant résout le même objet nommé sans
+ambiguïté. Un conteneur d’assemblage vide ne décrit aucun placement.
+
+Le différentiel de réglages et d’affectation ne compare pas la géométrie de
+`3D/*.model`. Les contrôles géométriques et de disposition ont leur propre preuve.
