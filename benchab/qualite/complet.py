@@ -254,7 +254,10 @@ def _temoin_niveau(
                     }
                 ],
             }
-            (projet / "interfaces.json").write_text(json.dumps(interface, ensure_ascii=False, indent=2) + "\n")
+            (projet / "interfaces.json").write_text(
+                json.dumps(interface, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         parametres.write_text(contenu, encoding="utf-8")
         shutil.copyfile(declaration, projet / "DECLARATION-ENVOI.json")
         rapport = executer_chaine(projet, atelier)

@@ -228,11 +228,17 @@ def _run(args):
             ],
             "fabrication": "non tranché ; aucun profil Anycubic ; non validé physiquement",
         }
-        (output / "manifest.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n")
+        (output / "manifest.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n",
+            encoding="utf-8",
+        )
         return result
     except Exception:
         # Conserver les preuves de l'échec, sans les présenter comme livrables.
-        (output / "ECHEC.txt").write_text("Traitement incomplet : ne pas utiliser pour fabrication.\n")
+        (output / "ECHEC.txt").write_text(
+            "Traitement incomplet : ne pas utiliser pour fabrication.\n",
+            encoding="utf-8",
+        )
         raise
 
 

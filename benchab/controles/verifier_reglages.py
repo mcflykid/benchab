@@ -172,7 +172,7 @@ def main(argv):
         and all(o["conforme"] for p in res["plaques"] for o in p["objets"])
     )
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(res, indent=1, ensure_ascii=False))
+    OUT.write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
     print("tout conforme", res["tout_conforme"])
 
     return 0 if res["tout_conforme"] else 1

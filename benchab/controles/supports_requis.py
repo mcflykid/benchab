@@ -163,7 +163,7 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
                 tot = sum(bandes.values())
                 if garder:
                     Path(garder).mkdir(parents=True, exist_ok=True)
-                    (Path(garder) / f"plaque-{p['index']}.gcode").write_text(g)
+                    (Path(garder) / f"plaque-{p['index']}.gcode").write_text(g, encoding="utf-8")
                 plaques.append(
                     {
                         "plaque": p["index"],
@@ -186,6 +186,7 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
 
 
 def main(argv=None):
+    """Mesure les supports en g et rend le code de contrôle, sans commande imprimante."""
     a = list(sys.argv[1:] if argv is None else argv)
     if len(a) < 2:
         print(__doc__)
@@ -212,7 +213,7 @@ def main(argv=None):
     r = mesurer(Path(a[0]), regl, float(opt("--seuil-g", 1.0)), opt("--garder"))
     sortie = Path(a[1])
     sortie.parent.mkdir(parents=True, exist_ok=True)
-    sortie.write_text(json.dumps(r, indent=1, ensure_ascii=False))
+    sortie.write_text(json.dumps(r, indent=1, ensure_ascii=False), encoding="utf-8")
     for p in r["plaques"]:
         print(f"{p['statut']:5s} plaque {p['plaque']} : {p['support_g']} g de supports demandés {p['par_5mm_g']}")
     return 0 if r["statut"] == "PASS" else 1

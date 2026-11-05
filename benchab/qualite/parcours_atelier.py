@@ -125,7 +125,10 @@ def parcourir(base, sortie):
             raise
         finally:
             b.close()
-            (sortie / "resultat.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+            (sortie / "resultat.json").write_text(
+                json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
     return result
 
 

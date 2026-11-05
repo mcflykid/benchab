@@ -77,7 +77,7 @@ def main():
             result = {"statut": "FAIL", "erreur": str(exc), "diagnostic": traceback.format_exc()}
         finally:
             browser.close()
-    (a.sortie / "resultat.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    (a.sortie / "resultat.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return int(result["statut"] != "PASS")
 

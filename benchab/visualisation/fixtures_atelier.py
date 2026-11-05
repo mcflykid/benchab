@@ -32,23 +32,28 @@ def suivi(nom, titre, historique=False):
 
 
 def creer(sortie):
+    """Produit les fixtures synthétiques en mm, sans données de projet."""
     sortie = valider_sortie(sortie)
     root = creer_inspection(sortie)
     p = root / "projets/inspection-ete"
     q = {"suivi": suivi("inspection-ete", "Inspection été — projet actif")}
     q["suivi"].update(preparation_courante="P02", preuves_utiles=["preuves/controle.json"])
-    (p / "qualite.json").write_text(json.dumps(q, ensure_ascii=False))
+    (p / "qualite.json").write_text(json.dumps(q, ensure_ascii=False), encoding="utf-8")
     (p / "preuves/visualisation").mkdir(parents=True)
     (p / "preuves/controle.json").write_text(
         json.dumps(
             {"statut": "WARNING", "limite": "Contre-exemple synthétique, pas une réparation imprimée"},
             ensure_ascii=False,
-        )
+        ),
+        encoding="utf-8",
     )
     for ident, hauteur in (("P01", 10), ("P02", 12)):
         f = p / "preparations" / ident / "PREPARATION.json"
         f.parent.mkdir(parents=True)
-        f.write_text(json.dumps({"id": ident, "statut": "candidate NON imprimée", "parametres": {"hauteur": hauteur}}))
+        f.write_text(
+            json.dumps({"id": ident, "statut": "candidate NON imprimée", "parametres": {"hauteur": hauteur}}),
+            encoding="utf-8",
+        )
     with ZipFile(p / "reference/envoi.gcode.3mf", "w") as z:
         z.write(p / "reference/envoi.gcode", "Metadata/plate_1.gcode")
     v = Visionneuse("Observations été — synthèse", source={"fixture": True})
@@ -62,10 +67,13 @@ def creer(sortie):
     q["suivi"]["references_imprimees"] = [
         {"id": "ancienne", "preuve": "suivi/journal/2026-11/retour-synthetique.md", "fichiers": []}
     ]
-    (ancien / "qualite.json").write_text(json.dumps(q, ensure_ascii=False))
+    (ancien / "qualite.json").write_text(json.dumps(q, ensure_ascii=False), encoding="utf-8")
     journal = root / "suivi/journal/2026-11/retour-synthetique.md"
     journal.parent.mkdir(parents=True)
-    journal.write_text("# Déclaration humaine synthétique\nFixture seulement, aucune impression réelle.")
+    journal.write_text(
+        "# Déclaration humaine synthétique\nFixture seulement, aucune impression réelle.",
+        encoding="utf-8",
+    )
     data = root / "donnees/connaissances/registre.json"
     data.parent.mkdir(parents=True)
     data.write_text(
@@ -86,7 +94,8 @@ def creer(sortie):
                 "journaux": {},
             },
             ensure_ascii=False,
-        )
+        ),
+        encoding="utf-8",
     )
     return root
 

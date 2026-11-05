@@ -118,7 +118,7 @@ def rendre(fichier, *, prive, blender=None, delai=600):
                 (travail / nom).mkdir()
             spec["sortie"] = str(travail / "rendu.png")
             instruction = travail / "spec.json"
-            instruction.write_text(json.dumps(spec, ensure_ascii=False, allow_nan=False))
+            instruction.write_text(json.dumps(spec, ensure_ascii=False, allow_nan=False), encoding="utf-8")
             env = dict(
                 os.environ,
                 HOME=str(travail / "home"),
@@ -161,7 +161,10 @@ def rendre(fichier, *, prive, blender=None, delai=600):
                 "images": [str(p) for p in sorties],
                 "limite": "Meuble et contexte schématiques ; aucun aspect imprimé, ajustement ou résistance prouvé.",
             }
-            publication.temporaire(rapport).write_text(json.dumps(preuve, ensure_ascii=False, indent=2) + "\n")
+            publication.temporaire(rapport).write_text(
+                json.dumps(preuve, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
             if any(sha256_fichier(Path(p)) != sha for p, sha in empreintes.items()):
                 raise ValueError("Source modifiée pendant le rendu.")
             publication.publier()
@@ -247,7 +250,10 @@ def inspecter_scene(fichier, *, prive, sortie=None, blender=None, delai=600, mm_
                 validation_physique=False,
                 operation="lecture seule; aucun fichier .blend sauvegardé",
             )
-            publication.temporaire(destination).write_text(json.dumps(preuve, ensure_ascii=False, indent=2) + "\n")
+            publication.temporaire(destination).write_text(
+                json.dumps(preuve, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
             publication.publier()
     return preuve
 

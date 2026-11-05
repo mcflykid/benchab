@@ -107,6 +107,7 @@ def transformer(
     fermer_ouvertures=False,
     prive=None,
 ):
+    """Transforme le maillage local en mm et consigne les preuves de sortie."""
     source, sortie, rapport = map(Path, (source, sortie, rapport))
     valider_chemins([source], [sortie, rapport])
     if sortie.suffix.lower() != ".stl" or rapport.suffix.lower() != ".json":
@@ -239,12 +240,12 @@ def transformer(
         if refus:
             # Conserver le diagnostic de refus, sans publier un STL non conforme.
             with PublicationNeuve([source], [rapport]) as diagnostic:
-                diagnostic.temporaire(rapport).write_text(contenu + "\n")
+                diagnostic.temporaire(rapport).write_text(contenu + "\n", encoding="utf-8")
                 if empreinte(source) != sha:
                     raise ValueError("Source modifiée avant publication du refus.")
                 diagnostic.publier()
         else:
-            publication.temporaire(rapport).write_text(contenu + "\n")
+            publication.temporaire(rapport).write_text(contenu + "\n", encoding="utf-8")
             if empreinte(source) != sha:
                 raise ValueError("Source modifiée avant publication.")
             publication.publier()

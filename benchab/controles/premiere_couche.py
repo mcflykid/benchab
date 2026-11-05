@@ -203,6 +203,7 @@ def _controler(g, ilot_max, creux_max, pas):
 
 
 def main(argv=None):
+    """Contrôle les défauts de première couche en mm² et rend le code du contrôle."""
     a = list(sys.argv[1:] if argv is None else argv)
     if not a or a[0].startswith("--"):
         print(__doc__)
@@ -225,7 +226,8 @@ def main(argv=None):
         )
     if "--json" in a:
         Path(a[a.index("--json") + 1]).write_text(
-            json.dumps({"fichier": a[0], "plaques": res}, indent=1, ensure_ascii=False)
+            json.dumps({"fichier": a[0], "plaques": res}, indent=1, ensure_ascii=False),
+            encoding="utf-8",
         )
     return (
         2

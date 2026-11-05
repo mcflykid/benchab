@@ -72,6 +72,7 @@ def mesurer(g, portee=10.0, sous_sommet=2.0):
 
 
 def main(a):
+    """Rapporte les ponts internes en mm et rend le code du contrôle."""
     if not a:
         print(__doc__)
         return 2
@@ -99,7 +100,7 @@ def main(a):
         )
     res["statut"] = "WARN" if any(p["statut"] == "WARN" for p in res["plaques"].values()) else "PASS"
     if "--json" in a:
-        Path(a[a.index("--json") + 1]).write_text(json.dumps(res, indent=1, ensure_ascii=False))
+        Path(a[a.index("--json") + 1]).write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
     return 0 if res["statut"] == "PASS" else 1
 
 

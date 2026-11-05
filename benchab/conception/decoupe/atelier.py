@@ -445,9 +445,13 @@ def exporter(resultat, sortie, format_="stl", reglages=None, *, prive=None):
             },
             fichiers={p.name: sha256_fichier(p) for p in travail.iterdir() if p.is_file()},
         )
-        (travail / "decoupe.json").write_text(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+        (travail / "decoupe.json").write_text(
+            json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
         (travail / "choix.json").write_text(
-            json.dumps(resultat["plan"], ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+            json.dumps(resultat["plan"], ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
         )
         if sha256_fichier(source["fichier"]) != source["sha256"]:
             raise ValueError("Source changée pendant l'export")
@@ -456,8 +460,12 @@ def exporter(resultat, sortie, format_="stl", reglages=None, *, prive=None):
 
 
 def sauver_plan(plan, cible, *, prive=None):
+    """Écrit le plan privé de découpe en mm, sans modifier le modèle source."""
     cible = _destination(cible, prive)
     with PublicationNeuve([plan["source"]["fichier"]], [cible]) as publication:
-        publication.temporaire(cible).write_text(json.dumps(plan, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+        publication.temporaire(cible).write_text(
+            json.dumps(plan, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
         publication.publier()
     return cible

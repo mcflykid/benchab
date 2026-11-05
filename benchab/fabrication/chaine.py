@@ -166,7 +166,7 @@ def executer(projet, prive=None, *, optimiser=False, objectif=None):
         rapport.update(statut="FAIL", etape_bloquante=str(erreur))
     except Exception as erreur:
         rapport.update(statut="FAIL", erreur=str(erreur))
-        (dossier / "erreur.log").write_text(traceback.format_exc())
+        (dossier / "erreur.log").write_text(traceback.format_exc(), encoding="utf-8")
     rapport["code"] = code_statut(rapport["statut"])
     ecrire_json_neuf(dossier / "rapport.json", rapport)
     return rapport

@@ -139,7 +139,8 @@ def creneaux(plaques: list[dict], heures_max: float) -> list[list[dict]]:
 
 
 def _heure(valeur: float) -> str:
-    return f"{int(valeur)} h {round(valeur % 1 * 60):02d}"
+    heures, minutes = divmod(round(valeur * 60), 60)
+    return f"{heures} h {minutes:02d}"
 
 
 def rendre(plaques: list[dict], heures_max: float) -> str:

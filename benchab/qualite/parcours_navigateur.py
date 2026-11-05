@@ -77,7 +77,7 @@ def capturer_vues(page, chemin, sortie):
     cible_manifeste = sortie / f"{prefixe}-captures.json"
     if cible_manifeste.exists():
         raise ValueError(f"Manifeste déjà présent : {cible_manifeste.name}")
-    cible_manifeste.write_text(json.dumps(manifeste, ensure_ascii=False, indent=2) + "\n")
+    cible_manifeste.write_text(json.dumps(manifeste, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return manifeste
 
 
@@ -185,7 +185,10 @@ def main():
                     page.close()
         finally:
             browser.close()
-    (a.sortie / "resultats.json").write_text(json.dumps(resultats, ensure_ascii=False, indent=2) + "\n")
+    (a.sortie / "resultats.json").write_text(
+        json.dumps(resultats, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(resultats, ensure_ascii=False, indent=2))
     return int(any(r["statut"] != "PASS" for r in resultats))
 

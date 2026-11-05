@@ -319,7 +319,8 @@ def main(argv=None):
                 indent=1,
                 ensure_ascii=False,
                 allow_nan=False,
-            )
+            ),
+            encoding="utf-8",
         )
     pire = 0
     for fichier, controles in resultats.items():

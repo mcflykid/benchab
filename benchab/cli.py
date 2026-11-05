@@ -44,6 +44,15 @@ CONTROLES_DIRECTS = {
 }
 
 
+def _code_arret(arret):
+    if arret.code is None:
+        return 0
+    if isinstance(arret.code, int):
+        return arret.code
+    print(arret.code, file=sys.stderr)
+    return 1
+
+
 def duree_finie(texte):
     try:
         valeur = float(texte)
@@ -339,7 +348,7 @@ def executer(arguments, base):
                 options = {"prive": base.prive} if arguments.controle == "appuis-gcode" else {}
                 return int(module.main(directs, **options) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.controle == "routine":
             from benchab.controles.routine import controler
 
@@ -505,7 +514,7 @@ def executer(arguments, base):
             try:
                 return int(module.main(directs, base=base) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.action == "couches-variables":
             from benchab.fabrication.couches_variables import cli
 
@@ -515,7 +524,7 @@ def executer(arguments, base):
             try:
                 return int(cli(["--prive", str(base.prive), *directs]) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.action == "plaques-mixtes":
             from benchab.fabrication.plaques_mixtes import main as preparer_plaques
 
@@ -523,7 +532,7 @@ def executer(arguments, base):
             try:
                 return int(preparer_plaques(directs, prive=base.prive) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.action == "resistance":
             from benchab.fabrication.resistance import main as auditer_resistance
 
@@ -531,7 +540,7 @@ def executer(arguments, base):
             try:
                 return int(auditer_resistance(directs, prive=base.prive) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.action == "exportable":
             from benchab.fabrication.exportable import main as verifier_exportable
 
@@ -539,7 +548,7 @@ def executer(arguments, base):
             try:
                 return int(verifier_exportable(directs, prive=base.prive) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.action == "rattachements":
             from benchab.fabrication.rattachements import main as verifier_rattachements
 
@@ -547,7 +556,7 @@ def executer(arguments, base):
             try:
                 return int(verifier_rattachements(directs) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.action == "retour":
             from benchab.fabrication.retour import main as enregistrer_retour
 
@@ -555,7 +564,7 @@ def executer(arguments, base):
             try:
                 return int(enregistrer_retour(directs, base=base) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         if arguments.action == "envois-slicer":
             from benchab.fabrication.envois_slicer import main as gerer_envois_slicer
 
@@ -563,7 +572,7 @@ def executer(arguments, base):
             try:
                 return int(gerer_envois_slicer(directs, prive=base.prive) or 0)
             except SystemExit as arret:
-                return int(arret.code or 0)
+                return _code_arret(arret)
         from benchab.fabrication.trancher import trancher_fichier
 
         sortie, rapport = trancher_fichier(
@@ -580,7 +589,7 @@ def executer(arguments, base):
         try:
             return int(module.main(directs, racine=base.prive) or 0)
         except SystemExit as arret:
-            return int(arret.code or 0)
+            return _code_arret(arret)
     elif arguments.commande == "conception":
         module = importlib.import_module("benchab.conception." + arguments.action.replace("-", "_"))
         directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
@@ -592,7 +601,7 @@ def executer(arguments, base):
             )
             return int(module.main(directs, **options) or 0)
         except SystemExit as arret:
-            return int(arret.code or 0)
+            return _code_arret(arret)
     elif arguments.commande in {"imports", "visualisation"}:
         famille = "imports3d" if arguments.commande == "imports" else "visualisation"
         nom = "rendu_photo" if arguments.action == "photo" else arguments.action.replace("-", "_")
@@ -608,7 +617,7 @@ def executer(arguments, base):
         try:
             return int(module.main(directs, **options) or 0)
         except SystemExit as arret:
-            return int(arret.code or 0)
+            return _code_arret(arret)
     elif arguments.commande == "references":
         module = importlib.import_module(
             "benchab.references_visuelles." + ("references" if arguments.action == "verifier" else arguments.action)
@@ -617,7 +626,7 @@ def executer(arguments, base):
         try:
             return int(module.main(directs) or 0)
         except SystemExit as arret:
-            return int(arret.code or 0)
+            return _code_arret(arret)
     elif arguments.commande == "projet":
         from benchab.projets import nouveau
 
@@ -664,7 +673,7 @@ def executer(arguments, base):
         try:
             return int(module.main(directs if special else [arguments.action, *directs]) or 0)
         except SystemExit as arret:
-            return int(arret.code or 0)
+            return _code_arret(arret)
     elif arguments.commande == "seance":
         from benchab.donnees import seance
 
@@ -802,10 +811,7 @@ def main(argv=None):
     try:
         arguments = parser().parse_args(argv)
     except SystemExit as arret:
-        if isinstance(arret.code, str):
-            print(arret.code, file=sys.stderr)
-            return 1
-        code = int(arret.code or 0)
+        code = _code_arret(arret)
         if code:
             _mesurer_refus(argv, commande, code)
         return code
@@ -831,11 +837,7 @@ def main(argv=None):
         try:
             code = executer(arguments, base)
         except SystemExit as arret:
-            if isinstance(arret.code, str):
-                print(arret.code, file=sys.stderr)
-                code = 1
-            else:
-                code = int(arret.code or 0)
+            code = _code_arret(arret)
     except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
         print(f"BENCHAB : {erreur}", file=sys.stderr)
         code = 1

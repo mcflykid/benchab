@@ -99,6 +99,7 @@ def compter(a, b, o, n, tris, prof=1.0):
 
 
 def main(a):
+    """Rapporte les zones d’ergots en mm², sans modifier la géométrie."""
     if not a or a[0].startswith("--"):
         print(__doc__)
         return 2
@@ -145,7 +146,7 @@ def main(a):
         )
     )
     if "--json" in a:
-        Path(a[a.index("--json") + 1]).write_text(json.dumps(res, indent=1, ensure_ascii=False))
+        Path(a[a.index("--json") + 1]).write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
     return 1 if res["statut"] == "FAIL" else 0
 
 

@@ -141,6 +141,7 @@ def controler(arguments, *, placement=None, candidats=None):
 
 
 def main(argv=None):
+    """Rapporte le risque de décollement géométrique, sans validation physique."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fichiers", nargs="+", type=Path)
     parser.add_argument("--placement", type=Path)
@@ -151,7 +152,7 @@ def main(argv=None):
         resultats, code = controler(args.fichiers, placement=args.placement, candidats=args.candidats)
         if args.json:
             args.json.parent.mkdir(parents=True, exist_ok=True)
-            args.json.write_text(json.dumps(resultats, indent=1, ensure_ascii=False, allow_nan=False))
+            args.json.write_text(json.dumps(resultats, indent=1, ensure_ascii=False, allow_nan=False), encoding="utf-8")
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
         print("Contrôle refusé : " + str(error), file=sys.stderr)
         return 2

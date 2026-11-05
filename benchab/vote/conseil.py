@@ -569,7 +569,7 @@ def preparer(base, fiche, sortie, objet, *, controles=(), contribution_id=None):
                        for p in synthese["verifications_manquantes"])
         donnees["risques"] = list(dict.fromkeys("NON VÉRIFIÉ : " + x for x in risques))
     with PublicationNeuve([chemin], [cible]) as publication:
-        publication.temporaire(cible).write_text(_json(donnees) + "\n")
+        publication.temporaire(cible).write_text(_json(donnees) + "\n", encoding="utf-8")
         publication.publier()
     return cible
 

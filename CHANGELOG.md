@@ -17,3 +17,4 @@ Versions enregistrées : aucune version livrée.
 - `frontiere-prive` — Contrôle Git de l’atelier privé réellement sélectionné.
 - `trancher-temporaires` — ZIP relu avant remplacement atomique et nettoyage des échecs de restauration.
 - `decisions-statuts` — Portée explicite des règles et confinement des preuves et références durables.
+- `petits-defauts` — Arrondi des durées, diagnostic SystemExit, export UTF-8, initialisation SQLite et nettoyage du manifeste temporaire.
