@@ -385,7 +385,8 @@ class Couverture(unittest.TestCase):
             with self.subTest(cap=cap, fil=fil):
                 r, d = self.debit(g, cap, fil)
                 self.assertFalse(d["conforme"])
-                self.assertEqual(r.returncode, 1)
+                self.assertEqual(r.returncode, 2)
+                self.assertEqual(r.returncode, d["code"])
 
     def test_debit_vide_et_arc_non_conformes(self):
         for g in ["M83\n", "M83\nT0\nEXCLUDE_OBJECT_START NAME=Piece\nG2 X10 E1 I5 F600"]:
