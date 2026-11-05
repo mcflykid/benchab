@@ -1,0 +1,540 @@
+"""Sécurité du lanceur et normalisation des copies, sans lancer le slicer."""
+
+import fcntl
+import json
+import shutil
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from types import SimpleNamespace
+from zipfile import ZipFile
+
+import pytest
+
+from benchab.fabrication import trancher
+
+
+def test_appel_direct_verrouille_et_conserve_rapport_sans_lancer_slicer(tmp_path, monkeypatch):
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+    monkeypatch.setenv("BENCHAB_PRIVE", str(tmp_path / "prive"))
+
+    def executer_factice(demande):
+        with (trancher.ECHANGE / "execution.lock").open("a") as verrou:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(verrou, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return {"code": 0, "modifications": [], "source_sha256": "fixture"}
+
+    monkeypatch.setattr(trancher, "_executer", executer_factice)
+    assert trancher.trancher({})["code"] == 0
+    rapports = list((tmp_path / "prive/mesures/tranchages").glob("*.json"))
+    assert len(rapports) == 1
+    assert json.loads(rapports[0].read_text())["source_sha256"] == "fixture"
+
+
+@pytest.mark.parametrize(
+    "causes",
+    [
+        ["ConfigOptionVector"] * 3,
+        ["expand_plate_extruders", "filaments_cnt", "expand_plate_extruders"],
+    ],
+)
+def test_trois_plantages_meme_cause_interdisent_tout_nouvel_essai(tmp_path, monkeypatch, causes):
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+    monkeypatch.setenv("BENCHAB_PRIVE", str(tmp_path / "prive"))
+    rapports = tmp_path / "prive/mesures/tranchages"
+    rapports.mkdir(parents=True)
+    for index, cause in enumerate(causes):
+        (rapports / f"{index}.json").write_text(json.dumps({"diagnostic": {"cause": cause}}))
+
+    def lancement_interdit(demande):
+        raise AssertionError("Ne doit jamais lancer un quatrième essai")
+
+    monkeypatch.setattr(trancher, "_executer", lancement_interdit)
+    with pytest.raises(ValueError, match="Trois essais"):
+        trancher.trancher({})
+
+
+@pytest.mark.parametrize("delai", [0, -1, 1801, float("nan"), float("inf"), True])
+def test_delai_invalide_refuse_avant_processus(delai):
+    with pytest.raises(ValueError, match="Délai"):
+        trancher._executer({"timeout_s": delai})
+
+
+def test_journal_survit_echec_et_delai_transmis(tmp_path, monkeypatch):
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+    prive = tmp_path / "prive"
+    entree = tmp_path / "source.3mf"
+    entree.write_bytes(b"entree factice")
+    journal = prive / "fabrication/journal.log"
+
+    def executer_factice(demande):
+        assert demande["timeout_s"] == 2.5
+        natif = tmp_path / "journal-natif.log"
+        natif.write_text("diagnostic conservé malgré échec")
+        return {"code": 1, "modifications": [], "journal_natif": str(natif)}
+
+    monkeypatch.setattr(trancher, "_executer", executer_factice)
+    with pytest.raises(RuntimeError, match="Slicer en échec"):
+        trancher.trancher_fichier(entree, prive / "fabrication", prive=prive, timeout_s=2.5, journal=journal)
+    assert journal.read_text() == "diagnostic conservé malgré échec"
+    assert entree.read_bytes() == b"entree factice"
+    assert not (prive / "fabrication/source.gcode.3mf").exists()
+    rapport = json.loads(next((prive / "mesures/tranchages").glob("*.json")).read_text())
+    assert rapport["journal_conserve"] == str(journal)
+
+
+def test_incident_bridge_archive_pile_et_ne_relance_pas(tmp_path, monkeypatch):
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+    source = entree_3mf(tmp_path / "source.3mf", tops=("8",))
+    appels = []
+
+    def echec(demande):
+        appels.append(demande)
+        return {
+            "code": -11,
+            "modifications": [],
+            "diagnostic": {
+                "cause": "bridge_over_infill",
+                "fonctions": ["bridge_over_infill", "appelant"],
+            },
+        }
+
+    monkeypatch.setattr(trancher, "_executer", echec)
+    resultat = trancher.trancher({"source": str(source)}, prive=tmp_path / "prive")
+    assert len(appels) == 1
+    dossier = Path(resultat["incident"]["dossier"])
+    assert (dossier / "entree-originale.3mf").read_bytes() == source.read_bytes()
+    assert (dossier / "pile.txt").read_text().splitlines() == ["bridge_over_infill", "appelant"]
+    assert resultat["incident"]["cause_etablie"] is False
+    assert resultat["incident"]["relance_automatique"] is False
+
+
+def test_ids_existants_explicites_ne_creent_pas_de_valeur_temporaire(tmp_path):
+    source = entree_3mf(
+        tmp_path / "source.3mf",
+        reglages={
+            "filament_type": ["PLA"],
+            "filament_colour": ["#FFFFFF"],
+            "filament_settings_id": ["Profil déclaré"],
+            "filament_ids": [""],
+            "top_shell_layers": "5",
+        },
+        tops=("8",),
+    )
+    sortie = tmp_path / "copie.3mf"
+    rapport = trancher.normaliser(
+        source,
+        sortie,
+        identifiants={
+            "Profil déclaré": {"id": "identifiant-existant", "sources": [{"chemin": "profil-fixe.json"}]},
+        },
+    )
+    with ZipFile(sortie) as archive:
+        reglages = json.loads(archive.read("Metadata/project_settings.config"))
+        assert reglages["filament_ids"] == ["identifiant-existant"]
+        assert reglages["top_shell_layers"] == "5"
+    assert any(m.get("sources_identifiants") for m in rapport["modifications"])
+
+
+def entree_3mf(chemin, plaques=1, reglages=None, tops=("5",), modele="Anycubic Kobra S1", buse=("0.4",)):
+    configuration = ET.Element("config")
+    for i in range(plaques):
+        plaque = ET.SubElement(configuration, "plate")
+        ET.SubElement(plaque, "metadata", key="plater_name", value=f"Plaque {i + 1}")
+    for i, top in enumerate(tops):
+        objet = ET.SubElement(configuration, "object", id=str(i + 1))
+        ET.SubElement(objet, "metadata", key="top_shell_layers", value=top)
+    if reglages is None:
+        reglages = {
+            "filament_type": ["PLA", "PLA"],
+            "filament_colour": ["#FFFFFF", "#000000"],
+            "filament_settings_id": ["Profil temporaire 1", "Profil temporaire 2"],
+            "filament_ids": ["profil-1", "profil-2"],
+            "filament_id": "profil-1",
+            "top_shell_layers": "5",
+            "inherits_group": ["", "", ""],
+            "printer_model": modele,
+            "nozzle_diameter": list(buse),
+        }
+    with ZipFile(chemin, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", ET.tostring(configuration))
+        archive.writestr("Metadata/project_settings.config", json.dumps(reglages))
+    return chemin
+
+
+def test_normalisation_preserve_source_et_corrige_causes_connues(tmp_path):
+    source = entree_3mf(tmp_path / "source.3mf")
+    empreinte = trancher.sha256(source)
+    destination = tmp_path / "nouveau.3mf"
+    rapport = trancher.normaliser(source, destination)
+    assert trancher.sha256(source) == empreinte
+    assert rapport["plaques"] == 1
+    assert rapport["filaments"] == 2
+    with ZipFile(destination) as archive:
+        modele = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        reglages = json.loads(archive.read("Metadata/project_settings.config"))
+    assert modele.find("plate/metadata").get("value") == ""
+    assert modele.find("object/metadata").get("value") == "5"
+    assert reglages["top_shell_layers"] == "5"
+    for cle in ("filament_type", "filament_colour", "filament_ids", "filament_settings_id"):
+        assert len(reglages[cle]) == 2
+        assert all(reglages[cle])
+    assert isinstance(reglages["filament_id"], str)
+    assert reglages["filament_id"] == reglages["filament_ids"][0]
+    assert len(reglages["inherits_group"]) == 4
+
+
+def test_identifiant_scalaire_optionnel_absent_reste_absent(tmp_path):
+    """Conserve l'absence du scalaire optionnel quand la liste explicite suffit ; aucune métadonnée inventée."""
+    reglages = {
+        "filament_type": ["PLA"],
+        "filament_colour": ["#FFFFFF"],
+        "filament_settings_id": ["Profil"],
+        "filament_ids": ["stable"],
+        "top_shell_layers": "5",
+    }
+    source = entree_3mf(tmp_path / "source.3mf", reglages=reglages)
+    destination = tmp_path / "copie.3mf"
+    rapport = trancher.normaliser(source, destination)
+    with ZipFile(destination) as z:
+        sortie = json.loads(z.read("Metadata/project_settings.config"))
+    assert "filament_id" not in sortie
+    assert sortie["filament_ids"] == ["stable"]
+    assert not any(m["champ"] == "filament_id" for m in rapport["modifications"])
+
+
+def test_plus_de_30_plaques_refuse_avant_tout_lancement(tmp_path):
+    source = entree_3mf(tmp_path / "source.3mf", plaques=31)
+    with pytest.raises(ValueError, match="30 plaques"):
+        trancher.normaliser(source, tmp_path / "nouveau.3mf")
+    assert not (tmp_path / "nouveau.3mf").exists()
+
+
+def test_top_divergents_conserves_et_matiere_inconnue_refusee(tmp_path):
+    source = entree_3mf(tmp_path / "source.3mf", tops=("3", "5"))
+    trancher.normaliser(source, tmp_path / "nouveau.3mf")
+    with ZipFile(tmp_path / "nouveau.3mf") as archive:
+        modele = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        assert [m.get("value") for m in modele.findall("object/metadata")] == ["3", "5"]
+    source = entree_3mf(tmp_path / "sans-matiere.3mf", reglages={})
+    with pytest.raises(ValueError, match="Type de filament absent"):
+        trancher.normaliser(source, tmp_path / "nouveau.3mf")
+
+
+def test_diagnostic_lit_uniquement_la_pile_du_fil_en_faute(tmp_path, monkeypatch):
+    dossier = tmp_path / "Library/Logs/DiagnosticReports"
+    dossier.mkdir(parents=True)
+    contenu = {
+        "faultingThread": 1,
+        "threads": [
+            {"frames": [{"symbol": "generate_plate_name_texture"}]},
+            {"triggered": True, "frames": [{"symbol": "ConfigOptionVector::get_at"}]},
+        ],
+    }
+    (dossier / "AnycubicSlicerNext-test.ips").write_text("{}\n" + json.dumps(contenu))
+    monkeypatch.setattr(trancher.Path, "home", lambda: tmp_path)
+    rapport = trancher.diagnostic(time.time())
+    assert rapport["cause"] == "ConfigOptionVector"
+    assert rapport["fonctions"] == ["ConfigOptionVector::get_at"]
+
+
+def test_entree_hors_tmp_refusee():
+    with pytest.raises(ValueError, match="copie sous"):
+        trancher.chemin_temporaire("/Applications/AnycubicSlicerNext.app")
+
+
+def test_couleurs_residuelles_ne_creent_pas_de_filaments(tmp_path):
+    reglages = {
+        "filament_type": ["PLA", "PLA", "PLA"],
+        "filament_colour": ["#FFFFFF", "#000000", "#0000FF"],
+        "filament_settings_id": ["Profil actif unique"],
+        "inherits_group": ["", "", "", "", ""],
+        "top_shell_layers": "5",
+        "filament_ids": ["profil-1"],
+        "filament_id": "profil-1",
+    }
+    source = entree_3mf(tmp_path / "source.3mf", reglages=reglages)
+    destination = tmp_path / "nouveau.3mf"
+    rapport = trancher.normaliser(source, destination)
+    assert rapport["filaments"] == 1
+    with ZipFile(destination) as archive:
+        normalise = json.loads(archive.read("Metadata/project_settings.config"))
+    assert normalise["filament_type"] == reglages["filament_type"]
+    assert normalise["filament_colour"] == reglages["filament_colour"]
+    assert len(normalise["inherits_group"]) == 3
+    assert len(normalise["filament_ids"]) == 1
+    assert isinstance(normalise["filament_id"], str)
+
+
+def test_post_traitement_externe_refuse_avant_tout_lancement(tmp_path):
+    source = entree_3mf(tmp_path / "source.3mf", reglages={"post_process": ["programme-externe-interdit"]})
+    with pytest.raises(ValueError, match="post_process externe interdit"):
+        trancher.normaliser(source, tmp_path / "nouveau.3mf")
+    assert not (tmp_path / "nouveau.3mf").exists()
+
+
+@pytest.mark.parametrize(
+    ("modele", "buse"),
+    [("Anycubic Kobra S1", ("0.4",)), ("Anycubic Kobra S1 Combo", (0.4,))],
+)
+def test_top_objet_8_et_projet_5_conserves_dans_sortie_tranchee(tmp_path, monkeypatch, modele, buse):
+    source = entree_3mf(tmp_path / "source.3mf", tops=("8",), modele=modele, buse=buse)
+    original = source.read_bytes()
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+
+    class SlicerSimule:
+        def __init__(self, commande, **options):
+            assert options["start_new_session"] is True
+            entree = Path(commande[-1])
+            sortie = Path(commande[commande.index("--outputdir") + 1]) / commande[commande.index("--export-3mf") + 1]
+            shutil.copyfile(entree, sortie)
+            with ZipFile(sortie, "a") as archive:
+                archive.writestr("Metadata/plate_1.gcode", "M83\nG1 X10 Y10 E1\n")
+                archive.writestr(
+                    "Metadata/slice_info.config",
+                    (
+                        '<config><plate><metadata key="index" value="1"/>'
+                        '<metadata key="prediction" value="1"/><metadata key="weight" value="1"/></plate></config>'
+                    ),
+                )
+            self.pid = 12345
+            self.returncode = None
+
+    monkeypatch.setattr(trancher.subprocess, "Popen", SlicerSimule)
+    ressources = SimpleNamespace(ru_utime=0, ru_stime=0, ru_maxrss=1)
+    monkeypatch.setattr(trancher.os, "wait4", lambda pid, options: (pid, 0, ressources))
+    prive = tmp_path / "prive"
+    dossier_sortie = prive / "sorties"
+    sortie, rapport = trancher.trancher_fichier(source, dossier_sortie, "sortie.3mf", prive=prive)
+    assert source.read_bytes() == original
+    assert rapport["code"] == 0
+    with ZipFile(sortie) as archive:
+        modele = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        projet = json.loads(archive.read("Metadata/project_settings.config"))
+        assert modele.find("object/metadata[@key='top_shell_layers']").get("value") == "8"
+        assert projet["top_shell_layers"] == "5"
+    assert not any("top_shell_layers" in m["champ"] for m in rapport["modifications"])
+
+
+@pytest.mark.parametrize(
+    ("modele", "buse"),
+    [
+        ("Anycubic Kobra S1 Max", ["0.4"]),
+        ("Anycubic Kobra S1", ["0.6"]),
+        ("Anycubic Kobra S1", None),
+        (None, ["0.4"]),
+    ],
+)
+def test_executer_refuse_modele_ou_buse_non_conformes_avant_popen(tmp_path, monkeypatch, modele, buse):
+    """Le vrai parcours _executer refuse machine absente/différente avant tout Popen natif."""
+    with tempfile.TemporaryDirectory(prefix="benchab-garde-machine-", dir="/private/tmp") as racine:
+        dossier = Path(racine)
+        reglages = {
+            "printer_model": modele,
+            "filament_type": ["PLA", "PLA"],
+            "filament_colour": ["#FFFFFF", "#000000"],
+            "filament_settings_id": ["Profil 1", "Profil 2"],
+            "filament_ids": ["profil-1", "profil-2"],
+            "filament_id": "profil-1",
+            "top_shell_layers": "5",
+            "inherits_group": ["", "", ""],
+        }
+        if buse is not None:
+            reglages["nozzle_diameter"] = buse
+        source = entree_3mf(dossier / "source.3mf", reglages=reglages)
+        destination = dossier / "sortie.3mf"
+
+        def lancement_interdit(*args, **kwargs):
+            raise AssertionError("Le précontrôle doit refuser avant Popen")
+
+        monkeypatch.setattr(trancher.subprocess, "Popen", lancement_interdit)
+        with pytest.raises(ValueError, match="Modèle embarqué|Buse embarquée"):
+            trancher._executer({"source": str(source), "destination": str(destination)})
+        assert not destination.exists()
+
+
+def test_delai_tue_le_groupe_cree_sans_toucher_parent(tmp_path, monkeypatch):
+    """Le timeout signale le seul PGID créé par le slicer et conserve wait4/CPU."""
+    with tempfile.TemporaryDirectory(prefix="benchab-timeout-groupe-", dir="/private/tmp") as racine:
+        dossier = Path(racine)
+        source = entree_3mf(dossier / "source.3mf")
+        destination = dossier / "sortie.3mf"
+        signaux = []
+        tue = False
+        groupe_actif = True
+
+        class SlicerSimule:
+            def __init__(self, commande, **options):
+                assert options["start_new_session"] is True
+                self.pid = 424242
+                self.returncode = None
+
+        def killpg(groupe, signal_):
+            nonlocal tue, groupe_actif
+            signaux.append((groupe, signal_))
+            if signal_ == trancher.signal.SIGKILL:
+                tue = True
+                groupe_actif = False
+
+        def actif(groupe):
+            assert groupe == 424242
+            return groupe_actif
+
+        def wait4(pid, options):
+            ressources = SimpleNamespace(ru_utime=0.1, ru_stime=0.2, ru_maxrss=3)
+            return (pid, 9, ressources) if tue else (0, 0, ressources)
+
+        monkeypatch.setattr(trancher.subprocess, "Popen", SlicerSimule)
+        monkeypatch.setattr(trancher.os, "killpg", killpg)
+        monkeypatch.setattr(trancher.os, "wait4", wait4)
+        monkeypatch.setattr("benchab.processus._actif", actif)
+        resultat = trancher._executer(
+            {"source": str(source), "destination": str(destination), "timeout_s": 0.01}
+        )
+        assert resultat["delai_depasse"] is True
+        assert resultat["code"] == 124
+        assert signaux == [
+            (424242, trancher.signal.SIGTERM),
+            (424242, trancher.signal.SIGKILL),
+        ]
+        assert resultat["cpu_utilisateur_s"] == 0.1
+
+
+def test_delai_arrete_un_descendant_simule_du_moteur(tmp_path, monkeypatch):
+    """Le vrai wait4 du lanceur expire et arrête un enfant Python, sans slicer ni réseau."""
+    with tempfile.TemporaryDirectory(prefix="benchab-descendant-", dir="/private/tmp") as racine:
+        dossier = Path(racine)
+        source = entree_3mf(dossier / "source.3mf")
+        destination = dossier / "sortie.3mf"
+        pid_enfant = dossier / "enfant.pid"
+        executable = dossier / "moteur-simule"
+        executable.write_text(
+            f"#!{sys.executable}\n"
+            "import os, subprocess, time\n"
+            f"enfant = subprocess.Popen([{sys.executable!r}, '-c', 'import time; time.sleep(60)'])\n"
+            f"open({str(pid_enfant)!r}, 'w').write(f'{{os.getpid()}} {{enfant.pid}}')\n"
+            "time.sleep(60)\n"
+        )
+        executable.chmod(0o700)
+        configuration = trancher.charger()
+        configuration["slicer"]["executable"] = str(executable)
+        monkeypatch.setattr(trancher, "charger", lambda: configuration)
+
+        resultat = trancher._executer(
+            {"source": str(source), "destination": str(destination), "timeout_s": 1.5}
+        )
+
+        assert resultat["delai_depasse"] is True
+        assert resultat["cpu_utilisateur_s"] >= 0
+        assert pid_enfant.is_file()
+        parent, enfant = map(int, pid_enfant.read_text().split())
+        from benchab.processus import _actif
+
+        assert enfant > 0
+        assert _actif(parent) is False
+
+
+def test_moteur_change_reglage_non_declare_sortie_non_livree(tmp_path, monkeypatch):
+    """Simule un moteur modifiant cinq couches en six ; FAIL archivé, source intacte et aucune sortie livrée."""
+    source = entree_3mf(tmp_path / "source.3mf", tops=("8",))
+    original = source.read_bytes()
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+
+    class MoteurMutant:
+        """Double sans processus réel ; change volontairement un réglage pour vérifier la barrière de livraison."""
+
+        def __init__(self, commande, **options):
+            entree = Path(commande[-1])
+            sortie = Path(commande[commande.index("--outputdir") + 1]) / commande[commande.index("--export-3mf") + 1]
+            with ZipFile(entree) as avant, ZipFile(sortie, "w") as apres:
+                for info in avant.infolist():
+                    contenu = avant.read(info)
+                    if info.filename == "Metadata/project_settings.config":
+                        reglages = json.loads(contenu)
+                        reglages["top_shell_layers"] = "6"
+                        contenu = json.dumps(reglages).encode()
+                    apres.writestr(info, contenu)
+            self.pid = 12345
+            self.returncode = None
+
+    monkeypatch.setattr(trancher.subprocess, "Popen", MoteurMutant)
+    ressources = SimpleNamespace(ru_utime=0, ru_stime=0, ru_maxrss=1)
+    monkeypatch.setattr(trancher.os, "wait4", lambda pid, options: (pid, 0, ressources))
+    prive = tmp_path / "prive"
+    destination = prive / "sorties/refuse.3mf"
+    with pytest.raises(RuntimeError, match="échec"):
+        trancher.trancher_fichier(source, destination.parent, destination.name, prive=prive)
+    assert not destination.exists()
+    assert source.read_bytes() == original
+    rapports = list((prive / "mesures/tranchages").glob("*.json"))
+    assert len(rapports) == 1
+    rapport = json.loads(rapports[0].read_text())
+    assert rapport["validation_sortie"]["statut"] == "FAIL"
+    assert "Intégrité" in rapport["validation_sortie"]["detail"]
+    assert (Path(rapport["incident"]["dossier"]) / "sortie-refusee.3mf").is_file()
+
+
+def test_noms_identiques_avant_apres_et_gcode_inchange(tmp_path):
+    source = entree_3mf(tmp_path / "source.3mf", plaques=2)
+    sortie = tmp_path / "sortie.3mf"
+    rapport = trancher.normaliser(source, sortie)
+    gcode = b"; couche temoin\nG1 X10 Y12 E1\n"
+    with ZipFile(sortie, "a") as archive:
+        archive.writestr("Metadata/plate_1.gcode", gcode)
+    restauration = trancher.restaurer_noms(sortie, rapport["noms_origine"])
+    assert restauration["reouverture"] == "PASS"
+    with ZipFile(source) as avant, ZipFile(sortie) as apres:
+        noms_avant = ET.fromstring(avant.read("Metadata/model_settings.config"))
+        noms_apres = ET.fromstring(apres.read("Metadata/model_settings.config"))
+
+        def lire(modele):
+            return [p.find("metadata[@key='plater_name']").get("value") for p in modele.findall("plate")]
+
+        assert lire(noms_avant) == lire(noms_apres) == ["Plaque 1", "Plaque 2"]
+        assert apres.read("Metadata/plate_1.gcode") == gcode
+
+
+def test_identifiants_temporaires_uniquement_temoin_et_fail_envoi(tmp_path):
+    from benchab.controles.envoi import controler
+
+    reglages = {
+        "filament_type": ["PLA"],
+        "filament_colour": ["#FFFFFF"],
+        "filament_settings_id": ["Profil réel"],
+        "top_shell_layers": "5",
+    }
+    source = entree_3mf(tmp_path / "source.3mf", reglages=reglages)
+    with pytest.raises(ValueError, match="temporaires interdits"):
+        trancher.normaliser(source, tmp_path / "impression.3mf")
+    temoin = tmp_path / "temoin.3mf"
+    rapport = trancher.normaliser(source, temoin, usage="temoin")
+    assert rapport["usage"] == "temoin"
+    assert controler(temoin)["statut"] == "FAIL"
+    with pytest.raises(ValueError, match="BENCHAB-temporaire interdit"):
+        trancher.normaliser(temoin, tmp_path / "impression.3mf")
+
+
+def test_inspection_options_utilise_le_lanceur_isole(tmp_path, monkeypatch):
+    """L'aide emploie un datadir neuf et HOME/cache sous /tmp ; aucun argument de tranchage ni profil modifié."""
+    from types import SimpleNamespace
+
+    from benchab import processus
+    from benchab.fabrication import trancher as lanceur
+
+    appels = []
+
+    def faux(commande, **options):
+        appels.append((commande, options))
+        return SimpleNamespace(code_controle=0, stdout="options FFF fixture\n", diagnostic=None)
+
+    monkeypatch.setattr(processus, "executer", faux)
+    rapport = lanceur.inspecter_options(prive=tmp_path)
+    assert rapport["statut"] == "PASS"
+    cmd, options = appels[0]
+    assert cmd[-1] == "--help" and "--slice" not in cmd
+    assert options["delai"] == 30 and options["conserver_capture"]
+    assert Path(rapport["journal"]).read_text() == "options FFF fixture\n"
+    assert Path(cmd[cmd.index("--datadir") + 1]).is_dir()
+    assert all(Path(options["env"][cle]).is_relative_to("/private/tmp") for cle in ("HOME", "TMPDIR", "XDG_CACHE_HOME"))

@@ -1,0 +1,61 @@
+schema = 1
+
+noms_standards = [
+  "AGENTS.md",
+  "SKILL.md",
+  "README.md",
+  "CHANGELOG.md",
+  "TIERS.md",
+  "LICENSE",
+  "Makefile",
+  ".gitignore",
+  ".python-version",
+  ".gitattributes",
+  "pyproject.toml",
+  "uv.lock",
+]
+
+repertoires_standards = [".github"]
+racines_interdites = ["projets", "donnees", "outils", "suivi", "profils", "sauvegardes"]
+
+[[exceptions]]
+chemin = "benchab/tiers/text-to-cad-LICENSE.txt"
+regle = "Nom imposé par l'inventaire des licences intégrées"
+raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
+contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
+duree = "Tant que le composant text-to-cad est conservé"
+preuve_fichier = "benchab/reference/licences.json"
+preuve_sha256 = "031e79cb09f56fdca2a2630e49f867e83833d50aed122784363678a8ae3b43db"
+consommateur = "benchab/qualite/edition.py"
+
+[[exceptions]]
+chemin = "benchab/tiers/modeling-LICENSE.txt"
+regle = "Nom imposé par l'inventaire des licences intégrées"
+raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
+contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
+duree = "Tant que les modules de modélisation copiés sont conservés"
+preuve_fichier = "benchab/reference/licences.json"
+preuve_sha256 = "031e79cb09f56fdca2a2630e49f867e83833d50aed122784363678a8ae3b43db"
+consommateur = "benchab/qualite/edition.py"
+
+[[exceptions]]
+chemin = "benchab/visualisation/apercu_gcode.html"
+regle = "Nom de gabarit référencé par le producteur de l'aperçu"
+raison = "Le producteur charge ce fichier HTML adjacent au module Python"
+contrainte = "Conserver le nom exact obtenu par Path.with_suffix"
+duree = "Tant que le producteur de l'aperçu garde ce chemin"
+preuve_fichier = "benchab/visualisation/apercu_gcode.py"
+preuve_sha256 = "b11573981a7e7f854a3a32da8ecd4953f0b62daf75a344157dcc34f57f1bf790"
+consommateur = "benchab/visualisation/apercu_gcode.py"
+
+[[ressources]]
+racine = "benchab/visualisation/vendor/three-0.160.0"
+regle = "Arborescence upstream Three.js conservée telle que publiée"
+raison = "Le viewer hors ligne charge les fichiers du paquet Three.js 0.160.0"
+contrainte = "Noms et version du paquet restent inchangés ; collisions de chemin contrôlées globalement"
+duree = "Tant que le viewer hors ligne dépend de Three.js 0.160.0"
+consommateur = "benchab/visualisation/hors_ligne.py"
+preuve_fichier = "TIERS.md"
+preuve_sha256 = "20989b322f56f2ba293500bf7622242bee31fccbcec0fe154f771f46ade662a0"
+source_fichier = "benchab/visualisation/vendor/three-0.160.0/PROVENANCE.json"
+source_sha256 = "643df710616434743b53b360800dee9cbea88309f878724ad84ea11bee9f48c6"

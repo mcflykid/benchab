@@ -1,0 +1,859 @@
+"""Entrée unique ; aucun ordonnanceur CLI n'existait dans le paquet."""
+
+import argparse
+import ast
+import importlib
+import json
+import math
+import os
+import sqlite3
+import sys
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+from benchab import __version__
+from benchab.donnees.base import Base
+from benchab.machine.configuration import charger
+from benchab.mesure.collecte import Mesure
+from benchab.qualite.frontiere import verifier
+
+SECRETS = {"--token", "--password", "--secret", "--api-key", "--access-token", "--refresh-token"}
+CONTROLES_DIRECTS = {
+    "reimpression": "reimpression",
+    "decollement": "decollement",
+    "plaques-interface": "plaques_interface",
+    "ergots-faces": "ergots_faces",
+    "reglages": "verifier_reglages",
+    "pieces": "controles_piece",
+    "paquet-3mf": "paquet_3mf",
+    "finition-parois": "finition_parois",
+    "debit-gcode": "debit_gcode",
+    "revue-locale": "revue_locale",
+    "livrables": "livrables",
+    "ponts-internes": "ponts_internes",
+    "disposition-reelle": "disposition_reelle",
+    "colonnes-isolees": "colonnes_isolees",
+    "couches-courtes": "couches_courtes",
+    "orientations-supports": "orientations_supports",
+    "premiere-couche": "premiere_couche",
+    "supports-requis": "supports_requis",
+    "appuis-gcode": "appuis_gcode",
+    "assemblage": "assemblage",
+}
+
+
+def duree_finie(texte):
+    try:
+        valeur = float(texte)
+    except ValueError as erreur:
+        raise argparse.ArgumentTypeError("une durée numérique est requise") from erreur
+    if not math.isfinite(valeur) or valeur < 0:
+        raise argparse.ArgumentTypeError("la durée doit être finie et positive ou nulle")
+    return valeur
+
+
+def commande_sans_secrets(argv):
+    resultat = []
+    sensible = False
+    index = 0
+    while index < len(argv):
+        argument = argv[index]
+        cle = argument.split("=", maxsplit=1)[0]
+        if cle == "--prive" or cle in SECRETS:
+            if cle in SECRETS:
+                sensible = True
+                resultat.append(f"{cle}=<masqué>")
+            if "=" not in argument:
+                index += 1
+        else:
+            resultat.append(argument)
+        index += 1
+    return " ".join(resultat), sensible
+
+
+def parser():
+    """Décrit les commandes ; entrée aucune, sortie ArgumentParser, sans effet de bord ni statut métier."""
+    resultat = argparse.ArgumentParser(prog="benchab", description="Atelier de conception et préparation 3D")
+    resultat.add_argument("--prive", default=None, help="Atelier explicite ; sinon BENCHAB_PRIVE ou dépôt/prive")
+    resultat.add_argument("--version", action="version", version=__version__)
+    commandes = resultat.add_subparsers(dest="commande", required=True)
+    commandes.add_parser("init", help="Initialise l'atelier privé sans écraser ses données")
+    commandes.add_parser("etat", help="Compte les projets et préparations de l'atelier privé")
+    donnees = commandes.add_parser("donnees").add_subparsers(dest="action", required=True)
+    requete = donnees.add_parser("impressions")
+    requete.add_argument("--resultat", choices=["reussie", "echec", "interrompue", "inconnu"])
+    requete.add_argument("--matiere")
+    requete.add_argument("--ponts", action="store_true")
+    vues = donnees.add_parser("vues")
+    vues.add_argument("--racine-publique", type=Path)
+    reconstruction = donnees.add_parser("reconstruire")
+    reconstruction.add_argument("export", type=Path)
+    reconstruction.add_argument("--destination", type=Path, required=True)
+    sauvegarde = donnees.add_parser("sauvegarder")
+    sauvegarde.add_argument("--source", type=Path, required=True)
+    sauvegarde.add_argument("--sortie", type=Path, required=True)
+    comparaison = donnees.add_parser("comparer-arbres")
+    comparaison.add_argument("attendu", type=Path)
+    comparaison.add_argument("obtenu", type=Path)
+    restauration = donnees.add_parser("restaurer")
+    restauration.add_argument("archive", type=Path)
+    restauration.add_argument("--destination", type=Path, required=True)
+    commandes.add_parser("configuration", help="Affiche le profil machine sans contacter une machine")
+    controle = commandes.add_parser("controle").add_subparsers(dest="controle", required=True)
+    complet = controle.add_parser("complet", help="Vérifie le dépôt et, sur demande explicite, les témoins S/M/L")
+    complet.add_argument("--racine", type=Path, default=Path.cwd())
+    complet.add_argument("--temoins", action="store_true")
+    complet.add_argument("--profil-canonique", type=Path)
+    complet.add_argument("--index-filament", type=int)
+    complet.add_argument("--declaration-envoi", type=Path)
+    for nom in CONTROLES_DIRECTS:
+        direct = controle.add_parser(nom, help="Exécute le contrôle spécialisé et enregistre sa mesure")
+        direct.add_argument("arguments", nargs=argparse.REMAINDER)
+    controle.add_parser("frontiere").add_argument("--racine", type=Path, default=Path.cwd())
+    regles = controle.add_parser("regles")
+    regles.add_argument("source", type=Path)
+    regles.add_argument("--sortie", type=Path)
+    opportunite = controle.add_parser("opportunite-decoupe")
+    opportunite.add_argument("source", type=Path)
+    opportunite.add_argument("--sortie", type=Path)
+    envoi = controle.add_parser("envoi")
+    envoi.add_argument("fichier", type=Path)
+    envoi.add_argument("--declaration", type=Path)
+    envoi.add_argument("--reference", type=Path)
+    envoi.add_argument("--geometrie", type=Path)
+    envoi.add_argument("--revue-locale", type=Path)
+    envoi.add_argument(
+        "--relation-reference",
+        choices=[
+            "meme_source_modele",
+            "seulement_meme_machine_filament",
+            "inconnue",
+        ],
+        default="inconnue",
+    )
+    controle.add_parser("publication").add_argument("--racine", type=Path, default=Path.cwd())
+    controle.add_parser("typographie").add_argument("chemins", type=Path, nargs="*", default=[Path.cwd()])
+    routine = controle.add_parser("routine")
+    routine.add_argument("plaques", type=Path)
+    routine.add_argument("tranche", type=Path)
+    routine.add_argument("placement", type=Path)
+    routine.add_argument("--sortie", type=Path)
+    continuite = controle.add_parser("continuite-paroi", aliases=["continuite_paroi"])
+    continuite.add_argument("fichier", type=Path)
+    continuite.add_argument("--plaque", type=int)
+    continuite.add_argument("--z-min", type=float)
+    continuite.add_argument("--z-max", type=float)
+    continuite.add_argument("--reference", type=Path)
+    continuite.add_argument("--plaque-reference", type=int)
+    continuite.add_argument(
+        "--relation",
+        choices=[
+            "meme_source_modele",
+            "seulement_meme_machine_filament",
+            "inconnue",
+        ],
+    )
+    fabrication = commandes.add_parser("fabrication").add_subparsers(dest="action", required=True)
+    chaine = fabrication.add_parser("chaine")
+    chaine.add_argument("projet", type=Path)
+    chaine.add_argument("--optimiser", action="store_true")
+    chaine.add_argument("--objectif")
+    tranchage = fabrication.add_parser("trancher")
+    tranchage.add_argument("fichier", type=Path)
+    tranchage.add_argument("--sortie", type=Path)
+    tranchage.add_argument("--nom")
+    tranchage.add_argument("--usage", choices=["impression", "temoin"], default="impression")
+    fabrication.add_parser("comparer-remplissages").add_argument("etude", type=Path)
+    planning = fabrication.add_parser("planning")
+    planning.add_argument("--projets", type=Path)
+    planning.add_argument("--sortie", type=Path, required=True)
+    for nom in (
+        "preparation",
+        "optimisation",
+        "strategies-procede",
+        "couches-variables",
+        "plaques-mixtes",
+        "resistance",
+        "exportable",
+        "rattachements",
+        "retour",
+        "envois-slicer",
+    ):
+        fabrication.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    commandes.add_parser("atelier").add_argument("arguments", nargs=argparse.REMAINDER)
+    commandes.add_parser("projet").add_argument("arguments", nargs=argparse.REMAINDER)
+    # L’installation du lien est opt-in et son plan reste sec par défaut (docs/guides/installation.md).
+    skill = commandes.add_parser("skill", help="Planifie le lien local du skill BENCHAB")
+    skill.add_argument("--racine", type=Path, required=True)
+    skill.add_argument("--destination", type=Path, action="append", required=True)
+    skill.add_argument("--ancien-atelier", type=Path)
+    skill.add_argument("--appliquer", action="store_true")
+    connaissances = commandes.add_parser("connaissances").add_subparsers(dest="action", required=True)
+    for nom in ("memoire", "etudes", "bobine"):
+        connaissances.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    conception = commandes.add_parser("conception").add_subparsers(dest="action", required=True)
+    for nom in (
+        "trous",
+        "eprouvette-trous",
+        "assistant-projet",
+        "variantes",
+        "capacites-locales",
+        "dfam",
+        "vissage",
+        "cad-engine",
+        "decoupe",
+    ):
+        conception.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    imports = commandes.add_parser("imports").add_subparsers(dest="action", required=True)
+    for nom in ("importer", "geometrie", "reparer", "maillage-avance", "echange-blender"):
+        imports.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    visualisation = commandes.add_parser("visualisation").add_subparsers(dest="action", required=True)
+    for nom in ("photo", "inspection-scene", "assemblage-dossier", "visionneuse", "serveur",
+                "apercu-gcode", "commentaires"):
+        visualisation.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    references = commandes.add_parser("references").add_subparsers(dest="action", required=True)
+    for nom in ("verifier", "analyser", "contours"):
+        references.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    machine = commandes.add_parser("machine").add_subparsers(dest="action", required=True)
+    for nom in (
+        "profils-cibles",
+        "affectations-ace",
+        "cloud-lecture",
+        "telemetrie",
+        "session-compte",
+    ):
+        machine.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    qualite = commandes.add_parser("qualite")
+    qualite.add_argument(
+        "action",
+        choices=["niveau1", "niveau3", "incrementiel", "resume", "tout", "hooks", "archives",
+                 "comparer-fabrication", "syntaxe-privee"],
+    )
+    qualite.add_argument("arguments", nargs=argparse.REMAINDER)
+    vote = commandes.add_parser(
+        "vote",
+        help="Exige une relecture critique externe GROS sans historique avant de formaliser les votes",
+    )
+    vote.add_argument("dossier", type=Path, nargs="?")
+    operation_vote = vote.add_mutually_exclusive_group()
+    operation_vote.add_argument("--etat", action="store_true")
+    operation_vote.add_argument("--preparer", type=Path)
+    operation_vote.add_argument("--comparer", type=Path)
+    operation_vote.add_argument("--contribution", type=Path, help="Importe une contribution privée, sans voter")
+    operation_vote.add_argument("--anonymiser-contribution", type=Path)
+    operation_vote.add_argument("--derniere-contribution", metavar="OBJET")
+    operation_vote.add_argument("--arbitrer", metavar="CHOIX", help="Consigne un choix explicite, sans autorisation")
+    vote.add_argument("--id-contribution")
+    vote.add_argument("--mode-contribution", choices=("ECONOMIE", "EQUILIBRE", "APPROFONDI"), default="EQUILIBRE")
+    vote.add_argument("--etat-contribution", choices=("DESACTIVE", "OBSERVATION", "ACTIF"), default="OBSERVATION")
+    vote.add_argument("--sortie", type=Path)
+    vote.add_argument("--objet")
+    vote.add_argument("--controle", type=Path, action="append", default=[])
+    seance = commandes.add_parser("seance").add_subparsers(dest="action", required=True)
+    debut = seance.add_parser("debut")
+    debut.add_argument("--lot", default=None)
+    fin = seance.add_parser("fin")
+    fin.add_argument("--candidates", type=int, default=0)
+    fin.add_argument("--temps-vote", type=duree_finie)
+    fin.add_argument("--temps-controles", type=duree_finie)
+    note = seance.add_parser("note", help="Ajoute une note courte à la séance active")
+    note.add_argument("texte")
+    seance.add_parser("etat")
+    return resultat
+
+
+def executer(arguments, base):
+    """Distribue Namespace/Base ; codes PASS/WARN/FAIL/NON VÉRIFIÉ, unités propres aux modules.
+
+    La comparaison d'arbres reste en lecture seule ; aucune autorisation machine n'est implicite.
+    """
+    if arguments.commande == "init":
+        from benchab.donnees.reference import importer
+
+        importer(base)
+        print("Atelier privé initialisé ; données existantes conservées.")
+    elif arguments.commande == "etat":
+        comptes = {
+            table: base.connexion.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
+            for table in ("projets", "preparations", "impressions", "connaissances")
+        }
+        print(json.dumps(comptes, ensure_ascii=False))
+    elif arguments.commande == "configuration":
+        print(json.dumps(charger(), ensure_ascii=False, indent=2))
+    elif arguments.commande == "donnees":
+        if arguments.action == "sauvegarder":
+            from benchab.donnees.sauvegarde import creer
+
+            resultat = creer(base, arguments.source, arguments.sortie)
+        elif arguments.action == "restaurer":
+            from benchab.donnees.sauvegarde import restaurer
+
+            resultat = restaurer(arguments.archive, arguments.destination, base=base)
+        elif arguments.action == "comparer-arbres":
+            from benchab.donnees.sauvegarde import comparer_arbres
+
+            resultat = comparer_arbres(base, arguments.attendu, arguments.obtenu)
+        elif arguments.action == "impressions":
+            from benchab.donnees.requetes import impressions
+
+            resultat = impressions(base, resultat=arguments.resultat, matiere=arguments.matiere, ponts=arguments.ponts)
+        elif arguments.action == "vues":
+            from benchab.donnees.vues import generer
+
+            resultat = generer(base, racine_publique=arguments.racine_publique)
+        else:
+            from benchab.donnees.reconstruction import reconstruire
+            from benchab.qualite.ecritures import _sans_lien
+
+            destination = _sans_lien(arguments.destination)
+            if destination == base.prive.resolve():
+                raise ValueError("La destination reconstruite doit être distincte de l'atelier courant.")
+            # Cette destination de reconstruction est explicitement choisie ;
+            # elle ne devient pas l'atelier courant de la commande.
+            restauree = Base(destination, creer=True)
+            try:
+                resultat = reconstruire(restauree, arguments.export)
+            finally:
+                restauree.fermer()
+        print(json.dumps(resultat, ensure_ascii=False, indent=2))
+        if arguments.action == "comparer-arbres":
+            return 0 if resultat["statut"] == "PASS" else 2
+    elif arguments.commande == "controle":
+        if arguments.controle in {"regles", "opportunite-decoupe"}:
+            nom = "regles" if arguments.controle == "regles" else "opportunite_decoupe"
+            module = importlib.import_module("benchab.controles." + nom)
+            source = arguments.source.resolve() if arguments.source.exists() else arguments.source
+            directs = [str(source)]
+            if arguments.sortie:
+                directs.extend(["--sortie", str(arguments.sortie)])
+            return module.main(directs, base=base)
+        if arguments.controle in CONTROLES_DIRECTS:
+            module = importlib.import_module("benchab.controles." + CONTROLES_DIRECTS[arguments.controle])
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                options = {"prive": base.prive} if arguments.controle == "appuis-gcode" else {}
+                return int(module.main(directs, **options) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.controle == "routine":
+            from benchab.controles.routine import controler
+
+            rapport = controler(
+                arguments.plaques,
+                arguments.tranche,
+                arguments.placement,
+                arguments.sortie or base.prive / "rapports/routine",
+            )
+            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            return 0 if rapport["conforme"] else 1
+        if arguments.controle in {"continuite-paroi", "continuite_paroi"}:
+            from benchab.controles.continuite_paroi import controler
+
+            fenetre = None
+            if arguments.z_min is not None or arguments.z_max is not None:
+                if arguments.z_min is None or arguments.z_max is None:
+                    raise ValueError("La fenêtre d’analyse exige --z-min et --z-max ensemble")
+                fenetre = (arguments.z_min, arguments.z_max)
+            reference = None
+            if arguments.reference:
+                if arguments.relation is None:
+                    raise ValueError("Une référence exige --relation explicite")
+                reference = {
+                    "fichier": str(arguments.reference),
+                    "relation": arguments.relation,
+                    "plaque": arguments.plaque_reference,
+                    "identifiant": arguments.reference.name,
+                }
+            rapport = controler(arguments.fichier, arguments.plaque, fenetre, reference=reference)
+            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            return {"PASS": 0, "WARN": 2, "NON VÉRIFIÉ": 2, "FAIL": 1}[rapport["statut"]]
+        if arguments.controle == "complet":
+            from benchab.qualite.complet import executer
+
+            rapport = executer(
+                arguments.racine,
+                prive=base.prive,
+                temoins=arguments.temoins,
+                profil_canonique=arguments.profil_canonique,
+                index_filament=arguments.index_filament,
+                declaration_envoi=arguments.declaration_envoi,
+            )
+            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            return {"PASS": 0, "WARN": 1}.get(rapport["statut"], 2)
+        if arguments.controle == "envoi":
+            from benchab.controles.envoi import controler
+
+            rapport = controler(
+                arguments.fichier,
+                arguments.declaration,
+                reference=arguments.reference,
+                geometrie=arguments.geometrie,
+                revue_locale=arguments.revue_locale,
+                relation_reference=arguments.relation_reference,
+            )
+            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            return {"PASS": 0, "WARN": 2, "NON VÉRIFIÉ": 2, "FAIL": 1}[rapport["statut"]]
+        if arguments.controle == "typographie":
+            from benchab.qualite.edition import typographie
+
+            erreurs = typographie(arguments.chemins)
+        elif arguments.controle == "publication":
+            from benchab.qualite.edition import verifier as verifier_publication
+
+            erreurs = verifier_publication(arguments.racine, prive=base.prive)
+        else:
+            erreurs = verifier(arguments.racine, prive=base.prive)
+        if erreurs:
+            print("\n".join(erreurs), file=sys.stderr)
+            return 1
+        if arguments.controle == "publication":
+            print("PASS : frontière, modèles, secrets, licences, typographie et liens de publication.")
+        elif arguments.controle == "typographie":
+            print("PASS : typographie des textes contrôlés.")
+        else:
+            print("PASS : frontière privée et interpréteur.")
+    elif arguments.commande == "vote":
+        from benchab.vote import conseil
+
+        def chemin_vote(chemin):
+            return chemin.resolve() if chemin.exists() else chemin
+
+        if arguments.arbitrer is not None:
+            resultat = conseil.arbitrer(base, arguments.objet, arguments.arbitrer)
+            print(json.dumps(resultat, ensure_ascii=False, indent=2))
+            return 0
+        if arguments.contribution or arguments.anonymiser_contribution or arguments.derniere_contribution:
+            from benchab.vote import contributions
+
+            mode = arguments.mode_contribution
+            if arguments.contribution:
+                resultat = contributions.preparer(base, arguments.contribution, arguments.etat_contribution, mode)
+            elif arguments.anonymiser_contribution:
+                resultat = contributions.anonymiser(
+                    contributions.charger(base, arguments.anonymiser_contribution, mode), mode,
+                )
+            else:
+                resultat = contributions.derniere(base, arguments.derniere_contribution,
+                                                   identifiant=arguments.id_contribution)
+            print(json.dumps(resultat, ensure_ascii=False, indent=2))
+            return 0
+        if arguments.etat:
+            print(json.dumps(conseil.etat(base), ensure_ascii=False, indent=2))
+            return 0
+        if arguments.comparer:
+            print(json.dumps(conseil.comparer(base, chemin_vote(arguments.comparer)), ensure_ascii=False, indent=2))
+            return 0
+        if arguments.preparer:
+            if arguments.sortie is None or arguments.objet is None:
+                raise ValueError("--preparer exige --sortie et --objet.")
+            chemin = conseil.preparer(
+                base,
+                chemin_vote(arguments.preparer),
+                arguments.sortie,
+                arguments.objet,
+                controles=[chemin_vote(p) for p in arguments.controle],
+                **({"contribution_id": arguments.id_contribution} if arguments.id_contribution else {}),
+            )
+            print(chemin)
+            return 0
+        if arguments.dossier is None:
+            raise ValueError("Fournir un dossier de vote ou --preparer/--etat.")
+        vote = conseil.produire(base, chemin_vote(arguments.dossier))
+        print(json.dumps(vote, ensure_ascii=False, indent=2))
+        return 0
+    elif arguments.commande == "fabrication":
+        if arguments.action == "chaine":
+            from benchab.fabrication.chaine import executer as chaine_projet
+
+            resultat = chaine_projet(
+                arguments.projet, base.prive, optimiser=arguments.optimiser, objectif=arguments.objectif
+            )
+            print(json.dumps(resultat, ensure_ascii=False, indent=2))
+            return {"PASS": 0, "WARN": 1}.get(resultat["statut"], 2)
+        if arguments.action == "comparer-remplissages":
+            from benchab.fabrication.comparer_remplissages import cli
+
+            return cli(["--prive", str(base.prive), str(arguments.etude)])
+        if arguments.action == "planning":
+            from benchab.fabrication.planning import main as planifier
+
+            return planifier(
+                [
+                    "--prive",
+                    str(base.prive),
+                    "--projets",
+                    str(arguments.projets or base.prive / "projets"),
+                    "--sortie",
+                    str(arguments.sortie),
+                ]
+            )
+        if arguments.action in {"preparation", "optimisation", "strategies-procede"}:
+            noms_modules = {
+                "preparation": "preparation",
+                "optimisation": "optimisation",
+                "strategies-procede": "strategies_procede",
+            }
+            module = importlib.import_module("benchab.fabrication." + noms_modules[arguments.action])
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(module.main(directs, base=base) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.action == "couches-variables":
+            from benchab.fabrication.couches_variables import cli
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            if "--prive" in directs or any(argument.startswith("--prive=") for argument in directs):
+                raise ValueError("Utiliser --prive avant `fabrication couches-variables`.")
+            try:
+                return int(cli(["--prive", str(base.prive), *directs]) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.action == "plaques-mixtes":
+            from benchab.fabrication.plaques_mixtes import main as preparer_plaques
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(preparer_plaques(directs, prive=base.prive) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.action == "resistance":
+            from benchab.fabrication.resistance import main as auditer_resistance
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(auditer_resistance(directs, prive=base.prive) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.action == "exportable":
+            from benchab.fabrication.exportable import main as verifier_exportable
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(verifier_exportable(directs, prive=base.prive) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.action == "rattachements":
+            from benchab.fabrication.rattachements import main as verifier_rattachements
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(verifier_rattachements(directs) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.action == "retour":
+            from benchab.fabrication.retour import main as enregistrer_retour
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(enregistrer_retour(directs, base=base) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        if arguments.action == "envois-slicer":
+            from benchab.fabrication.envois_slicer import main as gerer_envois_slicer
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(gerer_envois_slicer(directs, prive=base.prive) or 0)
+            except SystemExit as arret:
+                return int(arret.code or 0)
+        from benchab.fabrication.trancher import trancher_fichier
+
+        sortie, rapport = trancher_fichier(
+            arguments.fichier,
+            arguments.sortie or base.prive / "fabrication",
+            arguments.nom,
+            usage=arguments.usage,
+            prive=base.prive,
+        )
+        print(json.dumps({"sortie": str(sortie), "rapport": rapport}, ensure_ascii=False, indent=2))
+    elif arguments.commande == "connaissances":
+        module = importlib.import_module("benchab.connaissances." + arguments.action)
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        try:
+            return int(module.main(directs, racine=base.prive) or 0)
+        except SystemExit as arret:
+            return int(arret.code or 0)
+    elif arguments.commande == "conception":
+        module = importlib.import_module("benchab.conception." + arguments.action.replace("-", "_"))
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        try:
+            options = (
+                {"prive": base.prive}
+                if arguments.action in {"trous", "eprouvette-trous", "vissage", "cad-engine", "decoupe"}
+                else {}
+            )
+            return int(module.main(directs, **options) or 0)
+        except SystemExit as arret:
+            return int(arret.code or 0)
+    elif arguments.commande in {"imports", "visualisation"}:
+        famille = "imports3d" if arguments.commande == "imports" else "visualisation"
+        nom = "rendu_photo" if arguments.action == "photo" else arguments.action.replace("-", "_")
+        module = importlib.import_module(f"benchab.{famille}.{nom}")
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        options = (
+            {"prive": base.prive}
+            if nom in {"maillage_avance", "rendu_photo", "inspection_scene", "assemblage_dossier",
+                       "visionneuse", "serveur",
+                       "apercu_gcode", "commentaires"}
+            else {}
+        )
+        try:
+            return int(module.main(directs, **options) or 0)
+        except SystemExit as arret:
+            return int(arret.code or 0)
+    elif arguments.commande == "references":
+        module = importlib.import_module(
+            "benchab.references_visuelles." + ("references" if arguments.action == "verifier" else arguments.action)
+        )
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        try:
+            return int(module.main(directs) or 0)
+        except SystemExit as arret:
+            return int(arret.code or 0)
+    elif arguments.commande == "projet":
+        from benchab.projets import nouveau
+
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        return int(nouveau.main(directs, prive=base.prive, base=base) or 0)
+    elif arguments.commande == "atelier":
+        from benchab.organisation import automatisation
+
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        return int(automatisation.main(directs, prive=base.prive) or 0)
+    elif arguments.commande == "skill":
+        from benchab import skill as gestion_skill
+
+        plan = gestion_skill.planifier(
+            arguments.racine,
+            arguments.destination,
+            ancien_atelier=arguments.ancien_atelier,
+        )
+        resultat = gestion_skill.appliquer(plan) if arguments.appliquer else plan
+        print(json.dumps(resultat, ensure_ascii=False, indent=2))
+        return 0
+    elif arguments.commande == "machine":
+        module = importlib.import_module("benchab.machine." + arguments.action.replace("-", "_"))
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        return int(module.main(directs) or 0)
+    elif arguments.commande == "qualite":
+        if arguments.action == "syntaxe-privee":
+            from benchab.qualite.references import verifier_scripts_projet
+
+            commande = argparse.ArgumentParser(prog="benchab qualite syntaxe-privee")
+            commande.add_argument("projet", help="Identifiant explicite du projet privé")
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            rapport = verifier_scripts_projet(base, commande.parse_args(directs).projet)
+            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            return {"PASS": 0, "FAIL": 2, "NON VÉRIFIÉ": 3}[rapport["statut"]]
+        if arguments.action in {"archives", "comparer-fabrication"}:
+            module = importlib.import_module("benchab.qualite." + arguments.action.replace("-", "_"))
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            return int(module.main(directs, prive=base.prive) or 0)
+        special = arguments.action in {"tout", "hooks"}
+        module = importlib.import_module("benchab.qualite." + (arguments.action if special else "qualite"))
+        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+        try:
+            return int(module.main(directs if special else [arguments.action, *directs]) or 0)
+        except SystemExit as arret:
+            return int(arret.code or 0)
+    elif arguments.commande == "seance":
+        if arguments.action == "debut":
+            base.ecrire(
+                "INSERT INTO seances (id, debut, lot) VALUES (?, ?, ?)",
+                (uuid.uuid4().hex, datetime.now().astimezone().isoformat(), arguments.lot),
+            )
+            print("Séance commencée ; verrou logique actif dans la base.")
+        elif arguments.action == "fin":
+            actif = base.connexion.execute("SELECT id FROM seances WHERE fin IS NULL").fetchone()
+            if actif is None:
+                raise ValueError("Aucune séance active")
+            base.ecrire(
+                "UPDATE seances SET fin = ?, candidates = ?, temps_vote_s = COALESCE(?, temps_vote_s), "
+                "temps_controles_s = COALESCE(?, temps_controles_s) WHERE id = ?",
+                (
+                    datetime.now().astimezone().isoformat(),
+                    arguments.candidates,
+                    arguments.temps_vote,
+                    arguments.temps_controles,
+                    actif[0],
+                ),
+            )
+            from benchab.donnees.vues import generer
+
+            generer(base)
+            print("Séance terminée ; journal enregistré et exporté.")
+        elif arguments.action == "note":
+            texte = arguments.texte.strip()
+            if not texte or len(texte) > 2000:
+                raise ValueError("Note non vide de 2 000 caractères au plus requise.")
+            with base.transaction() as connexion:
+                # La note appartient à une séance encore active au moment de
+                # l'écriture (docs/guides/cycle-projet.md).
+                connexion.execute("BEGIN IMMEDIATE")
+                actif = connexion.execute("SELECT id FROM seances WHERE fin IS NULL").fetchone()
+                if actif is None:
+                    raise ValueError("Aucune séance active")
+                connexion.execute("INSERT INTO decisions VALUES (?,NULL,?,?,?,?)", (
+                    uuid.uuid4().hex, datetime.now().astimezone().isoformat(), texte,
+                    "journal de séance BENCHAB : outil", json.dumps({
+                        "type": "note_seance", "seance_id": actif[0], "observation_humaine": False,
+                    }, ensure_ascii=False),
+                ))
+            print("Note de séance enregistrée.")
+        else:
+            actif = base.connexion.execute("SELECT id, lot, debut FROM seances WHERE fin IS NULL").fetchone()
+            resultat = {"active": False}
+            if actif:
+                resultat = {"lot": actif["lot"], "debut": actif["debut"]}
+                note = base.connexion.execute(
+                    "SELECT texte,date FROM decisions WHERE json_extract(donnees_json,'$.type')='note_seance' "
+                    "AND json_extract(donnees_json,'$.seance_id')=? ORDER BY rowid DESC LIMIT 1", (actif["id"],),
+                ).fetchone()
+                if note:
+                    resultat["derniere_note"] = dict(note)
+            print(json.dumps(resultat, ensure_ascii=False))
+    return 0
+
+
+def _aide_deleguee(arguments):
+    """Affiche l'aide statique de la route ; code zéro, aucun module métier exécuté ni atelier ouvert."""
+    courant = parser()
+    while True:
+        sous = next((a for a in courant._actions if isinstance(a, argparse._SubParsersAction)), None)
+        if sous is None or getattr(arguments, sous.dest, None) not in sous.choices:
+            break
+        courant = sous.choices[getattr(arguments, sous.dest)]
+    print(courant.format_help(), end="")
+    # Certains parseurs historiques ignorent --help et écrivent un rapport :
+    # leur fonction métier ne doit jamais être appelée pour l'aide
+    # (docs/reference/chemins-et-atelier.md).
+    groupe = arguments.commande
+    nom = getattr(arguments, "action", "")
+    if groupe == "controle":
+        dossier, nom = "controles", CONTROLES_DIRECTS.get(getattr(arguments, "controle", ""), "")
+    elif groupe == "projet":
+        dossier, nom = "projets", "nouveau"
+    elif groupe == "atelier":
+        dossier, nom = "organisation", "automatisation"
+    else:
+        dossier = {"imports": "imports3d", "references": "references_visuelles"}.get(groupe, groupe)
+        if groupe == "visualisation":
+            nom = {"photo": "rendu_photo", "inspection-scene": "inspection_scene"}.get(nom, nom)
+    source = Path(__file__).parent / dossier / (nom.replace("-", "_") + ".py")
+    if source.is_file():
+        arbre = ast.parse(source.read_text(encoding="utf-8"))
+        documentation = ast.get_docstring(arbre)
+        if documentation:
+            print("\n" + documentation)
+        options = []
+        for noeud in ast.walk(arbre):
+            if (isinstance(noeud, ast.Call) and isinstance(noeud.func, ast.Attribute)
+                    and noeud.func.attr == "add_argument"):
+                for argument in noeud.args:
+                    if (isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+                            and argument.value.startswith("-") and argument.value not in options):
+                        options.append(argument.value)
+        if options:
+            print("\nOptions déclarées par le module (selon la sous-commande) : " + ", ".join(options))
+    print("\nGuide des commandes : docs/reference/commandes.md")
+    return 0
+
+
+def _mesurer_refus(argv, commande, code):
+    """Journalise un refus seulement dans un atelier déjà initialisé ; durée s, aucune création ni secret stocké."""
+    from benchab.chemins import atelier_prive
+
+    if "--help" in argv or "--version" in argv:
+        return
+    base = None
+    try:
+        choix = argparse.ArgumentParser(add_help=False)
+        choix.add_argument("--prive", default=None)
+        preference, _ = choix.parse_known_args(argv)
+        base = Base(atelier_prive(preference.prive), creer=False)
+        Mesure().enregistrer(base, commande, code)
+    except (OSError, ValueError, RuntimeError, sqlite3.Error, SystemExit):
+        # Le refus conserve son code même si aucun atelier n'existe ; aucune
+        # initialisation implicite (docs/reference/chemins-et-atelier.md).
+        pass
+    finally:
+        if base is not None:
+            base.fermer()
+
+
+def main(argv=None):
+    """Analyse argv sans écriture, puis ouvre l'atelier choisi ; codes CLI et durées s, aucune autorisation machine.
+
+    --help/--version restent sans effet ; seul init crée un atelier CLI absent (docs/reference/chemins-et-atelier.md).
+    """
+    from benchab.chemins import atelier_prive
+
+    argv = sys.argv[1:] if argv is None else argv
+    commande, sensible = commande_sans_secrets(argv)
+    if sensible:
+        print("BENCHAB : Les secrets ne sont pas acceptés dans les arguments de commande.", file=sys.stderr)
+        _mesurer_refus(argv, commande, 1)
+        return 1
+    try:
+        arguments = parser().parse_args(argv)
+    except SystemExit as arret:
+        if isinstance(arret.code, str):
+            print(arret.code, file=sys.stderr)
+            return 1
+        code = int(arret.code or 0)
+        if code:
+            _mesurer_refus(argv, commande, code)
+        return code
+    if "--version" in argv:
+        print(__version__)
+        return 0
+    if "--help" in argv or "-h" in argv:
+        return _aide_deleguee(arguments)
+    mesure = Mesure()
+    base = None
+    code = 1
+    seance_id = None
+    ancien_atelier = os.environ.get("BENCHAB_PRIVE")
+    try:
+        base = Base(atelier_prive(arguments.prive), creer=arguments.commande == "init")
+        actif = base.connexion.execute("SELECT id FROM seances WHERE fin IS NULL").fetchone()
+        seance_id = actif[0] if actif else None
+        # Les modules enfants lisent le même choix que la CLI, sans laisser une
+        # préférence persistante (docs/reference/chemins-et-atelier.md).
+        os.environ["BENCHAB_PRIVE"] = str(base.prive)
+        try:
+            code = executer(arguments, base)
+        except SystemExit as arret:
+            if isinstance(arret.code, str):
+                print(arret.code, file=sys.stderr)
+                code = 1
+            else:
+                code = int(arret.code or 0)
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
+        print(f"BENCHAB : {erreur}", file=sys.stderr)
+        code = 1
+    finally:
+        if ancien_atelier is None:
+            os.environ.pop("BENCHAB_PRIVE", None)
+        else:
+            os.environ["BENCHAB_PRIVE"] = ancien_atelier
+        if base is not None:
+            try:
+                mesure.enregistrer(base, commande, code, seance_id)
+            except (OSError, ValueError, sqlite3.Error):
+                print("BENCHAB : impossible d'enregistrer la mesure et son export.", file=sys.stderr)
+                code = 1
+                try:
+                    base.connexion.execute("UPDATE mesures SET code = 1 WHERE id = ?", (mesure.identifiant,))
+                    base.connexion.commit()
+                except sqlite3.Error:
+                    pass
+            finally:
+                base.fermer()
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

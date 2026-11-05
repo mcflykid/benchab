@@ -1,0 +1,251 @@
+{
+  "verrouille": {
+    "administrateurs": 7,
+    "seuil_approbation": "strictement plus de 90 % des 7 administrateurs, soit 7/7 ; 6/7 ou moins = arbitrage de l'utilisateur",
+    "abstention": "motivée, jamais comptée comme favorable",
+    "voix_preponderante": "aucune ; le président ne modifie pas le résultat",
+    "autorite_finale": "l'utilisateur",
+    "autorisations": "une approbation du conseil n'étend jamais les permissions : impression, chauffe, mouvement machine, suppression, publication, dépense, Git et modification de profils installés restent soumis à l'accord explicite de l'utilisateur",
+    "tracabilite": "toute décision du conseil est enregistrée (registre des décisions) avec votes, objections et statut",
+    "securite": "une décision dangereuse ou insuffisamment vérifiée n'est pas exécutée, même à 7/7 ; un contrôle numérique n'est jamais une validation physique"
+  },
+  "mode_par_defaut": "EQUILIBRE",
+  "modes": {
+    "ECONOMIE": {
+      "specialistes_max": 3,
+      "conseil_pour_B": "synthese_compacte",
+      "relire": "minimum",
+      "cache": "prioritaire"
+    },
+    "EQUILIBRE": {
+      "specialistes_max": 5,
+      "conseil_pour_B": "vote",
+      "relire": "cible",
+      "cache": "normal"
+    },
+    "APPROFONDI": {
+      "specialistes_max": 10,
+      "conseil_pour_B": "complet",
+      "relire": "large",
+      "cache": "revalider",
+      "contre_expertise": true
+    }
+  },
+  "niveaux": {
+    "0": "automatisation locale : script ou outil existant, aucune nouvelle analyse IA",
+    "1": "analyse IA minimale : un seul passage, sans conseil ni profils",
+    "2": "expertise ciblée : seuls les spécialistes pertinents, synthèse compacte ; vote du conseil si la catégorie l'exige",
+    "3": "conseil complet : les 7 administrateurs examinent la synthèse et votent (règle des 7/7)"
+  },
+  "categories": {
+    "A": {
+      "libelle": "opération courante (documentation, classement, vérification, export autorisé, synchronisation, correction triviale et réversible)",
+      "niveau_min": 0,
+      "conseil": false
+    },
+    "B": {
+      "libelle": "modification significative (géométrie, mécanisme, tolérances, nouvelle approche, méthode de fabrication)",
+      "niveau_min": 2,
+      "conseil": true
+    },
+    "C": {
+      "libelle": "modification majeure (refonte, pièce déjà imprimée, abandon d'architecture, coût important, risque de compatibilité, publication commerciale)",
+      "niveau_min": 3,
+      "conseil": true,
+      "accord_utilisateur": true
+    }
+  },
+  "classification": {
+    "_note": "Règles déterministes de l'orchestrateur : sous-chaînes cherchées dans la description (minuscules, sans accents). La plus haute catégorie trouvée l'emporte. Aucun mot-clé : catégorie A, niveau 1.",
+    "C": [
+      "piece imprimee",
+      "piece protegee",
+      "piece figee",
+      "deja imprime",
+      "refonte",
+      "abandon",
+      "publier",
+      "publication",
+      "mettre en vente",
+      "commercialiser",
+      "achat",
+      "depense",
+      "supprimer",
+      "deja imprimee",
+      "piece deja imprimee"
+    ],
+    "B": [
+      "geometrie",
+      "mecanisme",
+      "tolerance",
+      "jeu ",
+      "jeux",
+      "cinematique",
+      "nouvelle piece",
+      "nouvelle version",
+      "modifier la piece",
+      "charniere",
+      "cliquet",
+      "came",
+      "pene",
+      "cle",
+      "verrou",
+      "reglage",
+      "vitesse",
+      "temperature",
+      "remplissage",
+      "orientation",
+      "support",
+      "materiau",
+      "filament",
+      "architecture",
+      "surplomb",
+      "refroidissement",
+      "couche courte",
+      "couches courtes",
+      "tour de refroidissement"
+    ],
+    "automatisable": [
+      "verifier",
+      "controler",
+      "synchroniser",
+      "exporter",
+      "trancher",
+      "regenerer",
+      "rapport",
+      "empreinte",
+      "integrite",
+      "doublon",
+      "nomenclature",
+      "liens",
+      "rendu"
+    ]
+  },
+  "activation_specialistes": {
+    "_note": "Mot-clé → spécialistes (identifiants de profils/poles.json). L'inspecteur de compatibilité est ajouté à toute catégorie B ou C.",
+    "charniere": [
+      "P1.cinematique",
+      "P1.tolerances",
+      "P2.impression",
+      "P3.compatibilite"
+    ],
+    "cadre": [
+      "P1.architecte",
+      "P1.tolerances",
+      "P3.compatibilite"
+    ],
+    "mecanisme": [
+      "P1.cinematique",
+      "P1.inventeur",
+      "P3.defaillances"
+    ],
+    "cliquet": [
+      "P1.cinematique",
+      "P2.materiaux",
+      "P3.defaillances",
+      "P3.essais"
+    ],
+    "came": [
+      "P1.cinematique",
+      "P3.defaillances"
+    ],
+    "cle": [
+      "P1.cinematique",
+      "P3.defaillances",
+      "P4.ux"
+    ],
+    "securite": [
+      "P3.defaillances",
+      "P3.contre_expertise",
+      "P1.inventeur"
+    ],
+    "tolerance": [
+      "P1.tolerances",
+      "P2.impression"
+    ],
+    "jeu": [
+      "P1.tolerances",
+      "P2.impression"
+    ],
+    "impression": [
+      "P2.impression",
+      "P2.preparateur"
+    ],
+    "reglage": [
+      "P2.impression",
+      "P2.preparateur"
+    ],
+    "vitesse": [
+      "P2.impression",
+      "P2.industrialiseur"
+    ],
+    "filament": [
+      "P2.materiaux",
+      "P2.impression"
+    ],
+    "materiau": [
+      "P2.materiaux"
+    ],
+    "montage": [
+      "P2.assemblage",
+      "P4.ux"
+    ],
+    "notice": [
+      "P4.redacteur",
+      "P4.visualisation",
+      "P4.ux"
+    ],
+    "vente": [
+      "P4.livraison",
+      "P4.commercial",
+      "P3.compatibilite"
+    ],
+    "documentation": [
+      "P4.redacteur"
+    ],
+    "cout": [
+      "P2.industrialiseur",
+      "P5.risques"
+    ],
+    "evolution": [
+      "P5.prospectiviste",
+      "P5.maintenance"
+    ],
+    "v6": [
+      "P5.prospectiviste",
+      "P1.inventeur",
+      "P5.transversal"
+    ],
+    "planning": [
+      "P5.projet"
+    ],
+    "risque": [
+      "P5.risques",
+      "P3.defaillances"
+    ],
+    "support": [
+      "P2.impression",
+      "P3.defaillances"
+    ],
+    "surplomb": [
+      "P2.impression",
+      "P3.defaillances"
+    ],
+    "refroidissement": [
+      "P2.impression",
+      "P3.essais"
+    ],
+    "couches courtes": [
+      "P2.impression",
+      "P3.assurance"
+    ]
+  },
+  "niveaux_de_preuve": [
+    "testé physiquement",
+    "mesuré",
+    "calculé",
+    "simulé",
+    "probable",
+    "inconnu"
+  ]
+}
