@@ -81,3 +81,14 @@ Après une étape importante, `benchab seance note "Fait, résultat et suite"`
 consigne une note courte dans la séance active. `benchab seance etat` restitue
 sa dernière note avec le lot et le début ; la clôture regroupe les vues et
 l'export. Une note ne déclare pas une validation physique.
+
+### Verrou de séance
+
+`benchab seance debut` rend un jeton valable 24 h. Le conserver dans
+l’environnement de la séance, sous `BENCHAB_JETON_SEANCE`, pour
+`benchab seance fin`. La base ne garde que son empreinte. La commande
+`benchab seance etat` indique si le verrou est actif ou orphelin. Si le
+verrou est expiré ou absent, `benchab seance reprendre` conserve la séance
+et fournit un nouveau jeton. `benchab seance fin --forcer` consigne une
+fermeture explicite sans jeton. Les mesures d’une séance orpheline ne lui
+sont pas rattachées.

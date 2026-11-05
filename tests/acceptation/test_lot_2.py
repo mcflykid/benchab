@@ -15,9 +15,13 @@ from benchab.machine.configuration import charger
 from benchab.qualite.frontiere import appels_interdits, verifier
 
 
-def cli(tmp_path, *arguments):
+def cli(tmp_path, *arguments, jeton=None):
+    """Lance la CLI en atelier temporaire ; jeton transmis hors argv, aucune machine."""
     prive = tmp_path / "prive"
     environnement = dict(os.environ, BENCHAB_PRIVE=str(prive), PYTHONDONTWRITEBYTECODE="1")
+    environnement.pop("BENCHAB_JETON_SEANCE", None)
+    if jeton is not None:
+        environnement["BENCHAB_JETON_SEANCE"] = jeton
     return subprocess.run(
         [sys.executable, "-m", "benchab.cli", *arguments],
         cwd=tmp_path,
@@ -64,9 +68,11 @@ def test_init_conserve_donnees_et_refuse_base_etrangere(tmp_path):
 
 def test_deux_seances_simultanees_refusees_et_journal_exporte(tmp_path, atelier_initialise):
     """Deux séances simultanées refusées sur atelier initialisé ; journal conservé, aucune machine touchée."""
-    assert cli(tmp_path, "seance", "debut", "--lot", "fixture").returncode == 0
+    debut = cli(tmp_path, "seance", "debut", "--lot", "fixture")
+    assert debut.returncode == 0
+    jeton = debut.stdout.split("Jeton de séance : ", 1)[1].strip()
     assert cli(tmp_path, "seance", "debut").returncode == 1
-    assert cli(tmp_path, "seance", "fin", "--candidates", "2", "--temps-vote", "1.2").returncode == 0
+    assert cli(tmp_path, "seance", "fin", "--candidates", "2", "--temps-vote", "1.2", jeton=jeton).returncode == 0
     with sqlite3.connect(tmp_path / "prive/benchab.sqlite") as connexion:
         ligne = connexion.execute("SELECT fin, candidates, temps_vote_s FROM seances").fetchone()
     assert ligne[0] is not None
@@ -129,9 +135,11 @@ def test_python_du_venv_autorise_et_port_personnalise(tmp_path, monkeypatch):
 
 def test_temps_de_controle_et_mesure_de_fin_restent_dans_la_seance(tmp_path, atelier_initialise):
     """Temps de contrôle en s conservé dans la séance de fixture ; aucune commande machine."""
-    assert cli(tmp_path, "seance", "debut").returncode == 0
+    debut = cli(tmp_path, "seance", "debut")
+    assert debut.returncode == 0
+    jeton = debut.stdout.split("Jeton de séance : ", 1)[1].strip()
     assert cli(tmp_path, "controle", "frontiere", "--racine", str(tmp_path)).returncode == 0
-    assert cli(tmp_path, "seance", "fin").returncode == 0
+    assert cli(tmp_path, "seance", "fin", jeton=jeton).returncode == 0
     with sqlite3.connect(tmp_path / "prive/benchab.sqlite") as connexion:
         seance, duree = connexion.execute("SELECT id, temps_controles_s FROM seances").fetchone()
         rattachement = connexion.execute("SELECT seance_id FROM mesures WHERE commande = 'seance fin'").fetchone()[0]
@@ -223,3 +231,58 @@ def test_note_de_seance_sans_et_avec_verrou(atelier_initialise, capsys):
             "SELECT count(*) FROM decisions WHERE json_extract(donnees_json,'$.type')='note_seance'"
         ).fetchone()[0]
         assert nombre == 1
+
+
+def test_seance_fin_par_un_tiers_est_refusee(tmp_path, atelier_initialise):
+    """Une autre invocation sans jeton ne ferme pas la séance, et aucun jeton n'entre dans les exports."""
+    debut = cli(tmp_path, "seance", "debut")
+    assert debut.returncode == 0
+    refus = cli(tmp_path, "seance", "fin")
+    assert refus.returncode == 1 and "Jeton de séance requis" in refus.stderr
+    jeton = debut.stdout.split("Jeton de séance : ", 1)[1].strip()
+    assert cli(tmp_path, "seance", "fin", jeton=jeton).returncode == 0
+    for nom in ("decisions", "seances", "mesures"):
+        assert jeton not in (atelier_initialise / f"export/{nom}.jsonl").read_text(encoding="utf-8")
+
+
+def test_seance_orpheline_reprise_et_fin_forcee(tmp_path, atelier_initialise):
+    """Une séance ancienne est reprise sans rattachement erroné, puis la fermeture forcée laisse une trace."""
+    with sqlite3.connect(atelier_initialise / "benchab.sqlite") as connexion:
+        connexion.execute("INSERT INTO seances (id,debut) VALUES (?,?)", ("fixture-orpheline", "2000-01-01T00:00:00Z"))
+    refus = cli(tmp_path, "seance", "debut")
+    assert refus.returncode == 1 and "seance reprendre" in refus.stderr
+    assert "IntegrityError" not in refus.stderr and "UNIQUE" not in refus.stderr
+    assert cli(tmp_path, "etat").returncode == 0
+    with sqlite3.connect(atelier_initialise / "benchab.sqlite") as connexion:
+        assert connexion.execute("SELECT seance_id FROM mesures WHERE commande='etat'").fetchone()[0] is None
+    reprise = cli(tmp_path, "seance", "reprendre")
+    assert reprise.returncode == 0 and "Jeton de séance" in reprise.stdout
+    assert cli(tmp_path, "seance", "debut").returncode == 1
+    assert cli(tmp_path, "seance", "fin", "--forcer").returncode == 0
+    with sqlite3.connect(atelier_initialise / "benchab.sqlite") as connexion:
+        assert connexion.execute("SELECT fin FROM seances WHERE id='fixture-orpheline'").fetchone()[0]
+        journal = connexion.execute(
+            "SELECT texte FROM decisions WHERE json_extract(donnees_json,'$.type')='verrou_seance' ORDER BY rowid"
+        ).fetchall()
+    assert journal == [("Verrou de séance : reprise",), ("Verrou de séance : fin forcée",)]
+
+
+def test_expiration_du_verrou_de_seance(tmp_path, atelier_initialise):
+    """Un jeton expiré ne ferme plus la séance et peut être remplacé sans perdre l'identifiant."""
+    debut = cli(tmp_path, "seance", "debut")
+    assert debut.returncode == 0
+    ancien = debut.stdout.split("Jeton de séance : ", 1)[1].strip()
+    with sqlite3.connect(atelier_initialise / "benchab.sqlite") as connexion:
+        connexion.execute(
+            "UPDATE decisions SET donnees_json=json_set(donnees_json,'$.expire',?) "
+            "WHERE json_extract(donnees_json,'$.type')='verrou_seance'",
+            ("2000-01-01T00:00:00Z",),
+        )
+    etat = cli(tmp_path, "seance", "etat")
+    assert json.loads(etat.stdout)["verrou"]["statut"] == "ORPHELIN"
+    assert cli(tmp_path, "seance", "fin", jeton=ancien).returncode == 1
+    reprise = cli(tmp_path, "seance", "reprendre")
+    nouveau = reprise.stdout.split("Jeton de séance : ", 1)[1].strip()
+    assert reprise.returncode == 0 and nouveau != ancien
+    assert cli(tmp_path, "seance", "fin", jeton=ancien).returncode == 1
+    assert cli(tmp_path, "seance", "fin", jeton=nouveau).returncode == 0
