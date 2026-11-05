@@ -20,3 +20,7 @@ Le contrôle agrégé `benchab controle regles` lance U20, U22 et U25 sur le 3MF
 Le contrôle `benchab controle opportunite-decoupe` consomme un manifeste privé qui référence, par chemin relatif et SHA-256, la pièce candidate et deux rapports structurés `PASS` liés à son empreinte (`source_sha256`) : forme (`retrecissement_naturel`, `volumes_fusionnes`) et imprimabilité (`supports`, `surplombs`, `couture_visible_ou_fonctionnelle`, `depasse_plateau`). Si un indicateur est vrai, il exige une comparaison entre le monobloc et au moins une variante découpée sur les sept axes, avec au moins deux fichiers de pièce présents, empreintés et déclarés comme issus de la même source. L'estimation de réussite reste qualitative et non mesurée ; le choix final reste humain. Ces contrôles valident la déclaration et les empreintes, pas la géométrie ni la dérivation des fichiers. Ils ne détectent aucune forme ou couture, et ne génèrent ni ne découpent de variante ; la génération et sa validation géométrique relèvent du lot 6B.
 
 La grille complète U01–U68, son sort, sa destination et sa justification sont conservés dans le registre privé de reprise. Les règles et faits personnels sont gardés dans `prive/config/regles-personnelles.json`.
+
+U20 lit les éléments XML des modèles et les liaisons de plaque, quel que soit
+l’ordre des attributs. Un `transform` absent représente l’identité. Un XML
+illisible laisse U20 NON VÉRIFIÉ avec le motif de lecture.

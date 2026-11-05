@@ -12,3 +12,4 @@ Versions enregistrées : aucune version livrée.
 - `publication-commit` — Commit et export avant publication des fiches, reprise sans doublon et mesures réexportées.
 - `delais-processus` — Délai borné pour les anciennes étapes, les lectures Git et le nettoyage du pilote Safari.
 - `gcode-g28` — Référencement G28 pris en compte et axe E commun lors des changements d’outil.
+- `u20-regex` — Lecture XML des objets et placements, transform facultatif et XML invalide signalé.

@@ -77,7 +77,7 @@ def controler(fichier: str | Path) -> dict:
         resultats.append(
             {
                 "controle": "U20",
-                "statut": "PASS" if placement["conforme"] else "FAIL",
+                "statut": placement.get("statut", "PASS" if placement["conforme"] else "FAIL"),
                 "rapport": placement,
             }
         )
