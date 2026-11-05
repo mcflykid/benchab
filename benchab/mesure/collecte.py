@@ -21,7 +21,9 @@ class Mesure:
         if seance_id:
             seance = base.connexion.execute("SELECT id FROM seances WHERE id = ?", (seance_id,)).fetchone()
         else:
-            seance = base.connexion.execute("SELECT id FROM seances WHERE fin IS NULL").fetchone()
+            from benchab.donnees.seance import active_valide
+
+            seance = active_valide(base.connexion)
         duree = time.perf_counter() - self.debut
         with base.transaction() as connexion:
             connexion.execute("INSERT INTO mesures VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (

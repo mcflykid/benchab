@@ -8,3 +8,4 @@ Versions enregistrées : aucune version livrée.
 - `integrite-plaques` — Comparaison exacte de l’affectation des instances aux plaques et des liaisons d’assemblage.
 - `debit-stopiteration` — Plaque sans index signalée NON VÉRIFIÉE et diagnostic d’usage pour les options incomplètes.
 - `envoi-indexerror` — Lecture typée des cases de température et de débit et verdict NON VÉRIFIÉ si la case de l’extrudeur manque.
+- `seance-verrou` — Jeton de fermeture, expiration, reprise et trace des fermetures forcées.

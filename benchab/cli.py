@@ -254,7 +254,9 @@ def parser():
     seance = commandes.add_parser("seance").add_subparsers(dest="action", required=True)
     debut = seance.add_parser("debut")
     debut.add_argument("--lot", default=None)
+    seance.add_parser("reprendre", help="Renouvelle le verrou d’une séance orpheline")
     fin = seance.add_parser("fin")
+    fin.add_argument("--forcer", action="store_true", help="Ferme sans jeton et inscrit la dérogation")
     fin.add_argument("--candidates", type=int, default=0)
     fin.add_argument("--temps-vote", type=duree_finie)
     fin.add_argument("--temps-controles", type=duree_finie)
@@ -663,26 +665,21 @@ def executer(arguments, base):
         except SystemExit as arret:
             return int(arret.code or 0)
     elif arguments.commande == "seance":
-        if arguments.action == "debut":
-            base.ecrire(
-                "INSERT INTO seances (id, debut, lot) VALUES (?, ?, ?)",
-                (uuid.uuid4().hex, datetime.now().astimezone().isoformat(), arguments.lot),
-            )
-            print("Séance commencée ; verrou logique actif dans la base.")
+        from benchab.donnees import seance
+
+        if arguments.action in {"debut", "reprendre"}:
+            reprise = arguments.action == "reprendre"
+            jeton = seance.ouvrir(base, getattr(arguments, "lot", None), reprise=reprise)
+            print("Séance reprise." if reprise else "Séance commencée.")
+            print("Jeton de séance : " + jeton)
         elif arguments.action == "fin":
-            actif = base.connexion.execute("SELECT id FROM seances WHERE fin IS NULL").fetchone()
-            if actif is None:
-                raise ValueError("Aucune séance active")
-            base.ecrire(
-                "UPDATE seances SET fin = ?, candidates = ?, temps_vote_s = COALESCE(?, temps_vote_s), "
-                "temps_controles_s = COALESCE(?, temps_controles_s) WHERE id = ?",
-                (
-                    datetime.now().astimezone().isoformat(),
-                    arguments.candidates,
-                    arguments.temps_vote,
-                    arguments.temps_controles,
-                    actif[0],
-                ),
+            seance.fermer(
+                base,
+                os.environ.get("BENCHAB_JETON_SEANCE"),
+                forcer=arguments.forcer,
+                candidates=arguments.candidates,
+                temps_vote=arguments.temps_vote,
+                temps_controles=arguments.temps_controles,
             )
             from benchab.donnees.vues import generer
 
@@ -696,9 +693,9 @@ def executer(arguments, base):
                 # La note appartient à une séance encore active au moment de
                 # l'écriture (docs/guides/cycle-projet.md).
                 connexion.execute("BEGIN IMMEDIATE")
-                actif = connexion.execute("SELECT id FROM seances WHERE fin IS NULL").fetchone()
+                actif = seance.active_valide(connexion)
                 if actif is None:
-                    raise ValueError("Aucune séance active")
+                    raise ValueError("Aucune séance active avec verrou valide. Voir benchab seance etat.")
                 connexion.execute("INSERT INTO decisions VALUES (?,NULL,?,?,?,?)", (
                     uuid.uuid4().hex, datetime.now().astimezone().isoformat(), texte,
                     "journal de séance BENCHAB : outil", json.dumps({
@@ -711,6 +708,7 @@ def executer(arguments, base):
             resultat = {"active": False}
             if actif:
                 resultat = {"lot": actif["lot"], "debut": actif["debut"]}
+                resultat["verrou"] = seance.etat_verrou(base.connexion, actif["id"])
                 note = base.connexion.execute(
                     "SELECT texte,date FROM decisions WHERE json_extract(donnees_json,'$.type')='note_seance' "
                     "AND json_extract(donnees_json,'$.seance_id')=? ORDER BY rowid DESC LIMIT 1", (actif["id"],),
@@ -822,8 +820,10 @@ def main(argv=None):
     ancien_atelier = os.environ.get("BENCHAB_PRIVE")
     try:
         base = Base(atelier_prive(arguments.prive), creer=arguments.commande == "init")
-        actif = base.connexion.execute("SELECT id FROM seances WHERE fin IS NULL").fetchone()
-        seance_id = actif[0] if actif else None
+        from benchab.donnees.seance import active_valide
+
+        actif = active_valide(base.connexion)
+        seance_id = actif["id"] if actif else None
         # Les modules enfants lisent le même choix que la CLI, sans laisser une
         # préférence persistante (docs/reference/chemins-et-atelier.md).
         os.environ["BENCHAB_PRIVE"] = str(base.prive)
