@@ -58,3 +58,7 @@ n'est jamais livrée avec le paquet. Le filtre s'applique aux chemins, aux texte
 et aux membres décompressés des ZIP/3MF publics. Une archive illisible ou trop
 volumineuse pour être contrôlée est refusée. Le paramètre privé de la commande
 détermine la base consultée, même si elle est séparée du dépôt contrôlé.
+
+L’index Git est vérifié pour la racine privée effectivement résolue, ainsi
+que pour le préfixe historique `prive/`. Le parcours public ne lit aucun
+de ces sous-arbres. Une racine privée égale à la racine publique est refusée.
