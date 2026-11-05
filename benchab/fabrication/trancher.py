@@ -244,21 +244,27 @@ def normaliser(source, destination, usage="impression", identifiants=None):
                     chemin_champ, changement["avant"], changement["apres"], present_avant=present
                 )
             )
-        with ZipFile(destination, "w") as sortie:
-            sortie.comment = entree.comment
-            for membre in entree.infolist():
-                if membre.filename in remplacements:
-                    sortie.writestr(membre, remplacements[membre.filename])
-                else:
-                    with entree.open(membre) as flux, sortie.open(membre, "w") as cible:
-                        shutil.copyfileobj(flux, cible)
-    # Vérifier le fichier relu, pas uniquement le dictionnaire avant écriture
-    # (docs/reference/integrite-3mf.md).
-    try:
-        integrite = integrite_3mf.verifier(source, destination, permis)
-    except Exception:
-        Path(destination).unlink(missing_ok=True)
-        raise
+        destination = Path(destination)
+        if Path(source).resolve() == destination.resolve():
+            raise ValueError("La normalisation requiert une copie distincte de la source.")
+        # Le moteur ne doit jamais recevoir un ZIP incomplet, même si une
+        # écriture échoue avant la relecture (docs/reference/integrite-3mf.md).
+        fd, nom_temporaire = tempfile.mkstemp(prefix=".normalisation-", suffix=".3mf", dir=destination.parent)
+        temporaire = Path(nom_temporaire)
+        try:
+            os.close(fd)
+            with ZipFile(temporaire, "w") as sortie:
+                sortie.comment = entree.comment
+                for membre in entree.infolist():
+                    if membre.filename in remplacements:
+                        sortie.writestr(membre, remplacements[membre.filename])
+                    else:
+                        with entree.open(membre) as flux, sortie.open(membre, "w") as cible:
+                            shutil.copyfileobj(flux, cible)
+            integrite = integrite_3mf.verifier(source, temporaire, permis)
+            temporaire.replace(destination)
+        finally:
+            temporaire.unlink(missing_ok=True)
     return {
         "plaques": len(plaques),
         "filaments": nombre,
@@ -273,16 +279,18 @@ def normaliser(source, destination, usage="impression", identifiants=None):
 def restaurer_noms(chemin, noms):
     """Restaure les noms sans unité et relit tous les membres ; retourne PASS ou lève FAIL, sans changer le G-code."""
     chemin = Path(chemin)
-    fd, nom = tempfile.mkstemp(prefix=".noms-", suffix=".3mf", dir=chemin.parent)
-    os.close(fd)
-    temporaire = Path(nom)
     avant = integrite_3mf.instantane(chemin)
-    permis = [
-        integrite_3mf.autorisation(f"plaque/{i}/plater_name", avant[f"plaque/{i}/plater_name"], n)
-        for i, n in enumerate(noms)
-        if avant[f"plaque/{i}/plater_name"] != n
-    ]
+    permis = []
+    for i, nom_origine in enumerate(noms):
+        cle = f"plaque/{i}/plater_name"
+        if cle not in avant:
+            raise ValueError("Nom de plaque absent dans la sortie.")
+        if avant[cle] != nom_origine:
+            permis.append(integrite_3mf.autorisation(cle, avant[cle], nom_origine))
+    fd, nom = tempfile.mkstemp(prefix=".noms-", suffix=".3mf", dir=chemin.parent)
+    temporaire = Path(nom)
     try:
+        os.close(fd)
         with ZipFile(chemin) as entree, ZipFile(temporaire, "w") as sortie:
             modele = ET.fromstring(
                 entree.read("Metadata/model_settings.config"),

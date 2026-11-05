@@ -538,3 +538,38 @@ def test_inspection_options_utilise_le_lanceur_isole(tmp_path, monkeypatch):
     assert Path(rapport["journal"]).read_text() == "options FFF fixture\n"
     assert Path(cmd[cmd.index("--datadir") + 1]).is_dir()
     assert all(Path(options["env"][cle]).is_relative_to("/private/tmp") for cle in ("HOME", "TMPDIR", "XDG_CACHE_HOME"))
+
+
+@pytest.mark.parametrize("destination_existante", [False, True])
+def test_zip_partiel_ne_remplace_pas_la_sortie(tmp_path, monkeypatch, destination_existante):
+    """Une panne d'écriture conserve l'original et la sortie précédente, sans temporaire résiduel."""
+    source = entree_3mf(tmp_path / "source.3mf")
+    entree = source.read_bytes()
+    sortie = tmp_path / "sortie.3mf"
+    if destination_existante:
+        sortie.write_bytes(b"version precedente")
+
+    def echec(*_args, **_options):
+        raise OSError("écriture ZIP injectée")
+
+    monkeypatch.setattr(ZipFile, "writestr", echec)
+    with pytest.raises(OSError, match="écriture ZIP injectée"):
+        trancher.normaliser(source, sortie)
+    assert source.read_bytes() == entree
+    if destination_existante:
+        assert sortie.read_bytes() == b"version precedente"
+    else:
+        assert not sortie.exists()
+    assert not list(tmp_path.glob(".normalisation-*"))
+
+
+def test_restauration_nom_absent_ne_laisse_aucun_zip(tmp_path):
+    """Une plaque sans nom empêche la restauration et laisse seulement le 3MF d'origine."""
+    source = tmp_path / "source.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config><plate/></config>")
+    avant = source.read_bytes()
+    with pytest.raises(ValueError, match="Nom de plaque absent"):
+        trancher.restaurer_noms(source, ["Fixture"])
+    assert source.read_bytes() == avant
+    assert list(tmp_path.iterdir()) == [source]

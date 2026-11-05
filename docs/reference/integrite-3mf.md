@@ -108,3 +108,7 @@ ambiguïté. Un conteneur d’assemblage vide ne décrit aucun placement.
 
 Le différentiel de réglages et d’affectation ne compare pas la géométrie de
 `3D/*.model`. Les contrôles géométriques et de disposition ont leur propre preuve.
+
+La normalisation prépare son ZIP dans un fichier temporaire unique sur le
+même volume. La relecture et le différentiel précèdent le remplacement
+atomique. Une erreur d’écriture conserve l’original et toute sortie précédente.
