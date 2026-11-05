@@ -118,6 +118,19 @@ class PlaquesMixtesTests(unittest.TestCase):
                 self.assertEqual(rapport["groupes"], [])
                 self.assertIn("pièce protégée", rapport["exclus"]["essai:Piece"])
 
+    def test_sha_qualite_protege_la_copie_renommee_et_l_ajout(self):
+        """Le SHA de qualite.json filtre une pièce renommée en projet comme en ajout explicite."""
+        maillage = self.projet / "candidats/Piece.stl"
+        sha = plaques_mixtes.sha256_fichier(maillage)
+        (self.projet / "qualite.json").write_text(
+            json.dumps({"protegees": {"reference/AncienNom.stl": sha.upper()}}), encoding="utf-8",
+        )
+        code, rapport = self.lancer(add=True)
+        self.assertNotEqual(code, 0)
+        self.assertEqual(rapport["groupes"], [])
+        self.assertIn("empreinte", rapport["exclus"]["essai:Piece"])
+        self.assertIn("ajout:Piece.stl", rapport["exclus"])
+
     def test_ajout_ne_contourne_pas_une_reference_imprimee(self):
         code, rapport = self.lancer(protected="hash", add=True)
         self.assertNotEqual(code, 0)

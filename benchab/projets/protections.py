@@ -1,6 +1,7 @@
 """Repère les fichiers de projet dont les rapports ne peuvent pas être remplacés."""
 
 import json
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -57,6 +58,13 @@ def protections(projet):
     qualite = projet / "qualite.json"
     donnees_qualite = json.loads(qualite.read_text()) if qualite.is_file() else {}
     for nom, info in donnees_qualite.get("protegees", {}).items():
+        # Une empreinte seule protège aussi une copie renommée (U36,
+        # docs/reference/regles.md) dans les parcours projet et ajout manuel.
+        if isinstance(info, str) and re.fullmatch(r"[0-9a-fA-F]{64}", info):
+            proteges[nom] = info.lower()
+            continue
+        if not isinstance(info, dict):
+            raise ValueError("Une protection doit fournir une empreinte SHA-256 ou un objet de référence.")
         if info.get("fichier"):
             proteges[info["fichier"]] = info.get("sha256")
         for cle, empreinte in (("stl_assemblage", "sha256_assemblage"), ("stl_impression", "sha256_impression")):
