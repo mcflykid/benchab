@@ -199,7 +199,14 @@ def analyser(path, overrides=None, attendus=None):
                 }
             )
         res["conforme"] = bool(res["plaques"]) and all(p["conforme"] for p in res["plaques"])
-        res["statut"] = "PASS" if res["conforme"] else "FAIL"
+        manque_plafond = any(p["plafond"] is None for p in res["plaques"])
+        depassement_etabli = any(
+            outil["plafond_mm3_s"] is not None and not outil["conforme"]
+            for plaque in res["plaques"] for objet in plaque["objets"] for outil in objet.get("outils", [])
+        )
+        res["statut"] = "PASS" if res["conforme"] else (
+            "NON VÉRIFIÉ" if manque_plafond and not depassement_etabli else "FAIL"
+        )
         res["code"] = code_statut(res["statut"])
         return res
 

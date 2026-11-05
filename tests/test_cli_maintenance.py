@@ -21,7 +21,8 @@ def test_sauvegarde_restauration_et_verrou_depuis_cli(tmp_path, atelier_initiali
     cli = ["--prive", str(prive)]
     assert main([*cli, "controle", "reimpression", "--", "--projet", str(source)]) == 0
     archive = tmp_path / "archive.tar"
-    assert main([*cli, "donnees", "sauvegarder", "--source", "projets/fixture", "--sortie", str(archive)]) == 0
+    options = ["--source", "projets/fixture", "--sortie", str(archive), "--jetable"]
+    assert main([*cli, "donnees", "sauvegarder", *options]) == 0
     destination = prive / "restauree"
     assert main([*cli, "donnees", "restaurer", str(archive), "--destination", str(destination)]) == 0
     assert (destination / "note.txt").read_bytes() == note.read_bytes()

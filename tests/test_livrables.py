@@ -22,24 +22,24 @@ class Livrables(unittest.TestCase):
         self.addCleanup(self.capture.__exit__, None, None, None)
 
     def test_nouveau_gel_ne_masque_pas_alteration(self):
-        L.figer(self.root, ["*.stl"])
+        L.figer(self.root, ["*.stl"], prive=self.root)
         self.assertEqual(L.verifier(self.root), 0)
         manifest = self.root / "LIVRABLES.json"
         before = manifest.read_bytes()
         self.piece.write_text("altérée")
         self.assertEqual(L.verifier(self.root), 1)
         with self.assertRaises(ValueError):
-            L.figer(self.root, ["*.stl"])
+            L.figer(self.root, ["*.stl"], prive=self.root)
         self.assertEqual(manifest.read_bytes(), before)
         self.assertEqual(L.verifier(self.root), 1)
 
     def test_gel_vide_et_source_symbolique_refuses(self):
         with self.assertRaises(ValueError):
-            L.figer(self.root, ["absent*.stl"])
+            L.figer(self.root, ["absent*.stl"], prive=self.root)
         alias = self.root / "alias.stl"
         alias.symlink_to(self.piece)
         with self.assertRaises(ValueError):
-            L.figer(self.root, ["alias.stl"])
+            L.figer(self.root, ["alias.stl"], prive=self.root)
         self.assertFalse((self.root / "LIVRABLES.json").exists())
 
     def test_chemin_manifest_exterieur_refuse(self):
@@ -49,7 +49,7 @@ class Livrables(unittest.TestCase):
             L.verifier(self.root)
         manifest.unlink()
         with self.assertRaises(ValueError):
-            L.figer(self.root, ["../*.stl"])
+            L.figer(self.root, ["../*.stl"], prive=self.root)
         self.assertFalse(manifest.exists())
 
 

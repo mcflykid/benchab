@@ -16,3 +16,4 @@ Versions enregistrées : aucune version livrée.
 - `u36-sha` — Protection des copies renommées par les empreintes déclarées dans qualite.json.
 - `frontiere-prive` — Contrôle Git de l’atelier privé réellement sélectionné.
 - `trancher-temporaires` — ZIP relu avant remplacement atomique et nettoyage des échecs de restauration.
+- `decisions-statuts` — Portée explicite des règles et confinement des preuves et références durables.

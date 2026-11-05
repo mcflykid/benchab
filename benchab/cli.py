@@ -94,6 +94,7 @@ def parser():
     sauvegarde = donnees.add_parser("sauvegarder")
     sauvegarde.add_argument("--source", type=Path, required=True)
     sauvegarde.add_argument("--sortie", type=Path, required=True)
+    sauvegarde.add_argument("--jetable", action="store_true", help="Autorise un export d’essai dans le temporaire")
     comparaison = donnees.add_parser("comparer-arbres")
     comparaison.add_argument("attendu", type=Path)
     comparaison.add_argument("obtenu", type=Path)
@@ -288,7 +289,7 @@ def executer(arguments, base):
         if arguments.action == "sauvegarder":
             from benchab.donnees.sauvegarde import creer
 
-            resultat = creer(base, arguments.source, arguments.sortie)
+            resultat = creer(base, arguments.source, arguments.sortie, jetable=arguments.jetable)
         elif arguments.action == "restaurer":
             from benchab.donnees.sauvegarde import restaurer
 

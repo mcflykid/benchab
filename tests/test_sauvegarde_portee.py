@@ -66,7 +66,7 @@ class SauvegardeTests(unittest.TestCase):
             "INSERT INTO projets (id, nom, origine, etat, donnees_json) VALUES (?, ?, ?, ?, ?)",
             ("fixture-projet", "Projet fixture", "tests", "actif", "{}"),
         )
-        archive = self.racine / "fixture.tar"
+        archive = self.base.prive / "fixture.tar"
         resultat = creer(self.base, self.base.prive, archive)
         self.assertGreater(resultat["files"], 1)
         cible = self.base.prive / "restauration-neuve"
@@ -92,7 +92,7 @@ class SauvegardeTests(unittest.TestCase):
         )
         tenue.commit()
         self.base.fermer()
-        archive = self.racine / "database-fixture.tar"
+        archive = self.base.prive / "database-fixture.tar"
         try:
             self.assertTrue((self.base.prive / "benchab.sqlite-wal").exists())
             creer(self.base, self.base.prive, archive)
@@ -183,12 +183,12 @@ class SauvegardeTests(unittest.TestCase):
         (self.source / "one.bin").write_bytes(b"12345")
         archive = self.racine / "too-large.tar"
         with patch.object(S, "MAX_MEMBER", 4), self.assertRaises(ValueError):
-            creer(self.base, self.source, archive)
+            creer(self.base, self.source, archive, jetable=True)
         self.assertFalse(archive.exists())
         (self.source / "one.bin").write_bytes(b"12")
         (self.source / "two.bin").write_bytes(b"34")
         with patch.object(S, "MAX_MEMBER", 10), patch.object(S, "MAX_TOTAL", 3), self.assertRaises(ValueError):
-            creer(self.base, self.source, archive)
+            creer(self.base, self.source, archive, jetable=True)
         self.assertFalse(archive.exists())
 
     def test_source_change_during_copy_is_detected_and_archive_not_published(self):
@@ -203,7 +203,7 @@ class SauvegardeTests(unittest.TestCase):
 
         archive = self.racine / "mutated.tar"
         with patch.object(S, "_copier_flux", side_effect=mutate_after_copy), self.assertRaises(ValueError):
-            creer(self.base, self.source, archive)
+            creer(self.base, self.source, archive, jetable=True)
         self.assertFalse(archive.exists())
 
     def test_external_source_and_out_of_scope_destination_are_refused(self):
@@ -225,7 +225,7 @@ class SauvegardeTests(unittest.TestCase):
         connexion.execute("INSERT INTO t VALUES (42)")
         connexion.commit()
         archive = self.racine / "sous-dossier.tar"
-        creer(self.base, self.source, archive)
+        creer(self.base, self.source, archive, jetable=True)
         dest = self.base.prive / "sous-dossier-restaure"
         restaurer(archive, dest, base=self.base)
         with sqlite3.connect(dest / "benchab.sqlite") as copie:
@@ -244,14 +244,14 @@ class SauvegardeTests(unittest.TestCase):
 
         archive = self.racine / "illisible.tar"
         with patch.object(os, "scandir", side_effect=scandir), self.assertRaises(PermissionError):
-            creer(self.base, self.source, archive)
+            creer(self.base, self.source, archive, jetable=True)
         self.assertFalse(archive.exists())
 
     def test_nom_posix_avec_deux_points_cree_et_restaure(self):
         nom = "capture 12:30.txt"
         (self.source / nom).write_text("contenu conservé")
         archive = self.racine / "nom-posix.tar"
-        creer(self.base, self.source, archive)
+        creer(self.base, self.source, archive, jetable=True)
         dest = self.base.prive / "nom-posix-restaure"
         restaurer(archive, dest, base=self.base)
         self.assertEqual((dest / nom).read_text(), "contenu conservé")
@@ -270,7 +270,7 @@ def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, mon
         source = base.prive / "fixture"
         source.mkdir()
         (source / "note").write_bytes(b"abc")
-        cible = tmp_path / "copie.tar"
+        cible = base.prive / "copie.tar"
         monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=S.SEUIL_DEPART - 1))
         import pytest
 
@@ -292,7 +292,7 @@ def test_baisse_espace_pendant_copie_ne_livre_pas_archive(tmp_path, monkeypatch)
         source = base.prive / "fixture"
         source.mkdir()
         (source / "note").write_bytes(b"abc")
-        cible = tmp_path / "copie.tar"
+        cible = base.prive / "copie.tar"
         valeurs = iter([S.SEUIL_DEPART + 1, S.SEUIL_DEPART + 1, S.PLANCHER_LIBRE - 1])
         monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=next(valeurs)))
         with pytest.raises(ValueError, match="Espace insuffisant"):
@@ -339,7 +339,7 @@ def test_restauration_sans_espace_ne_publie_pas_dossier(tmp_path, monkeypatch):
         source.mkdir()
         (source / "note").write_bytes(b"abc")
         archive = tmp_path / "archive.tar"
-        creer(base, source, archive)
+        creer(base, source, archive, jetable=True)
         avant = archive.read_bytes()
         cible = base.prive / "restauree"
         monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=S.SEUIL_DEPART - 1))

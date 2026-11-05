@@ -89,3 +89,7 @@ de rétraction communes à l’axe E. La sélection Tn identifie le filament.
 `G92 E` change le repère sans acquitter la rétraction. Un référencement
 `G28` remet les axes demandés à l’origine nominale. Un segment de dépôt
 immédiat après référencement en cours de trajectoire est exclu et signalé.
+
+Pour `controle regles`, les résultats évalués et `hors_portee` sont séparés.
+Les règles hors portée ne comptent pas dans le code global. Une donnée
+manquante dans un contrôle exécutable garde le code NON VÉRIFIÉ.

@@ -89,15 +89,18 @@ def controler(fichier: str | Path) -> dict:
     except (OSError, ValueError, zipfile.BadZipFile, ElementTree.ParseError) as erreur:
         resultats.append({"controle": "U22", "statut": "FAIL", "erreur": str(erreur)})
 
-    resultats.append(
+    hors_portee = [
         {
-            "controle": "U24",
-            "statut": "NON VÉRIFIÉ",
+            "controle": "U24", "statut": "NON VÉRIFIÉ",
             "motif": (
                 "Aucune preuve mécanique ne démontre la causalité du mouvement par la pièce motrice et son contact."
             ),
-        }
-    )
+        },
+        {
+            "controle": "U36", "statut": "NON VÉRIFIÉ",
+            "motif": "Aucun contexte projet fourni pour contrôler les pièces protégées.",
+        },
+    ]
 
     try:
         debit = debit_gcode.analyser(source)
@@ -117,6 +120,9 @@ def controler(fichier: str | Path) -> dict:
         "statut": global_statut,
         "code": code_statut(global_statut),
         "resultats": resultats,
+        "hors_portee": hors_portee,
+        "portee": {"evalues": [r["controle"] for r in resultats],
+                   "hors_portee": [r["controle"] for r in hors_portee]},
         "limites": [
             "U21 n’impose aucun plafond universel de vitesse ; le débit est comparé aux plafonds déclarés dans le 3MF.",
             "U36 est appliqué par les contrôles de protections et de préparation, pas déduit du seul fichier fourni.",

@@ -131,8 +131,13 @@ def _inventaire(source: Path, *, snapshot_canonique=False) -> dict[str, dict]:
     return resultats
 
 
-def _verifier_inventaire(source: Path, initial: dict[str, dict], *, snapshot_canonique=False) -> None:
+def _verifier_inventaire(source: Path, initial: dict[str, dict], *, snapshot_canonique=False,
+                        archive_temporaire=None) -> None:
     courant = _inventaire(source, snapshot_canonique=snapshot_canonique)
+    if archive_temporaire is not None:
+        # Une sauvegarde de l’atelier entier peut être livrée à sa racine.
+        # Son seul temporaire est absent de l’instantané (référence données).
+        courant.pop(archive_temporaire.relative_to(source).as_posix())
     if courant != initial:
         raise ValueError("Inventaire ou métadonnées source modifiés pendant la sauvegarde.")
 
@@ -240,18 +245,26 @@ def _manifest_bytes(manifeste: dict) -> bytes:
     return (json.dumps(manifeste, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
 
 
-def creer(base: Base, source: str | Path, destination: str | Path) -> dict:
+def creer(base: Base, source: str | Path, destination: str | Path, *, jetable=False) -> dict:
     """Archive une source privée explicite, tailles en octets ; rapport ou FAIL, aucun profil ni source modifié.
 
-    Départ 31 Gio libres, plancher 10 Gio pendant copie ; refuse les liens source, ne collecte rien implicitement.
+    Départ 31 Gio, plancher 10 Gio. Seul un export jetable explicite peut sortir de l'atelier.
     """
+    from benchab.qualite.ecritures import sortie_durable, sortie_privee
+
     source = _chemin_prive(base, source)
     if not source.is_dir():
         raise ValueError("La source explicite doit être un dossier privé.")
-    cible = _chemin_destination(base, destination, autoriser_prive=True)
+    destination = Path(destination).expanduser()
+    if not destination.is_absolute():
+        destination = base.prive / destination
+    cible = (sortie_privee if jetable else sortie_durable)(destination, prive=base.prive)
+    if not cible.parent.is_dir():
+        raise ValueError("Le parent de destination doit déjà exister.")
     if os.path.lexists(cible):
         raise FileExistsError(cible)
-    if cible.is_relative_to(source):
+    interne = cible.is_relative_to(source)
+    if interne and (source != base.prive.resolve() or cible.parent != source):
         raise ValueError("La destination archive ne peut pas être incluse dans la source.")
     # Le plafond protège le volume réel de copie, pas le HOME de l'appelant
     # (docs/reference/donnees.md, sauvegarde explicite).
@@ -278,7 +291,10 @@ def creer(base: Base, source: str | Path, destination: str | Path) -> dict:
                             archive.addfile(info, _LectureSurveillee(flux, cible.parent))
                     else:
                         archive.addfile(info)
-            _verifier_inventaire(source, initial, snapshot_canonique=source == base.prive.resolve())
+            _verifier_inventaire(
+                source, initial, snapshot_canonique=source == base.prive.resolve(),
+                archive_temporaire=temporaire if interne else None,
+            )
             _verifier_archive_creee(temporaire, fichiers, _manifest_bytes(manifeste))
             renommer_exclusif(temporaire, cible)
         finally:

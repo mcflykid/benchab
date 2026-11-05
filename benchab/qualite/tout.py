@@ -19,7 +19,7 @@ import time
 import uuid
 from pathlib import Path
 
-from benchab.chemins import atelier_prive, sans_lien
+from benchab.chemins import atelier_prive, est_temporaire_hors_depot, sans_lien
 from benchab.machine.configuration import charger as configuration_machine
 from benchab.processus import executer
 from benchab.qualite.validation import agregation_statut, protege, sha, verifier
@@ -373,7 +373,8 @@ def run(path, incremental=False, only_verify=False):
     # de confiance ; le contrôle final restreint ensuite l'accès à l'atelier privé.
     candidate = sans_lien(demande, racine=Path(demande.anchor))
     racines = [atelier_prive()]
-    racines.extend(sans_lien(r, racine=Path(r.anchor)) for r in (Path("/tmp"), Path(tempfile.gettempdir())))
+    if est_temporaire_hors_depot(candidate):
+        racines.extend(sans_lien(r, racine=Path(r.anchor)) for r in (Path("/tmp"), Path(tempfile.gettempdir())))
     confiance = next((racine for racine in racines if candidate.is_relative_to(racine)), None)
     if confiance is None:
         raise ValueError("La configuration du pipeline doit rester dans l’atelier privé ou un temporaire reconnu")
