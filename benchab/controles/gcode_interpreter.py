@@ -3,7 +3,7 @@
 Interpréteur modal linéaire partagé. Aucun accès machine.
 
 XYZ absolus au départ ; E exige M82/M83 pour une mesure certifiable.
-Positions E et dette de rétraction par outil. G92 change le repère sans effacer
+Position E et dette de rétraction sur l’axe partagé. G92 change le repère sans effacer
 la dette. Les arcs et commandes qui changent le mouvement sans modèle explicite
 invalident la couverture ; les commandes de chauffe/ventilation sont ignorées.
 Les limites de dynamique et la pressure advance sont relevées, sans simuler
@@ -20,7 +20,17 @@ NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 WORDS = re.compile(r"([A-Z])\s*(" + NUMBER + r")", re.I)
 
 
+def axes_homing(texte):
+    """Lit les axes d'un G28 en repère machine ; aucun argument désigne XYZ, aucune commande exécutée."""
+    motif = re.compile(rf"([XYZ])(?:{NUMBER})?", re.I)
+    axes = [m.group(1).upper() for m in motif.finditer(texte)]
+    if motif.sub("", texte).strip() or len(axes) != len(set(axes)):
+        raise ValueError("Axes de G28 invalides ou non pris en charge")
+    return axes or ["X", "Y", "Z"]
+
+
 class Interpreter:
+    """Suit les états modaux XYZ et E en mm et le débit nominal, sans simuler le firmware."""
     def __init__(self, tool=None):
         self.xyz = (0.0, 0.0, 0.0)
         self.relative_xyz = False
@@ -28,6 +38,7 @@ class Interpreter:
         self.tool = tool
         self.e = {}
         self.retracted = {}
+        self._apres_homing = False
         self.feed = 0.0
         self.kind = None
         self.object = None
@@ -231,6 +242,17 @@ class Interpreter:
                 "layer": self.layer,
             }
             return None
+        if op == "G28":
+            try:
+                axes = axes_homing(tail)
+            except ValueError as erreur:
+                self.error(str(erreur))
+                return None
+            # L'ancien repère ne décrit plus le trajet qui suit le référencement.
+            # Voir docs/reference/controles.md, contrôle de débit.
+            self._apres_homing = any(self.xyz)
+            self.xyz = tuple(0.0 if a in axes else p for a, p in zip("XYZ", self.xyz))
+            return None
         words = WORDS.findall(tail)
         vals = {k.upper(): float(v) for k, v in words}
         # Le texte libre de l'écran et la macro constructeur ont une grammaire distincte.
@@ -308,12 +330,10 @@ class Interpreter:
                 return None
             self.xyz = tuple(vals.get(a, p) for a, p in zip("XYZ", self.xyz))
             if "E" in vals:
-                self.e[self.tool] = vals["E"]
+                self.e[None] = vals["E"]
             return None
         if op not in {"G0", "G1", "G2", "G3"}:
-            # G28 is a setup homing operation. Subsequent coordinates remain in the
-            # commanded frame; no homing travel is included in the measurement.
-            if op.startswith("G") and op not in {"G4", "G21", "G28", "G29", "G80", "G9111"}:
+            if op.startswith("G") and op not in {"G4", "G21", "G29", "G80", "G9111"}:
                 self.error("commande mouvement non prise en charge : " + op)
             if op in {"G20", "M200", "M206", "M218", "M220", "M221", "G10", "G11"}:
                 self.error("commande affectant extrusion/coordonnées non prise en charge : " + op)
@@ -353,26 +373,31 @@ class Interpreter:
         start = self.xyz
         end = tuple(p + vals.get(a, 0.0) if self.relative_xyz else vals.get(a, p) for a, p in zip("XYZ", start))
         self.feed = vals.get("F", self.feed)
-        old = self.e.get(self.tool, 0.0)
+        old = self.e.get(None, 0.0)
         de = 0.0
         if "E" in vals:
             if self.relative_e is None:
                 self.error("mode extrusion absent (M82/M83 requis)")
             de = vals["E"] if self.relative_e is not False else vals["E"] - old
-            self.e[self.tool] = old + de
-        debt = self.retracted.get(self.tool, 0.0)
+            self.e[None] = old + de
+        debt = self.retracted.get(None, 0.0)
         if de < 0:
             debt -= de
             deposited = 0.0
         else:
             deposited = max(0.0, de - debt)
             debt = max(0.0, debt - de)
-        self.retracted[self.tool] = debt
+        self.retracted[None] = debt
         self.xyz = end
         if op in {"G2", "G3"}:
             self.error("arc non analysé : " + op)
             return None
         length = math.dist(start, end)
+        if length > 0 and self._apres_homing:
+            self._apres_homing = False
+            if deposited > 0:
+                self.error("Segment d’extrusion immédiatement après G28 non vérifié")
+                deposited = 0.0
         ratio = deposited / de if de > 0 else 0.0
         deposition_start = tuple(b - (b - a) * ratio for a, b in zip(start, end))
         return {
