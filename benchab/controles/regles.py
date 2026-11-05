@@ -104,7 +104,7 @@ def controler(fichier: str | Path) -> dict:
         resultats.append(
             {
                 "controle": "U25",
-                "statut": "PASS" if debit.get("conforme") is True else "FAIL",
+                "statut": debit.get("statut", "PASS" if debit.get("conforme") is True else "FAIL"),
                 "rapport": debit,
             }
         )

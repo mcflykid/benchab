@@ -7,6 +7,7 @@ usage : debit_gcode.py <tranche.3mf> [--plafonds 1=32,2=16] [--sortie fichier.js
 
 """
 
+import argparse
 import collections
 import json
 import math
@@ -19,6 +20,7 @@ from xml.etree import ElementTree as E
 from benchab import reglages as schema_reglages
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.qualite.statuts import code_statut
 
 AIRE = math.pi * (1.75 / 2) ** 2
 
@@ -53,10 +55,17 @@ def analyser(path, overrides=None, attendus=None):
             else "3MF project_settings.filament_max_volumetric_speed",
             "plaques": [],
         }
-        indices = [
-            int(next(m.get("value") for m in p.findall("metadata") if m.get("key") == "index"))
-            for p in si.findall("plate")
-        ]
+        indices = []
+        for rang, plaque in enumerate(si.findall("plate"), start=1):
+            valeurs = [m.get("value") for m in plaque.findall("metadata") if m.get("key") == "index"]
+            if len(valeurs) != 1 or not valeurs[0] or not re.fullmatch(r"[0-9]+", valeurs[0]):
+                # U25 exige l'identité de la plaque avant d'interpréter son débit.
+                # Voir docs/reference/controles.md.
+                return {
+                    **res, "conforme": False, "statut": "NON VÉRIFIÉ", "code": code_statut("NON VÉRIFIÉ"),
+                    "motif": f"slice_info.config : index absent, dupliqué ou invalide à la plaque XML {rang}",
+                }
+            indices.append(int(valeurs[0]))
         gc = {
             int(re.fullmatch(r"Metadata/plate_(\d+)\.gcode", n).group(1))
             for n in membres
@@ -190,24 +199,32 @@ def analyser(path, overrides=None, attendus=None):
                 }
             )
         res["conforme"] = bool(res["plaques"]) and all(p["conforme"] for p in res["plaques"])
+        res["statut"] = "PASS" if res["conforme"] else "FAIL"
+        res["code"] = code_statut(res["statut"])
         return res
 
 
 def main(args):
-    if not args:
-        print(__doc__)
-        return 2
+    """Contrôle U25 en mm³/s ; imprime le verdict et son code, sans modifier le 3MF."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", type=Path)
+    parser.add_argument("--plafonds", help="Plafonds déclarés, sous la forme 1=32,2=16.")
+    parser.add_argument("--sortie", type=Path)
     try:
-        overrides = (
-            dict(v.split("=") for v in args[args.index("--plafonds") + 1].split(",")) if "--plafonds" in args else None
-        )
-        result = analyser(args[0], overrides)
-        if "--sortie" in args:
-            Path(args[args.index("--sortie") + 1]).write_text(json.dumps(result, indent=1, ensure_ascii=False))
+        options = parser.parse_args(args)
+    except SystemExit as arret:
+        return arret.code
+    try:
+        overrides = dict(v.split("=") for v in options.plafonds.split(",")) if options.plafonds is not None else None
+        result = analyser(options.source, overrides)
+        if options.sortie:
+            options.sortie.write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
         for p in result["plaques"]:
             print("plaque", p["plaque"], "conforme", p["conforme"], "erreurs", p["erreurs"])
+        if result.get("motif"):
+            print(result["statut"], result["motif"])
         print("conforme", result["conforme"])
-        return 0 if result["conforme"] else 1
+        return result["code"]
     except (OSError, ValueError, KeyError, zipfile.BadZipFile, E.ParseError) as ex:
         print("Erreur technique :", ex, file=sys.stderr)
         return 2
