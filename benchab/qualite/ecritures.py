@@ -19,6 +19,7 @@ import stat
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from benchab.qualite.empreintes import sha256_fichier as _sha
@@ -147,6 +148,51 @@ def _sans_lien(path):
     from benchab.chemins import sans_lien
 
     return sans_lien(path)
+
+
+@contextmanager
+def verrou_publication(dossier, nom):
+    """Sérialise une publication locale (attente bornée en s), sans effacer le fichier de verrou."""
+    dossier = _sans_lien(dossier)
+    dossier.mkdir(parents=True, exist_ok=True)
+    fd = os.open(dossier, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        verrou = ouvrir_verrou(nom, fd)
+        try:
+            acquerir_verrou(verrou)
+            yield
+        finally:
+            os.close(verrou)
+    finally:
+        os.close(fd)
+
+
+def remplacer_texte(cible, texte):
+    """Remplace atomiquement un état texte UTF-8 avec un temporaire unique, sous verrou de l'appelant."""
+    cible = _sans_lien(cible)
+    fd, nom = tempfile.mkstemp(prefix=".publication-", dir=cible.parent)
+    temporaire = Path(nom)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as flux:
+            flux.write(texte)
+            flux.flush()
+            os.fsync(flux.fileno())
+        _sans_lien(cible)
+        temporaire.replace(cible)
+    finally:
+        temporaire.unlink(missing_ok=True)
+
+
+def publier_texte_repris(cible, texte, *, entrees=()):
+    """Publie un texte neuf ou confirme sa reprise à l'identique, sans écraser un fichier différent."""
+    cible = _sans_lien(cible)
+    if cible.exists():
+        if cible.read_bytes() != texte.encode("utf-8"):
+            raise ValueError("Fichier publié différent de la version canonique")
+        return
+    with PublicationNeuve(entrees, [cible]) as publication:
+        publication.temporaire(cible).write_text(texte, encoding="utf-8")
+        publication.publier()
 
 
 def valider_chemins(entrees, sorties):

@@ -15,6 +15,7 @@ class Mesure:
         self.enfants = resource.getrusage(resource.RUSAGE_CHILDREN)
 
     def enregistrer(self, base, commande, code, seance_id=None):
+        """Enregistre les secondes et octets ; une reprise du même appel corrige son code sans doubler les durées."""
         propre = resource.getrusage(resource.RUSAGE_SELF)
         enfants = resource.getrusage(resource.RUSAGE_CHILDREN)
         unite = 1 if sys.platform == "darwin" else 1024
@@ -26,6 +27,10 @@ class Mesure:
             seance = active_valide(base.connexion)
         duree = time.perf_counter() - self.debut
         with base.transaction() as connexion:
+            connexion.execute("BEGIN IMMEDIATE")
+            if connexion.execute("SELECT 1 FROM mesures WHERE id=?", (self.identifiant,)).fetchone():
+                connexion.execute("UPDATE mesures SET code=? WHERE id=?", (code, self.identifiant))
+                return
             connexion.execute("INSERT INTO mesures VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (
                 self.identifiant,
                 seance[0] if seance else None,

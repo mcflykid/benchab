@@ -132,3 +132,15 @@ créés par l'opération sont nettoyés ; une ancienne archive existante reste i
 (chemins, types, droits et SHA-256) sans les modifier et signale chaque écart.
 Cette comparaison d'octets ne compare pas sémantiquement une base SQLite active
 à son instantané : utiliser les contrôles de restauration pour ce dernier cas.
+
+### Reprise d'une publication privée
+
+Une fiche de bobine ou de vote est publiée après le commit SQLite et la mise à
+jour de l'export. Un reçu privé identifie l'opération inachevée. La même entrée
+reprend le même enregistrement et termine l'export et la fiche. Le reçu est
+retiré quand la publication est complète. Un nouveau vote après succès garde
+son propre enregistrement. Le registre historique des bobines est sérialisé
+par un verrou et remplacé atomiquement.
+
+Une mesure reprise conserve le même identifiant et les durées déjà inscrites.
+Son code et l'export sont mis à jour ensemble par le chemin commun d'écriture.

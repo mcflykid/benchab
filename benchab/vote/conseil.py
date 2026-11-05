@@ -4,13 +4,18 @@ import hashlib
 import json
 import stat
 import uuid
-from contextlib import nullcontext
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
 
 from benchab.projets.preparations import enregistrer as inscrire
-from benchab.qualite.ecritures import PublicationNeuve, _sans_lien
+from benchab.qualite.ecritures import (
+    PublicationNeuve,
+    _sans_lien,
+    publier_texte_repris,
+    remplacer_texte,
+    verrou_publication,
+)
 from benchab.qualite.empreintes import sha256_fichier
 from benchab.qualite.validation import agregation_statut
 from benchab.vote.permissions import permissions
@@ -257,7 +262,7 @@ def _chemin_envoi(base, fiche, preparation_id, identifiant_vote):
 
 
 def produire(base, dossier):
-    """Le calcul est reproductible ; chaque consultation reste dans l'historique des votes."""
+    """Calcule et publie un vote sourcé ; une relance après panne reprend son identifiant sans ajouter de voix."""
     chemin_dossier, donnees, sha_dossier = _lire(base, dossier)
     if not isinstance(donnees, dict) or donnees.get("schema") != 1:
         raise ValueError("Dossier de vote schema 1 requis.")
@@ -403,43 +408,55 @@ def produire(base, dossier):
     if len(_json(resultat).encode()) > 1_000_000:
         raise ValueError("Vote trop volumineux : conserver les rapports dans leurs fichiers et résumer les preuves.")
     resultat["empreinte_vote"] = hashlib.sha256(_json(resultat).encode()).hexdigest()
-    identifiant = uuid.uuid4().hex
-    resultat["id"] = identifiant
-    resultat["date"] = datetime.now(timezone.utc).isoformat()
-    if resultat["dixieme_homme"]:
-        destination = _chemin_envoi(base, fiche, reference["preparation_id"], identifiant)
-        resultat["envoi_markdown"] = destination.relative_to(base.prive.resolve()).as_posix()
-        contexte_publication = PublicationNeuve(list(empreintes), [destination])
-    else:
-        contexte_publication = nullcontext(None)
+    return _publier_vote(base, fiche, resultat, empreintes, pour, votes)
 
-    with contexte_publication as publication:
-        if publication is not None:
-            publication.temporaire(destination).write_text(_markdown_surveillance(resultat), encoding="utf-8")
-        with base.transaction() as connexion:
-            connexion.execute("BEGIN IMMEDIATE")
+
+def _publier_vote(base, fiche, resultat, empreintes, pour, votes):
+    empreinte = resultat["empreinte_vote"]
+    cache = base.prive / "cache"
+    with verrou_publication(cache, f"vote-{empreinte}.lock"):
+        # Un reçu privé survit au commit et à l’export. Il disparaît après
+        # publication pour préserver les votes distincts voulus (référence données).
+        recu = _sans_lien(cache / f"vote-{empreinte}.en-cours")
+        if recu.exists():
+            identifiant = recu.read_text(encoding="utf-8").strip()
+            if uuid.UUID(identifiant).hex != identifiant:
+                raise ValueError("Reçu de vote invalide")
+        else:
+            identifiant = uuid.uuid4().hex
+            remplacer_texte(recu, identifiant + "\n")
+        existant = base.connexion.execute(
+            "SELECT donnees_json FROM votes WHERE id=?", (identifiant,),
+        ).fetchone()
+        preparation_id = resultat["preparation_id"]
+        destination = _chemin_envoi(base, fiche, preparation_id, identifiant)
+        if existant:
+            resultat = json.loads(existant[0])
+            if resultat["empreinte_vote"] != empreinte:
+                raise ValueError("Reçu de vote incompatible avec le dossier")
+            base.exporter()
+        else:
+            resultat["id"] = identifiant
+            resultat["date"] = datetime.now(timezone.utc).isoformat()
+            if resultat["dixieme_homme"]:
+                resultat["envoi_markdown"] = destination.relative_to(base.prive.resolve()).as_posix()
+                if _sans_lien(destination).exists():
+                    raise ValueError("Le dossier d’envoi existe déjà")
+            verdict = "pour" if pour == 7 else (
+                "contre" if any(v["vote"] == "contre" for v in votes.values()) else "abstention"
+            )
+            with base.transaction() as connexion:
+                connexion.execute("BEGIN IMMEDIATE")
+                if any(sha256_fichier(p) != h for p, h in empreintes.items()):
+                    raise ValueError("Dossier, préparation, critique ou preuve modifiés pendant le vote.")
+                connexion.execute("INSERT INTO votes VALUES(?,?,?,?,?,?)", (
+                    identifiant, preparation_id, resultat["date"], resultat["grille_version"], verdict, _json(resultat),
+                ))
+        if resultat["dixieme_homme"]:
             if any(sha256_fichier(p) != h for p, h in empreintes.items()):
-                raise ValueError("Dossier, préparation, critique ou preuve modifiés pendant le vote.")
-            verdict = (
-                "pour"
-                if pour == 7
-                else "contre"
-                if any(v["vote"] == "contre" for v in votes.values())
-                else "abstention"
-            )
-            connexion.execute(
-                "INSERT INTO votes VALUES(?,?,?,?,?,?)",
-                (
-                    identifiant,
-                    reference["preparation_id"],
-                    resultat["date"],
-                    resultat["grille_version"],
-                    verdict,
-                    _json(resultat),
-                ),
-            )
-            if publication is not None:
-                publication.publier()
+                raise ValueError("Dossier, préparation, critique ou preuve modifiés avant publication.")
+            publier_texte_repris(destination, _markdown_surveillance(resultat), entrees=list(empreintes))
+        recu.unlink()
     return resultat
 
 
