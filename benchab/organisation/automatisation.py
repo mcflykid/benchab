@@ -26,6 +26,7 @@ from benchab.fabrication.trancher import demander_ouverture
 from benchab.qualite import publication
 from benchab.qualite.ecritures import PublicationNeuve, _sans_lien
 from benchab.qualite.empreintes import sha256_fichier as sha
+from benchab.qualite.statuts import code_statut
 
 ICI = Path(__file__).resolve().parent
 
@@ -769,19 +770,23 @@ def main(argv=None, *, prive=None):
             data = globals()[a.commande](a.racine, a.projet, out, a.preparation)
         else:
             data = (diagnostiquer if a.commande == "diagnostic" else planifier)(a.racine, a.projet, a.preparation)
+        statut = data.get("statut")
+        if statut in {"PASS", "WARN", "FAIL", "BLOQUE", "INCONNU", "NON VÉRIFIÉ"}:
+            data["code"] = code_statut(statut)
         print(json.dumps(data, ensure_ascii=False, indent=2))
-        return 1 if data.get("statut") in ("FAIL", "BLOQUE") else 0
+        return data.get("code", 0)
     except (OSError, ValueError, TypeError, KeyError, RecursionError) as exc:
         print(
             json.dumps(
                 {
                     "statut": "BLOQUE",
+                    "code": code_statut("BLOQUE"),
                     "erreur": "document JSON trop profond" if isinstance(exc, RecursionError) else str(exc),
                 },
                 ensure_ascii=False,
             )
         )
-        return 1
+        return code_statut("BLOQUE")
 
 
 if __name__ == "__main__":

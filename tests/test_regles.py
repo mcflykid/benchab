@@ -78,7 +78,7 @@ def test_main_utilise_base_prive_et_refuse_sortie_exterieure(tmp_path, monkeypat
         lambda _source: {"conforme": True},
     )
 
-    assert main([str(source)], prive=prive) == 1
+    assert main([str(source)], prive=prive) == 2
     assert (prive / "rapports/regles-lot4.json").is_file()
     assert json.loads((prive / "rapports/regles-lot4.json").read_text())["statut"] == "NON VÉRIFIÉ"
     assert main([str(source), "--sortie", str(tmp_path / "public.json")], prive=prive) == 2

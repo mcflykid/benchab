@@ -12,6 +12,7 @@ from xml.etree import ElementTree
 
 from benchab.controles import debit_gcode, plaques_interface
 from benchab.controles.rapports import RapportCourant
+from benchab.qualite.statuts import code_statut
 
 _LIBELLE_AUTO = re.compile(r"^Plaque\s+\d+\s*\(.*\)$", re.IGNORECASE)
 _CARACTERES_SIMPLES = re.compile(r"^[\w .-]+$", re.UNICODE)
@@ -114,6 +115,7 @@ def controler(fichier: str | Path) -> dict:
     global_statut = "FAIL" if "FAIL" in statuts else "NON VÉRIFIÉ" if "NON VÉRIFIÉ" in statuts else "PASS"
     return {
         "statut": global_statut,
+        "code": code_statut(global_statut),
         "resultats": resultats,
         "limites": [
             "U21 n’impose aucun plafond universel de vitesse ; le débit est comparé aux plafonds déclarés dans le 3MF.",
@@ -146,7 +148,7 @@ def main(argv=None, *, base=None, prive=None) -> int:
         print(f"Contrôle refusé : {erreur}", file=sys.stderr)
         return 2
     print(json.dumps(resultat, ensure_ascii=False, indent=1))
-    return 0 if resultat["statut"] == "PASS" else 1
+    return resultat["code"]
 
 
 if __name__ == "__main__":

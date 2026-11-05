@@ -91,7 +91,7 @@ def test_opportunite_signale_variante_obligatoire_sans_lancer_de_generation(tmp_
         code = controler_opportunite_decoupe([str(demande)], base=base)
 
         resultat = json.loads((base.prive / "rapports/opportunite-decoupe.json").read_text())
-        assert code == 1
+        assert code == resultat["code"] == 2
         assert resultat["statut"] == "FAIL"
         assert {declencheur["id"] for declencheur in resultat["declencheurs"]} == {
             "supports",

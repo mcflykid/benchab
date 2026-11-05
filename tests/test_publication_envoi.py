@@ -52,18 +52,18 @@ class PublicationEnvoi(unittest.TestCase):
         before = [p.read_bytes() for p in (self.source, self.declaration)]
         report = self.root / "rapport.json"
         result = self.runcli("--json", report)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(json.loads(report.read_text())["statut"], "WARN")
         self.assertEqual(before, [p.read_bytes() for p in (self.source, self.declaration)])
         second = self.runcli("--json", report)
-        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(second.returncode, 1, second.stderr)
         self.assertEqual(json.loads(report.read_text())["_rapport"]["outil"], "controle_envoi")
 
     def test_rapport_protege_reste_intact(self):
         import hashlib
 
         report = self.root / "rapport.json"
-        self.assertEqual(self.runcli("--json", report).returncode, 0)
+        self.assertEqual(self.runcli("--json", report).returncode, 1)
         before = report.read_bytes()
         (self.root / "LIVRABLES.json").write_text(
             json.dumps({"fichiers": [{"chemin": report.name, "sha256": hashlib.sha256(before).hexdigest()}]})
@@ -83,7 +83,7 @@ class PublicationEnvoi(unittest.TestCase):
         from benchab.controles.rapports import RapportCourant
 
         report = self.root / "rapport.json"
-        self.assertEqual(self.runcli("--json", report).returncode, 0)
+        self.assertEqual(self.runcli("--json", report).returncode, 1)
         preparation = RapportCourant(report, [self.source, self.declaration], "controle_envoi")
         report.write_text(json.dumps({"modification": "autre exécutant"}))
         before = report.read_bytes()
@@ -136,7 +136,7 @@ class PublicationEnvoi(unittest.TestCase):
         before = (candidats / "tranche.3mf").read_bytes()
         for _ in range(2):
             result = subprocess.run(command, cwd=self.root, capture_output=True, text=True, timeout=10)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertEqual((candidats / "tranche.3mf").read_bytes(), before)
         self.assertEqual(
             json.loads((preuves / "controle-envoi.json").read_text())["_rapport"]["outil"], "controle_envoi"

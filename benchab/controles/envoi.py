@@ -7,6 +7,7 @@ from benchab.controles.commandes_machine import controler as commandes_machine
 from benchab.controles.continuite_paroi import controler as continuite_paroi
 from benchab.controles.identifiants_filaments import controler as identifiants
 from benchab.gcode.lecture import membres_gcode_3mf
+from benchab.qualite.statuts import code_statut
 
 
 def controler(
@@ -73,7 +74,7 @@ def controler(
     return {
         **(historique or {}),
         "statut": statut,
-        "code": {"PASS": 0, "WARN": 1, "NON VÉRIFIÉ": 2, "FAIL": 2}[statut],
+        "code": code_statut(statut),
         "resultats": resultats,
         "controles_communs": communs,
         "zones_locales": historique.get("zones_locales") if historique else None,
