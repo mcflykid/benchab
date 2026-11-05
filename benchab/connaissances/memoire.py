@@ -6,10 +6,12 @@ import hashlib
 import json
 import os
 import re
+import select
 import sqlite3
 import subprocess
 import sys
 import tarfile
+import time
 import unicodedata
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from benchab.chemins import atelier_prive
 TYPES = ("impression", "defaut", "correction", "mesure", "decision", "audit", "recherche")
 STATUTS = ("ACTIF", "CAPITALISÉ", "HISTORIQUE", "REDONDANT", "À EXAMINER")
 MAX_BLOB_GIT_OCTETS = 256 * 1024 * 1024
+DELAI_BLOB_GIT_SECONDES = 10
 
 
 def normaliser(s):
@@ -221,6 +224,35 @@ def _chemin_source(root, relatif):
     return _sans_lien(cible).resolve(strict=False)
 
 
+
+def _empreinte_blob_git(racine, objet, env):
+    from benchab.processus import _terminer
+
+    commande = ["git", "-C", str(racine), "cat-file", "blob", objet]
+    fin = time.monotonic() + DELAI_BLOB_GIT_SECONDES
+    digest = hashlib.sha256()
+    taille = 0
+    with subprocess.Popen(commande, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                          env=env, start_new_session=True) as processus:
+        try:
+            while True:
+                restant = fin - time.monotonic()
+                # Attendre les octets avec le même délai global : read() seul
+                # attendrait indéfiniment un Git bloqué (docs/reference/donnees.md).
+                if restant <= 0 or not select.select([processus.stdout], [], [], restant)[0]:
+                    raise subprocess.TimeoutExpired(commande, DELAI_BLOB_GIT_SECONDES)
+                bloc = os.read(processus.stdout.fileno(), 1024 * 1024)
+                if not bloc:
+                    break
+                taille += len(bloc)
+                if taille > MAX_BLOB_GIT_OCTETS:
+                    raise ValueError("blob Git dépasse la limite de lecture")
+                digest.update(bloc)
+            return digest.hexdigest(), processus.wait(timeout=max(0.001, fin - time.monotonic()))
+        finally:
+            _terminer(processus, 0.25)
+
+
 def _verifier_fichier_source(root, item_id, source, erreurs, non_verifies):
     """Contrôle SHA fichier/blob; dépassement de 256 MiB FAIL, SHA absent NON VÉRIFIÉ, sans validation physique."""
     if source.get("reference_paquet"):
@@ -245,31 +277,16 @@ def _verifier_fichier_source(root, item_id, source, erreurs, non_verifies):
                 erreurs.append(item_id + " : identifiant de provenance Git invalide " + rel)
                 return
             try:
-                processus = subprocess.Popen(
-                    ["git", "-C", str(root), "cat-file", "blob", revision + ":" + rel],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    env=env,
-                )
-                digest = hashlib.sha256()
-                taille = 0
-                while bloc := processus.stdout.read(1024 * 1024):
-                    taille += len(bloc)
-                    if taille > MAX_BLOB_GIT_OCTETS:
-                        processus.kill()
-                        processus.wait()
-                        processus.stdout.close()
-                        erreurs.append(item_id + " : blob Git dépasse la limite de lecture " + rel)
-                        return
-                    digest.update(bloc)
-                processus.stdout.close()
-                code = processus.wait()
-            except OSError as exc:
-                erreurs.append(item_id + " : lecture du blob Git impossible " + rel + " : " + type(exc).__name__)
+                digest, code = _empreinte_blob_git(root, revision + ":" + rel, env)
+            except subprocess.TimeoutExpired:
+                erreurs.append(item_id + " : délai de lecture du blob Git dépassé " + rel)
+                return
+            except (OSError, ValueError) as exc:
+                erreurs.append(item_id + " : lecture du blob Git impossible " + rel + " : " + str(exc))
                 return
             if code:
                 erreurs.append(item_id + " : provenance Git absente " + rel)
-            elif source.get("sha256") and digest.hexdigest() != source["sha256"]:
+            elif source.get("sha256") and digest != source["sha256"]:
                 erreurs.append(item_id + " : blob Git modifié " + rel)
             elif not source.get("sha256"):
                 non_verifies.append(item_id + " : blob Git existant sans SHA de contenu " + rel)

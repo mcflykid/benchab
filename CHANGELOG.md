@@ -10,3 +10,4 @@ Versions enregistrées : aucune version livrée.
 - `envoi-indexerror` — Lecture typée des cases de température et de débit et verdict NON VÉRIFIÉ si la case de l’extrudeur manque.
 - `seance-verrou` — Jeton de fermeture, expiration, reprise et trace des fermetures forcées.
 - `publication-commit` — Commit et export avant publication des fiches, reprise sans doublon et mesures réexportées.
+- `delais-processus` — Délai borné pour les anciennes étapes, les lectures Git et le nettoyage du pilote Safari.

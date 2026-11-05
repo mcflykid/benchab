@@ -78,3 +78,8 @@ du contrôle complet et de la chaîne portent le code que retourne leur commande
 
 Lire le statut du rapport pour distinguer les situations qui partagent le code
 2. Les codes natifs des processus enfants restent disponibles dans leurs traces.
+
+Les étapes de `qualite tout` sans délai configuré disposent de 1 800 s.
+Les lectures de l’index et des blobs Git disposent de 10 s. Un dépassement
+échoue avec un motif et arrête le groupe créé pour la commande. Le pilote
+Safari de recette est lui aussi arrêté dans son propre groupe.

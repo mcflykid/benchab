@@ -24,6 +24,7 @@ from benchab.machine.configuration import charger as configuration_machine
 from benchab.processus import executer
 from benchab.qualite.validation import agregation_statut, protege, sha, verifier
 
+DELAI_ETAPE_SECONDES = 1800
 
 def executer_commande(cmd, base, log, stage):
     """Exécute argv dans un groupe borné ; renvoie le code de contrôle et journalise toute la sortie.
@@ -33,7 +34,11 @@ def executer_commande(cmd, base, log, stage):
     au délai déclaré. Voir docs/reference/controles.md.
     """
     delai = stage.get("delai_secondes")
-    if delai is not None and (
+    if delai is None:
+        # Un pipeline ancien sans délai reste exécutable mais borné
+        # (docs/reference/controles.md).
+        delai = DELAI_ETAPE_SECONDES
+    if (
         isinstance(delai, bool) or not isinstance(delai, (int, float)) or not math.isfinite(delai) or delai <= 0
     ):
         raise ValueError("delai_secondes doit être un nombre positif et fini : " + stage["id"])
