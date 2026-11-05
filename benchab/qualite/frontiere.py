@@ -5,7 +5,7 @@ import codecs
 import os
 import re
 import sqlite3
-import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -167,6 +167,22 @@ def appels_interdits(texte, python):
     return erreurs
 
 
+def _fichiers_suivis(racine):
+    from benchab.processus import executer
+
+    # La capture complète empêche de perdre une entrée privée en fin d’index
+    # (docs/decisions/2026-11-04-frontiere-public-prive.md).
+    with tempfile.TemporaryDirectory(prefix="benchab-frontiere-") as travail:
+        suivi = executer(
+            ["git", "-C", str(racine), "ls-files", "-z"],
+            cwd=racine, diagnostics=travail, delai=10, conserver_capture=True,
+        )
+        if not suivi.ok:
+            return [], suivi.code_controle
+        flux = Path(suivi.diagnostic).parent / "stdout.log"
+        return [os.fsdecode(nom) for nom in flux.read_bytes().split(b"\0") if nom], 0
+
+
 def verifier(racine, *, prive=None):
     """Contrôle chemins/fichiers publics ; erreurs = FAIL, liste vide = PASS, sans unité ni nom privé révélé."""
     racine = Path(racine).resolve()
@@ -230,12 +246,12 @@ def verifier(racine, *, prive=None):
             if script:
                 erreurs.extend(f"{relatif} : {erreur}" for erreur in appels_interdits(texte, chemin.suffix == ".py"))
     if (racine / ".git").exists():
-        suivi = subprocess.run(
-            ["git", "-C", str(racine), "ls-files", "-z"], capture_output=True, text=True, check=False
-        )
-        if suivi.returncode:
+        suivi, code = _fichiers_suivis(racine)
+        if code == 124:
+            erreurs.append("Délai de lecture de l’index Git dépassé : frontière non vérifiée")
+        elif code:
             erreurs.append("Index Git illisible : frontière des fichiers suivis non vérifiée")
-        elif any(nom.startswith("prive/") for nom in suivi.stdout.split("\0")):
+        elif any(nom.startswith("prive/") for nom in suivi):
             erreurs.append("Un fichier privé est suivi par Git")
     from benchab.qualite.publication import controler_modeles
 

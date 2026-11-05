@@ -14,6 +14,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from benchab.processus import _terminer
 from benchab.qualite.reception import dossier as dossier_reception
 from benchab.qualite.reception import url_locale
 
@@ -28,7 +29,7 @@ def parcours(page, sortie, port, v1=False, v2=False, inspection=False, atelier=F
     sid = None
     with (sortie / "driver.log").open("w") as log:
         proc = subprocess.Popen(
-            ["/usr/bin/safaridriver", "--port", str(port)], stdout=log, stderr=subprocess.STDOUT
+            ["/usr/bin/safaridriver", "--port", str(port)], stdout=log, stderr=subprocess.STDOUT, start_new_session=True
         )
 
         def req(method, path, data=None):
@@ -392,7 +393,8 @@ def parcours(page, sortie, port, v1=False, v2=False, inspection=False, atelier=F
                     ],
                 )
         except Exception as exc:
-            record.update(statut="NON_VERIFIE" if sid is None else "FAIL", erreur=type(exc).__name__ + ": " + str(exc))
+            statut = "FAIL" if sid or isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)) else "NON_VERIFIE"
+            record.update(statut=statut, erreur=type(exc).__name__ + ": " + str(exc))
         finally:
             if sid:
                 try:
@@ -400,8 +402,13 @@ def parcours(page, sortie, port, v1=False, v2=False, inspection=False, atelier=F
                 except (OSError, ValueError, RuntimeError) as exc:
                     record["nettoyage_erreur"] = str(exc)
                     record["statut"] = "FAIL"
-            proc.terminate()
-            proc.wait(timeout=5)
+            # Le pilote et les enfants qu’il a lancés appartiennent à ce
+            # groupe, distinct du Safari déjà ouvert (contrôles.md).
+            _terminer(proc, 0.5)
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                record.update(statut="FAIL", nettoyage_erreur="Délai d’arrêt du groupe Safari dépassé")
     (sortie / "resultat.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(record, ensure_ascii=False, indent=2))
     return int(record["statut"] != "PASS")
