@@ -59,6 +59,9 @@ select = ["E", "F", "I"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.uv]
+default-groups = ["dev", "reception"]
+
 [tool.uv.sources]
 cadgen = { git = "https://github.com/earthtojake/text-to-cad.git", subdirectory = "packages/cadgen", rev = "5a5dab9503d140b8cf62a28d21ba2573a722d2d6" }
 
