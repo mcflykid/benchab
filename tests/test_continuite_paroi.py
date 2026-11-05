@@ -18,7 +18,7 @@ def test_positions_extrusion_absolue_conservees_par_outil(tmp_path):
     contenu = (
         "G90\nM82\n;Z:20\n;TYPE:Outer wall\nM204 S2000\n"
         "T0\nG92 E100\nG0 X0 Y0 Z20\nG1 X10 E101 F600\n"
-        "T1\nG92 E200\nG1 X20 E201\nT0\nG1 X30 E102\n"
+        "T1\nG92 E200\nG1 X20 E201\nT0\nG92 E101\nG1 X30 E102\n"
     )
     resultat = controler(ecrire_gcode(tmp_path / "outils.gcode", contenu))
     assert resultat["statut"] == "PASS"

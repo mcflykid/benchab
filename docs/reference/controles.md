@@ -83,3 +83,9 @@ Les étapes de `qualite tout` sans délai configuré disposent de 1 800 s.
 Les lectures de l’index et des blobs Git disposent de 10 s. Un dépassement
 échoue avec un motif et arrête le groupe créé pour la commande. Le pilote
 Safari de recette est lui aussi arrêté dans son propre groupe.
+
+Les lectures de débit et de continuité suivent une position E et une dette
+de rétraction communes à l’axe E. La sélection Tn identifie le filament.
+`G92 E` change le repère sans acquitter la rétraction. Un référencement
+`G28` remet les axes demandés à l’origine nominale. Un segment de dépôt
+immédiat après référencement en cours de trajectoire est exclu et signalé.

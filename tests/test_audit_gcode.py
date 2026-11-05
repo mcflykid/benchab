@@ -193,8 +193,11 @@ class Modal(unittest.TestCase):
         it, m = self.parse("M83\nG1 E-2\nG92 E0\nG1 X10 E2 F600")
         self.assertEqual(m[-1]["deposited"], 0)
 
-    def test_positions_et_dettes_par_outil(self):
-        it, m = self.parse("M82\nT0\nG92 E100\nG1 E99\nT1\nG92 E200\nG1 X10 E201 F600\nT0\nG1 X20 E100\nG1 X30 E101")
+    def test_positions_et_dette_sur_axe_partage(self):
+        """La dette en mm survit aux changements d’outil et de repère ; l’étiquette d’outil reste correcte."""
+        it, m = self.parse(
+            "M82\nT0\nG92 E100\nG1 E99\nT1\nG92 E200\nG1 X10 E202 F600\nT0\nG92 E100\nG1 X20 E100\nG1 X30 E101"
+        )
         self.assertEqual([v["deposited"] for v in m], [0, 1, 0, 1])
         self.assertEqual(m[-1]["tool"], 0)
 

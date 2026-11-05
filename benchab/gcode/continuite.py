@@ -17,6 +17,7 @@ from collections import Counter
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
+from benchab.controles.gcode_interpreter import axes_homing
 from benchab.gcode.lecture import analyser_membre_gcode_3mf
 
 SEUILS_DEFAUT = {
@@ -44,7 +45,8 @@ class _Etat:
         self.e = 0.0
         self.retraction = 0.0
         self.outil = 0
-        self.extrudeurs = {}
+        self.apres_homing = False
+        self.homing_non_verifie = False
         self.role = ""
         self.z_meta = None
         self.acceleration = None
@@ -92,8 +94,6 @@ class _Etat:
                 return
             outil = int(selection.group(1))
             if outil != self.outil:
-                self.extrudeurs[self.outil] = (self.e, self.retraction)
-                self.e, self.retraction = self.extrudeurs.get(outil, (0.0, 0.0))
                 self.outil = outil
                 self.derniere_fin = None
             return
@@ -108,6 +108,19 @@ class _Etat:
             return
         if op == "G91":
             self.xyz_relatif = True
+            return
+        if op == "G28":
+            try:
+                axes = axes_homing(commande[len(op):])
+            except ValueError:
+                self.incomplet = True
+                self.derniere_fin = None
+                return
+            self.apres_homing = any(self.xyz)
+            self.xyz = [0.0 if a in axes else p for a, p in zip("XYZ", self.xyz)]
+            if "Z" in axes:
+                self.z_meta = None
+            self.derniere_fin = None
             return
         if op == "G92":
             mots = {k.upper(): float(v) for k, v in _MOTS.findall(commande[len(op) :])}
@@ -171,6 +184,13 @@ class _Etat:
         depose = max(0.0, de - self.retraction)
         self.retraction = max(0.0, self.retraction - de)
         longueur = math.dist(depart, fin)
+        if longueur > 0 and self.apres_homing:
+            self.apres_homing = False
+            if depose > 0:
+                self.incomplet = True
+                self.homing_non_verifie = True
+                self.derniere_fin = None
+                return
         if depose <= 0 or longueur <= 0:
             self.derniere_fin = None
             return
@@ -300,7 +320,10 @@ def _analyser_lignes(lignes, intervalle_z_mm=None, seuils_absolus=None, longueur
     avertissements = []
     if etat.incomplet:
         statut = "NON VÉRIFIÉ"
-        avertissements.append("Commande d'extrusion ou mouvement non pris en charge ; couverture incomplète.")
+        if etat.homing_non_verifie:
+            avertissements.append("Segment d’extrusion immédiatement après G28 exclu.")
+        else:
+            avertissements.append("Commande d'extrusion ou mouvement non pris en charge ; couverture incomplète.")
     elif not couches:
         statut = "NON VÉRIFIÉ"
         avertissements.append("Aucune extrusion de paroi extérieure exploitable dans l'intervalle sélectionné.")
