@@ -283,7 +283,7 @@ def main(argv=None):
         cube, {"motif": "moletage", "periode": 3.0, "amplitude": 0.6, "angle_haut": 30, "arete_max": 0.5}
     )
     var.export(out / "cube-molete.stl")
-    (out / "cube-molete.json").write_text(json.dumps(r, indent=1, ensure_ascii=False))
+    (out / "cube-molete.json").write_text(json.dumps(r, indent=1, ensure_ascii=False), encoding="utf-8")
     print(json.dumps({k: v for k, v in r.items() if k != "texture"}, indent=1, ensure_ascii=False))
     return 0
 

@@ -112,7 +112,7 @@ def main(argv=None):
     # Une conversion interrompue ne doit livrer ni page partielle ni changement
     # de l'original (docs/reference/controles.md, reconstruction).
     with PublicationNeuve([source], [sortie]) as publication:
-        publication.temporaire(sortie).write_text(autonome(source.read_text()))
+        publication.temporaire(sortie).write_text(autonome(source.read_text()), encoding="utf-8")
         publication.publier()
     print(f"{sortie.name} : page autonome ({sortie.stat().st_size} octets)")
     return 0

@@ -335,6 +335,7 @@ def decouper(piece, plan, goupilles=None, contraintes=None):
 
 
 def ecrire(parties, pions, rapport, sortie, *, prive=None):
+    """Écrit la preuve de découpe locale, sans modifier les réglages d’impression."""
     from .atelier import _destination
 
     sortie = _destination(sortie, prive)
@@ -343,7 +344,7 @@ def ecrire(parties, pions, rapport, sortie, *, prive=None):
         m.export(sortie / f"partie-{nom}.stl")
     for i, p in enumerate(pions):
         p.export(sortie / f"goupille-{i + 1}.stl")
-    (sortie / "decoupe.json").write_text(json.dumps(rapport, indent=1, ensure_ascii=False))
+    (sortie / "decoupe.json").write_text(json.dumps(rapport, indent=1, ensure_ascii=False), encoding="utf-8")
     return sortie
 
 

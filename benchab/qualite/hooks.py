@@ -70,6 +70,7 @@ def pre(data):
 
 
 def post(data):
+    """Enregistre le contrôle après étape, sans modifier les fichiers surveillés."""
     ti = data.get("tool_input", {})
     p = ti.get("file_path", ti.get("path"))
     if not p or "src" not in Path(p).parts:
@@ -102,7 +103,7 @@ def post(data):
         "Voir preuves/qualite/niveau1.md.\n"
     )
     if not protege(d / "ETAT.md"):
-        (d / "ETAT.md").write_text(note)
+        (d / "ETAT.md").write_text(note, encoding="utf-8")
     return {"controle": "niveau1 apres src", "code": r.returncode, "sortie": r.stdout[-1800:]}
 
 

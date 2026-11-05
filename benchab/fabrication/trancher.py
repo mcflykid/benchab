@@ -48,8 +48,9 @@ def sha256(chemin):
 
 
 def ecrire_json(chemin, donnees):
+    """Remplace le rapport JSON UTF-8 ; aucun réglage d’impression n’est modifié."""
     temporaire = chemin.with_suffix(".tmp")
-    temporaire.write_text(json.dumps(donnees, ensure_ascii=False, indent=2) + "\n")
+    temporaire.write_text(json.dumps(donnees, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporaire.replace(chemin)
 
 
@@ -709,7 +710,7 @@ def archiver_echec(resultat, demande, prive):
             erreurs.append(f"Copie impossible : {nom}")
     diagnostic_incident = resultat.get("diagnostic", {})
     pile = diagnostic_incident.get("pile_complete", diagnostic_incident.get("fonctions", []))
-    (dossier / "pile.txt").write_text("\n".join(pile) + "\n")
+    (dossier / "pile.txt").write_text("\n".join(pile) + "\n", encoding="utf-8")
     resultat["incident"] = {
         "dossier": str(dossier),
         "relance_automatique": False,
@@ -839,11 +840,12 @@ def trancher_fichier(
 
 
 def servir():
+    """Surveille les demandes privées et consigne leurs résultats, sans commande imprimante."""
     ECHANGE.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (ECHANGE / "unique.lock").open("a") as verrou:
         fcntl.flock(verrou, fcntl.LOCK_EX | fcntl.LOCK_NB)
         (ECHANGE / "arreter").unlink(missing_ok=True)
-        (ECHANGE / "pret").write_text(str(os.getpid()))
+        (ECHANGE / "pret").write_text(str(os.getpid()), encoding="utf-8")
         print("Slicer unique prêt ; calcul natif avec configuration temporaire et verrou commun.", flush=True)
         try:
             while not (ECHANGE / "arreter").exists():

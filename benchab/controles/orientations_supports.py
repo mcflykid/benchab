@@ -268,6 +268,7 @@ def trancher(cands, profil, reglages_support):
 
 
 def main(argv=None):
+    """Rapporte les orientations candidates et besoins en supports, sans imprimer."""
     a = list(sys.argv[1:] if argv is None else argv)
     if "--profil" not in a or "--sortie" not in a:
         print(__doc__)
@@ -322,7 +323,10 @@ def main(argv=None):
         nom, rang = lib.rsplit(" #", 1)
         rapport["pieces"][nom]["meilleures"][int(rang) - 1]["tranchage"] = t
         print(lib, t)
-    (sortie / "orientations.json").write_text(json.dumps(rapport, indent=1, ensure_ascii=False, default=float))
+    (sortie / "orientations.json").write_text(
+        json.dumps(rapport, indent=1, ensure_ascii=False, default=float),
+        encoding="utf-8",
+    )
 
     return 0
 

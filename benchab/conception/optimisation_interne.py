@@ -489,7 +489,7 @@ def eprouvette(sortie, tranches, base_3mf, densites=(15, 20, 25, 30, 35, 40)):
         "tranche": Path(t3).name,
         "source_3mf": "eprouvette-plaques.3mf",
     }
-    (out / "eprouvette.json").write_text(json.dumps(rapport, indent=1, ensure_ascii=False))
+    (out / "eprouvette.json").write_text(json.dumps(rapport, indent=1, ensure_ascii=False), encoding="utf-8")
     return rapport
 
 

@@ -58,16 +58,29 @@ class Base:
                           sqlite3.connect(chemin.as_uri() + "?mode=rw", uri=True, timeout=10))
         self.connexion.row_factory = sqlite3.Row
         self.connexion.execute("PRAGMA foreign_keys = ON")
+        try:
+            if creer:
+                from benchab.qualite.ecritures import verrou_publication
+
+                # Deux initialisations ne peuvent plus décider ensemble que
+                # le schéma est absent (docs/reference/donnees.md).
+                with verrou_publication(self.prive / "cache", "initialisation.lock"):
+                    self._initialiser(creer)
+            else:
+                self._initialiser(creer)
+        except BaseException:
+            self.connexion.close()
+            raise
+
+    def _initialiser(self, creer):
         identifiant = self.connexion.execute("PRAGMA application_id").fetchone()[0]
         tables = self.connexion.execute("SELECT name FROM sqlite_schema WHERE type = 'table'").fetchall()
         if tables and identifiant != APPLICATION_ID:
-            self.connexion.close()
             raise ValueError("Base existante étrangère à BENCHAB : aucune migration implicite.")
         if not tables:
             if not creer:
-                self.connexion.close()
-                raise ValueError("Atelier sans schéma : initialisation explicite requise.")
-            schema = files("benchab").joinpath("donnees/schema.sql").read_text()
+                    raise ValueError("Atelier sans schéma : initialisation explicite requise.")
+            schema = files("benchab").joinpath("donnees/schema.sql").read_text(encoding="utf-8")
             self.connexion.executescript(schema)
             self.connexion.execute(f"PRAGMA application_id = {APPLICATION_ID}")
             self.connexion.commit()
@@ -122,7 +135,7 @@ class Base:
                 raise ValueError("Export lié refusé")
             fd, nom = tempfile.mkstemp(prefix=f".{table}-", dir=dossier)
             try:
-                with os.fdopen(fd, "w") as flux:
+                with os.fdopen(fd, "w", encoding="utf-8") as flux:
                     lignes = self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id')
                     empreinte = hashlib.sha256()
                     for ligne in lignes:
@@ -139,7 +152,10 @@ class Base:
             "sha256": empreintes,
         }
         fd, nom = tempfile.mkstemp(prefix=".manifest-", dir=dossier)
-        with os.fdopen(fd, "w") as flux:
-            json.dump(manifeste, flux, ensure_ascii=False, sort_keys=True)
-            flux.write("\n")
-        Path(nom).replace(dossier / "manifest.json")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as flux:
+                json.dump(manifeste, flux, ensure_ascii=False, sort_keys=True)
+                flux.write("\n")
+            Path(nom).replace(dossier / "manifest.json")
+        finally:
+            Path(nom).unlink(missing_ok=True)

@@ -409,7 +409,7 @@ def parcours(page, sortie, port, v1=False, v2=False, inspection=False, atelier=F
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 record.update(statut="FAIL", nettoyage_erreur="Délai d’arrêt du groupe Safari dépassé")
-    (sortie / "resultat.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
+    (sortie / "resultat.json").write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(record, ensure_ascii=False, indent=2))
     return int(record["statut"] != "PASS")
 

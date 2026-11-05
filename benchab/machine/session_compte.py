@@ -129,7 +129,7 @@ def _write(path, value, replace=True):
         temp = "." + name + "." + secrets.token_hex(12)
         fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 384, dir_fd=parent)
         try:
-            with os.fdopen(fd, "w") as stream:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 json.dump(value, stream, allow_nan=False)
                 stream.flush()
                 os.fsync(stream.fileno())

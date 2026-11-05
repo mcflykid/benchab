@@ -222,6 +222,7 @@ def revoir(tranche, envoi, revue_p, faits_p):
 
 
 def ecrire(res, revue_p, faits_p):
+    """Publie les preuves de revue liées aux zones, sans valider physiquement la pièce."""
     fp = Path(faits_p)
     fp.parent.mkdir(parents=True, exist_ok=True)
     fp.write_text(
@@ -238,7 +239,8 @@ def ecrire(res, revue_p, faits_p):
             },
             ensure_ascii=False,
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     preuve = [
         {"fichier": Path(os.path.relpath(fp.resolve(), Path(revue_p).resolve().parent)).as_posix(), "sha256": sha(fp)}
@@ -258,7 +260,7 @@ def ecrire(res, revue_p, faits_p):
         "auteur": "revue_locale.py (critères déclarés) ; décisions humaines conservées",
         "zones": dict(sorted(zones.items())),
     }
-    Path(revue_p).write_text(json.dumps(doc, ensure_ascii=False, indent=0) + "\n")
+    Path(revue_p).write_text(json.dumps(doc, ensure_ascii=False, indent=0) + "\n", encoding="utf-8")
 
 
 def main(argv):

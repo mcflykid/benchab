@@ -15,6 +15,7 @@ from benchab.visualisation.visionneuse import Visionneuse
 
 
 def page(plan, sortie, *, prive=None):
+    """Prépare la page locale de découpe ; aucun envoi à une imprimante."""
     plan = copy.deepcopy(plan)
     sortie = A._destination(sortie, prive)
     source = plan["source"]
@@ -64,7 +65,8 @@ def page(plan, sortie, *, prive=None):
     with PublicationNeuve([source["fichier"]], [sortie, meta]) as publication:
         vue.ecrire(publication.temporaire(sortie), prive=prive)
         publication.temporaire(meta).write_text(
-            json.dumps({"schema": 1, "source": source, "plan": plan}, ensure_ascii=False, allow_nan=False) + "\n"
+            json.dumps({"schema": 1, "source": source, "plan": plan}, ensure_ascii=False, allow_nan=False) + "\n",
+            encoding="utf-8",
         )
         if sha256_fichier(source["fichier"]) != source["sha256"]:
             raise ValueError("Source modifiée pendant la génération de la page")

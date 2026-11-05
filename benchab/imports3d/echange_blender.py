@@ -97,6 +97,7 @@ def _instances(source, unites, transformations):
 
 
 def preparer_echange(source, destination, unites, transformations=None):
+    """Prépare la copie d’échange et son manifeste, en mm, sans ouvrir Blender."""
     source, destination = _chemin(source), _chemin(destination)
     if unites not in UNITES:
         raise ValueError("Unités explicites mm/cm/m requises.")
@@ -141,7 +142,10 @@ def preparer_echange(source, destination, unites, transformations=None):
             raise ValueError("Source modifiée pendant la préparation.")
         data["travail_sha256"] = empreinte(temp)
         data["sceau_sha256"] = _sceller(data)
-        pub.temporaire(manifeste).write_text(json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False))
+        pub.temporaire(manifeste).write_text(
+            json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
         if _json(pub.temporaire(manifeste)) != data:
             raise ValueError("Manifeste non relu.")
         pub.publier()
@@ -217,6 +221,7 @@ def controler_retour(manifeste, candidat, unites_candidat):
 
 
 def importer_retour(manifeste, candidat, unites_candidat, destination_neuve, acceptation_explicite=False):
+    """Importe le retour Blender et son rapport, sans modifier l’original."""
     if acceptation_explicite is not True:
         raise ValueError("Acceptation explicite du retour requise.")
     rapport = controler_retour(manifeste, candidat, unites_candidat)
@@ -240,13 +245,17 @@ def importer_retour(manifeste, candidat, unites_candidat, destination_neuve, acc
             acceptation_explicite=True,
             statut="VERSION_NEUVE_CONTROLEE",
         )
-        pub.temporaire(rp).write_text(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+        pub.temporaire(rp).write_text(
+            json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
         _json(pub.temporaire(rp))
         pub.publier()
     return rapport
 
 
 def main(argv=None):
+    """Distribue les échanges Blender locaux ; retourne le code de contrôle."""
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="action", required=True)
     a = sub.add_parser("preparer")
@@ -277,7 +286,10 @@ def main(argv=None):
             if a.json:
                 out = _chemin(a.json)
                 with PublicationNeuve([a.manifeste, a.candidat], [out]) as pub:
-                    pub.temporaire(out).write_text(json.dumps(r, ensure_ascii=False, indent=2, allow_nan=False))
+                    pub.temporaire(out).write_text(
+                        json.dumps(r, ensure_ascii=False, indent=2, allow_nan=False),
+                        encoding="utf-8",
+                    )
                     _json(pub.temporaire(out))
                     pub.publier()
         print(json.dumps(r, ensure_ascii=False, allow_nan=False))

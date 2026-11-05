@@ -47,7 +47,10 @@ def creer(sortie):
         matrix = np.eye(4)
         matrix[0, 3] = i * 20
         parts.append({"name": nom, "model": nom, "matrix": matrix.tolist()})
-    (p / "candidats/assemblage.json").write_text(json.dumps({"models": {n: {} for n in meshes}, "parts": parts}))
+    (p / "candidats/assemblage.json").write_text(
+        json.dumps({"models": {n: {} for n in meshes}, "parts": parts}),
+        encoding="utf-8",
+    )
     q = {
         "suivi": {
             "titre": "Inspection été — sources synthétiques",
@@ -55,10 +58,11 @@ def creer(sortie):
             "references_imprimees": [{"fichiers": [{"chemin": "reference/envoi.gcode"}]}],
         }
     }
-    (p / "qualite.json").write_text(json.dumps(q, ensure_ascii=False))
+    (p / "qualite.json").write_text(json.dumps(q, ensure_ascii=False), encoding="utf-8")
     (p / "reference").mkdir()
     (p / "reference/envoi.gcode").write_text(
-        "G90\nM83\n;Z:0.2\nG1 Z0.2\n;TYPE:Outer wall\nG1 X0 Y0 F1200\nG1 X10 Y0 E1\n;Z:0.4\nG1 Z0.4\nG1 X10 Y10 E1\n"
+        "G90\nM83\n;Z:0.2\nG1 Z0.2\n;TYPE:Outer wall\nG1 X0 Y0 F1200\nG1 X10 Y0 E1\n;Z:0.4\nG1 Z0.4\nG1 X10 Y10 E1\n",
+        encoding="utf-8",
     )
     shutil.copytree(VENDOR, sortie / "benchab/visualisation/vendor/three-0.160.0")
     (sortie / "inspection.html").write_bytes(scene(sortie, "inspection-ete"))

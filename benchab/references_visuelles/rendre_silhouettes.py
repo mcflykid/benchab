@@ -73,6 +73,7 @@ def validate_spec(spec, base, check_output=True):
 
 
 def render(spec_path):
+    """Rend les silhouettes locales et leur description ; aucune action machine."""
     spec_path = Path(spec_path).resolve()
     spec_hash = sha256(spec_path)
     spec = json.loads(spec_path.read_text())
@@ -174,7 +175,7 @@ def render(spec_path):
     for source in sources:
         if sha256(source["path"]) != source["sha256"]:
             raise RuntimeError("source modifiée pendant le rendu")
-    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("RENDU SILHOUETTES :", out)
     return manifest
 

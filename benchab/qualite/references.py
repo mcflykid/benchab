@@ -264,7 +264,7 @@ def _ecrire_cache_references(path, version, memo):
         path.parent.mkdir(exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=".references-", dir=path.parent)
         try:
-            with os.fdopen(fd, "w") as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(payload)
                 f.flush()
                 os.fsync(f.fileno())

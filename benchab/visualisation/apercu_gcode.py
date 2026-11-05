@@ -225,7 +225,7 @@ def page(f, sortie, defauts=None, titre=None, zones=None, colonnes=None):
         from benchab.visualisation.hors_ligne import autonome
 
         html = autonome(html)
-        pub.temporaire(sortie).write_text(html)
+        pub.temporaire(sortie).write_text(html, encoding="utf-8")
         pub.publier()
         return {"fichier": str(sortie), "octets": len(html), "plaques": [(p["n"], len(p["couches"])) for p in plaques]}
 

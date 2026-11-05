@@ -56,6 +56,7 @@ class Rapport:
         return statut
 
     def ecrire(self):
+        """Rend les contrôles et leurs statuts dans les rapports de projet."""
         out = self.base / "preuves/qualite"
         out.mkdir(parents=True, exist_ok=True)
         cpt = {s: sum(1 for i in self.items if i["statut"] == s) for s in (OK, KO, AV, NV)}
@@ -65,7 +66,8 @@ class Rapport:
                 {"niveau": self.nom, "statut_global": global_, "compte": cpt, "controles": self.items},
                 indent=1,
                 ensure_ascii=False,
-            )
+            ),
+            encoding="utf-8",
         )
         lignes = [
             f"# {self.nom} : {global_}  ({cpt[OK]} PASS, {cpt[KO]} FAIL, {cpt[AV]} WARNING, {cpt[NV]} NON VÉRIFIÉ)",
@@ -76,7 +78,7 @@ class Rapport:
             for i in self.items
             if i["statut"] != OK
         ]
-        (out / f"{self.nom}.md").write_text("\n".join(lignes) + "\n")
+        (out / f"{self.nom}.md").write_text("\n".join(lignes) + "\n", encoding="utf-8")
         print("\n".join(lignes[:1] + lignes[2:40]))
         return global_
 
@@ -379,7 +381,10 @@ def niveau3(cfg_path):
     else:
         R.add("routine controler-3mf.sh", NV, "fichiers manquants")
     (base / "preuves/qualite").mkdir(parents=True, exist_ok=True)
-    (base / "preuves/qualite/plaques.json").write_text(json.dumps(tableau, indent=1, ensure_ascii=False))
+    (base / "preuves/qualite/plaques.json").write_text(
+        json.dumps(tableau, indent=1, ensure_ascii=False),
+        encoding="utf-8",
+    )
     return R.ecrire()
 
 

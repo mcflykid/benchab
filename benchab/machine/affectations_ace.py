@@ -312,6 +312,7 @@ def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
 
 
 def main(argv=None):
+    """Rapporte les affectations déclarées, sans modifier les positions ACE."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source")
     p.add_argument("--declarations", required=True)
@@ -323,7 +324,10 @@ def main(argv=None):
         out = _path(a.json)
         with PublicationNeuve([a.source, a.declarations, a.maitre, a.registre], [out]) as pub:
             r = auditer_affectations(a.source, a.declarations, maitre=a.maitre, registre=a.registre)
-            pub.temporaire(out).write_text(json.dumps(r, ensure_ascii=False, indent=2, allow_nan=False))
+            pub.temporaire(out).write_text(
+                json.dumps(r, ensure_ascii=False, indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
             _json(pub.temporaire(out))
             pub.publier()
         print(json.dumps(r, ensure_ascii=False, allow_nan=False))
