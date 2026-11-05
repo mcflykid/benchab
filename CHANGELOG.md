@@ -15,3 +15,4 @@ Versions enregistrées : aucune version livrée.
 - `u20-regex` — Lecture XML des objets et placements, transform facultatif et XML invalide signalé.
 - `u36-sha` — Protection des copies renommées par les empreintes déclarées dans qualite.json.
 - `frontiere-prive` — Contrôle Git de l’atelier privé réellement sélectionné.
+- `trancher-temporaires` — ZIP relu avant remplacement atomique et nettoyage des échecs de restauration.
