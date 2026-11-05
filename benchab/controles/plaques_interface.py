@@ -2,15 +2,16 @@
 
 import argparse
 import math
-import re
 import sys
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import numpy as np
 
 from benchab.controles.rapports import RapportCourant
 from benchab.machine.configuration import charger as charger_configuration
+from benchab.qualite.statuts import code_statut
 
 
 def chemin(value):
@@ -21,6 +22,9 @@ def chemin(value):
 
 
 def mat(texte):
+    """Lit une transformation 3MF, translations en mm ; un attribut absent signifie identité."""
+    if texte is None:
+        return np.eye(4)
     valeurs = [float(valeur) for valeur in texte.split()]
     if len(valeurs) != 12 or not np.isfinite(valeurs).all():
         raise ValueError("Transformation 3MF : douze valeurs finies requises")
@@ -61,51 +65,66 @@ def analyser(fichier, *, pas=None, plateau=None, marge=None):
     if not isinstance(marge, (int, float)) or not math.isfinite(marge) or marge < 0:
         raise ValueError("Marge d'objet finie et positive ou nulle requise")
     fichier = chemin(fichier)
-    with zipfile.ZipFile(fichier) as archive:
-        modele = archive.read("3D/3dmodel.model").decode()
-        config = archive.read("Metadata/model_settings.config").decode()
-    noms = dict(re.findall(r'<object id="(\d+)">\s*<metadata key="name" value="([^"]+)"', config))
+    try:
+        with zipfile.ZipFile(fichier) as archive:
+            config = ET.fromstring(archive.read("Metadata/model_settings.config"))
+            modeles = {"/" + nom: ET.fromstring(archive.read(nom))
+                       for nom in archive.namelist() if nom.endswith(".model")}
+    except ET.ParseError as erreur:
+        statut = "NON VÉRIFIÉ"
+        return {
+            "fichier": fichier.name, "plaques": [], "conforme": False,
+            "statut": statut, "code": code_statut(statut), "motif": f"XML 3MF invalide : {erreur}",
+        }
+    noms = {
+        objet.attrib["id"]: meta.get("value")
+        for objet in config.findall("{*}object")
+        for meta in objet.findall("{*}metadata[@key='name']")
+    }
     meshes = {}
     composants = {}
-    # Le parcours reste borné aux membres .model de l'archive demandée.
-    with zipfile.ZipFile(fichier) as archive:
-        membres = [name for name in archive.namelist() if name.endswith(".model")]
-        for name in membres:
-            texte = archive.read(name).decode()
-            key = "/" + name
-            for oid, body in re.findall(r'<object id="(\d+)"[^>]*>(.*?)</object>', texte, re.S):
-                sommets = re.findall(r'<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"', body)
-                if sommets:
-                    valeurs = np.array(sommets, float)
-                    if not np.isfinite(valeurs).all():
-                        raise ValueError("Coordonnées 3MF non finies")
-                    meshes[(key, oid)] = valeurs
-                refs = re.findall(r"<component ([^>]*)/>", body)
-                if refs:
-                    composants[(key, oid)] = [
-                        (
-                            re.search(r'p:path="([^"]+)"', ref).group(1) if "p:path" in ref else key,
-                            re.search(r'objectid="(\d+)"', ref).group(1),
-                            mat(re.search(r'transform="([^"]+)"', ref).group(1)) if "transform" in ref else np.eye(4),
-                        )
-                        for ref in refs
-                    ]
-    items = {
-        oid: mat(transform) for oid, transform in re.findall(r'<item objectid="(\d+)"[^>]*?transform="([^"]+)"', modele)
-    }
-    plaques_xml = re.findall(r"<plate>(.*?)</plate>", config, re.S)
+    for cle, racine in modeles.items():
+        for objet in racine.findall("{*}resources/{*}object"):
+            oid = objet.attrib["id"]
+            sommets = objet.findall("{*}mesh/{*}vertices/{*}vertex")
+            if sommets:
+                valeurs = np.array([[s.attrib[a] for a in ("x", "y", "z")] for s in sommets], dtype=float)
+                if not np.isfinite(valeurs).all():
+                    raise ValueError("Coordonnées 3MF non finies")
+                meshes[(cle, oid)] = valeurs
+            refs = objet.findall("{*}components/{*}component")
+            if refs:
+                composants[(cle, oid)] = [
+                    (
+                        next((v for k, v in ref.attrib.items() if k == "path" or k.endswith("}path")), cle),
+                        ref.attrib["objectid"],
+                        mat(ref.get("transform")),
+                    )
+                    for ref in refs
+                ]
+    modele = modeles["/3D/3dmodel.model"]
+    # Le Core 3MF donne l’identité aux items sans transform ; l’ordre XML
+    # des attributs n’a aucune signification (docs/reference/regles.md, U20).
+    items = {}
+    for item in modele.findall("{*}build/{*}item"):
+        items.setdefault(item.attrib["objectid"], []).append(mat(item.get("transform")))
+    plaques_xml = config.findall("{*}plate")
     colonnes = math.ceil(math.sqrt(len(plaques_xml)))
     rapports = []
     for index, plaque_xml in enumerate(plaques_xml):
-        oids = re.findall(r'key="object_id" value="(\d+)"', plaque_xml)
+        liaisons = []
+        for instance in plaque_xml.findall("{*}model_instance") or [plaque_xml]:
+            indice = instance.find("{*}metadata[@key='instance_id']")
+            rang = int(indice.attrib["value"]) if indice is not None else 0
+            liaisons.extend((m.attrib["value"], rang) for m in instance.findall("{*}metadata[@key='object_id']"))
         col, row = index % colonnes, index // colonnes
-        resultat = {"plaque": index + 1, "objets": len(oids)}
+        resultat = {"plaque": index + 1, "objets": len(liaisons)}
         for step in pas:
             hors_plateau = []
-            for oid in oids:
-                if oid not in items:
-                    raise ValueError(f"transformation absente pour objet {oid}")
-                sommets = points("/3D/3dmodel.model", oid, items[oid], meshes, composants)
+            for oid, instance in liaisons:
+                if oid not in items or not 0 <= instance < len(items[oid]):
+                    raise ValueError(f"instance {instance} absente pour objet {oid}")
+                sommets = points("/3D/3dmodel.model", oid, items[oid][instance], meshes, composants)
                 if not len(sommets) or not np.isfinite(sommets).all():
                     raise ValueError(f"coordonnées invalides pour objet {oid}")
                 bas, haut = sommets.min(0), sommets.max(0)
@@ -115,18 +134,19 @@ def analyser(fichier, *, pas=None, plateau=None, marge=None):
                     hors_plateau.append((noms.get(oid), round(x0, 1), round(y0, 1), round(x1, 1), round(y1, 1)))
             resultat[f"hors_plateau_pas_{step:g}"] = hors_plateau
         rapports.append(resultat)
+    conforme = bool(rapports) and all(
+        plaque["objets"] > 0 and all(not values for key, values in plaque.items() if key.startswith("hors"))
+        for plaque in rapports
+    )
+    statut = "PASS" if conforme else "FAIL"
     return {
-        "fichier": fichier.name,
-        "plaques": rapports,
-        "conforme": bool(rapports)
-        and all(
-            plaque["objets"] > 0 and all(not values for key, values in plaque.items() if key.startswith("hors"))
-            for plaque in rapports
-        ),
+        "fichier": fichier.name, "plaques": rapports, "conforme": conforme,
+        "statut": statut, "code": code_statut(statut),
     }
 
 
 def main(argv=None):
+    """Écrit le rapport U20 en mm et retourne son code, sans modifier le 3MF."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("rapport", type=Path)
@@ -141,8 +161,10 @@ def main(argv=None):
         return 2
     for plaque in resultat["plaques"]:
         print(plaque)
+    if resultat.get("motif"):
+        print(resultat["statut"], resultat["motif"])
     print("conforme", resultat["conforme"])
-    return 0 if resultat["conforme"] else 1
+    return resultat["code"]
 
 
 if __name__ == "__main__":
