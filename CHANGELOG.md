@@ -4,6 +4,8 @@ Versions livrées 1.0.0 et 1.0.1.
 
 ## Non publié
 
+- Audit ACE : lecture des réglages projet par le dictionnaire typé et refus des clés JSON dupliquées (#58).
+
 - Mise à jour de `cryptography` pour corriger les vulnérabilités signalées par Dependabot.
 - Délais bornés pour quatre appels et verdict NON VÉRIFIÉ si le délai est dépassé (#59).
 - Clôture du chantier de construction et suivi du développement par issues GitHub.

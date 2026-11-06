@@ -11,6 +11,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
+from benchab import reglages
 from benchab.machine import profil_maitre as PM
 from benchab.machine.configuration import charger
 from benchab.qualite.ecritures import PublicationNeuve, valider_chemins
@@ -80,6 +81,10 @@ def _attestation(att, contexte):
 
 
 def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
+    """Audite les déclarations et un 3MF local (mm, °C, mm³/s) ; rapport DECLARATIONS_ATTESTEES, FAIL ou NON VÉRIFIÉ.
+
+    Les cases ACE sont exactes ; aucune confirmation physique ni commande machine n'est produite.
+    """
     source = _path(source3mf)
     if source.suffix.lower() != ".3mf":
         raise ValueError("Projet3MF requis.")
@@ -91,14 +96,8 @@ def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
             n.startswith("/") or ".." in PurePosixPath(n).parts or "\\" in n for n in names
         ):
             raise ValueError("Archive ambiguë ou chemins non confinés.")
-        key = "Metadata/project_settings.config"
-        info = z.getinfo(key)
-        if info.file_size > 10_000_000:
-            raise ValueError("Configuration3MF trop volumineuse.")
-        raw = z.read(key)
-        settings = json.loads(raw)
-    if not isinstance(settings, dict):
-        raise ValueError("Configuration projet invalide.")
+        raw = reglages.lire_membre_projet(z)
+    settings = reglages.decoder(raw)
     declaration_path = _path(declarations) if isinstance(declarations, (str, Path)) else None
     decl_sha = _sha(declaration_path) if declaration_path else None
     dec = _json(declaration_path) if declaration_path else copy.deepcopy(declarations)
@@ -212,13 +211,17 @@ def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
             "profil_nom": profile,
             "profil_embarque_sha256": PM.empreinte_contexte(
                 {
-                    k: (v[i] if isinstance(v, list) and len(v) == n else v)
+                    k: (
+                        reglages.valeur_brute_indice(settings, k, i, lecteur="index_exact")
+                        if reglages.definition(k)["type"] == "liste_filament" and isinstance(v, list) and len(v) == n
+                        else v
+                    )
                     for k, v in settings.items()
                     if k.startswith(("filament_", "nozzle_temperature"))
                 }
             ),
-            "matiere_projet": (_liste(settings, "filament_type") or [None] * n)[i],
-            "couleur_projet": (_liste(settings, "filament_colour") or [None] * n)[i],
+            "matiere_projet": reglages.valeur_brute_indice(settings, "filament_type", i, lecteur="index_exact"),
+            "couleur_projet": reglages.valeur_brute_indice(settings, "filament_colour", i, lecteur="index_exact"),
             "declaration": copy.deepcopy(d),
             "confirmation_physique": {"statut": "NON VERIFIE"},
             "erreurs": [],
@@ -255,7 +258,7 @@ def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
                 if not arr:
                     item["non_verifie"].append(key + " absent ; aucun défaut inventé.")
                     continue
-                value = _nombre(arr[i])
+                value = _nombre(reglages.valeur_indice(settings, selected_key, i, lecteur="index_exact"))
                 item[key] = value
                 item[key + "_source"] = selected_key
                 if maxkey and depasse_constructeur(value, maxkey):
@@ -271,8 +274,10 @@ def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
                     item["non_verifie"].append("Limite configurée registre absente pour " + key)
             for key in ("textured_plate_temp", "textured_plate_temp_initial_layer"):
                 arr = _liste(settings, key)
-                if arr and depasse_constructeur(_nombre(arr[i]), "temperature_plateau_max_C"):
-                    item["erreurs"].append(key + " dépasse le constructeur.")
+                if arr:
+                    temperature = _nombre(reglages.valeur_indice(settings, key, i, lecteur="index_exact"))
+                    if depasse_constructeur(temperature, "temperature_plateau_max_C"):
+                        item["erreurs"].append(key + " dépasse le constructeur.")
             item["confirmation_physique"] = _attestation(d.get("confirmation_physique"), contexte)
         if not item["matiere_projet"]:
             item["non_verifie"].append("Matière projet absente.")
