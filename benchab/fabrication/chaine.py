@@ -68,13 +68,13 @@ def executer(projet, prive=None, *, optimiser=False, objectif=None):
             try:
                 code = fonction()
             except _DureeDepassee:
-                code = None
+                code = _DureeDepassee
             except SystemExit as erreur:
                 code = erreur.code
             except Exception:
                 traceback.print_exc()
                 code = 2
-        if code is None:
+        if code is _DureeDepassee:
             etapes.append({"etape": nom, "code": 2, "statut": "NON VÉRIFIÉ", "journal": str(journal)})
             raise _DureeDepassee(nom)
         statut = "FAIL" if code not in acceptes else "PASS" if code == 0 else "NON VÉRIFIÉ" if code == 3 else "WARN"
