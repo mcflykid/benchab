@@ -26,15 +26,34 @@ Stabilisation du contrôle et de la préparation.
 
 Évolutions de l’atelier et de ses outils de développement.
 
-- #12 — Chantier : un seul contrat de débit U25.
+### P2 — À engager
+
+**Premier lot — fiabilité G-code.** Commencer par #13 pour unifier l’interpréteur,
+puis traiter #12 pour unifier le contrôle de débit U25. Rejouer les mêmes témoins
+S/M/L aux deux étapes.
+
 - #13 — Chantier : un seul interpréteur G-code.
-- #14 — Tests manquants : collecte des mesures.
+- #12 — Chantier : un seul contrat de débit U25.
 - #17 — Chantier : module commun de chemins et d'écritures atomiques.
+- #21 — Hooks : dossier figé à l'import et filtre de commandes contournable.
+- #14 — Tests manquants : collecte des mesures.
+- #36 — Provenance et licence de chaque modèle.
+- #38 — Comparaison des réglages entre 3MF et profil système.
+- #48 — Qualifier le tranchage natif des 3MF multi-volumes.
+- #49 — Qualifier les 32 archives historiques aux réglages ambigus.
+- #51 — Consigner les validations physiques des témoins et assemblages.
+
+### P3 — Ensuite
+
 - #18 — Chantier : répartiteur CLI unique et table des statuts.
 - #19 — Chantier : coût de `Base.transaction` proportionnel à la base entière.
-- #20 — Chantier : annotations du code et règles D de Ruff.
-- #21 — Hooks : dossier figé à l'import et filtre de commandes contournable.
-- #23 — Chantier : découper les modules de plus de 900 lignes.
+- #37 — Annotations du code et contrôle Ruff D.
+- #35 — Sorties courtes et rapports complets pour les agents.
+- #39 — Savoir communautaire Kobra S1 et cohérence des réglages.
+- #40 — Sources et provenance des connaissances communautaires.
+- #41 — Avertissements de cohérence pour les réglages 3MF.
+- #42 — Traçabilité des 3MF.
+- #56 — Hygiène du dépôt et contrôle des secrets en CI.
 - #26 — Coutures visibles et règle U31.
 - #27 — Bibliothèque de filetages, inserts et écrous.
 - #28 — Retour photo assisté et observations par zone.
@@ -42,20 +61,22 @@ Stabilisation du contrôle et de la préparation.
 - #30 — Géométrie des goupilles et tenons à clip.
 - #31 — Placement des clips dans la visionneuse.
 - #32 — Conception déterministe avec fiches JSON.
+- #50 — Recetter la visionneuse dans Safari et au pavé tactile.
+- #52 — Recetter la lecture Cloud Anycubic avec un compte autorisé.
+
+#20 est fermé comme doublon de #37.
+
+### P4 — À différer
+
+- #23 — Chantier : découper les modules de plus de 900 lignes.
 - #33 — Installation optionnelle par OpenSkills.
 - #34 — Évaluation du graphe de code pour les tests d’impact.
-- #35 — Sorties courtes et rapports complets pour les agents.
-- #36 — Provenance et licence de chaque modèle.
-- #37 — Annotations du code et contrôle Ruff D.
-- #38 — Comparaison des réglages entre 3MF et profil système.
-- #39 — Savoir communautaire Kobra S1 et cohérence des réglages.
-- #40 — Sources et provenance des connaissances communautaires.
-- #41 — Avertissements de cohérence pour les réglages 3MF.
-- #42 — Traçabilité des 3MF et hygiène du dépôt.
 
 ## 1.2.0
 
 Sujets à cadrer avant réalisation.
+
+### P4 — À différer
 
 - #24 — Idées 1.2 : deuxième imprimante, rendu Metal, portabilité.
 - #43 — Conversion de projets 3MF entre slicers.
