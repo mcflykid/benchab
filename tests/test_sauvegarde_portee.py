@@ -9,11 +9,20 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
+
+import pytest
 
 from benchab.donnees import sauvegarde as S
 from benchab.donnees.base import Base
 from benchab.donnees.sauvegarde import MANIFEST_NAME, creer, restaurer
+
+
+@pytest.fixture(autouse=True)
+def espace_simule(monkeypatch):
+    """Isole chaque test de l'espace libre réel (15 Gio simulés)."""
+    monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=15 * 1024**3))
 
 
 class SauvegardeTests(unittest.TestCase):
@@ -261,9 +270,9 @@ if __name__ == "__main__":
     unittest.main()
 
 
-def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, monkeypatch):
-    """Moins de 31 Gio : FAIL avant copie, aucun fichier livré ni source modifiée."""
-    from types import SimpleNamespace
+@pytest.mark.parametrize("libre", [1024**2, S.PLANCHER_LIBRE - 1], ids=["presque-plein", "sous-plancher"])
+def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, monkeypatch, libre):
+    """Moins du plancher : FAIL avant copie, aucun fichier livré ni source modifiée."""
 
     base = Base(tmp_path / "prive")
     try:
@@ -271,8 +280,7 @@ def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, mon
         source.mkdir()
         (source / "note").write_bytes(b"abc")
         cible = base.prive / "copie.tar"
-        monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=S.SEUIL_DEPART - 1))
-        import pytest
+        monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=libre))
 
         with pytest.raises(ValueError, match="Espace insuffisant"):
             creer(base, source, cible)
@@ -283,9 +291,7 @@ def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, mon
 
 def test_baisse_espace_pendant_copie_ne_livre_pas_archive(tmp_path, monkeypatch):
     """Passage sous 10 Gio après précontrôle : FAIL, aucune archive partielle livrée, source intacte."""
-    from types import SimpleNamespace
 
-    import pytest
 
     base = Base(tmp_path / "prive")
     try:
@@ -293,7 +299,7 @@ def test_baisse_espace_pendant_copie_ne_livre_pas_archive(tmp_path, monkeypatch)
         source.mkdir()
         (source / "note").write_bytes(b"abc")
         cible = base.prive / "copie.tar"
-        valeurs = iter([S.SEUIL_DEPART + 1, S.SEUIL_DEPART + 1, S.PLANCHER_LIBRE - 1])
+        valeurs = iter([15 * 1024**3, 15 * 1024**3, S.PLANCHER_LIBRE - 1])
         monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=next(valeurs)))
         with pytest.raises(ValueError, match="Espace insuffisant"):
             creer(base, source, cible)
@@ -329,9 +335,7 @@ def test_comparaison_arbres_releve_modification_absence_et_mode(tmp_path):
 
 def test_restauration_sans_espace_ne_publie_pas_dossier(tmp_path, monkeypatch):
     """Une archive valide n'autorise pas une restauration sans espace ; FAIL, archive conservée, cible absente."""
-    from types import SimpleNamespace
 
-    import pytest
 
     base = Base(tmp_path / "prive")
     try:
@@ -342,9 +346,36 @@ def test_restauration_sans_espace_ne_publie_pas_dossier(tmp_path, monkeypatch):
         creer(base, source, archive, jetable=True)
         avant = archive.read_bytes()
         cible = base.prive / "restauree"
-        monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=S.SEUIL_DEPART - 1))
+        monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=S.PLANCHER_LIBRE - 1))
         with pytest.raises(ValueError, match="Espace insuffisant"):
             restaurer(archive, cible, base=base)
         assert not cible.exists() and archive.read_bytes() == avant
+    finally:
+        base.fermer()
+
+def test_budget_proportionnel_et_configurable(tmp_path, monkeypatch):
+    """À espace égal, le budget dépend des octets source et de la politique privée."""
+    base = Base(tmp_path / "prive")
+    try:
+        source = base.prive / "fixture"
+        source.mkdir()
+        (source / "note").write_bytes(b"abc")
+        cible = base.prive / "copie.tar"
+        config = base.prive / "sauvegarde.toml"
+        config.write_text("facteur_espace = 2\nplancher_libre_octets = 1048576\n", encoding="utf-8")
+        seuils = []
+        original = S._exiger_espace
+
+        def enregistrer(chemin, seuil):
+            seuils.append(seuil)
+            original(chemin, seuil)
+
+        monkeypatch.setattr(S, "_exiger_espace", enregistrer)
+        creer(base, source, cible)
+        assert seuils[1] == 1048576 + 2 * 3
+        (source / "note").write_bytes(b"x" * 8192)
+        seuils.clear()
+        creer(base, source, base.prive / "plus-grande.tar")
+        assert seuils[1] == 1048576 + 2 * 8192
     finally:
         base.fermer()

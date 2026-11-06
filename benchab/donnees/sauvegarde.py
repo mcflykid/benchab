@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import sqlite3
 import stat
 import tarfile
 import tempfile
+import tomllib
 import uuid
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -19,10 +21,35 @@ MAX_TOTAL = 64 * 1024**3
 MAX_MANIFEST = 32 * 1024**2
 BLOCK_SIZE = 1024**2
 MANIFEST_NAME = "BENCHAB-MANIFEST.json"
-SEUIL_DEPART = 31 * 1024**3
+FACTEUR_ESPACE = 1.25
 PLANCHER_LIBRE = 10 * 1024**3
 SQLITE_SIDECARS = {"benchab.sqlite-wal", "benchab.sqlite-shm", "benchab.sqlite-journal"}
 PRIVATE_TMP = Path("/tmp").resolve()
+
+
+def _budget_espace(base):
+    # La politique est propre à l'atelier ; voir docs/reference/donnees.md.
+    config = base.prive / "sauvegarde.toml"
+    if not os.path.lexists(config):
+        return FACTEUR_ESPACE, PLANCHER_LIBRE
+    config = _chemin_prive(base, config)
+    if not config.is_file():
+        raise ValueError("Configuration de sauvegarde non régulière.")
+    with config.open("rb") as flux:
+        donnees = tomllib.load(flux)
+    if donnees.keys() - {"facteur_espace", "plancher_libre_octets"}:
+        raise ValueError("Clé de configuration de sauvegarde inconnue.")
+    facteur = donnees.get("facteur_espace", FACTEUR_ESPACE)
+    plancher = donnees.get("plancher_libre_octets", PLANCHER_LIBRE)
+    if type(facteur) not in (int, float) or not 1 <= facteur <= 100:
+        raise ValueError("Facteur d’espace de sauvegarde attendu entre 1 et 100.")
+    if type(plancher) is not int or plancher < 0:
+        raise ValueError("Plancher de sauvegarde attendu en octets entiers positifs ou nuls.")
+    return facteur, plancher
+
+
+def _seuil(taille, facteur, plancher):
+    return math.ceil(taille * facteur) + plancher
 
 
 def _exiger_espace(chemin, seuil):
@@ -35,12 +62,12 @@ def _exiger_espace(chemin, seuil):
 class _LectureSurveillee:
     """Surveille la destination à chaque bloc TAR ; n'altère jamais la source lue."""
 
-    def __init__(self, flux, destination):
-        self.flux, self.destination = flux, destination
+    def __init__(self, flux, destination, plancher):
+        self.flux, self.destination, self.plancher = flux, destination, plancher
 
     def read(self, taille=-1):
         """Lit au plus taille octets ou lève FAIL sous le plancher ; aucune écriture source."""
-        _exiger_espace(self.destination, PLANCHER_LIBRE)
+        _exiger_espace(self.destination, self.plancher)
         return self.flux.read(taille)
 
 
@@ -154,7 +181,7 @@ def _verifier_sqlite(path: Path, *, exiger_benchab: bool) -> None:
         connexion.close()
 
 
-def _copier_flux(chemin: Path, destination: Path, signature: tuple, limite: int) -> dict:
+def _copier_flux(chemin: Path, destination: Path, signature: tuple, limite: int, plancher: int) -> dict:
     fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         with os.fdopen(fd, "rb") as source, destination.open("xb") as sortie:
@@ -172,7 +199,7 @@ def _copier_flux(chemin: Path, destination: Path, signature: tuple, limite: int)
             ):
                 raise ValueError("Source remplacée avant copie : " + str(chemin))
             digest, taille = _digest_flux(source, sortie, limit=limite,
-                                          surveiller=lambda: _exiger_espace(destination.parent, PLANCHER_LIBRE))
+                                          surveiller=lambda: _exiger_espace(destination.parent, plancher))
             fin = os.fstat(source.fileno())
     except BaseException:
         destination.unlink(missing_ok=True)
@@ -185,14 +212,14 @@ def _copier_flux(chemin: Path, destination: Path, signature: tuple, limite: int)
     return {"type": "file", "size": taille, "sha256": digest, "mode": stat.S_IMODE(fin.st_mode)}
 
 
-def _snapshot_sqlite(source: Path, destination: Path, signature: tuple) -> dict:
+def _snapshot_sqlite(source: Path, destination: Path, signature: tuple, plancher: int) -> dict:
     if _signature(source) != signature:
         raise ValueError("Base SQLite modifiée avant le snapshot.")
     source_db = sqlite3.connect(f"file:{source}?mode=ro", uri=True, timeout=10)
     cible_db = sqlite3.connect(destination, timeout=10)
     try:
         source_db.backup(cible_db, pages=256, sleep=0.01,
-                         progress=lambda *_: _exiger_espace(destination.parent, PLANCHER_LIBRE))
+                         progress=lambda *_: _exiger_espace(destination.parent, plancher))
     finally:
         cible_db.close()
         source_db.close()
@@ -212,9 +239,8 @@ def _snapshot_sqlite(source: Path, destination: Path, signature: tuple) -> dict:
     }
 
 
-def _collecter(source: Path, travail: Path, base: Base) -> tuple[list[dict], dict[str, dict]]:
+def _collecter(source: Path, travail: Path, base: Base, initial: dict, plancher: int) -> list[dict]:
     snapshot_canonique = source == base.prive.resolve()
-    initial = _inventaire(source, snapshot_canonique=snapshot_canonique)
     fichiers = []
     total = 0
     for rel, entree in sorted(initial.items()):
@@ -228,17 +254,17 @@ def _collecter(source: Path, travail: Path, base: Base) -> tuple[list[dict], dic
             continue
         cible.parent.mkdir(parents=True, exist_ok=True)
         if source == base.prive.resolve() and rel == "benchab.sqlite":
-            record = _snapshot_sqlite(source / rel, cible, entree["signature"])
+            record = _snapshot_sqlite(source / rel, cible, entree["signature"], plancher)
         else:
             if entree["signature"][2] > MAX_MEMBER:
                 raise ValueError("Fichier trop volumineux pour le budget de sauvegarde : " + rel)
-            record = _copier_flux(source / rel, cible, entree["signature"], MAX_MEMBER)
+            record = _copier_flux(source / rel, cible, entree["signature"], MAX_MEMBER, plancher)
         total += record["size"]
         if total > MAX_TOTAL:
             raise ValueError("Budget total de sauvegarde dépassé.")
         fichiers.append({"path": rel, **record})
     _verifier_inventaire(source, initial, snapshot_canonique=snapshot_canonique)
-    return fichiers, initial
+    return fichiers
 
 
 def _manifest_bytes(manifeste: dict) -> bytes:
@@ -248,7 +274,7 @@ def _manifest_bytes(manifeste: dict) -> bytes:
 def creer(base: Base, source: str | Path, destination: str | Path, *, jetable=False) -> dict:
     """Archive une source privée explicite, tailles en octets ; rapport ou FAIL, aucun profil ni source modifié.
 
-    Départ 31 Gio, plancher 10 Gio. Seul un export jetable explicite peut sortir de l'atelier.
+    Le seuil dépend de la taille inventoriée. Seul un export jetable explicite peut sortir de l'atelier.
     """
     from benchab.qualite.ecritures import sortie_durable, sortie_privee
 
@@ -266,13 +292,18 @@ def creer(base: Base, source: str | Path, destination: str | Path, *, jetable=Fa
     interne = cible.is_relative_to(source)
     if interne and (source != base.prive.resolve() or cible.parent != source):
         raise ValueError("La destination archive ne peut pas être incluse dans la source.")
-    # Le plafond protège le volume réel de copie, pas le HOME de l'appelant
-    # (docs/reference/donnees.md, sauvegarde explicite).
-    _exiger_espace(cible.parent, SEUIL_DEPART)
-    _exiger_espace(PRIVATE_TMP, SEUIL_DEPART)
+    facteur, plancher = _budget_espace(base)
+    initial = _inventaire(source, snapshot_canonique=source == base.prive.resolve())
+    taille = sum(e["signature"][2] for e in initial.values() if e["type"] != "directory")
+    # Le staging et le TAR coexistent ; compter les deux s'ils partagent un volume.
+    # Une marge par entrée couvre les en-têtes et l'arrondi du TAR (docs/reference/donnees.md).
+    taille_tar = taille + 4096 * len(initial) + MAX_MANIFEST
+    meme_volume = cible.parent.stat().st_dev == PRIVATE_TMP.stat().st_dev
+    _exiger_espace(cible.parent, _seuil(taille_tar + taille * meme_volume, facteur, plancher))
+    _exiger_espace(PRIVATE_TMP, _seuil(taille, facteur, plancher))
     with tempfile.TemporaryDirectory(prefix="benchab-backup-", dir=PRIVATE_TMP) as tmp:
         travail = Path(tmp)
-        fichiers, initial = _collecter(source, travail, base)
+        fichiers = _collecter(source, travail, base, initial, plancher)
         manifeste = {
             "schema": 1,
             "source": source.relative_to(base.prive.resolve()).as_posix(),
@@ -284,11 +315,11 @@ def creer(base: Base, source: str | Path, destination: str | Path, *, jetable=Fa
             with tarfile.open(temporaire, "w") as archive:
                 for chemin in sorted(travail.rglob("*")):
                     rel = chemin.relative_to(travail).as_posix()
-                    _exiger_espace(cible.parent, PLANCHER_LIBRE)
+                    _exiger_espace(cible.parent, plancher)
                     info = archive.gettarinfo(chemin, arcname=rel)
                     if info.isfile():
                         with chemin.open("rb") as flux:
-                            archive.addfile(info, _LectureSurveillee(flux, cible.parent))
+                            archive.addfile(info, _LectureSurveillee(flux, cible.parent, plancher))
                     else:
                         archive.addfile(info)
             _verifier_inventaire(
@@ -481,7 +512,8 @@ def restaurer(archive: str | Path, destination: str | Path, *, base: Base) -> di
                 if taille != entree["size"] or digest != entree["sha256"]:
                     raise ValueError("Taille ou empreinte incorrecte : " + nom)
 
-        _exiger_espace(cible.parent, SEUIL_DEPART)
+        facteur, plancher = _budget_espace(base)
+        _exiger_espace(cible.parent, _seuil(total, facteur, plancher))
         staging = Path(tempfile.mkdtemp(prefix=".benchab-restauration-", dir=cible.parent))
         try:
             for nom, entree in attendus.items():

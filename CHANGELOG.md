@@ -10,6 +10,7 @@ Versions livrées 1.0.0 et 1.0.1.
 - Délais bornés pour quatre appels et verdict NON VÉRIFIÉ si le délai est dépassé (#59).
 - Clôture du chantier de construction et suivi du développement par issues GitHub.
 - CI macOS rétablie avec actions et uv épinglés.
+- Sauvegarde et restauration : espace requis proportionnel aux données, avec plancher configurable (#60).
 
 ## 1.0.1
 
