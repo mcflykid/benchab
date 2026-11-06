@@ -160,6 +160,26 @@
       "type": "liste_filament",
       "longueur": "correspondance_filaments_requise"
     },
+    "filament_max_volumetric_speed_BRASS": {
+      "formes": [
+        "list"
+      ],
+      "familles": [
+        "filament"
+      ],
+      "type": "liste_filament",
+      "longueur": "correspondance_filaments_requise"
+    },
+    "filament_max_volumetric_speed_HS": {
+      "formes": [
+        "list"
+      ],
+      "familles": [
+        "filament"
+      ],
+      "type": "liste_filament",
+      "longueur": "correspondance_filaments_requise"
+    },
     "nozzle_temperature": {
       "formes": [
         "list"

@@ -2,7 +2,7 @@
 
 import copy
 import json
-import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -141,15 +141,34 @@ class Rattachements(unittest.TestCase):
         self.index["emplacements"][self.h] = {"type": "depot", "chemin": "copie.py"}
         self.assertEqual(self.verifier()["statut"], "PASS")
         self.index["emplacements"][self.h] = {"type": "git", "commit": "a" * 40, "chemin": "src/a.py"}
-        with patch.object(
-            L.subprocess,
-            "run",
-            return_value=subprocess.CompletedProcess([], 0, (self.p / "src/a.py").read_bytes(), b""),
-        ) as m:
+        original = L.processus.executer
+
+        def capture(donnees):
+            def lancer(_commande, **options):
+                return original([sys.executable, "-c", f"import sys; sys.stdout.buffer.write({donnees!r})"], **options)
+
+            return lancer
+
+        with patch.object(L.processus, "executer", side_effect=capture((self.p / "src/a.py").read_bytes())) as m:
             self.assertEqual(self.verifier()["statut"], "PASS")
             self.assertEqual(m.call_args.args[0][:3], ["git", "cat-file", "blob"])
-        with patch.object(L.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"mauvais", b"")):
+        with patch.object(L.processus, "executer", side_effect=capture(b"mauvais")):
             self.fail()
+
+    def test_delai_git_signale_un_rattachement_non_verifie(self):
+        """Un délai réel ne signifie ni empreinte validée ni objet absent."""
+        self.index["emplacements"][self.h] = {"type": "git", "commit": "a" * 40, "chemin": "src/a.py"}
+        original = L.processus.executer
+
+        def dormir(_commande, **options):
+            self.assertEqual(options["delai"], 0.05)
+            return original([sys.executable, "-c", "import time; time.sleep(10)"], **options)
+
+        with patch.object(L, "DELAI_BLOB_S", 0.05), patch.object(L.processus, "executer", side_effect=dormir):
+            rapport = self.verifier()
+        self.assertEqual(rapport["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(rapport["empreintes_localisees"], 0)
+        self.assertIn("DELAI", rapport["non_verifies"][0])
 
     def test_chemins_types_et_commit_ambigus_refuses(self):
         for loc in (

@@ -21,17 +21,20 @@ class Capacites(unittest.TestCase):
                 C.cad_python()
 
     def test_runtime_externe_existant_refuse_sans_lancement(self):
+        """Un autre chemin Python est refusé avant tout appel du lanceur commun."""
         with tempfile.TemporaryDirectory() as dossier:
             autre = Path(dossier) / "python"
             autre.symlink_to(sys.executable)
             with mock.patch.dict(os.environ, {"BENCHAB_CAD_PYTHON": str(autre)}):
                 with self.assertRaisesRegex(ValueError, "Python unique"):
                     C.cad_python()
-                with mock.patch.object(C.subprocess, "run", side_effect=AssertionError("aucun runtime externe")):
+                interdit = AssertionError("aucun runtime externe")
+                with mock.patch.object(C.processus, "executer", side_effect=interdit) as appel:
                     disponible, raison = C.importer(autre, ["json"])
                     self.assertFalse(disponible)
                     self.assertIn("Python unique", raison)
                     self.assertEqual(C.versions(autre, ["json"]), {"json": None})
+                    appel.assert_not_called()
 
     def test_ports_incomplets_jamais_declares_disponibles(self):
         capacite = ("fixture", sys.executable, ["json"], [], "benchab/conception/capacites_locales.py")

@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from benchab import reglages
 from benchab.qualite.ecritures import PublicationNeuve, valider_chemins
 
 PROJECT_SETTINGS = "Metadata/project_settings.config"
@@ -196,7 +197,11 @@ def _json_object(data: bytes, limits: PacketLimits, *, require_object: bool) -> 
     if len(data) > limits.json_bytes:
         raise ValueError("Document JSON trop volumineux")
     try:
-        root = json.loads(data.decode("utf-8"), object_pairs_hook=_pairs, parse_int=_integer, parse_constant=_constant)
+        texte = data.decode("utf-8")
+        if require_object:
+            root = reglages.decoder(texte, convertir_entier=_integer)
+        else:
+            root = json.loads(texte, object_pairs_hook=_pairs, parse_int=_integer, parse_constant=_constant)
     except (UnicodeError, json.JSONDecodeError, RecursionError) as error:
         raise ValueError("Document JSON UTF-8 invalide ou trop profond") from error
     if require_object and not isinstance(root, dict):
