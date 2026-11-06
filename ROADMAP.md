@@ -115,6 +115,28 @@ Sujets à cadrer avant réalisation.
 - Code de pilotage LAN ou d’intégration Rinkhals et OrcaSlicer. Les connaissances restent documentées.
 - Installation de l’atelier à la carte.
 
+## Étude des supports
+
+Les variantes restent des comparaisons. Lire les distances Z dans les G1 Z
+effectivement tranchés, en distinguant les dépôts des relevages. Les interfaces
+multimatières et les ailettes restent NON VÉRIFIÉES pour le retrait jusqu’aux
+mesures sur les témoins publics générés par l’atelier, sans modèle tiers.
+
+| Jalon | Priorité | Issue | Périmètre |
+| --- | --- | --- | --- |
+| 1.0.2 | P4 | #70 | S7. Actualiser les renvois des contrôles et vérifier les chemins des docstrings. |
+| 1.1.0 | P2 | #80 | Étendre les énumérations qualifiées aux styles et motifs des supports. |
+| 1.1.0 | P2 | #89 | S2. Comparer les familles de supports après #80 et mesurer l’écart réellement tranché. |
+| 1.1.0 | P3 | #90 | S5. Mesurer retrait, marques et dessous sur témoins publics. Réutiliser le retour par zone de #28. |
+| 1.1.0 | P3 | #91 | S1. Comparer les interfaces dans une autre matière, après #71 et #72. Retrait à vérifier avec #90. |
+| 1.1.0 | P3 | #93 | S4. Cartographier les îlots de surplomb avant tranchage, pour guider le placement manuel. |
+| 1.2.0 | P3 | #92 | S3. Comparer les ailettes détachables. Retrait à vérifier avec #90. |
+| 1.2.0 | P4 | #75 | S6. Résumer les observations de supports dans la vitrine publique, avec leur portée. |
+
+Les cotes publiées pour les ailettes servent d’hypothèses. Les sources sous
+AGPL et le wiki OrcaSlicer fournissent des noms et des principes. Une éventuelle
+reprise MIT sera attribuée dans TIERS.md.
+
 ## Versions testées
 
 | Composant | Version | Vérification |
