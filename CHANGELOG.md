@@ -25,3 +25,9 @@ Versions livrées 1.0.0 et 1.0.1.
 - `petits-defauts` (#22) — Arrondi des durées, diagnostic SystemExit, export UTF-8, initialisation SQLite et nettoyage du manifeste temporaire.
 - `feuille-1-0-1` (#25) — Ordre de correction traçable et installation complète par défaut, vérifiée sur clone neuf.
 - Installation neuve : Playwright inclus par défaut, verrou conservé et protections du dépôt actives dans le temporaire système.
+
+## 1.0.0
+
+- Atelier local en français pour concevoir, préparer et contrôler les impressions FDM.
+- Dictionnaire typé des réglages, intégrité 3MF et contrôle des commandes machine.
+- Témoins numériques S, M et L, revue indépendante et suivi des retours dans un atelier privé.
