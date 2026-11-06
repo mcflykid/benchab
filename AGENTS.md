@@ -1,7 +1,7 @@
 # BENCHAB
 
 - Répondre en français, vérifier avant d'affirmer et citer la commande utilisée.
-- Rester dans le périmètre demandé ; noter séparément les idées pour plus tard.
+- Rester dans le périmètre demandé et suivre les idées pour plus tard dans les issues.
 - Utiliser `benchab/` pour les projets et ajouter un module commun avec son test pour tout besoin partagé.
 - Lire l'état du projet concerné et limiter les lectures au besoin présent.
 - Contrôler ce qui change ; réserver l'audit complet à la candidate figée avant envoi et après retouche.
@@ -35,9 +35,8 @@
   ou décision de l’auteur, avec le lien vers la documentation concernée.
   Ils ne paraphrasent jamais le code.
 - Modifier du code implique de mettre ses annotations à jour dans le même changement.
-- La relecture sans historique de fin de lot vérifie les annotations du nouveau
-  code. Le code antérieur ne fait pas l’objet d’un rattrapage dans la 1.0 ; les
-  règles D de Ruff restent désactivées jusqu’au chantier de contrôle prévu en 1.1.
+- La relecture indépendante vérifie les annotations du code modifié. Le rattrapage
+  des annotations et les règles D de Ruff sont suivis dans les issues.
 
 - Aucun code ne lit, ne normalise ni n’écrit un réglage du slicer sans passer par
   le dictionnaire typé des réglages. Toute transformation d’un 3MF déclare ses
@@ -46,7 +45,7 @@
 ## Suivi des issues et versions
 
 - Tout travail technique public est suivi dans une issue GitHub, rattachée à la milestone de la prochaine version.
-- Un commit qui règle une issue contient « Fixes #N ». Une issue réglée sans commit est fermée avec un commentaire qui explique pourquoi.
+- Une PR qui règle une issue porte « Fixes #N » dans sa description avant fusion dans `main`. Une issue réglée sans commit est fermée avec un commentaire qui explique pourquoi.
 - Chaque nouveau bug ou nouvelle idée découvert en travaillant donne une issue, pas une note dans le code.
 - Numéro de version : correctif → version corrective suivante ; nouvelle fonction → version mineure suivante.
 - Le CHANGELOG de chaque version cite les issues fermées (#N).

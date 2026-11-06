@@ -2,6 +2,11 @@
 
 Versions livrées 1.0.0 et 1.0.1.
 
+## Non publié
+
+- Clôture du chantier de construction et suivi du développement par issues GitHub.
+- CI macOS rétablie avec actions et uv épinglés.
+
 ## 1.0.1
 
 - `codes-sortie` (#1) — Harmonisation des verdicts des contrôles et signalement d’une ouverture du slicer à l’issue inconnue.
