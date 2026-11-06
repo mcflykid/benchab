@@ -44,9 +44,11 @@
 
 ## Suivi des issues et versions
 
-- `main` est protégée : chaque changement passe par une branche et une PR, la CI doit être verte avant fusion, avec "Fixes #N" pour les issues réglées.
+- `main` est protégée. Chaque changement passe par une branche et une PR avec une CI verte.
+- Fusionner avec `gh pr merge --squash`. Le titre décrit le changement et devient le titre du commit. La description contient « Fixes #N » pour chaque issue réglée et devient le corps du commit.
+- Après fusion, lancer `git fetch --prune`. Supprimer une branche locale quand sa distante a disparu, sa PR est fusionnée sur GitHub et aucun commit local n’est resté en dehors de la PR. `git branch --merged` ne détecte pas les squash.
 - Tout travail technique public est suivi dans une issue GitHub, rattachée à la milestone de la prochaine version.
-- Une PR qui règle une issue porte « Fixes #N » dans sa description avant fusion dans `main`. Une issue réglée sans commit est fermée avec un commentaire qui explique pourquoi.
+- Une issue réglée sans commit est fermée avec un commentaire qui explique pourquoi.
 - Chaque nouveau bug ou nouvelle idée découvert en travaillant donne une issue, pas une note dans le code.
 - Numéro de version : correctif → version corrective suivante ; nouvelle fonction → version mineure suivante.
 - Le CHANGELOG de chaque version cite les issues fermées (#N).
