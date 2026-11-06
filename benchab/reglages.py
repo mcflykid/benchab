@@ -245,8 +245,11 @@ class Reglages(dict):
         return resultat
 
 
-def decoder(texte, *, contexte=None):
-    """Décode un objet JSON de réglages en unités natives ; renvoie Reglages, sans conversion ni réglage inventé."""
+def decoder(texte, *, contexte=None, convertir_entier=int):
+    """Décode le JSON projet en unités natives, renvoie Reglages sans réglage inventé.
+
+    Le lecteur ZIP peut borner les entiers bruts via convertir_entier avant conversion JSON.
+    """
 
     def paires(lignes):
         resultat = {}
@@ -259,7 +262,7 @@ def decoder(texte, *, contexte=None):
     def constante(_valeur):
         raise ValueError("Constante JSON non finie interdite dans les réglages")
 
-    donnees = json.loads(texte, object_pairs_hook=paires, parse_constant=constante)
+    donnees = json.loads(texte, object_pairs_hook=paires, parse_int=convertir_entier, parse_constant=constante)
     if not isinstance(donnees, dict):
         raise ValueError("Objet JSON de réglages requis")
     return Reglages(donnees, contexte=contexte)
@@ -340,16 +343,22 @@ def valeur_unique(donnees, cle):
     return valeur
 
 
+def lire_membre_projet(archive):
+    """Lit les octets du membre projet (maximum 8 Mio), sans extraction ni modification."""
+    membre = "Metadata/project_settings.config"
+    if archive.getinfo(membre).file_size > 8 * 1024 * 1024:
+        raise ValueError("Configuration 3MF trop volumineuse")
+    return archive.read(membre)
+
+
 def lire_3mf(chemin):
     """Lit le projet d'un 3MF (unités natives), retourne Reglages ; aucune écriture ni ouverture du slicer."""
     with ZipFile(chemin) as archive:
-        if archive.getinfo("Metadata/project_settings.config").file_size > 8 * 1024 * 1024:
-            raise ValueError("Configuration 3MF trop volumineuse")
-        return decoder(archive.read("Metadata/project_settings.config"))
+        return decoder(lire_membre_projet(archive))
 
 
-def valeur_indice(donnees, cle, indice, *, lecteur):
-    """Lit un élément vectoriel en unités natives ; None/NON VÉRIFIÉ si type, indice ou lecteur sont ambigus.
+def valeur_brute_indice(donnees, cle, indice, *, lecteur):
+    """Lit un élément vectoriel brut en unités natives ; None/NON VÉRIFIÉ si type, indice ou lecteur sont ambigus.
 
     `get_at` replie un indice trop grand sur le premier élément ; `index_exact` ne replie pas.
     Le choix du lecteur doit être explicite, sans modification des réglages (Config.hpp:434-440).
@@ -367,8 +376,13 @@ def valeur_indice(donnees, cle, indice, *, lecteur):
         position = indice
     else:
         return None
+    return valeurs[position]
+
+
+def valeur_indice(donnees, cle, indice, *, lecteur):
+    """Lit un élément vectoriel numérique en unités natives ou None/NON VÉRIFIÉ ; ne modifie aucun réglage."""
     try:
-        return float(valeurs[position])
+        return float(valeur_brute_indice(donnees, cle, indice, lecteur=lecteur))
     except (TypeError, ValueError):
         return None
 

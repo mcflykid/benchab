@@ -8,12 +8,12 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import tomllib
 from pathlib import Path
 
+from benchab import processus
 from benchab.machine.configuration import charger
 
 R = Path(__file__).resolve().parents[2]
@@ -120,19 +120,28 @@ HISTORIQUES = {
 SEPARES = {"3d-print-modeling": "Méthode de modélisation maillée sur demande"}
 
 
-def executer_python(commande, **options):
+def executer_python(commande, *, delai):
+    """Sonde le Python du dépôt, délai en secondes ; renvoie un résultat ou TimeoutError (NON VÉRIFIÉ).
+
+    Aucune installation, écriture de bytecode ni utilisation du HOME réel.
+    """
     if Path(commande[0]).absolute() != Path(sys.executable).absolute():
         raise ValueError("Python unique : interpréteur extérieur refusé")
-    with tempfile.TemporaryDirectory(prefix="benchab-capacite-", dir="/private/tmp") as dossier:
+    with tempfile.TemporaryDirectory(prefix="benchab-capacite-") as dossier:
         environnement = dict(ENV, HOME=dossier, TMPDIR=dossier, XDG_CACHE_HOME=dossier)
-        options.pop("env", None)
         commande = list(commande)
         if "-B" not in commande[1:]:
             commande.insert(1, "-B")
-        return subprocess.run(commande, env=environnement, **options)
+        resultat = processus.executer(commande, cwd=R, diagnostics=dossier, delai=delai, env=environnement)
+        if resultat.raison == "DELAI":
+            raise TimeoutError(f"Délai de la sonde Python dépassé ({delai} s)")
+        if resultat.resultat == "NON_VERIFIE":
+            raise OSError(resultat.stderr)
+        return resultat
 
 
 def versions(interp, modules):
+    """Renvoie les versions locales, sans unité ; TimeoutError signifie NON VÉRIFIÉ, sans installation."""
     if not modules:
         return {}
     if interp is None or not Path(interp).is_file() or Path(interp).absolute() != Path(sys.executable).absolute():
@@ -144,14 +153,13 @@ def versions(interp, modules):
     try:
         p = executer_python(
             [str(interp), "-I", "-c", code, *[ALIASES.get(m, m) for m in modules]],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            env=ENV,
+            delai=15,
         )
         found = json.loads(p.stdout) if p.returncode == 0 else {}
         return {m: found.get(ALIASES.get(m, m)) for m in modules}
-    except (OSError, ValueError, subprocess.TimeoutExpired):
+    except TimeoutError:
+        raise
+    except (OSError, ValueError):
         return {m: None for m in modules}
 
 
@@ -182,6 +190,7 @@ def programme(nom):
 
 
 def importer(interp, modules, delai=60):
+    """Sonde les imports en au plus delai secondes ; booléen et détail ou délai NON VÉRIFIÉ."""
     if interp is not None and Path(interp).absolute() != Path(sys.executable).absolute():
         return False, "Python unique : interpréteur extérieur refusé"
     if not modules:
@@ -189,9 +198,11 @@ def importer(interp, modules, delai=60):
     code = "import importlib,sys\nfor m in sys.argv[1:]: importlib.import_module(m)"
     try:
         r = executer_python(
-            [str(interp), "-I", "-c", code, *modules], capture_output=True, text=True, timeout=delai, env=ENV
+            [str(interp), "-I", "-c", code, *modules], delai=delai
         )
-    except (OSError, subprocess.TimeoutExpired) as e:
+    except TimeoutError:
+        raise
+    except OSError as e:
         return False, f"{type(e).__name__}: {e}"[:200]
     return r.returncode == 0, (r.stderr.strip().splitlines() or [""])[-1][:200]
 
@@ -206,10 +217,12 @@ def verifier_vendor():
 
 
 def evaluer(capacites=None):
+    """Évalue les capacités locales : DISPONIBLE, ABSENTE ou NON VÉRIFIÉ, sans réseau ni installation."""
     capacites = {**CAPACITES, **A_PORTER} if capacites is None else capacites
     res = {}
     for nom, (desc, interp, modules, progs, outil) in capacites.items():
         raisons = []
+        non_verifie = False
         if nom in A_PORTER:
             raisons.append("Port incomplet : capacité non disponible, fermeture prévue avant la validation finale")
         if not (R / outil).exists():
@@ -219,9 +232,13 @@ def evaluer(capacites=None):
         elif interp is not None and Path(interp).absolute() != Path(sys.executable).absolute():
             raisons.append("Python unique : interpréteur extérieur refusé")
         elif interp is not None:
-            ok, err = importer(interp, modules)
-            if not ok:
-                raisons.append(f"import impossible ({', '.join(modules)}) : {err}")
+            try:
+                ok, err = importer(interp, modules)
+                if not ok:
+                    raisons.append(f"import impossible ({', '.join(modules)}) : {err}")
+            except TimeoutError as erreur:
+                non_verifie = True
+                raisons.append(str(erreur))
         trouves = {}
         for p in progs:
             chemin = programme(p)
@@ -237,20 +254,20 @@ def evaluer(capacites=None):
             try:
                 r = executer_python(
                     [str(interp), "-B", "-m", "benchab.imports3d.maillage_avance", "diagnostic"],
-                    capture_output=True,
-                    text=True,
-                    timeout=25,
-                    env=ENV,
+                    delai=25,
                 )
                 if r.returncode:
                     raisons.append("Moteurs natifs indisponibles : " + r.stderr[-300:])
                 else:
                     moteur_maillage = json.loads(r.stdout)
-            except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+            except TimeoutError as erreur:
+                non_verifie = True
+                raisons.append(str(erreur))
+            except (OSError, ValueError) as e:
                 raisons.append("Diagnostic des moteurs incomplet : " + type(e).__name__)
         res[nom] = {
             "description": desc,
-            "statut": "DISPONIBLE" if not raisons else "ABSENTE",
+            "statut": "NON VÉRIFIÉ" if non_verifie else "DISPONIBLE" if not raisons else "ABSENTE",
             "raisons": raisons,
             "outil": outil,
             "interpreteur": str(interp) if interp else None,
@@ -263,7 +280,12 @@ def evaluer(capacites=None):
     for nom, row in res.items():
         row["entree"] = "benchab conception capacites-locales -- --capacite " + nom
         row["diagnostic"] = "benchab conception capacites-locales -- --capacite " + nom
-        row["versions_observees"] = versions(row["interpreteur"], row["modules"])
+        try:
+            row["versions_observees"] = versions(row["interpreteur"], row["modules"])
+        except TimeoutError as erreur:
+            row["versions_observees"] = {m: None for m in row["modules"]}
+            row["statut"] = "NON VÉRIFIÉ"
+            row["raisons"].append(str(erreur))
         row["versions_attendues"] = {m: pins.get(ALIASES.get(m, m).lower().replace("_", "-")) for m in row["modules"]}
         row["non_verrouillees"] = [m for m, v in row["versions_attendues"].items() if v is None]
         row["installation_executee"] = False
@@ -274,6 +296,7 @@ def evaluer(capacites=None):
 
 
 def main(argv=None):
+    """Affiche l’inventaire local ; code 2 si délai NON VÉRIFIÉ, sans installation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--capacite", choices=sorted(set(CAPACITES) | set(A_PORTER) | set(HISTORIQUES) | set(SEPARES)))
     parser.add_argument("--json", nargs="?", const="-")
@@ -306,6 +329,8 @@ def main(argv=None):
             flux.write(texte + "\n")
     else:
         print(texte)
+    if any(r["statut"] == "NON VÉRIFIÉ" for r in resultats.values()):
+        return 2
     return 0 if all(r["statut"] == "DISPONIBLE" for r in resultats.values()) else 1
 
 
