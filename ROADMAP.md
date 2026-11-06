@@ -29,6 +29,7 @@ Correctifs de la revue du 6 novembre et cohérence de la livraison.
 - P1 — #58 : lecture typée des réglages du 3MF dans l’audit ACE.
 - P2 — #59 : délais bornés et verdict NON VÉRIFIÉ (suite de #7).
 - P2 — #60 : budget d’espace proportionnel et tests de sauvegarde indépendants du disque.
+- P2 — #21 : résoudre la racine des hooks à l’appel et qualifier leur filtre.
 - P4 — #70 : README et version du paquet cohérents, noms des tests par domaine.
 
 ## 1.1.0
@@ -46,7 +47,6 @@ S/M/L aux deux étapes.
 - #17 — Chemins et écritures atomiques, dont le temporaire système commun ; prépare #24.
 - #64 — Lecteur 3MF borné : ZIP, XML et réglages typés ; coordonner avec #17 et #42.
 - #65 — Réseau externe bloqué par défaut dans les tests ; recette explicite avec #52.
-- #21 — Hooks : dossier figé à l'import et filtre de commandes contournable.
 - #14 — Tests manquants : collecte des mesures.
 - #36 — Provenance et licence de chaque modèle.
 - #38 — Comparaison des réglages entre 3MF et profil système.
@@ -71,7 +71,6 @@ S/M/L aux deux étapes.
 - #27 — Bibliothèque de filetages, inserts et écrous.
 - #28 — Retour photo assisté et observations par zone.
 - #29 — Connecteurs à clip et jeux par matière.
-- #30 — Géométrie des goupilles et tenons à clip.
 - #31 — Placement des clips dans la visionneuse.
 - #32 — Conception déterministe avec fiches JSON.
 - #50 — Recetter la visionneuse dans Safari et au pavé tactile.
@@ -94,7 +93,6 @@ Sujets à cadrer avant réalisation.
 - #24 — Idées 1.2 : deuxième imprimante, rendu Metal, portabilité après le socle de #17.
 - #68 — Découper les contrôles de finition et d’affectation ACE, après #58.
 - #69 — Typage progressif des modules communs, après #13 et #17.
-- #43 — Conversion de projets 3MF entre slicers.
 - #44 — État et caméra en lecture seule.
 - #45 — Export de profils utilisateur à importer manuellement.
 
@@ -136,6 +134,32 @@ mesures sur les témoins publics générés par l’atelier, sans modèle tiers.
 Les cotes publiées pour les ailettes servent d’hypothèses. Les sources sous
 AGPL et le wiki OrcaSlicer fournissent des noms et des principes. Une éventuelle
 reprise MIT sera attribuée dans TIERS.md.
+
+## Lots de réalisation
+
+Le premier lot de réalisation commence par #13 puis #12. Le circuit des
+correctifs 1.0.2 peut avancer séparément. Dans chaque lot, les prérequis
+précèdent les travaux qui en dépendent. Les travaux indépendants peuvent
+avancer en parallèle.
+
+| Jalon | Lot | Ordre proposé |
+| --- | --- | --- |
+| 1.0.2 | Correctifs | #21, #70 |
+| 1.1.0 | Lot 1 — Fiabilité G-code | #13, #12 |
+| 1.1.0 | Lot 2 — Socle 3MF, chemins et recette numérique | #17, #64, #65, #14, #48, #49, #76, #80, #81, #82, #89, #51 |
+| 1.1.0 | Lot 3 — Provenance, réglages et contrôle d’envoi | #37, #36, #38, #71, #18, #35, #40, #39, #41, #42, #43, #56 |
+| 1.1.0 | Lot 4 — Mesures, supports et recettes | #19, #26, #28, #52, #66, #67, #50, #72, #91, #84, #90, #93 |
+| 1.1.0 | Lot 5 — Fixations, conception et guides | #27, #29, #31, #32, #23, #33, #34, #74 |
+| 1.2.0 | Lot 6 — Données d’usage et optimisation volumique | #73, #77, #83, #92, #68, #69, #85, #86, #87 |
+| 1.2.0 | Lot 7 — Portabilité, profils et restitution | #24, #44, #45, #75 |
+
+#30 est fermé comme doublon de #29. #29 porte la géométrie des clips
+et les jeux par matière. #31 porte le placement dans la visionneuse,
+après #29. #43 est planifié en 1.1.0.
+
+Les dépendances bloquantes sont enregistrées dans GitHub. Les liens de
+coordination et de validation restent précisés dans les issues, notamment
+le retrait mesuré pour les supports et la calibration du calcul volumique.
 
 ## Versions testées
 
