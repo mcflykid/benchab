@@ -11,7 +11,7 @@ license = "GPL-3.0-or-later"
 dependencies = [
     "build123d>=0.9",
     "cadgen @ git+https://github.com/earthtojake/text-to-cad.git@5a5dab9503d140b8cf62a28d21ba2573a722d2d6#subdirectory=packages/cadgen",
-    "cryptography>=44,<47",
+    "cryptography>=50,<51",
     "manifold3d>=3.5.4",
     "mapbox-earcut>=1.0",
     "meshoptimizer==0.2.30a0",

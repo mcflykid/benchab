@@ -27,7 +27,7 @@ raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
 contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
 duree = "Tant que le composant text-to-cad est conservé"
 preuve_fichier = "benchab/reference/licences.json"
-preuve_sha256 = "17c1a195421ca3e82baca505198c7cbab0c789f65edd673e8048642c2a31b84a"
+preuve_sha256 = "5e2a3759947318c83719f345f72c74d47d16a0748de6df64860fc66b46d882f8"
 consommateur = "benchab/qualite/edition.py"
 
 [[exceptions]]
@@ -37,7 +37,7 @@ raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
 contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
 duree = "Tant que les modules de modélisation copiés sont conservés"
 preuve_fichier = "benchab/reference/licences.json"
-preuve_sha256 = "17c1a195421ca3e82baca505198c7cbab0c789f65edd673e8048642c2a31b84a"
+preuve_sha256 = "5e2a3759947318c83719f345f72c74d47d16a0748de6df64860fc66b46d882f8"
 consommateur = "benchab/qualite/edition.py"
 
 [[exceptions]]
@@ -58,6 +58,6 @@ contrainte = "Noms et version du paquet restent inchangés ; collisions de chemi
 duree = "Tant que le viewer hors ligne dépend de Three.js 0.160.0"
 consommateur = "benchab/visualisation/hors_ligne.py"
 preuve_fichier = "TIERS.md"
-preuve_sha256 = "735fe7f3a1b4bea085f21ab1fc4ce412a3990e80084a17d3838a7d5f2f85b986"
+preuve_sha256 = "675c2c40a57293fbec2254e44ac58a4a31985b1d1f10c28c0b913a05e5efd560"
 source_fichier = "benchab/visualisation/vendor/three-0.160.0/PROVENANCE.json"
 source_sha256 = "643df710616434743b53b360800dee9cbea88309f878724ad84ea11bee9f48c6"

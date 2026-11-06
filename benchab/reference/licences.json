@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "declarations_sha256": "d7964b90b216c798c8df1f79b32c229e836c0bee5a66ca3e2818373cee8679a5",
-  "lock_sha256": "54848d24e9ef3be1034819122e0bcd9bcbc01a06c3e98f32917174d3d4afa379",
+  "declarations_sha256": "c3a8ac225dcfc3525966ed62e0608d717091859a6f78d05609a49e90ffe4b73d",
+  "lock_sha256": "b1e8c7f8fbbd52aee875f6a705a0dafa30e87257592e431a7944f7abe27dfffa",
   "python": [
     {
       "nom": "anytree",
@@ -162,20 +162,20 @@
     },
     {
       "nom": "cryptography",
-      "version": "46.0.7",
+      "version": "50.0.2",
       "licence": "Apache-2.0",
       "source": "métadonnées et licence de la distribution installée",
       "preuves": [
         {
-          "fichier": "cryptography-46.0.7.dist-info/licenses/LICENSE",
+          "fichier": "cryptography-50.0.2.dist-info/licenses/LICENSE",
           "sha256": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb"
         },
         {
-          "fichier": "cryptography-46.0.7.dist-info/licenses/LICENSE.APACHE",
+          "fichier": "cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE",
           "sha256": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe"
         },
         {
-          "fichier": "cryptography-46.0.7.dist-info/licenses/LICENSE.BSD",
+          "fichier": "cryptography-50.0.2.dist-info/licenses/LICENSE.BSD",
           "sha256": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb"
         }
       ]
