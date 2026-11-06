@@ -82,6 +82,13 @@ class AceTests(unittest.TestCase):
     def audit(self):
         return A.auditer_affectations(self.src, self.dec, maitre=self.maitre, registre=self.reg)
 
+    def test_refuse_une_cle_de_reglage_dupliquee(self):
+        """Un profil ambigu ne doit pas être audité sous la dernière valeur lue."""
+        with zipfile.ZipFile(self.src, "w") as archive:
+            archive.writestr("Metadata/project_settings.config", '{"nozzle_type":"brass","nozzle_type":"steel"}')
+        with self.assertRaisesRegex(ValueError, "Clé de réglage JSON dupliquée"):
+            self.audit()
+
     def test_limites_constructeur_absentes_restent_non_verifiees(self):
         self.maitre["constructeur"] = {}
         resultat = self.audit()
