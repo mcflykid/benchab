@@ -7,11 +7,11 @@ import argparse
 import contextlib
 import json
 import os
-import subprocess
 import sys
 import traceback
 from pathlib import Path
 
+from benchab import processus
 from benchab.controles import (
     colonnes_isolees,
     controle_envoi,
@@ -29,8 +29,15 @@ from benchab.qualite import qualite as qualite_projet
 from benchab.qualite.ecritures import _sans_lien, ecrire_json_neuf
 from benchab.qualite.statuts import code_statut
 
+DELAI_SCRIPT_S = 600
+DELAI_TRANCHAGE_S = 1800
+
 
 class _Arret(Exception):
+    pass
+
+
+class _DureeDepassee(Exception):
     pass
 
 
@@ -60,11 +67,16 @@ def executer(projet, prive=None, *, optimiser=False, objectif=None):
         with journal.open("x") as flux, contextlib.redirect_stdout(flux), contextlib.redirect_stderr(flux):
             try:
                 code = fonction()
+            except _DureeDepassee:
+                code = None
             except SystemExit as erreur:
                 code = erreur.code
             except Exception:
                 traceback.print_exc()
                 code = 2
+        if code is None:
+            etapes.append({"etape": nom, "code": 2, "statut": "NON VÉRIFIÉ", "journal": str(journal)})
+            raise _DureeDepassee(nom)
         statut = "FAIL" if code not in acceptes else "PASS" if code == 0 else "NON VÉRIFIÉ" if code == 3 else "WARN"
         etapes.append({"etape": nom, "code": code, "statut": statut, "journal": str(journal)})
         if statut == "FAIL":
@@ -75,16 +87,21 @@ def executer(projet, prive=None, *, optimiser=False, objectif=None):
         # Les seuls scripts exécutés sont les points d'entrée des gabarits,
         # jamais une commande libre du modèle (docs/guides/cycle-projet.md).
         def lancer():
-            resultat = subprocess.run(
+            delai = DELAI_TRANCHAGE_S if nom == "trancher" else DELAI_SCRIPT_S
+            resultat = processus.executer(
                 [sys.executable, "-B", "-m", "src." + nom, *arguments],
-                cwd=projet,
+                cwd=projet, diagnostics=dossier, delai=delai,
                 env=dict(os.environ, BENCHAB_PRIVE=str(prive)),
-                capture_output=True,
-                text=True,
-                check=False,
             )
             print(resultat.stdout, end="")
             print(resultat.stderr, end="", file=sys.stderr)
+            if resultat.diagnostic:
+                print(f"\nDiagnostic : {resultat.diagnostic}", file=sys.stderr)
+            if resultat.raison == "DELAI":
+                print(f"Délai du gabarit dépassé ({delai} s).", file=sys.stderr)
+                raise _DureeDepassee(nom)
+            if resultat.resultat == "NON_VERIFIE":
+                return 2
             if resultat.returncode == 1 and avertissement and resultat.stdout.strip().endswith("WARN"):
                 return 1
             return 2 if resultat.returncode == 1 else resultat.returncode
@@ -162,6 +179,8 @@ def executer(projet, prive=None, *, optimiser=False, objectif=None):
             rapport["statut"] = "WARN"
         if rapport["statut"] != "FAIL" and any(e["statut"] == "NON VÉRIFIÉ" for e in etapes):
             rapport["statut"] = "NON VÉRIFIÉ"
+    except _DureeDepassee as erreur:
+        rapport.update(statut="NON VÉRIFIÉ", etape_bloquante=str(erreur))
     except _Arret as erreur:
         rapport.update(statut="FAIL", etape_bloquante=str(erreur))
     except Exception as erreur:
