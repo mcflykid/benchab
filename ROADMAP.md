@@ -22,6 +22,15 @@ Stabilisation du contrôle et de la préparation.
 - #22 — Petits défauts : durée « 1 h 60 », message SystemExit perdu, encodage implicite.
 - #25 — 1.0.1 : priorités, dépendances et lots de réalisation.
 
+## 1.0.2
+
+Correctifs de la revue du 6 novembre et cohérence de la livraison.
+
+- P1 — #58 : lecture typée des réglages du 3MF dans l’audit ACE.
+- P2 — #59 : délais bornés et verdict NON VÉRIFIÉ (suite de #7).
+- P2 — #60 : budget d’espace proportionnel et tests de sauvegarde indépendants du disque.
+- P4 — #70 : README et version du paquet cohérents, noms des tests par domaine.
+
 ## 1.1.0
 
 Évolutions de l’atelier et de ses outils de développement.
@@ -32,9 +41,11 @@ Stabilisation du contrôle et de la préparation.
 puis traiter #12 pour unifier le contrôle de débit U25. Rejouer les mêmes témoins
 S/M/L aux deux étapes.
 
-- #13 — Chantier : un seul interpréteur G-code.
+- #13 — Interpréteur G-code commun, caches concurrents et découpage du lecteur.
 - #12 — Chantier : un seul contrat de débit U25.
-- #17 — Chantier : module commun de chemins et d'écritures atomiques.
+- #17 — Chemins et écritures atomiques, dont le temporaire système commun ; prépare #24.
+- #64 — Lecteur 3MF borné : ZIP, XML et réglages typés ; coordonner avec #17 et #42.
+- #65 — Réseau externe bloqué par défaut dans les tests ; recette explicite avec #52.
 - #21 — Hooks : dossier figé à l'import et filtre de commandes contournable.
 - #14 — Tests manquants : collecte des mesures.
 - #36 — Provenance et licence de chaque modèle.
@@ -45,7 +56,7 @@ S/M/L aux deux étapes.
 
 ### P3 — Ensuite
 
-- #18 — Chantier : répartiteur CLI unique et table des statuts.
+- #18 — Répartiteur CLI, table des statuts et exceptions de la bibliothèque.
 - #19 — Chantier : coût de `Base.transaction` proportionnel à la base entière.
 - #37 — Annotations du code et contrôle Ruff D.
 - #35 — Sorties courtes et rapports complets pour les agents.
@@ -53,7 +64,9 @@ S/M/L aux deux étapes.
 - #40 — Sources et provenance des connaissances communautaires.
 - #41 — Avertissements de cohérence pour les réglages 3MF.
 - #42 — Traçabilité des 3MF.
-- #56 — Hygiène du dépôt et contrôle des secrets en CI.
+- #56 — Hygiène du dépôt et secrets en CI ; UTF-8 (suite de #22), Ruff, format, délais et mises à jour. Coordonner avec #37.
+- #66 — Validation des POST de la visionneuse ; couvrir la recette #50.
+- #67 — Gabarits HTML/JS de la visionneuse ; comparer le rendu avec la recette #50.
 - #26 — Coutures visibles et règle U31.
 - #27 — Bibliothèque de filetages, inserts et écrous.
 - #28 — Retour photo assisté et observations par zone.
@@ -68,7 +81,7 @@ S/M/L aux deux étapes.
 
 ### P4 — À différer
 
-- #23 — Chantier : découper les modules de plus de 900 lignes.
+- #23 — Découper les gros modules, dont l’analyseur des capacités machine.
 - #33 — Installation optionnelle par OpenSkills.
 - #34 — Évaluation du graphe de code pour les tests d’impact.
 
@@ -78,7 +91,9 @@ Sujets à cadrer avant réalisation.
 
 ### P4 — À différer
 
-- #24 — Idées 1.2 : deuxième imprimante, rendu Metal, portabilité.
+- #24 — Idées 1.2 : deuxième imprimante, rendu Metal, portabilité après le socle de #17.
+- #68 — Découper les contrôles de finition et d’affectation ACE, après #58.
+- #69 — Typage progressif des modules communs, après #13 et #17.
 - #43 — Conversion de projets 3MF entre slicers.
 - #44 — État et caméra en lecture seule.
 - #45 — Export de profils utilisateur à importer manuellement.
