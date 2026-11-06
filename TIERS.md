@@ -16,7 +16,7 @@ distributions conservent leurs licences. Les traitements ne changent pas la
 licence des modèles d'entrée.
 
 | 3d-print-modeling, contrôles assemblage/parois/contacts/invariants | Copie figée identifiée par SHA-256 dans `benchab/tiers/modeling-sources.json` | MIT, Mohsen Esmaeili (2026) | Fonctions issues des scripts `assembly_check.py`, `wallcheck.py`, `fitmap.py`, `checks_template.py` ; licence vérifiée avant import et conservée dans `benchab/tiers/modeling-LICENSE.txt`. Aucun programme source exécuté. |
-| cryptography | `46.0.7` (contrainte `>=44,<47`) | Apache-2.0 ou BSD-3-Clause | API AES-128-CBC/PKCS7 pour décoder la réponse de handshake MQTT locale; aucune copie de code tiers. Licence duale indiquée par le dépôt officiel [pyca/cryptography](https://github.com/pyca/cryptography/blob/main/LICENSE). |
+| cryptography | `50.0.2` (contrainte `>=50,<51`) | Apache-2.0 ou BSD-3-Clause | API AES-128-CBC/PKCS7 pour décoder la réponse de handshake MQTT locale; aucune copie de code tiers. Licence duale indiquée par le dépôt officiel [pyca/cryptography](https://github.com/pyca/cryptography/blob/main/LICENSE). |
 
 ## Bibliothèques Python, directes et transitives
 
@@ -41,7 +41,7 @@ les licences duales cryptography et packaging, la branche Apache-2.0 est retenue
 | cloudpickle | 3.1.2 | BSD-3-Clause |
 | colorama | 0.4.6 | BSD-3-Clause |
 | contourpy | 1.4.0 | BSD-3-Clause |
-| cryptography | 46.0.7 | Apache-2.0 |
+| cryptography | 50.0.2 | Apache-2.0 |
 | cycler | 0.12.1 | BSD-3-Clause |
 | dataclasses-json | 0.6.7 | MIT |
 | deprecated | 3.0.1 | MIT |
