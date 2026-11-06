@@ -82,10 +82,10 @@ S/M/L aux deux étapes.
 - #31 — Placement des clips dans la visionneuse.
 - #32 — Conception déterministe avec fiches JSON.
 - #50 — Recetter la visionneuse dans Safari et au pavé tactile.
-- #52 — Recetter la lecture Cloud Anycubic avec un compte autorisé.
+- #52 — Recetter le Cloud Anycubic en lecture seule, seul transport réseau retenu ;
+  voir la [décision Cloud](docs/decisions/2026-11-06-cloud-lecture-seule.md).
 - #43 — Conversion 3MF par familles KEEP / CLAMP / REPLACE ; après #36, #38 et #64.
 - #72 — Bilan de purge par paire, après #13.
-- #78 — Lecture LAN native sur liste blanche, après #65 ; voir la [décision LAN](docs/decisions/2026-11-06-lecture-lan-native.md).
 
 #20 est fermé comme doublon de #37.
 
@@ -111,7 +111,7 @@ Sujets à cadrer avant réalisation.
 - #68 — Découper les contrôles de finition et d’affectation ACE, après #58.
 - #69 — Typage progressif des modules communs, après #13 et #17.
 - #44 — État et images déjà disponibles en lecture seule, après le schéma commun #28.
-  Déclencher une capture est une écriture. Maillage de plateau conditionné à une source native en lecture seule.
+  Déclencher une capture est une écriture. Maillage de plateau conditionné à une source Cloud en lecture seule.
 - #45 — Export de profils utilisateur à importer manuellement, après #40.
 - #75 — Vitrine statique du corpus public, après #40 et #56.
 
@@ -144,8 +144,8 @@ Sujets à cadrer avant réalisation.
 - #46 — Envoi, lancement, pause ou arrêt d’une impression depuis BENCHAB.
 - Publication de fichiers de projet, de modèles tiers ou de données personnelles.
 - Écriture dans les profils installés par le slicer.
-- Pilotage par LAN, Cloud ou autre transport. La [lecture LAN native](docs/decisions/2026-11-06-lecture-lan-native.md)
-  est autorisée sur liste blanche, comme alternative à la lecture Cloud.
+- Pilotage par LAN, Cloud ou autre transport. La lecture réseau reste limitée au Cloud Anycubic.
+- Client LAN, même en lecture seule : piste écartée (#78), voir la [décision Cloud](docs/decisions/2026-11-06-cloud-lecture-seule.md).
 - Intégration Rinkhals, Moonraker ou OrcaSlicer. Les connaissances restent documentées.
 - Installation de l’atelier à la carte.
 
