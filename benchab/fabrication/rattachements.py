@@ -1,13 +1,16 @@
 """Localise les octets historiques d'une préparation sans exécuter les sources du projet."""
 
 import argparse
-import hashlib
 import json
 import re
-import subprocess
+import tempfile
 from pathlib import Path
 
+from benchab import processus
 from benchab.qualite.empreintes import sha256_fichier
+from benchab.qualite.statuts import code_statut
+
+DELAI_BLOB_S = 30
 
 
 def sha(f):
@@ -25,10 +28,12 @@ def chemin(base, relatif):
 
 
 def verifier(projet, depot):
+    """Vérifie les rattachements par SHA ; PASS, WARN, FAIL ou NON VÉRIFIÉ au délai (s), sans exécuter de source."""
     projet = Path(projet).resolve()
     depot = Path(depot).resolve()
     erreurs = []
     lacunes = []
+    non_verifies = []
     versions = {}
     preparations = {}
     controlees = {}
@@ -36,10 +41,11 @@ def verifier(projet, depot):
 
     def resultat():
         return {
-            "statut": "FAIL" if erreurs else "WARN" if lacunes else "PASS",
+            "statut": "FAIL" if erreurs else "NON VÉRIFIÉ" if non_verifies else "WARN" if lacunes else "PASS",
             "reproductibilite": "À VÉRIFIER",
             "erreurs": erreurs,
             "lacunes": lacunes,
+            "non_verifies": non_verifies,
             "versions": versions,
             "preparations": preparations,
             "empreintes_localisees": len(controlees),
@@ -110,9 +116,19 @@ def verifier(projet, depot):
                 if not isinstance(commit, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit):
                     raise ValueError("commit Git exact requis")
                 chemin(depot, nom)  # même refus des chemins absolus, remontées et liens hors dépôt
-                r = subprocess.run(["git", "cat-file", "blob", commit + ":" + nom], cwd=depot, capture_output=True)
-                if r.returncode or hashlib.sha256(r.stdout).hexdigest() != h:
-                    raise ValueError("objet Git absent ou différent : " + nom)
+                # L'empreinte exige les octets d'origine, pas la queue texte des diagnostics.
+                # Le tampon privé est jetable (docs/reference/donnees.md).
+                with tempfile.TemporaryDirectory(prefix="benchab-blob-") as tampon:
+                    r = processus.executer(
+                        ["git", "cat-file", "blob", commit + ":" + nom],
+                        cwd=depot, diagnostics=tampon, delai=DELAI_BLOB_S, conserver_capture=True,
+                    )
+                    if r.resultat == "NON_VERIFIE":
+                        raison = f"Lecture Git non vérifiée ({r.raison}, délai {DELAI_BLOB_S} s) : {nom}"
+                        non_verifies.append(raison)
+                        return {"statut": "NON VÉRIFIÉ", "raison": raison}
+                    if not r.ok or sha(Path(r.diagnostic).with_name("stdout.log")) != h:
+                        raise ValueError("objet Git absent ou différent : " + nom)
             else:
                 raise ValueError("type de localisation inconnu")
             controlees[h] = {
@@ -188,7 +204,7 @@ def verifier(projet, depot):
 
 
 def main(argv=None):
-    """Vérifie un index de rattachements et renvoie PASS=0, WARN=1 ou FAIL=2."""
+    """Vérifie un index de rattachements et renvoie PASS=0, WARN=1 ou FAIL/NON VÉRIFIÉ=2 ; ne modifie pas le dépôt."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--projet", type=Path)
     parser.add_argument("--depot", type=Path, default=Path(__file__).resolve().parents[2])
@@ -199,7 +215,7 @@ def main(argv=None):
         return 2
     rapport = verifier(arguments.projet, arguments.depot)
     print(json.dumps(rapport, indent=1, ensure_ascii=False))
-    return {"PASS": 0, "WARN": 1, "FAIL": 2}[rapport["statut"]]
+    return code_statut(rapport["statut"])
 
 
 if __name__ == "__main__":

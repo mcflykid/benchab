@@ -24,17 +24,20 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
-import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import trimesh
 
+from benchab import processus
 from benchab.chemins import atelier_prive
 from benchab.controles import cache_geometrie as O
+from benchab.qualite.statuts import code_statut
 
 CC = Path(__file__).resolve().parent / "couches_courtes.py"
+DELAI_COUCHES_S = 120
 
 
 def contexte_cache(options):
@@ -151,6 +154,7 @@ def pour_rayons(m, faces_max):
 def controler(
     f, *, epaisseur_min=0.84, surplomb_max=45.0, hauteur_couche=0.2, plateau=None, faces_max=300000, non_applicable=None
 ):
+    """Contrôle un maillage en mm ; PASS/WARN/FAIL/NON VÉRIFIÉ, sans preuve physique ni réglage modifié."""
     from benchab.machine.configuration import charger as charger_configuration
 
     plateau = plateau or charger_configuration()["placement"]["plateau_xyz_mm"]
@@ -217,11 +221,19 @@ def controler(
     if "couches courtes" in raisons_non_applicables:
         n("couches courtes", "", "")
     else:
-        r = subprocess.run([sys.executable, str(CC), str(f), str(hauteur_couche)], capture_output=True, text=True)
-        try:
-            il = json.loads(r.stdout).get("ilots_isoles", [])
-        except ValueError:
-            il = None
+        with tempfile.TemporaryDirectory(prefix="benchab-couches-") as tampon:
+            r = processus.executer(
+                [sys.executable, str(CC), str(f), str(hauteur_couche)],
+                cwd=Path.cwd(), diagnostics=tampon, delai=DELAI_COUCHES_S, conserver_capture=True,
+            )
+            if r.resultat == "NON_VERIFIE":
+                n("couches courtes", "NON VÉRIFIÉ", f"Analyse incomplète ({r.raison}, délai {DELAI_COUCHES_S} s)")
+                return out
+            try:
+                contenu = Path(r.diagnostic).with_name("stdout.log").read_text(encoding="utf-8")
+                il = json.loads(contenu).get("ilots_isoles", [])
+            except ValueError:
+                il = None
         if il is None:
             n("couches courtes", "WARN", "sortie illisible : " + (r.stderr or r.stdout)[-160:])
         else:
@@ -327,7 +339,8 @@ def main(argv=None):
         print("#", fichier)
         for resultat in controles:
             print(f"  {resultat['statut']:15s} {resultat['controle']} — {resultat['detail']}")
-            pire = max(pire, {"FAIL": 2, "WARN": 1}.get(resultat["statut"], 0))
+            if resultat["statut"] != "NON APPLICABLE":
+                pire = max(pire, code_statut(resultat["statut"]))
     return pire
 
 
