@@ -71,9 +71,16 @@ class PreparationFabricationTests(unittest.TestCase):
             self.creer()
 
     def test_main_argv_creer_utilise_base_et_ne_modifie_pas_sys_argv(self):
+        """Vérifie le câblage CLI avec une preuve synthétique, sans dépendre du slicer installé."""
         anciens_arguments = ["pytest", "arguments-appelant"]
         sortie = StringIO()
-        with patch("sys.argv", anciens_arguments), redirect_stdout(sortie):
+        # Ce test exerce la CLI. La qualification native reste un contrôle distinct
+        # décrit dans docs/reference/controles.md.
+        with (
+            patch("sys.argv", anciens_arguments),
+            patch.object(preparation, "collecter", return_value=self.environnement) as collecte,
+            redirect_stdout(sortie),
+        ):
             code = preparation.main(
                 [
                     "--prive",
@@ -92,6 +99,7 @@ class PreparationFabricationTests(unittest.TestCase):
             self.assertEqual(sys.argv, anciens_arguments)
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(sortie.getvalue())["projet_id"], "projets/essai")
+        collecte.assert_called_once_with(self.base.prive)
 
     def test_identifiant_invalide_est_refuse_sans_creation(self):
         with self.assertRaises(SystemExit):

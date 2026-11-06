@@ -33,7 +33,7 @@ uv run benchab skill --racine "$PWD" --destination "$HOME/.agents/skills" --appl
 
 Ajouter une option `--destination` par dossier skills existant supplémentaire.
 Vérifier ces dossiers avant d’exécuter la commande : le plan refuse les dossiers absents.
-N’ajouter `--ancien-atelier /chemin/explicite/Impression-3D` que si le lien historique
+N’ajouter `--ancien-atelier /chemin/explicite/ancien-atelier` que si le lien historique
 doit être retiré. Le plan vérifie les collisions et refuse toute modification des
 destinations intervenue entre planification et application. Cette commande ne
 modifie pas l’installation Python : celle-ci reste `uv sync --locked`.

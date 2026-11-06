@@ -34,6 +34,7 @@ def tranche(p, gcode):
 
 class Retour(unittest.TestCase):
     def setUp(self):
+        """Fige une préparation synthétique dans un atelier jetable, sans lancer le slicer."""
         self.t = tempfile.TemporaryDirectory()
         self.r = Path(self.t.name).resolve()
         self.base = Base(self.r)
@@ -58,6 +59,13 @@ class Retour(unittest.TestCase):
             self.r / "plaques.3mf",
             self.r / "tranche.3mf",
             sources=[self.p / "DECLARATION-ENVOI.json"],
+            # Le retour compare des archives synthétiques. La qualification du
+            # poste est séparée (docs/reference/controles.md).
+            environnement={
+                "code": 0,
+                "mesures": {"python": {"version": "3.13"}},
+                "resultats": [{"controle": "Fixture de retour", "statut": "PASS"}],
+            },
         )
 
     def tearDown(self):

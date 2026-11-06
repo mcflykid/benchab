@@ -7,7 +7,8 @@ description: Concevoir, importer, contrôler et préparer une impression 3D avec
 
 Lire [AGENTS.md](AGENTS.md), puis découvrir les commandes disponibles avec
 `benchab --help` et l’aide de la sous-commande choisie. Commencer une séance
-avec `benchab seance debut` ; garder les données de projet dans `prive/`.
+avec `benchab seance debut` et garder les données de projet dans `prive/`.
+Pour le suivi du développement, lire « Suivi des issues et versions » dans AGENTS.md.
 
 Choisir le guide selon le besoin :
 
