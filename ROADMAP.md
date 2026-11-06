@@ -123,3 +123,29 @@ Sujets à cadrer avant réalisation.
 | macOS | 27.2 (26B123) | Installation et suite complète sur Apple Silicon |
 
 Les versions testées décrivent le périmètre observé.
+
+## Étude du remplissage
+
+Le premier lot G-code reste #13 puis #12. Les variantes de remplissage servent
+à comparer des résultats, sans adoption automatique. Un modificateur sans
+effet mesurable dans le G-code donne FAIL. Les éléments finis et les lois
+d’échelle restent NON VÉRIFIÉS tant qu’aucune mesure physique ne les confirme
+dans les conditions étudiées.
+
+| Jalon | Priorité | Issue | Périmètre |
+| --- | --- | --- | --- |
+| 1.1.0 | P2 | #13 | R9. Mesurer les trajets avec l’interpréteur commun. |
+| 1.1.0 | P2 | #80 | R1. Qualifier les valeurs énumérées par Anycubic Slicer Next. |
+| 1.1.0 | P2 | #81 | R2. Comparer les options natives qualifiées après #80. |
+| 1.1.0 | P2 | #82 | R3. Mesurer l’effet des modificateurs par motif après #80. |
+| 1.1.0 | P3 | #72 | R7. Comparer un filament de cœur différent avec le bilan de purge et le contrôle ACE #71. L’extension est P4. |
+| 1.1.0 | P3 | #84 | R6. Mesurer la rigidité sur les éprouvettes existantes et coordonner la recette avec #51. |
+| 1.2.0 | P3 | #83 | R4 puis R5. Convertir le champ de densité après #82, puis étudier les contraintes avec les mesures de #84. |
+| 1.2.0 | P4 | #85 | R8. Comparer l’orientation du motif selon l’effort après #81 et #84. |
+| 1.2.0 | P4 | #86 | R10. Comparer les temps réels et estimés par motif à partir des retours ou du Cloud en lecture seule. |
+| 1.2.0 | P4 | #87 | R11. Comparer un réseau gyroïde modélisé dans la pièce. |
+
+Les slicers et guides sous AGPL restent des repères pour les noms de réglages
+et les principes généraux. La reprise éventuelle d’une source compatible
+exige une attribution dans TIERS.md. Le choix d’un solveur volumique inclut
+sa licence et ses dépendances, car l’installation reste tout ou rien.
