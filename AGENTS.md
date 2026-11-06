@@ -44,6 +44,7 @@
 
 ## Suivi des issues et versions
 
+- `main` est protégée : chaque changement passe par une branche et une PR, la CI doit être verte avant fusion, avec "Fixes #N" pour les issues réglées.
 - Tout travail technique public est suivi dans une issue GitHub, rattachée à la milestone de la prochaine version.
 - Une PR qui règle une issue porte « Fixes #N » dans sa description avant fusion dans `main`. Une issue réglée sans commit est fermée avec un commentaire qui explique pourquoi.
 - Chaque nouveau bug ou nouvelle idée découvert en travaillant donne une issue, pas une note dans le code.
