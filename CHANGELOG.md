@@ -4,6 +4,8 @@ Versions livrées 1.0.0 et 1.0.1.
 
 ## Non publié
 
+- Audit ACE : lecture des réglages projet par le dictionnaire typé et refus des clés JSON dupliquées (#58).
+
 - Mise à jour de `cryptography` pour corriger les vulnérabilités signalées par Dependabot.
 - Clôture du chantier de construction et suivi du développement par issues GitHub.
 - CI macOS rétablie avec actions et uv épinglés.
