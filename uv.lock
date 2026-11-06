@@ -37,6 +37,7 @@ wheels = [
 name = "benchab"
 version = "1.0.0"
 source = { editable = "." }
+default-groups = ["dev", "reception"]
 dependencies = [
     { name = "build123d" },
     { name = "cadgen" },
