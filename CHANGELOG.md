@@ -7,6 +7,7 @@ Versions livrées 1.0.0 et 1.0.1.
 - Mise à jour de `cryptography` pour corriger les vulnérabilités signalées par Dependabot.
 - Clôture du chantier de construction et suivi du développement par issues GitHub.
 - CI macOS rétablie avec actions et uv épinglés.
+- Sauvegarde et restauration : espace requis proportionnel aux données, avec plancher configurable (#60).
 
 ## 1.0.1
 

@@ -125,8 +125,16 @@ restauration accepte les liens internes vers des fichiers seulement après valid
 du graphe et des empreintes ; ces deux contrats sont distincts. Aucun dossier de
 profils installé n'est collecté implicitement.
 
-La copie exige 31 Gio libres au départ sur les volumes de travail et de destination,
-puis conserve un plancher de 10 Gio pendant les copies en flux et l'écriture du TAR.
+Au départ, le seuil d'espace libre vaut la taille inventoriée multipliée par 1,25,
+plus un plancher de 10 Gio. Le calcul compte le TAR et la copie de travail
+ensemble si les deux occupent le même volume. La restauration utilise la taille
+déclarée et vérifiée dans l'archive. Le plancher est surveillé pendant la copie
+et l'écriture du TAR. Ces deux valeurs se règlent dans `prive/sauvegarde.toml` :
+
+```toml
+facteur_espace = 1.25
+plancher_libre_octets = 10737418240
+```
 Un manque d'espace donne FAIL et aucune archive n'est publiée. Les temporaires
 créés par l'opération sont nettoyés ; une ancienne archive existante reste intacte.
 
