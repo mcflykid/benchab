@@ -270,7 +270,8 @@ if __name__ == "__main__":
     unittest.main()
 
 
-def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, monkeypatch):
+@pytest.mark.parametrize("libre", [1024**2, S.PLANCHER_LIBRE - 1], ids=["presque-plein", "sous-plancher"])
+def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, monkeypatch, libre):
     """Moins du plancher : FAIL avant copie, aucun fichier livré ni source modifiée."""
 
     base = Base(tmp_path / "prive")
@@ -279,7 +280,7 @@ def test_espace_insuffisant_refuse_avant_archive_et_source_intacte(tmp_path, mon
         source.mkdir()
         (source / "note").write_bytes(b"abc")
         cible = base.prive / "copie.tar"
-        monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=S.PLANCHER_LIBRE - 1))
+        monkeypatch.setattr(S.shutil, "disk_usage", lambda _: SimpleNamespace(free=libre))
 
         with pytest.raises(ValueError, match="Espace insuffisant"):
             creer(base, source, cible)
