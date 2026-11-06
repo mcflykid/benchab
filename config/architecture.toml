@@ -4,7 +4,9 @@ noms_standards = [
   "AGENTS.md",
   "SKILL.md",
   "README.md",
+  "ROADMAP.md",
   "CHANGELOG.md",
+  "PULL_REQUEST_TEMPLATE.md",
   "TIERS.md",
   "LICENSE",
   "Makefile",
@@ -15,7 +17,7 @@ noms_standards = [
   "uv.lock",
 ]
 
-repertoires_standards = [".github"]
+repertoires_standards = [".github", "ISSUE_TEMPLATE"]
 racines_interdites = ["projets", "donnees", "outils", "suivi", "profils", "sauvegardes"]
 
 [[exceptions]]
@@ -25,7 +27,7 @@ raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
 contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
 duree = "Tant que le composant text-to-cad est conservé"
 preuve_fichier = "benchab/reference/licences.json"
-preuve_sha256 = "3f8506b577a9fc9de947b8c384af15c90571222885d3d4bf5e82e741928211b6"
+preuve_sha256 = "17c1a195421ca3e82baca505198c7cbab0c789f65edd673e8048642c2a31b84a"
 consommateur = "benchab/qualite/edition.py"
 
 [[exceptions]]
@@ -35,7 +37,7 @@ raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
 contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
 duree = "Tant que les modules de modélisation copiés sont conservés"
 preuve_fichier = "benchab/reference/licences.json"
-preuve_sha256 = "3f8506b577a9fc9de947b8c384af15c90571222885d3d4bf5e82e741928211b6"
+preuve_sha256 = "17c1a195421ca3e82baca505198c7cbab0c789f65edd673e8048642c2a31b84a"
 consommateur = "benchab/qualite/edition.py"
 
 [[exceptions]]
@@ -56,6 +58,6 @@ contrainte = "Noms et version du paquet restent inchangés ; collisions de chemi
 duree = "Tant que le viewer hors ligne dépend de Three.js 0.160.0"
 consommateur = "benchab/visualisation/hors_ligne.py"
 preuve_fichier = "TIERS.md"
-preuve_sha256 = "20989b322f56f2ba293500bf7622242bee31fccbcec0fe154f771f46ade662a0"
+preuve_sha256 = "735fe7f3a1b4bea085f21ab1fc4ce412a3990e80084a17d3838a7d5f2f85b986"
 source_fichier = "benchab/visualisation/vendor/three-0.160.0/PROVENANCE.json"
 source_sha256 = "643df710616434743b53b360800dee9cbea88309f878724ad84ea11bee9f48c6"

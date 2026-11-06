@@ -42,3 +42,12 @@
 - Aucun code ne lit, ne normalise ni n’écrit un réglage du slicer sans passer par
   le dictionnaire typé des réglages. Toute transformation d’un 3MF déclare ses
   différences permises et passe le contrôle d’intégrité avant/après.
+
+## Suivi des issues et versions
+
+- Tout travail technique public est suivi dans une issue GitHub, rattachée à la milestone de la prochaine version.
+- Un commit qui règle une issue contient « Fixes #N ». Une issue réglée sans commit est fermée avec un commentaire qui explique pourquoi.
+- Chaque nouveau bug ou nouvelle idée découvert en travaillant donne une issue, pas une note dans le code.
+- Numéro de version : correctif → version corrective suivante ; nouvelle fonction → version mineure suivante.
+- Le CHANGELOG de chaque version cite les issues fermées (#N).
+- Les notes privées ne gardent que ce qui ne peut pas être public.

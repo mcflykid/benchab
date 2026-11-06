@@ -30,7 +30,7 @@ les licences duales cryptography et packaging, la branche Apache-2.0 est retenue
 | anytree | 2.13.0 | Apache-2.0 |
 | asttokens | 3.0.2 | Apache-2.0 |
 | bd-materials | 0.2.5 | Apache-2.0 |
-| benchab | 1.0.0 | GPL-3.0-or-later |
+| benchab | 1.0.1 | GPL-3.0-or-later |
 | build123d | 0.13.0 | Apache-2.0 |
 | cadgen | 0.8.4 | MIT |
 | cadquery-ocp-novtk | 8.0.1.1.0 | Apache-2.0 |
