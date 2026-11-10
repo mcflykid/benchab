@@ -72,7 +72,8 @@ class Audit(unittest.TestCase):
         with zipfile.ZipFile(p, "w") as z:
             z.writestr(
                 "Metadata/project_settings.config",
-                json.dumps({"initial_layer_print_height": ".2", "filament_max_volumetric_speed": cap}),
+                json.dumps({"initial_layer_print_height": ".2", "filament_max_volumetric_speed": cap,
+                            "filament_diameter": ["1.75"] * max(1, len(cap))}),
             )
             z.writestr(
                 "Metadata/slice_info.config",
@@ -191,6 +192,7 @@ class Audit(unittest.TestCase):
         pre = "T0\nEXCLUDE_OBJECT_START NAME=Piece\nG1 X0 Y0 F600\n"
         r, a = self.debit("M83\n" + pre + "G1 X10 E1\nG1 X20 E1\n")
         r, b = self.debit("M82\nG92 E0\n" + pre + "G1 X10 E1\nG1 X20 E2\n")
+        self.assertIsNotNone(a["plaques"][0]["objets"][0]["debit_p99"])
         self.assertEqual(a["plaques"][0]["objets"][0]["debit_p99"], b["plaques"][0]["objets"][0]["debit_p99"])
 
     def test_B07_support_ailleurs_ne_justifie_pas_geometrie(self):

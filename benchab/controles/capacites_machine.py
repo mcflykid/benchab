@@ -19,6 +19,7 @@ from xml.etree import ElementTree as ET
 
 from benchab import reglages as schema_reglages
 from benchab.controles.gcode_interpreter import Interpreter
+from benchab.gcode import debit
 from benchab.gcode.lecture import lire_membre_3mf
 
 RACINE = Path(__file__).resolve().parents[2]
@@ -692,15 +693,13 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                         source=filament.get("source"),
                     )
                     continue
-                try:
-                    volume = move["deposited"] * math.pi * (diameter / 2) ** 2
-                except OverflowError:
-                    volume = float("inf")
-                if not math.isfinite(volume):
+                mesure_debit = debit.mesurer(move, diameter)
+                volume = mesure_debit["volume_mm3"]
+                if volume is None:
                     note(
                         "calcul débit",
-                        "FAIL",
-                        "volume non représentable numériquement",
+                        "NON VÉRIFIÉ",
+                        "dépôt nominal non mesurable avec les données déclarées",
                         plaque=number,
                         ligne=move["line"],
                     )
@@ -726,17 +725,11 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                         ligne=move["line"],
                     )
                     continue
-                deposition_time = move["deposited_length"] / feed
-                if deposition_time <= 0:
-                    note("calcul débit", "FAIL", "temps de dépôt non représentable", plaque=number, ligne=move["line"])
-                    continue
-                q = volume / deposition_time
-                if not math.isfinite(q):
-                    note("calcul débit", "FAIL", "débit non fini", plaque=number, ligne=move["line"])
-                    continue
+                q = mesure_debit["debit_mm3_s"]
                 group["debit_max_mm3_s"] = max(group["debit_max_mm3_s"], q)
                 group["_debits"][round(q, 4)] += move["deposited_length"]
-                over = q > cap + max(1e-9, cap * 1e-10)
+                # U25 : même seuil d'arrondi dans tous les parcours, sans marge physique.
+                over = debit.verdict(q, cap) == "FAIL"
                 group["depassements_debit"] += int(over)
                 note(
                     "débit strict",

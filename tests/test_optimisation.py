@@ -240,7 +240,39 @@ class OptimisationTests(unittest.TestCase):
                 )
                 self.assertEqual(sys.argv, anciens_arguments)
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(sortie.getvalue())["objectif"], "equilibre")
+        resultat = json.loads(sortie.getvalue())
+        self.assertEqual(resultat["objectif"], "equilibre")
+        self.assertEqual(resultat["machine"]["origine"], "configuration générale: machine.profil_maitre")
+
+    def test_main_proposer_transmet_le_profil_explicite_et_affiche_son_origine(self):
+        """Le parcours CLI transmet le maître choisi et rend sa provenance visible."""
+        chemin = self.base.prive / "machine/profil-explicite.json"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text("{}", encoding="utf-8")
+        sortie = StringIO()
+        resultat_attendu = {"machine": {"origine": "argument explicite"}}
+        with patch.object(optimisation, "proposer", return_value=resultat_attendu) as appel:
+            with redirect_stdout(sortie):
+                code = optimisation.main(
+                    [
+                        "--prive", str(self.base.prive), "proposer", "--projet", str(self.projet),
+                        "--source", str(self.source), "--profil", str(chemin),
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(appel.call_args.args[4], chemin)
+        self.assertEqual(json.loads(sortie.getvalue())["machine"]["origine"], "argument explicite")
+
+    def test_profil_fabrication_prime_sur_configuration_generale(self):
+        """La déclaration locale choisit son maître avant la configuration globale."""
+        chemin = self.base.prive / "machine/profil-declare.json"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        donnees = profil_avec_snapshots(chemin.parent)
+        chemin.write_text(json.dumps({k: v for k, v in donnees.items() if not k.startswith("_")}), encoding="utf-8")
+        configuration = {"machine": {"profil": str(chemin)}}
+        maitre, _limites = optimisation._lire_maitre(self.base, configuration, None)
+        self.assertEqual(maitre["profil_id"], "machine-fixture")
+        self.assertEqual(maitre["_origine_maitre"], "FABRICATION.json: machine.profil")
 
     def test_verrou_objet_et_protection_preservent_reglages_fins(self):
         self.fabrication["contraintes"]["objets"]["Cube"] = {

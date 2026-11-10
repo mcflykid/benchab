@@ -1,0 +1,26 @@
+# Contrat commun du débit U25
+
+Le débit nominal commandé est calculé à partir du dépôt de filament en mm,
+du diamètre déclaré en mm et de la durée nominale du trajet déposé en secondes.
+L’interpréteur commun exclut le remboursement des rétractions du dépôt net.
+Le calcul renvoie un volume en mm³ et un débit en mm³/s. Il ne simule pas
+les accélérations, le firmware, le mode Sport ni le débit réellement atteint.
+
+Les contrôles de débit G-code, d’envoi et de capacités machine utilisent le
+même calcul et le même verdict : chaque dépassement établi d’un plafond
+déclaré donne **FAIL**. Seul l’arrondi numérique est toléré :
+`max(1e-9, plafond × 1e-10)` mm³/s. La marge historique de 5 % est supprimée.
+Le maximum est contrôlé même lorsque le dépassement est trop court pour
+apparaître dans le percentile 99 pondéré par longueur, qui reste informatif.
+
+Le diamètre est lu avec le dictionnaire typé, à l’indice exact de l’outil.
+Sans diamètre, plafond ou dépôt mesurable, le débit est **NON VÉRIFIÉ**.
+Un dépassement établi reste FAIL si une autre mesure est incomplète.
+Les contrôles gardent leur source de plafond explicite : réglages du 3MF,
+déclaration d’envoi ou limites déclarées au contrôle de capacités. Des plafonds
+différents peuvent donc produire des verdicts différents, avec leur provenance.
+
+U21 n’impose aucun plafond universel : un réglage déclaré supérieur à
+12 mm³/s n’est pas refusé pour cette seule raison. Les observations de réussite
+restent liées à leurs conditions ; elles ne modifient pas automatiquement
+les réglages ni les plafonds d’un autre projet.

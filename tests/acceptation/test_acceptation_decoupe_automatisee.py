@@ -1,4 +1,4 @@
-"""Découpe 1.0 : géométrie, choix, édition locale et exports, fixtures originales."""
+"""Découpe automatisée : géométrie, choix, édition locale et exports synthétiques."""
 
 import json
 

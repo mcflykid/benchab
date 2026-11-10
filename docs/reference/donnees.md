@@ -27,11 +27,13 @@ restent recherchables avec `preparation_id: null`, sans créer de Pnn fictif.
 Les vues privées sont `vues/INDEX.md`, `vues/etats/`, `README.md` et `CHANGELOG.md`
 sous l'espace privé. Elles sont régénérées à la fin de séance ou explicitement.
 Les états et l'index viennent des projets ; les changements viennent de `versions`.
-L'option `--racine-publique` génère seulement la liste des numéros de version :
-aucune donnée projet, changement privé, source ou date privée n'y est transféré.
-Dans le README, seuls les marqueurs `BENCHAB:BASE` délimitent la section remplacée.
-Le CHANGELOG est généré en entier. Les vues sont remplacées fichier par fichier ;
-une interruption demande une nouvelle génération.
+L'option `--racine-publique` met à jour uniquement la section `BENCHAB:BASE` du
+README avec la version du paquet. Les numéros enregistrés dans SQLite ne sont pas
+un registre de versions publiques. Le `CHANGELOG.md` public est éditorial et reste
+intact ; seul le CHANGELOG dans l'espace privé est régénéré depuis la base. Aucune
+donnée projet, changement privé, source ou date privée n'est transféré. Les vues
+privées sont remplacées fichier par fichier ; une interruption demande une nouvelle
+génération.
 
 Le manifeste privé des vues permet au contrôle de cohérence de repérer une vue
 absente, périmée ou altérée. Le contrôle ne régénère rien : la génération est

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "benchab"
-version = "1.0.1"
+dynamic = ["version"]
 description = "Atelier personnel de conception et de préparation d'impression 3D"
 requires-python = ">=3.13"
 license = "GPL-3.0-or-later"
@@ -37,6 +37,9 @@ include = [
     "/pyproject.toml", "/uv.lock", "/README.md", "/ROADMAP.md", "/LICENSE", "/TIERS.md", "/CHANGELOG.md",
     "/AGENTS.md", "/SKILL.md",
 ]
+
+[tool.hatch.version]
+path = "benchab/__init__.py"
 
 [dependency-groups]
 dev = [

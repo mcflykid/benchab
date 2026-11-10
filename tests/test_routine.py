@@ -23,6 +23,7 @@ def fixture(chemin):
             "filament_ids": ["GFPLA"],
             "filament_id": "GFPLA",
             "filament_max_volumetric_speed": ["32"],
+            "filament_diameter": ["1.75"],
             "initial_layer_print_height": "0.2",
             "top_shell_layers": "5",
         },

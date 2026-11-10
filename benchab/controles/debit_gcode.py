@@ -1,7 +1,7 @@
 """
 
-Débit commandé par objet et outil. Critère : p99 pondéré par longueur,
-plafond déclaré +5 %. Sans dépôt mesurable ou plafond valide : non conforme.
+Débit commandé par objet et outil. U25 : chaque dépassement établi du plafond déclaré donne FAIL ;
+p99 pondéré par longueur informatif. Données insuffisantes : NON VÉRIFIÉ.
 usage : debit_gcode.py <tranche.3mf> [--plafonds 1=32,2=16] [--sortie fichier.json]
 
 
@@ -10,7 +10,6 @@ usage : debit_gcode.py <tranche.3mf> [--plafonds 1=32,2=16] [--sortie fichier.js
 import argparse
 import collections
 import json
-import math
 import re
 import sys
 import zipfile
@@ -19,20 +18,14 @@ from xml.etree import ElementTree as E
 
 from benchab import reglages as schema_reglages
 from benchab.controles.gcode_interpreter import Interpreter
+from benchab.gcode import debit
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 from benchab.qualite.statuts import code_statut
 
-AIRE = math.pi * (1.75 / 2) ** 2
-
 
 def positive(value):
-    if isinstance(value, bool):
-        return None
-    try:
-        v = float(value)
-        return v if math.isfinite(v) and v > 0 else None
-    except (TypeError, ValueError):
-        return None
+    """Lit une déclaration positive finie ; float ou None, unités de la déclaration conservées."""
+    return debit.positif(value)
 
 
 def analyser(path, overrides=None, attendus=None):
@@ -125,11 +118,11 @@ def analyser(path, overrides=None, attendus=None):
                 tool = str(m["tool"] + 1) if m["tool"] is not None else None
                 if tool not in fil:
                     errors.append("outil extrudant absent ou contradictoire avec slice_info : " + str(tool))
-                if m["feed"] <= 0:
-                    errors.append("vitesse inconnue")
-                    continue
                 if m["object"]:
-                    q = m["deposited"] * AIRE / (m["deposited_length"] / m["feed"] * 60)
+                    diametre = schema_reglages.valeur_indice(
+                        st, "filament_diameter", int(tool) - 1, lecteur="index_exact"
+                    ) if tool is not None else None
+                    q = debit.mesurer(m, diametre)["debit_mm3_s"]
                     samples[identity(m["object"])].append((q, m["deposited_length"], tool))
             missing = set(expected) - samples.keys()
             extra = samples.keys() - set(expected)
@@ -140,42 +133,35 @@ def analyser(path, overrides=None, attendus=None):
             errors = list(dict.fromkeys(errors + it.errors))
             objects = []
             for name, values in samples.items():
-                ordered = sorted(values)
-                total = sum(v[1] for v in values)
-                acc = 0.0
-                p99 = 0.0
-                for q, length, _ in ordered:
-                    acc += length
-                    if acc >= 0.99 * total:
-                        p99 = q
-                        break
-                # Chaque outil conserve son propre p99 ; une petite contribution
-                # d'un second filament ne disparaît pas dans le percentile global.
+                global_objet = debit.bilan([(q, length) for q, length, _ in values], cap)
+                # U25 compare chaque outil à son plafond propre ; le p99 reste informatif.
+                # Voir docs/reference/debit.md : aucun diamètre implicite ni marge de 5 %.
                 tools = []
                 for tool in sorted({v[2] for v in values}, key=str):
-                    subset = sorted((q, length) for q, length, t in values if t == tool)
-                    length_total = sum(length for _, length in subset)
-                    acc = 0.0
-                    q99 = 0.0
-                    for q, length in subset:
-                        acc += length
-                        if acc >= 0.99 * length_total:
-                            q99 = q
-                            break
+                    subset = [(q, length) for q, length, t in values if t == tool]
                     limit = caps.get(tool)
+                    resultat = debit.bilan(subset, limit)
                     tools.append(
                         {
                             "filament": tool,
                             "plafond_mm3_s": limit,
-                            "debit_p99": q99,
-                            "conforme": limit is not None and q99 <= 1.05 * limit,
+                            "debit_p99": resultat["p99_mm3_s"],
+                            "debit_max": resultat["maximum_mm3_s"],
+                            "depassements": resultat["depassements"],
+                            "statut": resultat["statut"],
+                            "conforme": resultat["statut"] == "PASS",
                         }
                     )
                 objects.append(
                     {
                         "objet": name,
-                        "debit_max": round(max(v[0] for v in values), 3),
-                        "debit_p99": round(p99, 3),
+                        "debit_max": (
+                            round(global_objet["maximum_mm3_s"], 3)
+                            if global_objet["maximum_mm3_s"] is not None else None
+                        ),
+                        "debit_p99": (
+                            round(global_objet["p99_mm3_s"], 3) if global_objet["p99_mm3_s"] is not None else None
+                        ),
                         "outils": tools,
                         "conforme": not errors and all(t["conforme"] for t in tools),
                     }
@@ -195,17 +181,29 @@ def analyser(path, overrides=None, attendus=None):
                     "plafond": cap,
                     "objets": objects,
                     "erreurs": errors,
+                    "mesure_incomplete": bool(missing) or not samples or bool(it.errors),
+                    "incoherence_etablie": any(
+                        erreur not in it.errors
+                        and not erreur.startswith("objets sans extrusion exploitable")
+                        and erreur != "aucun dépôt par objet analysable"
+                        and erreur != "plafond absent ou invalide pour les filaments déclarés"
+                        for erreur in errors
+                    ),
                     "conforme": bool(objects) and not errors and all(o["conforme"] for o in objects),
                 }
             )
         res["conforme"] = bool(res["plaques"]) and all(p["conforme"] for p in res["plaques"])
-        manque_plafond = any(p["plafond"] is None for p in res["plaques"])
+        incomplete = any(p["plafond"] is None or p["mesure_incomplete"] for p in res["plaques"]) or any(
+            outil["statut"] == "NON VÉRIFIÉ"
+            for plaque in res["plaques"] for objet in plaque["objets"] for outil in objet.get("outils", [])
+        )
         depassement_etabli = any(
-            outil["plafond_mm3_s"] is not None and not outil["conforme"]
+            outil["statut"] == "FAIL"
             for plaque in res["plaques"] for objet in plaque["objets"] for outil in objet.get("outils", [])
         )
         res["statut"] = "PASS" if res["conforme"] else (
-            "NON VÉRIFIÉ" if manque_plafond and not depassement_etabli else "FAIL"
+            "NON VÉRIFIÉ" if incomplete and not depassement_etabli
+            and not any(p["incoherence_etablie"] for p in res["plaques"]) else "FAIL"
         )
         res["code"] = code_statut(res["statut"])
         return res

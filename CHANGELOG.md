@@ -1,8 +1,24 @@
 # Changements
 
-Versions livrées 1.0.0 et 1.0.1.
+Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## Non publié
+## 1.1.0 — 2026-11-11
+
+- U25 : calcul commun en mm³/s avec diamètre déclaré ; chaque dépassement établi du plafond donne FAIL, percentile 99 informatif, données insuffisantes NON VÉRIFIÉES (#12).
+- Tranchage public : catalogue d’identifiants permanents transmis explicitement, avec priorité sur la variable d’environnement historique ; identifiants présents conservés (#101).
+- Optimisation : sélection explicite du profil maître pour proposer et comparer, origine et priorité visibles, confinement conservé (#102).
+- Diagnostic d’installation en lecture seule, sans création de base ni mesure, avec contrôles Python/verrou, SQLite, Git, espace et preuves disponibles (#76).
+- Continuité : export JSON privé neuf et synthèses par bandes Z, détails par couche conservés, bornes et couverture explicites (#107).
+- Tests : collecte directe des mesures, unités, rattachement et reprise sans double comptage ; réseau externe bloqué dans le processus pytest avec opt-in explicite (#14, #65).
+- CI : contrôle réel des secrets et de la frontière publique, avec fixtures synthétiques et guides de contribution et de signalement privé (#56).
+- Git : circuit de fusion squash et nettoyage des branches documentés (#96).
+- Livraison : version unique dans le paquet, README indépendant des données privées, CHANGELOG éditorial préservé et tests d’acceptation nommés par domaine (#70).
+
+Changement de verdict U25 : les témoins figés S/M/L conservent leurs fichiers et
+leurs maxima calculés. Avec un plafond déclaré de 16 mm³/s, des maxima de
+16,1565 mm³/s (S) et 16,7116 mm³/s (M/L) passent de PASS historique à FAIL.
+La tolérance physique de 5 % est supprimée ; seul l’arrondi numérique est admis.
+Ce verdict porte sur les commandes du fichier, pas sur un débit physiquement mesuré.
 
 - Retours humains sans préparation : capture privée vérifiable par SHA-256, sans création d'impression ni de préparation (#118).
 

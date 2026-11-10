@@ -35,7 +35,6 @@ wheels = [
 
 [[package]]
 name = "benchab"
-version = "1.0.1"
 source = { editable = "." }
 default-groups = ["dev", "reception"]
 dependencies = [

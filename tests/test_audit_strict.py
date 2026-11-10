@@ -94,7 +94,9 @@ class Debit(unittest.TestCase):
         if extra:
             g += extra
         with ZipFile(p, "w") as z:
-            z.writestr("Metadata/project_settings.config", json.dumps({"filament_max_volumetric_speed": caps}))
+            z.writestr("Metadata/project_settings.config", json.dumps({
+                "filament_max_volumetric_speed": caps, "filament_diameter": ["1.75"] * max(1, len(caps))
+            }))
             z.writestr(
                 "Metadata/slice_info.config",
                 '<config><plate><metadata key="index" value="1"/>'

@@ -150,7 +150,15 @@ def licences(racine):
             erreurs.append("Licences : verrou modifié depuis la revue")
         if empreinte_dependances(projet) != manifeste["declarations_sha256"]:
             erreurs.append("Licences : déclarations de dépendances modifiées depuis la revue")
-        attendus = {(x["name"], x["version"]) for x in verrou["package"]}
+        # uv ne numérote pas le paquet local éditable à version dynamique ;
+        # toutes les dépendances tierces restent épinglées (docs/reference/donnees.md).
+        attendus = {
+            (x["name"], "dynamique" if (
+                x["name"] == projet["project"]["name"] and "version" in projet["project"].get("dynamic", [])
+                and x.get("source", {}).get("editable") == "." and "version" not in x
+            ) else x["version"])
+            for x in verrou["package"]
+        }
         lignes = manifeste["python"]
         presents = {(x["nom"], x["version"]) for x in lignes}
         if presents != attendus or len(lignes) != len(attendus):

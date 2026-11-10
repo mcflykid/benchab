@@ -3,10 +3,10 @@
 import hashlib
 import json
 import os
-import re
 import tempfile
 from pathlib import Path
 
+from benchab import __version__
 from benchab.qualite.ecritures import _sans_lien
 
 DEBUT = "<!-- BENCHAB:BASE:DEBUT -->"
@@ -140,8 +140,9 @@ def _manifeste(rendu):
 
 
 def generer(base, *, racine_publique=None):
-    """Régénère les vues privées et versions publiques ; comptes sans unité, aucune archive ni réglage adopté.
+    """Régénère les vues privées et le marqueur README public ; compte sans unité, aucune archive ni réglage adopté.
 
+    La version publique suit le paquet, pas la base privée ; CHANGELOG public manuel préservé.
     Les fiches modernes reprennent SQLite ; les fiches historiques ne sont jamais réécrites.
     """
     rendu = _rendre(base.connexion)
@@ -156,10 +157,11 @@ def generer(base, *, racine_publique=None):
         racine = _sans_lien(Path(racine_publique))
         if racine == base.prive.resolve() or racine.is_relative_to(base.prive.resolve()):
             raise ValueError("La racine publique doit être distincte de l'espace privé.")
-        # Seul numero est exposé : changement/source/date peuvent contenir du contexte privé.
-        versions = list(base.connexion.execute("SELECT numero FROM versions ORDER BY date,numero,id"))
-        versions_publiques = [v["numero"] for v in versions if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", v["numero"])]
-        corps = "Versions enregistrées : " + (", ".join(versions_publiques) or "aucune version livrée") + "."
+        # SQLite reste privée ; le README suit le paquet, pas les numéros de versions locaux.
+        # Le CHANGELOG public reste éditorial (docs/reference/donnees.md).
+        corps = (
+            f"Version du paquet : {__version__}. Les versions publiées sont référencées "
+            "dans le CHANGELOG et les tags Git (vX.Y.Z)."
+        )
         _section(racine / "README.md", corps, "# BENCHAB")
-        _ecrire(racine / "CHANGELOG.md", "# Changements\n\n" + corps + "\n")
     return {"projets_prives": rendu["projets"], "versions": rendu["versions"], "projets_publics": 0}

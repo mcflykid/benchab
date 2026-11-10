@@ -1,5 +1,14 @@
 # Continuité de la paroi extérieure
 
+La commande accepte `--sortie prive/rapports/continuite.json` pour un export
+JSON neuf, identique au rapport affiché, avec chemin source, plaque et SHA-256.
+Une destination existante, une entrée ou une préparation figée ne sont jamais
+écrasées. `--bandes-z 5` ajoute une synthèse par bandes de 5 mm sans retirer
+les mesures par couche ni modifier le verdict. Les bandes couvrent la fenêtre Z
+explicite, sinon les hauteurs mesurées : `[min, max)`, dernière borne haute
+incluse. La dernière bande partielle et les bandes vides sont conservées ;
+une bande vide reste NON VÉRIFIÉE. Le budget est limité à 10 000 bandes.
+
 Ce contrôle mesure les trajectoires d’extrusion marquées `Outer wall` par le slicer. Il ne prédit pas la qualité physique.
 
 Pour chaque hauteur de couche, le rapport compte les morceaux continus, les segments extrudés et les segments de moins
