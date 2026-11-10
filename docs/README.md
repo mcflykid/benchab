@@ -13,6 +13,7 @@ Chaque méthode a une page de référence. Les guides renvoient aux règles comm
 | Trouver une commande | [Commandes](reference/commandes.md) |
 | Trancher sans modifier les réglages | [Fabrication](reference/fabrication.md) |
 | Comprendre les contrôles | [Contrôles](reference/controles.md) |
+| Décrire le placement attendu | [Contrat de placement](reference/placement.md) |
 | Consulter les règles | [Règles](reference/regles.md) |
 | Préparer le vote | [Vote](reference/vote.md) |
 | Mesurer la continuité des parois | [Continuité](reference/continuite-paroi.md) |

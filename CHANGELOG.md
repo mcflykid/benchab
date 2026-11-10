@@ -4,6 +4,12 @@ Versions livrées 1.0.0 et 1.0.1.
 
 ## Non publié
 
+- Hooks : résolution du dossier à chaque appel et limite du filtre shell documentée (#21).
+- Aide CLI : options, positionnels et sous-commandes des contrôles et fabrications délégués visibles sans atelier (#98).
+- Relevé thermique : consignes G9111 et M104/M109 issues de l’interpréteur, avec ligne, cible et extinction (#99).
+- Optimisation : projet relatif résolu depuis l’atelier choisi, indépendamment du dossier courant (#100).
+- Routine : placement validé et erreur localisée avant les contrôles et la création des rapports (#104).
+
 - Audit ACE : lecture des réglages projet par le dictionnaire typé et refus des clés JSON dupliquées (#58).
 
 - Mise à jour de `cryptography` pour corriger les vulnérabilités signalées par Dependabot.

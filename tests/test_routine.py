@@ -67,6 +67,38 @@ def test_routine_complete_rejouable_sans_slicer_et_source_intacte(tmp_path):
     assert source.read_bytes() == avant
 
 
+@pytest.mark.parametrize(
+    "mutation,localisation",
+    [
+        (lambda p: p.clear(), "plates"),
+        (lambda p: p.update(schema=2), "schema"),
+        (lambda p: p["objects"][0].update(plate=2), "objects[0].plate"),
+        (lambda p: p["objects"][0].update(xy=[float("nan"), 1]), "objects[0].xy"),
+        (lambda p: p["objects"][0].update(size=[-1, 2]), "objects[0].size"),
+        (lambda p: p["objects"][0].update(reglages=[]), "objects[0].reglages"),
+        (lambda p: p["plates"].append(dict(p["plates"][0])), "plates[1].name"),
+        (lambda p: p.update(assembly_manifest_sha256="invalide"), "assembly_manifest_sha256"),
+    ],
+)
+def test_placement_invalide_refuse_avant_premier_controle(tmp_path, monkeypatch, mutation, localisation):
+    """Le placement invalide est localisé avant tout contrôle métier et toute création de rapport."""
+    source = tmp_path / "fixture.3mf"
+    placement = fixture(source)
+    document = json.loads(placement.read_text())
+    mutation(document)
+    placement.write_text(json.dumps(document))
+
+    def controle_interdit(*args):
+        raise AssertionError("Le contrôle métier a commencé avec un placement invalide")
+
+    monkeypatch.setattr(plaques_interface, "main", controle_interdit)
+    sortie = tmp_path / "rapports"
+    with pytest.raises(ValueError) as erreur:
+        routine.controler(source, source, placement, sortie)
+    assert localisation in str(erreur.value)
+    assert not sortie.exists()
+
+
 @pytest.mark.parametrize("dossier", ["rapports", "rapports avec espaces"])
 @pytest.mark.parametrize("echec", ["plaques", "reglages", "disposition", "debit"])
 def test_routine_ne_masque_pas_echec_par_ancien_json(tmp_path, monkeypatch, dossier, echec):

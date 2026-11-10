@@ -119,7 +119,8 @@ def parser():
     complet.add_argument("--index-filament", type=int)
     complet.add_argument("--declaration-envoi", type=Path)
     for nom in CONTROLES_DIRECTS:
-        direct = controle.add_parser(nom, help="Exécute le contrôle spécialisé et enregistre sa mesure")
+        direct = controle.add_parser(nom, add_help=False, help="Exécute le contrôle spécialisé et enregistre sa mesure")
+        direct.add_argument("-h", "--help", action="store_true", help="Affiche l’aide métier sans exécution")
         direct.add_argument("arguments", nargs=argparse.REMAINDER)
     controle.add_parser("frontiere").add_argument("--racine", type=Path, default=Path.cwd())
     regles = controle.add_parser("regles")
@@ -191,7 +192,9 @@ def parser():
         "retour",
         "envois-slicer",
     ):
-        fabrication.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+        route = fabrication.add_parser(nom, add_help=False)
+        route.add_argument("-h", "--help", action="store_true", help="Affiche l’aide métier sans exécution")
+        route.add_argument("arguments", nargs=argparse.REMAINDER)
     commandes.add_parser("atelier").add_argument("arguments", nargs=argparse.REMAINDER)
     commandes.add_parser("projet").add_argument("arguments", nargs=argparse.REMAINDER)
     # L’installation du lien est opt-in et son plan reste sec par défaut (docs/guides/installation.md).
@@ -759,14 +762,46 @@ def _aide_deleguee(arguments):
         documentation = ast.get_docstring(arbre)
         if documentation:
             print("\n" + documentation)
-        options = []
+        options, positionnels, sous_commandes = [], [], []
         for noeud in ast.walk(arbre):
             if (isinstance(noeud, ast.Call) and isinstance(noeud.func, ast.Attribute)
-                    and noeud.func.attr == "add_argument"):
+                    and noeud.func.attr in {"add_argument", "add_parser"}):
                 for argument in noeud.args:
-                    if (isinstance(argument, ast.Constant) and isinstance(argument.value, str)
-                            and argument.value.startswith("-") and argument.value not in options):
-                        options.append(argument.value)
+                    if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                        groupe = sous_commandes if noeud.func.attr == "add_parser" else (
+                            options if argument.value.startswith("-") else positionnels
+                        )
+                        if argument.value not in groupe:
+                            groupe.append(argument.value)
+        # Les options de finition proviennent d’un dictionnaire déclaré ; lire ses
+        # clés dans l’AST évite d’importer ou d’exécuter le contrôle (#98).
+        for boucle in ast.walk(arbre):
+            if not isinstance(boucle, ast.For):
+                continue
+            collection = boucle.iter
+            if (isinstance(collection, ast.Call) and isinstance(collection.func, ast.Attribute)
+                    and collection.func.attr == "items"):
+                collection = collection.func.value
+            if not isinstance(collection, ast.Name):
+                continue
+            dynamique = any(
+                isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "add_argument"
+                and n.args and isinstance(n.args[0], ast.BinOp)
+                and isinstance(n.args[0].left, ast.Constant) and n.args[0].left.value == "--"
+                for n in ast.walk(boucle)
+            )
+            if dynamique:
+                for declaration in arbre.body:
+                    if (isinstance(declaration, ast.Assign)
+                            and any(isinstance(c, ast.Name) and c.id == collection.id for c in declaration.targets)
+                            and isinstance(declaration.value, ast.Call)
+                            and isinstance(declaration.value.func, ast.Name) and declaration.value.func.id == "dict"):
+                        options.extend("--" + k.arg.replace("_", "-")
+                                       for k in declaration.value.keywords if k.arg)
+        if sous_commandes:
+            print("\nSous-commandes déclarées : " + ", ".join(sous_commandes))
+        if positionnels:
+            print("\nPositionnels déclarés (selon la sous-commande) : " + ", ".join(positionnels))
         if options:
             print("\nOptions déclarées par le module (selon la sous-commande) : " + ", ".join(options))
     print("\nGuide des commandes : docs/reference/commandes.md")

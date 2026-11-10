@@ -22,6 +22,44 @@ def load(path):
 
 
 class Audit(unittest.TestCase):
+    def test_releve_thermique_reutilise_macro_et_evenements(self):
+        """Les consignes en °C, outils et extinction sont relevés sans verdict thermique ajouté."""
+        p = self.archive("G9111 extruderTemp=210 bedTemp=60\nM104 S205\nM109 S200\nM104 S0\n")
+        place = self.d / "placement.json"
+        place.write_text(json.dumps({"objects": [], "plates": [{"name": "P"}]}))
+        out = self.d / "rapport.json"
+        self.runcli("verifier_reglages.py", p, place, out)
+        plaque = json.loads(out.read_text())["plaques"][0]
+        self.assertEqual(plaque["temperatures_buse"], [0, 200, 205, 210])
+        self.assertEqual(
+            [(e["commande"], e["temperature_c"], e["extinction"]) for e in plaque["consignes_buse"]],
+            [("G9111", 210.0, False), ("M104", 205.0, False), ("M109", 200.0, False), ("M104", 0.0, True)],
+        )
+        self.assertEqual([e["ligne"] for e in plaque["consignes_buse"]], [1, 2, 3, 4])
+        self.assertTrue(all(e["outil"] is None for e in plaque["consignes_buse"]))
+
+    def test_temperature_identifie_cible_explicite_sans_doubler_les_commentaires(self):
+        """Une cible T explicite prime sur l’outil actif ; macro invalide et commentaires exclus."""
+        p = self.archive("T1\nM104 T0 S215\n; commentaire\nG9111 extruderTemp=nan\nM109 S210\n")
+        place = self.d / "placement.json"
+        place.write_text(json.dumps({"objects": [], "plates": [{"name": "P"}]}))
+        out = self.d / "rapport.json"
+        self.runcli("verifier_reglages.py", p, place, out)
+        plaque = json.loads(out.read_text())["plaques"][0]
+        self.assertEqual([(e["outil"], e["temperature_c"]) for e in plaque["consignes_buse"]], [(0, 215), (1, 210)])
+        self.assertEqual(plaque["temperatures_buse"], [210, 215])
+
+    def test_temperature_attendue_par_parametre_r_est_relevee(self):
+        """M109 R en °C reste une consigne, distincte d’un acquittement thermique."""
+        p = self.archive("M109 R210\nM104 S0\n")
+        place = self.d / "placement.json"
+        place.write_text(json.dumps({"objects": [], "plates": [{"name": "P"}]}))
+        out = self.d / "rapport.json"
+        self.runcli("verifier_reglages.py", p, place, out)
+        plaque = json.loads(out.read_text())["plaques"][0]
+        self.assertEqual(plaque["temperatures_buse"], [0, 210])
+        self.assertEqual([e["temperature_c"] for e in plaque["consignes_buse"]], [210, 0])
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)

@@ -1,5 +1,6 @@
-"""Hooks projet Claude Code. Réversibles via sauvegarde du settings.
-Codex utilise les mêmes barrières via make tout et livrables.py.
+"""Hooks projet réversibles ; filtre shell heuristique, sans garantie de confinement.
+
+Les contrôles explicites des livrables restent nécessaires ; voir docs/guides/developpement.md.
 """
 
 import json
@@ -8,13 +9,14 @@ import shlex
 import sys
 from pathlib import Path
 
+from benchab.chemins import sans_lien
 from benchab.qualite.validation import exiger, protege
 
-R = Path.cwd()
 PY = sys.executable
 
 
 def projet(p):
+    """Résout le projet contenant un chemin ; renvoie Path ou None, sans unité ni écriture."""
     p = Path(p).resolve()
     for d in [p if p.is_dir() else p.parent, *p.parents]:
         if (d / "qualite.json").exists():
@@ -23,9 +25,14 @@ def projet(p):
 
 
 def pre(data):
+    """Contrôle une charge de hook ; renvoie allow ou lève un refus, sans écrire de fichier.
+
+    Chemins sans unité ; le filtre shell est indicatif, pas une autorisation de modifier un livrable.
+    """
     ti = data.get("tool_input", {})
     paths = [ti[k] for k in ("file_path", "path") if ti.get(k)]
-    cwd = Path(data.get("cwd", str(R)))
+    # Le repli doit suivre chaque appel, pas le dossier présent à l’import (#21).
+    cwd = sans_lien(data.get("cwd") or Path.cwd())
     for p in paths:
         f = Path(p) if Path(p).is_absolute() else cwd / p
         root = protege(f)
@@ -70,11 +77,16 @@ def pre(data):
 
 
 def post(data):
-    """Enregistre le contrôle après étape, sans modifier les fichiers surveillés."""
+    """Contrôle une source depuis le cwd de la charge ; rend un code et écrit seulement son état.
+
+    Chemins sans unité ; ne modifie aucun livrable figé ni réglage d’impression.
+    """
     ti = data.get("tool_input", {})
     p = ti.get("file_path", ti.get("path"))
     if not p or "src" not in Path(p).parts:
         return {"controle": "sans source modifiee"}
+    cwd = sans_lien(data.get("cwd") or Path.cwd())
+    p = Path(p) if Path(p).is_absolute() else cwd / p
     d = projet(p)
     if not d:
         return {"controle": "projet sans qualite.json"}
@@ -108,6 +120,7 @@ def post(data):
 
 
 def main(argv=None):
+    """Lit une charge JSON et rend 0 ou 2 ; aucun secret ni commande machine, chemins sans unité."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args not in (["pre"], ["post"]):
         print("Usage : benchab qualite hooks pre|post", file=sys.stderr)

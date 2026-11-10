@@ -186,6 +186,27 @@ class OptimisationTests(unittest.TestCase):
     def proposer(self, objectif=None):
         return optimisation.proposer(self.base, self.projet, self.source, objectif, profil())
 
+    def test_projet_relatif_independant_du_dossier_courant(self):
+        """Le projet relatif désigne le même atelier depuis deux cwd, sans modifier les réglages."""
+        ancien = Path.cwd()
+        try:
+            resultats = []
+            for courant in (self.base.prive, self.base.prive.parent):
+                os.chdir(courant)
+                resultats.append(optimisation.proposer(self.base, "projets/fixture", self.source, maitre=profil()))
+            self.assertEqual(resultats[0], resultats[1])
+        finally:
+            os.chdir(ancien)
+
+    def test_projet_hors_atelier_ou_lie_refuse_par_les_deux_commandes(self):
+        """Proposer et comparer refusent les échappées et liens avant lecture ou tranchage."""
+        lien = self.base.prive / "alias"
+        lien.symlink_to(self.projet, target_is_directory=True)
+        for commande in (optimisation.proposer, optimisation.comparer):
+            for projet in (self.base.prive.parent, "../", lien):
+                with self.subTest(commande=commande.__name__, projet=str(projet)), self.assertRaises(ValueError):
+                    commande(self.base, projet, self.source, maitre=profil())
+
     def test_objectifs_et_geometrie(self):
         rapports = {mode: self.proposer(mode) for mode in optimisation.MODES}
         self.assertNotIn("outer_wall_speed", rapports["qualite"]["reglages"]["objets"][0]["reglages"])
