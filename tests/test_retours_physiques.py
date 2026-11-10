@@ -19,6 +19,24 @@ def atelier(tmp_path):
     base.fermer()
 
 
+def test_retour_sans_preparation_garde_une_source_verifiable(atelier):
+    """Un retour humain reste contrôlable ; une capture altérée donne FAIL, sans unité."""
+    from benchab.connaissances.memoire import controler
+
+    base, projet = atelier
+    retour = confirmer(base, projet, "reussie", "Observation de la fixture")
+    rapport = controler(base.prive)
+    assert rapport["erreurs"] == []
+    assert rapport["statut"] == "PASS"
+    ligne = base.connexion.execute("SELECT * FROM connaissances").fetchone()
+    source = base.prive / ligne["source"]
+    assert json.loads(source.read_text()) == retour["retour"]
+    assert ligne["texte"] == "Observation de la fixture"
+    assert base.connexion.execute("SELECT count(*) FROM impressions").fetchone()[0] == 0
+    source.write_text("{}\n")
+    assert controler(base.prive)["statut"] == "FAIL"
+
+
 def test_reference_reussie_conservee_apres_defaut_et_refus_atomique(atelier):
     base, projet = atelier
     fichier = projet / "v1.stl"

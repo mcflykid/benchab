@@ -4,6 +4,8 @@ Versions livrées 1.0.0 et 1.0.1.
 
 ## Non publié
 
+- Retours humains sans préparation : capture privée vérifiable par SHA-256, sans création d'impression ni de préparation (#118).
+
 - Connaissances : réussite contextuelle en PLA noir avec vitesses relevées et mode Sport, sources anonymisées et limites de réutilisation (#39, #40).
 
 - Lecteur G-code commun : continuité et trajets de remplissage raccordés, interpréteur découpé et caches concurrents protégés (#13, lot de consolidation ; arcs toujours NON VÉRIFIÉS).
