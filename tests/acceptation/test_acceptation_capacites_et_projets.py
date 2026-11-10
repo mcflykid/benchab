@@ -1,4 +1,4 @@
-"""Capacités locales du lot 6, sans moteur natif de slicer ni compte distant."""
+"""Capacités locales et création de projets, sans moteur natif ni compte distant."""
 
 import importlib.metadata
 import json

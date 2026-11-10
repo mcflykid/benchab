@@ -1,232 +1,104 @@
 # Feuille de route
 
-Les issues détaillent le périmètre, les tests et les dépendances.
-P1 : risque critique avéré à corriger en premier ; P2 : garde-fous matériels,
-de données ou de validation ; P3 : évolution ciblée ; P4 : confort ou étude à
-différer. À priorité égale, traiter d’abord les prérequis communs et les
-travaux qui permettent de vérifier les suivants.
+Le [CHANGELOG](CHANGELOG.md) décrit les versions livrées. Les issues conservent
+les critères, les preuves et les dépendances ; une expérience sans résultat
+établi reste ouverte. Les priorités distinguent P1 (défaut reproduit critique),
+P2 (fiabilité et validation), P3 (fonction ciblée) et P4 (étude ou confort).
 
-## 1.0.1
+## Version 1.1.0
 
-Stabilisation du contrôle et de la préparation.
+Cette version regroupe les correctifs préparés après 1.0.1 et les évolutions
+suivantes ; aucune version intermédiaire 1.0.2 n’est nécessaire :
 
-- #1 — Codes de sortie incohérents pour un même statut (WARN, FAIL, NON VÉRIFIÉ, INCONNU).
-- #2 — Intégrité 3MF : affectation des objets aux plaques et instances non comparée.
-- #3 — U25 : `debit_gcode` plante (StopIteration) sur une plaque sans métadonnée index.
-- #4 — Contrôle d'envoi : IndexError sur extrudeur hors vecteur et lecture hors dictionnaire typé.
-- #5 — Séance : verrou sans propriétaire ni expiration.
-- #6 — Écritures non atomiques : votes, bobines et mesures divergent de SQLite après un échec.
-- #7 — Sous-processus sans délai : `controle complet`, `qualite tout`, appels git.
-- #8 — G-code : état de l'interpréteur faux après G28 et après changement d'outil (E par outil).
-- #9 — U20 : lecture du XML 3MF par expressions régulières trop stricte.
-- #10 — U36 : empreintes de `qualite.json["protegees"]` non prises en compte.
-- #11 — Frontière : contrôle Git limité au préfixe `prive/`.
-- #15 — Tranchage : temporaire orphelin et 3MF partiel laissé sur disque.
-- #16 — Décider : `controle regles` jamais à 0 (U24) et écritures privées acceptées sous /tmp.
-- #22 — Petits défauts : durée « 1 h 60 », message SystemExit perdu, encodage implicite.
-- #25 — 1.0.1 : priorités, dépendances et lots de réalisation.
-
-## 1.0.2
-
-Correctifs de la revue du 6 novembre et cohérence de la livraison.
-
-- P1 — #58 : lecture typée des réglages du 3MF dans l’audit ACE.
-- P2 — #59 : délais bornés et verdict NON VÉRIFIÉ (suite de #7).
-- P2 — #60 : budget d’espace proportionnel et tests de sauvegarde indépendants du disque.
-- P2 — #21 : résoudre la racine des hooks à l’appel et qualifier leur filtre.
-- P4 — #70 : README et version du paquet cohérents, noms des tests par domaine.
-
-## 1.1.0
-
-Évolutions de l’atelier et de ses outils de développement.
-
-### P2 — À engager
-
-**Premier lot — fiabilité G-code.** Commencer par #13 pour unifier l’interpréteur,
-puis traiter #12 pour unifier le contrôle de débit U25. Rejouer les mêmes témoins
-S/M/L aux deux étapes.
-
-- #13 — Interpréteur G-code commun, caches concurrents et découpage du lecteur.
-- #12 — Chantier : un seul contrat de débit U25.
-- #17 — Chemins et écritures atomiques, dont le temporaire système commun ; prépare #24.
-- #64 — Lecteur 3MF borné : ZIP, XML et réglages typés ; coordonner avec #17 et #42.
-- #65 — Réseau externe bloqué par défaut dans les tests ; recette explicite avec #52.
-- #71 — Contrôle d’envoi : compatibilité ACE, dureté et diamètre de buse, en-tête et démarrage.
-- #76 — Diagnostic d’installation en lecture seule ; sortie courte coordonnée avec #35.
-- #14 — Tests manquants : collecte des mesures.
-- #36 — Provenance et licence de chaque modèle.
-- #38 — Comparaison des réglages entre 3MF et profil système.
-- #48 — Qualifier le tranchage natif des 3MF multi-volumes.
-- #49 — Qualifier les 32 archives historiques aux réglages ambigus.
-- #51 — Consigner les validations physiques des témoins et assemblages.
-
-### P3 — Ensuite
-
-- #18 — Répartiteur CLI, table des statuts et exceptions de la bibliothèque.
-- #19 — Chantier : coût de `Base.transaction` proportionnel à la base entière.
-- #37 — Annotations du code et contrôle Ruff D.
-- #35 — Sorties courtes, rapports complets et manifeste de connaissances pour les agents.
-- #39 — Savoir communautaire Kobra S1, corpus d’écarts de profils et cohérence des réglages.
-- #40 — Sources, codes d’erreur et pièges d’usage ; rattacher la lecture Cloud à #52.
-- #41 — Avertissements de cohérence pour les réglages 3MF.
-- #42 — Traçabilité des 3MF.
-- #56 — Hygiène et secrets en CI, sondes Git et empreintes des vérificateurs ; UTF-8, Ruff, format, délais et mises à jour.
-  Coordonner avec #37.
-- #66 — Validation des POST de la visionneuse ; couvrir la recette #50.
-- #67 — Gabarits HTML/JS de la visionneuse ; comparer le rendu avec la recette #50.
-- #26 — Coutures visibles et règle U31.
-- #27 — Filetages, inserts, écrous et contrôle des pauses d’insertion avec #13.
-- #28 — Retour photo assisté et observations par zone ; schéma commun à concevoir avec #44.
-- #29 — Connecteurs à clip et jeux par matière.
-- #31 — Placement des clips dans la visionneuse.
-- #32 — Conception déterministe avec fiches JSON.
-- #50 — Recetter la visionneuse dans Safari et au pavé tactile.
-- #52 — Recetter le Cloud Anycubic en lecture seule, seul transport réseau retenu ;
-  voir la [décision Cloud](docs/decisions/2026-11-06-cloud-lecture-seule.md).
-- #43 — Conversion 3MF par familles KEEP / CLAMP / REPLACE ; après #36, #38 et #64.
-- #72 — Bilan de purge par paire, après #13.
-
-#20 est fermé comme doublon de #37.
-
-### P4 — À différer
-
-- #23 — Découper les gros modules, dont l’analyseur des capacités machine.
-- #33 — Installation optionnelle par OpenSkills.
-- #34 — Évaluation du graphe de code pour les tests d’impact.
-- #74 — Parcours des premiers essais, de la nouvelle machine ou bobine jusqu’au retour.
-
-## 1.2.0
-
-Sujets à cadrer avant réalisation.
-
-### P3 — Données d’usage
-
-- #73 — Échéancier d’entretien par heures et bobines déclarées.
-- #77 — Consommation par bobine et par outil ACE, avec imputation unique après retour confirmé.
-
-### P4 — À différer
-
-- #24 — Idées 1.2 : deuxième imprimante, rendu Metal, portabilité après le socle de #17.
-- #68 — Découper les contrôles de finition et d’affectation ACE, après #58.
-- #69 — Typage progressif des modules communs, après #13 et #17.
-- #44 — État et images déjà disponibles en lecture seule, après le schéma commun #28.
-  Déclencher une capture est une écriture. Maillage de plateau conditionné à une source Cloud en lecture seule.
-- #45 — Export de profils utilisateur à importer manuellement, après #40.
-- #75 — Vitrine statique du corpus public, après #40 et #56.
-
-## Lots à coordonner
-
-- **G-code** : garder #13 puis #12. Réutiliser l’interpréteur pour #72 et les pauses de #27 ;
-  garder les rapports de purge et de débit séparés, car leurs verdicts répondent à des questions différentes.
-- **3MF et envoi** : #64 porte le lecteur borné et le corpus privé de robustesse ; #38 porte la comparaison typée.
-  #42 garde la traçabilité, #43 la conversion et #71 les verdicts d’envoi. Ces étapes partagent les fixtures,
-  mais chaque transformation ou verdict garde ses propres critères.
-- **Connaissances et CI** : #39 coordonne #40 et #41, #35 sert le manifeste. #56 et #37 partagent la
-  configuration Ruff ; la sécurité et les annotations restent des livraisons distinctes.
-- **Observations** : concevoir ensemble le schéma #28/#44, sans faire dépendre le retour photo d’une caméra.
-  #73 et #77 partagent les événements d’impression, avec des sorties et des règles d’écriture distinctes.
-- **Chemins et hooks** : #17 fournit les contrôles réutilisables par #21 ; garder la politique des hooks dans #21.
-
-## Règles communes
-
-- Conserver les projets, photos et modèles tiers dans l’atelier privé.
-- Vérifier la suite complète, la frontière de publication et les témoins S/M/L concernés.
-- Passer par le lanceur commun et contrôler les réglages avant et après toute transformation 3MF.
-- Distinguer contrôle numérique, observation et validation physique.
-- Vérifier les licences avant toute reprise tierce et les inscrire dans TIERS.md au développement. L’AGPL est exclue.
-- Entrer chaque fait technique communautaire comme hypothèse, avec sa source et sa portée ; le vérifier avant
-  d’en faire un verdict. Sans licence, re-sourcer idées et faits sans copier. Les 3MF/G-code tiers restent privés.
-- Répéter les mesures avant d’annoncer un gain (U65).
-
-## Jamais
-
-- #46 — Envoi, lancement, pause ou arrêt d’une impression depuis BENCHAB.
-- Publication de fichiers de projet, de modèles tiers ou de données personnelles.
-- Écriture dans les profils installés par le slicer.
-- Pilotage par LAN, Cloud ou autre transport. La lecture réseau reste limitée au Cloud Anycubic.
-- Client LAN, même en lecture seule : piste écartée (#78), voir la [décision Cloud](docs/decisions/2026-11-06-cloud-lecture-seule.md).
-- Intégration Rinkhals, Moonraker ou OrcaSlicer. Les connaissances restent documentées.
-- Installation de l’atelier à la carte.
-
-## Étude des supports
-
-Les variantes restent des comparaisons. Lire les distances Z dans les G1 Z
-effectivement tranchés, en distinguant les dépôts des relevages. Les interfaces
-multimatières et les ailettes restent NON VÉRIFIÉES pour le retrait jusqu’aux
-mesures sur les témoins publics générés par l’atelier, sans modèle tiers.
-
-| Jalon | Priorité | Issue | Périmètre |
-| --- | --- | --- | --- |
-| 1.0.2 | P4 | #70 | S7. Actualiser les renvois des contrôles et vérifier les chemins des docstrings. |
-| 1.1.0 | P2 | #80 | Étendre les énumérations qualifiées aux styles et motifs des supports. |
-| 1.1.0 | P2 | #89 | S2. Comparer les familles de supports après #80 et mesurer l’écart réellement tranché. |
-| 1.1.0 | P3 | #90 | S5. Mesurer retrait, marques et dessous sur témoins publics. Réutiliser le retour par zone de #28. |
-| 1.1.0 | P3 | #91 | S1. Comparer les interfaces dans une autre matière, après #71 et #72. Retrait à vérifier avec #90. |
-| 1.1.0 | P3 | #93 | S4. Cartographier les îlots de surplomb avant tranchage, pour guider le placement manuel. |
-| 1.2.0 | P3 | #92 | S3. Comparer les ailettes détachables. Retrait à vérifier avec #90. |
-| 1.2.0 | P4 | #75 | S6. Résumer les observations de supports dans la vitrine publique, avec leur portée. |
-
-Les cotes publiées pour les ailettes servent d’hypothèses. Les sources sous
-AGPL et le wiki OrcaSlicer fournissent des noms et des principes. Une éventuelle
-reprise MIT sera attribuée dans TIERS.md.
-
-## Lots de réalisation
-
-Le premier lot de réalisation commence par #13 puis #12. Le circuit des
-correctifs 1.0.2 peut avancer séparément. Dans chaque lot, les prérequis
-précèdent les travaux qui en dépendent. Les travaux indépendants peuvent
-avancer en parallèle.
-
-| Jalon | Lot | Ordre proposé |
+| Domaine | Résultat | Issues |
 | --- | --- | --- |
-| 1.0.2 | Correctifs | #21, #70 |
-| 1.1.0 | Lot 1 — Fiabilité G-code | #13, #12 |
-| 1.1.0 | Lot 2 — Socle 3MF, chemins et recette numérique | #17, #64, #65, #14, #48, #49, #76, #80, #81, #82, #89, #51 |
-| 1.1.0 | Lot 3 — Provenance, réglages et contrôle d’envoi | #37, #36, #38, #71, #18, #35, #40, #39, #41, #42, #43, #56 |
-| 1.1.0 | Lot 4 — Mesures, supports et recettes | #19, #26, #28, #52, #66, #67, #50, #72, #91, #84, #90, #93 |
-| 1.1.0 | Lot 5 — Fixations, conception et guides | #27, #29, #31, #32, #23, #33, #34, #74 |
-| 1.2.0 | Lot 6 — Données d’usage et optimisation volumique | #73, #77, #83, #92, #68, #69, #85, #86, #87 |
-| 1.2.0 | Lot 7 — Portabilité, profils et restitution | #24, #44, #45, #75 |
+| Débit U25 | Calcul commun, diamètre déclaré, maximum strict, percentile 99 informatif | #12 |
+| Tranchage et optimisation | Catalogue d’identifiants transmis, choix explicite du profil maître et origine visible | #101, #102 |
+| Diagnostic | Contrôle d’installation en lecture seule, sans initialisation ni mesure | #76 |
+| Rapports de paroi | Export privé neuf et synthèse par bandes Z, détails conservés | #107 |
+| Retours humains | Capture de déclaration avec empreinte, sans préparation ou impression inventée | #118 |
+| Tests et CI | Mesures directes, isolation réseau du processus pytest, contrôle des secrets | #14, #65, #56 |
+| Livraison | Version unique, README indépendant du privé, tests nommés par domaine | #70 |
 
-#30 est fermé comme doublon de #29. #29 porte la géométrie des clips
-et les jeux par matière. #31 porte le placement dans la visionneuse,
-après #29. #43 est planifié en 1.1.0.
+Les correctifs #21, #58, #59, #60, #98, #99, #100 et #104 sont inclus.
+La consolidation du lecteur #13 est partielle : les arcs G2/G3 et la qualification
+du repère des couches après G92 XYZ restent à traiter. Le changement U25 peut
+faire passer un fichier de PASS à FAIL sans modifier ses trajectoires ; voir
+le [contrat du débit](docs/reference/debit.md).
 
-Les dépendances bloquantes sont enregistrées dans GitHub. Les liens de
-coordination et de validation restent précisés dans les issues, notamment
-le retrait mesuré pour les supports et la calibration du calcul volumique.
+## Prochaine version : 1.2.0
 
-## Versions testées
+### 1. Fiabiliser les fondations et les preuves
 
-| Composant | Version | Vérification |
-| --- | --- | --- |
-| Anycubic Slicer Next | 2.0.0.3 | Lanceur CLI et témoins numériques |
-| macOS | 27.2 (26B123) | Installation et suite complète sur Apple Silicon |
+Traiter les prérequis avant les nouveaux réglages :
 
-Les versions testées décrivent le périmètre observé.
+- **Lecture G-code** : #13 pour les mouvements encore non qualifiés. Les
+  consommateurs déjà raccordés et leurs témoins restent acquis.
+- **Fichiers et archives** : #17 pour les chemins et écritures communs, puis
+  #64 pour migrer progressivement les lecteurs ZIP/XML ; #42 suit la traçabilité 3MF.
+- **Contrôle avant envoi** : #71 pour ACE/buse/démarrage, #109 pour les
+  avertissements natifs, #111 pour les mesures structurées des zones locales.
+- **Provenance et profils** : #36 avant l’enrichissement communautaire #40 ;
+  #38 compare les réglages au profil système. #103 factorise le contexte typé
+  des listes sans réindexation implicite.
 
-## Étude du remplissage
+### 2. Qualifier le comportement réel du slicer
 
-Le premier lot G-code reste #13 puis #12. Les variantes de remplissage servent
-à comparer des résultats, sans adoption automatique. Un modificateur sans
-effet mesurable dans le G-code donne FAIL. Les éléments finis et les lois
-d’échelle restent NON VÉRIFIÉS tant qu’aucune mesure physique ne les confirme
-dans les conditions étudiées.
+#80 établit les valeurs énumérées consommées par une version identifiée du
+slicer. Il précède les comparaisons de remplissage #81 et la preuve d’effet
+G-code des modificateurs #82, puis les variantes de supports #89.
+#48 qualifie les 3MF multi-volumes ; #49 garde le lot des 32 archives historiques
+aux réglages ambigus. Un test synthétique ne remplace pas cette qualification.
 
-| Jalon | Priorité | Issue | Périmètre |
-| --- | --- | --- | --- |
-| 1.1.0 | P2 | #13 | R9. Mesurer les trajets avec l’interpréteur commun. |
-| 1.1.0 | P2 | #80 | R1. Qualifier les valeurs énumérées par Anycubic Slicer Next. |
-| 1.1.0 | P2 | #81 | R2. Comparer les options natives qualifiées après #80. |
-| 1.1.0 | P2 | #82 | R3. Mesurer l’effet des modificateurs par motif après #80. |
-| 1.1.0 | P3 | #72 | R7. Comparer un filament de cœur différent avec le bilan de purge et le contrôle ACE #71. L’extension est P4. |
-| 1.1.0 | P3 | #84 | R6. Mesurer la rigidité sur les éprouvettes existantes et coordonner la recette avec #51. |
-| 1.2.0 | P3 | #83 | R4 puis R5. Convertir le champ de densité après #82, puis étudier les contraintes avec les mesures de #84. |
-| 1.2.0 | P4 | #85 | R8. Comparer l’orientation du motif selon l’effort après #81 et #84. |
-| 1.2.0 | P4 | #86 | R10. Comparer les temps réels et estimés par motif à partir des retours ou du Cloud en lecture seule. |
-| 1.2.0 | P4 | #87 | R11. Comparer un réseau gyroïde modélisé dans la pièce. |
+### 3. Compléter les parcours de préparation
 
-Les slicers et guides sous AGPL restent des repères pour les noms de réglages
-et les principes généraux. La reprise éventuelle d’une source compatible
-exige une attribution dans TIERS.md. Le choix d’un solveur volumique inclut
-sa licence et ses dépendances, car l’installation reste tout ou rien.
+| Lot | Travaux restant ouverts |
+| --- | --- |
+| Préparer sans reconstruire | #106 : revue locale et contrôle final d’une archive déjà tranchée |
+| Géométrie et 3MF | #105 : placement traçable ; #110 : intention de couverture Z ; #112 : remplacement ciblé ; #113 : échanges indexés de découpe |
+| Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages/inserts ; #29 : clips ; #31 : placement dans la visionneuse |
+| Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb |
+| Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien ; #74 : premiers essais guidés |
+| Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
+
+### 4. Conserver les expériences à leur bon niveau de preuve
+
+Les tickets suivants exigent une recette ou des données supplémentaires ; ils
+ne sont pas fermés par une simulation ou par un simple rapport numérique :
+
+- #51 : validations physiques des témoins et assemblages.
+- #84 et #90 : rigidité des remplissages, retrait et marques des supports.
+- #86 : durées réellement observées ; #85 : effort principal et orientation,
+  avec les limites des mesures disponibles.
+- #91 : interface dans une autre matière ACE ; #92 : ailettes détachables.
+- #50 : recette Safari et pavé tactile ; #52 : Cloud avec compte autorisé.
+
+Les études #83 (champ de densité/contraintes) et #87 (gyroïde modélisé) restent
+séparées des preuves physiques. Aucun nouveau réglage n’est adopté automatiquement.
+
+### 5. Entretenir le code et organiser l’apprentissage
+
+- #18 : répartiteur CLI ; #19 : coût des transactions ; #23 : modules trop longs.
+- #66 et #67 : validation des requêtes et séparation des gabarits de la visionneuse.
+- #37 puis #69 : annotations et types ; #68 : contrôles de finition et ACE.
+- #35 : rapports courts et détaillés, avec progression déjà apportée par le diagnostic.
+- #34 : évaluation du graphe de tests d’impact ; #33 : installation optionnelle.
+- #39 regroupe le savoir et la cohérence des réglages ; #40 porte la provenance
+  des connaissances, #41 les avertissements de cohérence et #75 la vitrine publique.
+- #114 : lecture PDF optionnelle des guides, sans dépendance imposée à tous les usages.
+- #119 regroupe le diagnostic, la réparation conservatrice et l’apprentissage des
+  incidents. Les premiers outils existent ; l’autoréparation générale reste à concevoir.
+
+La boucle attendue est : retour sourcé → défaut reproduit → correctif → test de
+régression → contrôle et relecture → livraison. Une vue peut être régénérée depuis
+la base ; un lien peut être réparé sur preuve d’identité. Un original introuvable
+reste explicitement NON VÉRIFIÉ, et les anciens apprentissages sont conservés.
+
+## Études ultérieures
+
+#24 garde les pistes de deuxième imprimante, portabilité et rendu Metal. #44 suit
+l’état et la caméra en lecture seule. Leur présence dans la roadmap ne déclare
+ni une machine configurée ni une intégration déjà validée.
+
+Les projets, photos et preuves personnelles restent dans `prive/`.
+La lecture Cloud reste privilégiée ; aucun parcours LAN n’est prévu.

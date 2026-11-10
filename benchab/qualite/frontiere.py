@@ -269,3 +269,25 @@ def verifier(racine, *, prive=None):
 
     erreurs.extend(controler_modeles(racine, EXCLUS, racines_privees=privees))
     return erreurs
+
+
+def main(argv=None):
+    """Contrôle une racine publique ; renvoie 0 PASS ou 2 FAIL sans ouvrir de Base ni exposer de secret."""
+    import argparse
+    import sys
+
+    parseur = argparse.ArgumentParser(description="Contrôle les fichiers publics et suivis du dépôt.")
+    parseur.add_argument("--racine", type=Path, default=Path.cwd(), help="Racine du dépôt à contrôler")
+    arguments = parseur.parse_args(argv)
+    erreurs = verifier(arguments.racine)
+    if erreurs:
+        print("\n".join(erreurs), file=sys.stderr)
+        from benchab.qualite.statuts import code_statut
+
+        return code_statut("FAIL")
+    print("PASS : frontière privée, secrets et fichiers publics suivis.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

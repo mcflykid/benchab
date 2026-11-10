@@ -573,3 +573,41 @@ def test_restauration_nom_absent_ne_laisse_aucun_zip(tmp_path):
         trancher.restaurer_noms(source, ["Fixture"])
     assert source.read_bytes() == avant
     assert list(tmp_path.iterdir()) == [source]
+
+
+def test_trancher_fichier_transmet_le_catalogue_sans_slicer(tmp_path, monkeypatch):
+    """La demande publique transporte le catalogue vers le moteur sans lancer le slicer."""
+    source = tmp_path / "source.3mf"
+    source.write_bytes("source synthétique".encode())
+    prive = tmp_path / "prive"
+    catalogue = {"Profil PLA": {"id": "profil-permanent", "sources": [{"chemin": "catalogue.json"}]}}
+    captures = []
+
+    def faux_trancher(demande, *, prive=None, destination_finale=None):
+        captures.append(demande)
+        Path(demande["destination"]).write_bytes("sortie synthétique".encode())
+        destination_finale.parent.mkdir(parents=True, exist_ok=True)
+        destination_finale.write_bytes("sortie publiée".encode())
+        rapport = prive / "rapport.json"
+        rapport.parent.mkdir(parents=True, exist_ok=True)
+        rapport.write_text("{}", encoding="utf-8")
+        return {"code": 0, "rapport": str(rapport), "journal_natif": str(rapport)}
+
+    monkeypatch.setattr(trancher, "trancher", faux_trancher)
+    trancher.trancher_fichier(source, prive / "fabrication", prive=prive, identifiants=catalogue)
+    assert captures[0]["identifiants"] == catalogue
+
+
+def test_normaliser_refuse_catalogue_ambigue_ou_absent(tmp_path):
+    """Une correspondance vide ne peut laisser un identifiant de production incomplet."""
+    source = entree_3mf(
+        tmp_path / "source.3mf",
+        reglages={
+            "filament_type": ["PLA"], "filament_colour": ["#FFFFFF"],
+            "filament_settings_id": ["Profil déclaré"], "filament_ids": [""],
+            "top_shell_layers": "5",
+        },
+        tops=("8",),
+    )
+    with pytest.raises(ValueError, match="Correspondance"):
+        trancher.normaliser(source, tmp_path / "sortie.3mf", identifiants={"Profil déclaré": []})

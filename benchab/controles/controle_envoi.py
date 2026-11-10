@@ -19,6 +19,7 @@ from benchab import reglages as schema_reglages
 from benchab.controles import zones_locales as ZL
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.rapports import RapportCourant
+from benchab.gcode import debit
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 from benchab.qualite.statuts import code_statut
 
@@ -26,7 +27,6 @@ from benchab.qualite.statuts import code_statut
 class RapportRefuse(ValueError):
     """Échec de la protection ou de la publication d'un rapport."""
 
-AIRE = math.pi * (1.75 / 2) ** 2
 UTILES = re.compile(r"^(G9111|M140|M190|M104|M109|M201|M203|M204|M205|M900|M106 P3|T\d+)\b")
 
 
@@ -52,7 +52,11 @@ def demarrage(g):
     return out
 
 
-def analyse(g, outil_initial=None, erreurs=None):
+def analyse(g, outil_initial=None, erreurs=None, diametres=None):
+    """Lit outils, débits nominaux mm³/s et consignes °C ; diamètre inconnu donne une mesure None.
+
+    Les diamètres par outil (mm) sont fournis par la lecture typée ; aucune valeur implicite ni écriture.
+    """
     it = Interpreter(tool=outil_initial)
     flux = {}
     outils = []
@@ -79,10 +83,11 @@ def analyse(g, outil_initial=None, erreurs=None):
             if "T" not in params:
                 temperature_commune = temperatures[target]
                 temperatures.clear()
-        if move and move["deposited"] > 0 and move["deposited_length"] > 0 and move["feed"] > 0:
+        if move and move["deposited"] > 0 and move["deposited_length"] > 0:
             tool = move["tool"]
+            mesure = debit.mesurer(move, (diametres or {}).get(tool))
             flux.setdefault(tool, []).append(
-                (move["deposited"] * AIRE / (move["deposited_length"] / move["feed"] * 60), move["deposited_length"])
+                (mesure["debit_mm3_s"], move["deposited_length"])
             )
             if tool is not None and tool not in outils:
                 outils.append(tool)
@@ -94,14 +99,8 @@ def analyse(g, outil_initial=None, erreurs=None):
 
 
 def p99(v):
-    v = sorted(v)
-    tot = sum(longueur for _, longueur in v)
-    acc = 0
-    for q, longueur in v:
-        acc += longueur
-        if acc >= 0.99 * tot:
-            return q
-    return v[-1][0] if v else 0
+    """Renvoie le p99 pondéré en mm³/s, ou None si aucune mesure ; aucun verdict issu de ce percentile."""
+    return debit.bilan(v, None)["p99_mm3_s"]
 
 
 def _reglage_filament(reglages, cle, numero):
@@ -215,7 +214,10 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
             and not re.search(r"^\s*T\d+(?:\s|;|$)", g, re.M)
         )
         erreurs_interpretation = []
-        outils, flux, temperatures = analyse(g, outil_initial=0 if mono_natif else None, erreurs=erreurs_interpretation)
+        diametres = {e: _reglage_filament(ps, "filament_diameter", e + 1) for e in attendus}
+        outils, flux, temperatures = analyse(
+            g, outil_initial=0 if mono_natif else None, erreurs=erreurs_interpretation, diametres=diametres
+        )
         if erreurs_interpretation:
             ajouter_note(
                 res,
@@ -294,27 +296,21 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                 f"réglage du 3MF {_texte_reglage(temp_3mf)}",
                 "G-code : G9111/M104/M109, état modal par outil ; pas de température physique mesurée",
             )
-            q = p99(flux.get(e - 1, []))
-            mx = max((a for a, _ in flux.get(e - 1, [])), default=0)
             plafond = fd.get("debit_max")
-            plafond_valide = (
-                isinstance(plafond, (int, float))
-                and not isinstance(plafond, bool)
-                and math.isfinite(plafond)
-                and plafond > 0
-            )
+            bilan = debit.bilan(flux.get(e - 1, []), plafond)
             controle_debit = f"débit commandé (filament {e})"
-            debit_conforme = plafond_valide and flux.get(e - 1) and q <= plafond * 1.05
-            statut_debit = "PASS" if debit_conforme else "FAIL"
-            if debit_conforme and debit_3mf is None:
+            statut_debit = bilan["statut"]
+            if statut_debit == "PASS" and debit_3mf is None:
                 statut_debit = "NON VÉRIFIÉ"
+            if statut_debit == "NON VÉRIFIÉ":
                 indices_absents.add((pl, controle_debit))
             ajouter_note(
                 res,
                 pl,
                 controle_debit,
                 statut_debit,
-                f"99 % de la longueur sous {q:.2f} mm³/s, maximum ponctuel {mx:.2f} ; plafond déclaré {plafond} ; "
+                f"p99 informatif {bilan['p99_mm3_s']} mm³/s, maximum {bilan['maximum_mm3_s']} ; "
+                f"dépassements établis {bilan['depassements']} ; plafond déclaré {plafond} ; "
                 f"réglage du 3MF {_texte_reglage(debit_3mf)}",
                 "G-code (calcul ; ce n'est pas une mesure sur la machine)",
             )

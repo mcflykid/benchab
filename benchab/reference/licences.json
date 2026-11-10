@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "declarations_sha256": "c3a8ac225dcfc3525966ed62e0608d717091859a6f78d05609a49e90ffe4b73d",
-  "lock_sha256": "b1e8c7f8fbbd52aee875f6a705a0dafa30e87257592e431a7944f7abe27dfffa",
+  "lock_sha256": "74cf93a3794f5a562e9ce61621fe1e4a12d3e2025e298ac48af77ee54e5d20b7",
   "python": [
     {
       "nom": "anytree",
@@ -41,12 +41,12 @@
     },
     {
       "nom": "benchab",
-      "version": "1.0.1",
+      "version": "dynamique",
       "licence": "GPL-3.0-or-later",
-      "source": "métadonnées et licence de la distribution installée",
+      "source": "Licence du dépôt ; version dynamique depuis benchab/__init__.py",
       "preuves": [
         {
-          "fichier": "benchab-1.0.0.dist-info/licenses/LICENSE",
+          "fichier": "LICENSE",
           "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
         }
       ]

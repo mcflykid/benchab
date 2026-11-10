@@ -11,6 +11,8 @@ def creer_3mf_test(p):
         "nozzle_temperature_initial_layer": ["220"],
         "nozzle_temperature": ["240"],
         "filament_max_volumetric_speed": ["32"],
+        # U25 : les tests qui mesurent un volume déclarent leur diamètre en mm.
+        "filament_diameter": ["1.75"],
     }
     xml = (
         '<config><object id="1"><metadata key="name" value="Piece"/>'

@@ -32,3 +32,14 @@ def test_impact_ne_reduit_pas_les_tests_et_inclut_references_or(tmp_path):
     plan = planifier(tmp_path, ["benchab/fabrication/outil.py"])
     assert plan["mode"] == "COMPLET"
     assert plan["tests"] == ["tests/test_autre.py", "tests/test_references_or.py"]
+
+
+def test_planifier_reconnait_les_acceptations_nommees_par_domaine(tmp_path):
+    """Un test d’acceptation renommé reste sélectionnable comme cible connue."""
+    chemin = "tests/acceptation/test_acceptation_schema_relationnel.py"
+    cible = tmp_path / chemin
+    cible.parent.mkdir(parents=True)
+    cible.write_text("def test_schema(): pass\n")
+    plan = planifier(tmp_path, [chemin])
+    assert plan["mode"] == "CIBLE"
+    assert plan["tests"] == [chemin]

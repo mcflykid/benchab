@@ -67,7 +67,7 @@ def chemin_temporaire(chemin):
 
 def normaliser(source, destination, usage="impression", identifiants=None):
     """Normalise exclusivement une nouvelle copie de l'entrée, avant le binaire natif. Réglages en
-    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
+    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; catalogue exact, aucun réglage inconnu transformé."""
     modifications = []
     if usage not in {"impression", "temoin"}:
         raise ValueError("Usage autorisé : impression ou temoin.")
@@ -126,9 +126,17 @@ def normaliser(source, destination, usage="impression", identifiants=None):
         if identifiants:
             ids = list(listes["filament_ids"])
             for index, nom in enumerate(listes["filament_settings_id"]):
-                entree_id = identifiants.get(nom)
-                if not entree_id or index < len(ids) and ids[index]:
+                entree_id = identifiants.get(nom) if isinstance(identifiants, dict) else None
+                if index < len(ids) and ids[index]:
                     continue
+                if isinstance(entree_id, list):
+                    if len(entree_id) != 1:
+                        raise ValueError(f"Correspondance absente ou ambiguë pour le profil {nom}.")
+                    entree_id = entree_id[0]
+                if entree_id is None:
+                    raise ValueError(f"Correspondance absente du catalogue pour le profil {nom}.")
+                if not isinstance(entree_id, dict):
+                    raise ValueError(f"Entrée de catalogue invalide pour le profil {nom}.")
                 valeur_id = entree_id.get("id")
                 if not isinstance(valeur_id, str) or not valeur_id or "BENCHAB-temporaire-" in valeur_id:
                     raise ValueError("Identifiant de profil permanent explicite requis dans le catalogue")
@@ -792,9 +800,10 @@ def trancher(demande, *, prive=None, destination_finale=None):
 
 
 def trancher_fichier(
-    source, dossier_sortie, nom=None, *, usage="impression", prive=None, timeout_s=1800, journal=None, attendu=None
+    source, dossier_sortie, nom=None, *, usage="impression", prive=None, timeout_s=1800, journal=None, attendu=None,
+    identifiants=None,
 ):
-    """Copie l’entrée en zone jetable ; renvoie (3MF tranché, rapport) sans écraser de fichier."""
+    """Prépare un 3MF privé (mm) avec catalogue ; sortie/rapport, sans toucher aux profils installés."""
     source = Path(source).resolve(strict=True)
     sortie = Path(dossier_sortie).resolve() / (nom or f"{source.stem}.gcode.3mf")
     if Path(nom or sortie.name).name != (nom or sortie.name):
@@ -820,6 +829,7 @@ def trancher_fichier(
                 "usage": usage,
                 "timeout_s": timeout_s,
                 "attendu": attendu,
+                "identifiants": identifiants,
             },
             prive=prive,
             destination_finale=sortie,

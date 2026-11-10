@@ -9,6 +9,11 @@ Les options `--declaration`, `--geometrie`, `--revue-locale` et `--reference`
 rattachent leurs preuves. `--relation-reference` distingue même source de modèle,
 seulement même machine/filament, et relation inconnue.
 Les constantes et critères vérifiables sont reliés dans [les règles](regles.md).
+Le [contrat commun du débit U25](debit.md) compare chaque dépassement établi
+au plafond déclaré ; le percentile 99 reste informatif.
+Le [diagnostic d’installation](diagnostic-installation.md) reste en lecture seule.
+Sa sonde `git check-ignore` est une exception au lanceur avec captures : elle
+utilise un délai de 2 s et `GIT_OPTIONAL_LOCKS=0`, sans créer de fichier de diagnostic.
 La routine vérifie le [contrat de placement](placement.md) avant le premier
 contrôle ; une déclaration invalide donne une erreur localisée sans créer ses rapports.
 

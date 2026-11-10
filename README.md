@@ -58,7 +58,8 @@ BENCHAB est sous [GPL-3.0-or-later](LICENSE). Les composants et leurs licences
 sont recensés dans [TIERS.md](TIERS.md).
 
 <!-- BENCHAB:BASE:DEBUT -->
-Versions enregistrées : aucune version livrée.
+Les versions livrées sont décrites dans le [CHANGELOG](CHANGELOG.md) et associées
+à leurs tags Git (`vX.Y.Z`).
 <!-- BENCHAB:BASE:FIN -->
 
 [Feuille de route et suivi des versions](ROADMAP.md).

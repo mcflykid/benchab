@@ -16,6 +16,7 @@ from benchab import integrite_3mf
 from benchab import reglages as reglages_types
 from benchab.donnees.base import Base
 from benchab.fabrication import anycubic
+from benchab.machine.configuration import charger as charger_configuration
 from benchab.machine.profil_maitre import charger_machine, limites_configurees
 from benchab.qualite.ecritures import PublicationNeuve
 from benchab.qualite.empreintes import sha256_fichier
@@ -173,7 +174,14 @@ def charger_fabrication(projet: str | Path, objectif: str | None = None) -> dict
 
 
 def _lire_maitre(base: Base, config: dict, maitre):
+    """Choisit le maître selon la priorité API, fabrication puis config générale ; renvoie profil et limites."""
     chemin = maitre if maitre is not None else config.get("machine", {}).get("profil")
+    origine = "argument API/CLI" if maitre is not None else "FABRICATION.json: machine.profil"
+    if chemin is None:
+        origine = "configuration générale: machine.profil_maitre"
+        chemin = charger_configuration().get("machine", {}).get("profil_maitre")
+        if chemin is not None:
+            chemin = _fichier_prive(base, chemin)
     if isinstance(chemin, dict) and chemin.get("_dossier_sources"):
         dossier_sources = Path(chemin["_dossier_sources"]).expanduser().resolve(strict=True)
         if not dossier_sources.is_relative_to(base.prive.resolve()):
@@ -181,6 +189,7 @@ def _lire_maitre(base: Base, config: dict, maitre):
     elif chemin is not None and not isinstance(chemin, dict):
         chemin = _fichier_prive(base, chemin)
     profil = charger_machine(chemin)
+    profil["_origine_maitre"] = origine
     limites = limites_configurees(
         profil,
         configuration_id=config.get("machine", {}).get("configuration_id"),
@@ -553,6 +562,7 @@ def proposer(base: Base, projet: str | Path, source: str | Path, objectif: str |
         "objectif": mode,
         "machine": {
             "id": profil.get("profil_id", profil.get("id", profil.get("identifiant"))),
+            "origine": profil.get("_origine_maitre", "profil fourni par l’API"),
             "configuration_id": configuration.get("machine", {}).get("configuration_id")
             or profil.get("configuration_par_defaut"),
             "limites": limites,
@@ -852,6 +862,7 @@ def comparer(
         "source": {"fichier": str(source_copie), "sha256": sha256_fichier(source_copie), "origine": str(source)},
         "machine": {
             "id": proposition["machine"]["id"],
+            "origine": proposition["machine"]["origine"],
             "limites": proposition["machine"]["limites"],
             "profil": str(cible_profil),
             "profil_sha256": sha256_fichier(cible_profil),
@@ -1030,10 +1041,12 @@ def main(argv: list[str] | None = None, *, base: Base | None = None) -> int:
     calcul.add_argument("--projet", type=Path, required=True)
     calcul.add_argument("--source", type=Path, required=True)
     calcul.add_argument("--objectif", choices=MODES)
+    calcul.add_argument("--profil", type=Path, help="Profil maître explicite (prioritaire sur les configurations)")
     comparaison = commandes.add_parser("comparer")
     comparaison.add_argument("--projet", type=Path, required=True)
     comparaison.add_argument("--source", type=Path, required=True)
     comparaison.add_argument("--objectif", choices=MODES)
+    comparaison.add_argument("--profil", type=Path, help="Profil maître explicite (prioritaire sur les configurations)")
     comparaison.add_argument("--sortie", type=Path)
     comparaison.add_argument("--sans-tranchage", action="store_true")
     comparaison.add_argument("--max-candidats", type=int, default=3)
@@ -1047,7 +1060,7 @@ def main(argv: list[str] | None = None, *, base: Base | None = None) -> int:
         fermer = False
     try:
         if args.commande == "proposer":
-            resultat = proposer(base, args.projet, args.source, args.objectif)
+            resultat = proposer(base, args.projet, args.source, args.objectif, args.profil)
         else:
             resultat = comparer(
                 base,
@@ -1055,6 +1068,7 @@ def main(argv: list[str] | None = None, *, base: Base | None = None) -> int:
                 args.source,
                 args.sortie,
                 args.objectif,
+                args.profil,
                 trancher=not args.sans_tranchage,
                 max_candidats=args.max_candidats,
             )

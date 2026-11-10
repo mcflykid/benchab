@@ -1,4 +1,4 @@
-"""Contraintes du schéma retenu au lot 1, dans une base temporaire uniquement."""
+"""Contraintes relationnelles, mesures et valeurs physiques dans une base temporaire uniquement."""
 
 import sqlite3
 from pathlib import Path

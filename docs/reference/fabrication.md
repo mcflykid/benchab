@@ -4,6 +4,13 @@
 uv run benchab fabrication trancher prive/projets/ma-piece/candidats/projet.3mf --sortie prive/projets/ma-piece/candidats/tranche-v01
 ```
 
+Pour compléter des identifiants de filament permanents, passer un catalogue JSON
+privé avec `--identifiants CHEMIN` (objet racine `filaments`) ou définir
+`BENCHAB_IDENTIFIANTS_SLICER`. L’option explicite prime sur la variable
+d’environnement. Les clés sont les noms exacts de `filament_settings_id` ; chaque
+entrée indique un `id` existant et ses `sources`. Une correspondance absente ou
+ambiguë est refusée. Les identifiants déjà présents dans le 3MF sont conservés.
+
 Tous les appels natifs passent par `benchab/fabrication/trancher.py` ; aucun autre
 lanceur et aucun `sandbox-exec`. Un verrou interdit deux slicers simultanés.
 Chaque exécution crée ses parents, son `--datadir` neuf et son `--outputdir`.
@@ -55,3 +62,10 @@ Cette commande exige les profils et filaments renseignés dans le projet privé.
 Elle ne chauffe pas, ne contacte pas la machine et ne réalise aucun vote.
 La revue automatique ne couvre que ses critères connus ; les risques restants
 exigent la [relecture avant vote](vote.md). Voir le [cycle de projet](../guides/cycle-projet.md).
+
+Les commandes `benchab fabrication optimisation proposer` et `comparer`
+acceptent `--profil CHEMIN`. Le profil explicite fourni par l’API ou la CLI prime
+sur `FABRICATION.json` (`machine.profil`), qui prime sur la configuration générale
+(`machine.profil_maitre`). Le rapport indique l’origine choisie et conserve les
+snapshots et empreintes du profil. La résolution reste confinée à l’espace privé ;
+les profils installés ne sont jamais modifiés.

@@ -14,6 +14,7 @@ from benchab.controles import controles_piece
 # diagnostics déjà bornées et l'adaptateur historique sont hors migration #59.
 # Voir docs/reference/controles.md et docs/reference/slicer-anycubic.md.
 _EXCEPTIONS = {
+    ("qualite/installation.py", "_controle_git_prive", "run"): "Sonde Git passive bornée à 2 s, sans captures écrites.",
     ("visualisation/serveur.py", "ouvrir", "run"): "Remise de l’URL au navigateur macOS (Safari ou par défaut).",
     ("visualisation/serveur.py", "main", "Popen"): "Serveur détaché, survit volontairement à la CLI.",
     ("fabrication/trancher.py", "_executer", "Popen"): "Groupe slicer, verrou, délai et rapports de crash propres.",

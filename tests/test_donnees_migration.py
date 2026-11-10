@@ -134,19 +134,46 @@ def test_vues_privees_reproductibles_sans_projet_ou_changement_prive_public(base
     public = tmp_path / "public"
     public.mkdir()
     (public / "README.md").write_text("# Présentation\n\nTexte éditorial conservé.\n")
+    changelog_manuel = "# Changements\n\n## v1.0.1\n\nHistorique manuel conservé.\n"
+    (public / "CHANGELOG.md").write_text(changelog_manuel)
     generer(base, racine_publique=public)
     premier = {p.name: p.read_bytes() for p in public.iterdir()}
     generer(base, racine_publique=public)
     assert premier == {p.name: p.read_bytes() for p in public.iterdir()}
     texte = "\n".join(p.read_text() for p in public.iterdir())
     assert "Texte éditorial conservé." in texte
-    assert "0.0.1" in texte
+    assert "aucune version livrée" not in texte
+    assert "0.0.1" not in texte
     assert "privé" not in texte
     assert "modele-secret" not in texte
     assert "Projet privé exemple" in (base.prive / "vues/INDEX.md").read_text()
     assert "Changement privé" in (base.prive / "CHANGELOG.md").read_text()
+    assert (public / "CHANGELOG.md").read_text() == changelog_manuel
     etat = next((base.prive / "vues/etats").glob("*.md")).read_text()
     assert "inconnu" in etat and "PARTIELLE" in etat
+
+
+def test_generation_publique_sans_base_de_versions_reste_alignee_et_preserve_historique(tmp_path):
+    """Une base vide n'efface pas l'historique manuel et affiche la version du paquet."""
+    from benchab import __version__
+
+    base = Base(tmp_path / "atelier-vide")
+    public = tmp_path / "public"
+    public.mkdir()
+    readme = public / "README.md"
+    readme.write_text("# BENCHAB\n\nPrésentation manuelle.\n")
+    changelog = public / "CHANGELOG.md"
+    historique = "# Changements\n\nHistorique maintenu dans le dépôt.\n"
+    changelog.write_text(historique)
+    try:
+        generer(base, racine_publique=public)
+        section = readme.read_text()
+        assert __version__ in section
+        assert "aucune version livrée" not in section
+        assert "Présentation manuelle." in section
+        assert changelog.read_text() == historique
+    finally:
+        base.fermer()
 
 
 def test_vue_refuse_lien_public_et_marqueurs_ambigus(base, tmp_path):

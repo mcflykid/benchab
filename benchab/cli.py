@@ -112,6 +112,11 @@ def parser():
     restauration.add_argument("--destination", type=Path, required=True)
     commandes.add_parser("configuration", help="Affiche le profil machine sans contacter une machine")
     controle = commandes.add_parser("controle").add_subparsers(dest="controle", required=True)
+    installation = controle.add_parser("installation", help="Diagnostique l'installation en lecture seule")
+    installation.add_argument("--racine", type=Path, default=Path(__file__).resolve().parents[1])
+    installation.add_argument("--profil", type=Path, action="append", default=[])
+    installation.add_argument("--espace-minimum-mio", type=int, default=1024)
+    installation.add_argument("--detail", action="store_true", help="Inclut les preuves et chemins privés dans stdout")
     complet = controle.add_parser("complet", help="Vérifie le dépôt et, sur demande explicite, les témoins S/M/L")
     complet.add_argument("--racine", type=Path, default=Path.cwd())
     complet.add_argument("--temoins", action="store_true")
@@ -156,6 +161,8 @@ def parser():
     continuite.add_argument("--plaque", type=int)
     continuite.add_argument("--z-min", type=float)
     continuite.add_argument("--z-max", type=float)
+    continuite.add_argument("--bandes-z", type=float, help="Largeur des bandes de synthèse en mm")
+    continuite.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; destination existante refusée")
     continuite.add_argument("--reference", type=Path)
     continuite.add_argument("--plaque-reference", type=int)
     continuite.add_argument(
@@ -176,6 +183,12 @@ def parser():
     tranchage.add_argument("--sortie", type=Path)
     tranchage.add_argument("--nom")
     tranchage.add_argument("--usage", choices=["impression", "temoin"], default="impression")
+    tranchage.add_argument(
+        "--identifiants",
+        type=Path,
+        default=os.environ.get("BENCHAB_IDENTIFIANTS_SLICER"),
+        help="Catalogue privé des identifiants permanents des profils de filament",
+    )
     fabrication.add_parser("comparer-remplissages").add_argument("etude", type=Path)
     planning = fabrication.add_parser("planning")
     planning.add_argument("--projets", type=Path)
@@ -365,6 +378,16 @@ def executer(arguments, base):
             return rapport["code"]
         if arguments.controle in {"continuite-paroi", "continuite_paroi"}:
             from benchab.controles.continuite_paroi import controler
+            from benchab.qualite.ecritures import _sans_lien, ecrire_json_neuf, sortie_durable
+            from benchab.qualite.empreintes import sha256_fichier
+
+            source = _sans_lien(arguments.fichier.absolute())
+            empreinte_avant = sha256_fichier(source) if source.is_file() else None
+            reference_source = _sans_lien(arguments.reference.absolute()) if arguments.reference else None
+            empreinte_reference = (
+                sha256_fichier(reference_source)
+                if reference_source is not None and reference_source.is_file() else None
+            )
 
             fenetre = None
             if arguments.z_min is not None or arguments.z_max is not None:
@@ -382,7 +405,27 @@ def executer(arguments, base):
                     "identifiant": arguments.reference.name,
                 }
             rapport = controler(arguments.fichier, arguments.plaque, fenetre, reference=reference)
+            if arguments.bandes_z is not None:
+                from benchab.gcode.bandes_continuite import ajouter_bandes
+
+                rapport = ajouter_bandes(rapport, arguments.bandes_z, fenetre)
+            if empreinte_avant is not None and sha256_fichier(source) != empreinte_avant:
+                raise ValueError("Source modifiée pendant le contrôle de continuité")
+            if empreinte_reference is not None and sha256_fichier(reference_source) != empreinte_reference:
+                raise ValueError("Référence modifiée pendant le contrôle de continuité")
+            # L'export et stdout partagent les mêmes mesures et empreintes ; aucune preuve
+            # ne remplace une source ou un résultat gelé (docs/reference/continuite-paroi.md).
+            rapport["source"] = {"fichier": str(source), "sha256": empreinte_avant, "plaque": arguments.plaque}
+            if reference_source is not None:
+                rapport["source_reference"] = {"fichier": str(reference_source), "sha256": empreinte_reference}
             rapport["code"] = code_statut(rapport["statut"])
+            if arguments.sortie:
+                from benchab.controles.rapports import _protege
+
+                sortie = sortie_durable(arguments.sortie.absolute(), prive=base.prive)
+                _protege(sortie)
+                entrees = [source] + ([arguments.reference.absolute()] if arguments.reference else [])
+                ecrire_json_neuf(sortie, rapport, entrees=entrees)
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle == "complet":
@@ -584,6 +627,11 @@ def executer(arguments, base):
             arguments.nom,
             usage=arguments.usage,
             prive=base.prive,
+            identifiants=(
+                json.loads(Path(arguments.identifiants).read_text(encoding="utf-8"))["filaments"]
+                if arguments.identifiants
+                else None
+            ),
         )
         print(json.dumps({"sortie": str(sortie), "rapport": rapport}, ensure_ascii=False, indent=2))
     elif arguments.commande == "connaissances":
@@ -838,16 +886,20 @@ def main(argv=None):
     from benchab.chemins import atelier_prive
 
     argv = sys.argv[1:] if argv is None else argv
+    diagnostic_seul = any(
+        argv[i] == "controle" and argv[i + 1] == "installation" for i in range(len(argv) - 1)
+    )
     commande, sensible = commande_sans_secrets(argv)
     if sensible:
         print("BENCHAB : Les secrets ne sont pas acceptés dans les arguments de commande.", file=sys.stderr)
-        _mesurer_refus(argv, commande, 1)
+        if not diagnostic_seul:
+            _mesurer_refus(argv, commande, 1)
         return 1
     try:
         arguments = parser().parse_args(argv)
     except SystemExit as arret:
         code = _code_arret(arret)
-        if code:
+        if code and not diagnostic_seul:
             _mesurer_refus(argv, commande, code)
         return code
     if "--version" in argv:
@@ -855,6 +907,24 @@ def main(argv=None):
         return 0
     if "--help" in argv or "-h" in argv:
         return _aide_deleguee(arguments)
+    if arguments.commande == "controle" and arguments.controle == "installation":
+        from benchab.qualite.installation import diagnostiquer
+
+        # Le diagnostic doit rester possible sur un atelier absent ou endommagé :
+        # aucun Base() ni mesure, même en cas de refus (docs/reference/diagnostic-installation.md).
+        try:
+            if arguments.espace_minimum_mio < 0:
+                raise ValueError("Le seuil d'espace doit être positif ou nul, en Mio")
+            rapport = diagnostiquer(
+                arguments.racine, base=atelier_prive(arguments.prive) / "benchab.sqlite",
+                profils=tuple(arguments.profil), espace_minimum_octets=arguments.espace_minimum_mio * 1024**2,
+                detail=arguments.detail,
+            )
+            print(json.dumps(rapport, ensure_ascii=False, indent=2 if arguments.detail else None))
+            return rapport["code"]
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
+            print(f"BENCHAB : {erreur}", file=sys.stderr)
+            return 2
     mesure = Mesure()
     base = None
     code = 1

@@ -233,8 +233,12 @@ def trancher(cands, profil, reglages_support):
     dictionnaire typé ; aucun réglage inconnu transformé. Le 3MF neuf porte ce profil explicite comme provenance."""
     st = schema_reglages.decoder(ZipFile(profil).read("Metadata/project_settings.config"))
     st.update(reglages_support)
-    densite = float(st.get("filament_density", ["1.24"])[0])
-    aire = math.pi * (float(st.get("filament_diameter", ["1.75"])[0]) / 2) ** 2
+    # U25 : la masse dépend du diamètre déclaré, jamais d'une constante implicite.
+    densite = float(schema_reglages.valeur_unique(st, "filament_density"))
+    diametre = float(schema_reglages.valeur_unique(st, "filament_diameter"))
+    if not all(math.isfinite(v) and v > 0 for v in (densite, diametre)):
+        raise ValueError("Densité ou diamètre filament NON VÉRIFIÉ")
+    aire = math.pi * (diametre / 2) ** 2
     plates = []
     for k, (nom, q) in enumerate(cands):
         it = {

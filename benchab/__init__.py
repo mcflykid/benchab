@@ -1,3 +1,3 @@
-"""Boîte à outils BENCHAB, en cours de construction."""
+"""Atelier BENCHAB ; source unique de la version du paquet et de sa CLI."""
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
