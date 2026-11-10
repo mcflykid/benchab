@@ -4,6 +4,8 @@ Versions livrées 1.0.0 et 1.0.1.
 
 ## Non publié
 
+- Connaissances : réussite contextuelle en PLA noir avec vitesses relevées et mode Sport, sources anonymisées et limites de réutilisation (#39, #40).
+
 - Lecteur G-code commun : continuité et trajets de remplissage raccordés, interpréteur découpé et caches concurrents protégés (#13, lot de consolidation ; arcs toujours NON VÉRIFIÉS).
 
 - Hooks : résolution du dossier à chaque appel et limite du filtre shell documentée (#21).
