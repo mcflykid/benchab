@@ -13,7 +13,7 @@ from benchab.projets.envois import lire_fiche
 from benchab.projets.preparations import enregistrer as inscrire
 from benchab.projets.preparations import valider_nom
 from benchab.projets.protections import protections
-from benchab.qualite.ecritures import _sans_lien
+from benchab.qualite.ecritures import _sans_lien, ecrire_json_neuf, sortie_durable
 from benchab.qualite.empreintes import sha256_fichier
 
 RESULTATS = {"reussie", "reussie_avec_reserves", "defaut", "echec", "arretee"}
@@ -81,6 +81,7 @@ def confirmer(
     """Enregistre un retour humain et sa portée, sans unité ; renvoie fait et conservation simulée.
 
     Ne transforme jamais un résultat partiel en verdict global, ne modifie aucun fichier figé ni réglage.
+    Sans préparation, conserve une capture privée neuve et son SHA-256 comme source contrôlable.
     """
     projet = _projet(base, projet)
     if resultat not in RESULTATS or not isinstance(preuve, str) or not preuve.strip():
@@ -201,10 +202,22 @@ def confirmer(
                 (evenement["id"], evenement["id"], date, preuve, "declaration_humaine", contenu),
             )
         else:
+            # Le type de preuve n'est pas un chemin : conserver la déclaration exacte
+            # permet de vérifier sa source sans inventer d'envoi (docs/guides/retour-impression.md).
+            capture = sortie_durable(
+                base.prive / "donnees/sources/retours" / (evenement["id"] + ".json"), prive=base.prive
+            )
+            ecrire_json_neuf(capture, evenement)
+            source = capture.relative_to(base.prive.resolve()).as_posix()
+            connaissance = {
+                **evenement,
+                "source_originale": "declaration_humaine",
+                "sources": [{"chemin": source, "sha256": sha256_fichier(capture)}],
+            }
             connexion.execute(
                 "INSERT INTO connaissances(id,texte,categorie,source,date_source,public,donnees_json) "
-                "VALUES(?,?,'observation','declaration_humaine',?,0,?)",
-                (evenement["id"], preuve, date, contenu),
+                "VALUES(?,?,'observation',?,?,0,?)",
+                (evenement["id"], preuve, source, date, json.dumps(connaissance, ensure_ascii=False, allow_nan=False)),
             )
     from benchab.projets.conservation import simuler
 

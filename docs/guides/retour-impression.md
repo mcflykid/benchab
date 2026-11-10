@@ -44,6 +44,11 @@ reformulation : type de pièce plutôt que nom du projet, observations et
 conditions sans photos, fichiers, stock ni identifiant personnel. Une correction
 ultérieure doit préciser quelle hypothèse elle invalide sans effacer le fait.
 
+Un retour sans préparation identifiée conserve une capture privée de la
+déclaration dans `donnees/sources/retours/`, reliée par son empreinte SHA-256.
+Le contrôle mémoire vérifie cette capture ; elle atteste le texte enregistré,
+sans prouver le résultat physique ni identifier un fichier envoyé.
+
 Choisir ensuite un changement explicite et comparer avec le fichier précédent.
 Les [retours d’expérience](../explications/retours-d-experience.md) donnent des
 exemples : surplomb imparfait, couture visible, picots dont la cause reste
