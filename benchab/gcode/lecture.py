@@ -12,6 +12,7 @@ import re
 from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
+from threading import RLock
 from zipfile import ZipFile
 
 _CACHE_MAX_OCTETS = 96 * 1024 * 1024
@@ -21,6 +22,41 @@ _CACHE_OCTETS = 0
 _HASH_CACHE: dict[tuple[int, int, int, int, int], str] = {}
 _ANALYSE_CACHE: OrderedDict[tuple[str, str, str, str, str], bytes] = OrderedDict()
 _ANALYSE_OCTETS = 0
+_VERROU_CACHE = RLock()
+
+
+def _recuperer(cache, cle):
+    """Lit et touche une entrée LRU atomiquement ; octets ou None, aucune lecture de fichier."""
+    with _VERROU_CACHE:
+        valeur = cache.get(cle)
+        if valeur is not None:
+            cache.move_to_end(cle)
+        return valeur
+
+
+def _memoriser(cle, valeur, *, analyse=False):
+    """Réserve les octets d’une entrée une seule fois ; budget LRU conservé, aucune E/S sous verrou."""
+    global _CACHE_OCTETS, _ANALYSE_OCTETS
+
+    if len(valeur) > _CACHE_MAX_OCTETS:
+        return
+    with _VERROU_CACHE:
+        cache = _ANALYSE_CACHE if analyse else _CACHE
+        compte = _ANALYSE_OCTETS if analyse else _CACHE_OCTETS
+        # Deux calculs de la même clé peuvent finir ensemble : remplacer n’ajoute
+        # jamais une deuxième réservation au budget commun (#13).
+        precedent = cache.pop(cle, None)
+        if precedent is not None:
+            compte -= len(precedent)
+        while cache and (len(cache) >= _CACHE_MAX_ENTREES or compte + len(valeur) > _CACHE_MAX_OCTETS):
+            _, supprime = cache.popitem(last=False)
+            compte -= len(supprime)
+        cache[cle] = valeur
+        compte += len(valeur)
+        if analyse:
+            _ANALYSE_OCTETS = compte
+        else:
+            _CACHE_OCTETS = compte
 
 
 def _cle_stat(chemin: Path) -> tuple[int, int, int, int, int]:
@@ -30,11 +66,13 @@ def _cle_stat(chemin: Path) -> tuple[int, int, int, int, int]:
 
 def empreinte_3mf(chemin: str | Path) -> str:
     """
-    Retourne le SHA-256 du 3MF complet, avec invalidation par stat du fichier.
+    Retourne le SHA-256 du 3MF complet, avec invalidation par stat et cache concurrent protégé.
+    Chemin sans unité ; lecture seule, FAIL si le fichier change pendant le calcul.
     """
     chemin = Path(chemin)
     stat = _cle_stat(chemin)
-    empreinte = _HASH_CACHE.get(stat)
+    with _VERROU_CACHE:
+        empreinte = _HASH_CACHE.get(stat)
     if empreinte is not None:
         if _cle_stat(chemin) != stat:
             raise ValueError("3MF modifié pendant la vérification de son empreinte")
@@ -44,25 +82,23 @@ def empreinte_3mf(chemin: str | Path) -> str:
         apres = _cle_stat(chemin)
     if apres != stat:
         raise ValueError("3MF modifié pendant le calcul de son empreinte")
-    _HASH_CACHE[stat] = empreinte
-    if len(_HASH_CACHE) > 256:
-        _HASH_CACHE.pop(next(iter(_HASH_CACHE)))
+    with _VERROU_CACHE:
+        _HASH_CACHE[stat] = empreinte
+        if len(_HASH_CACHE) > 256:
+            _HASH_CACHE.pop(next(iter(_HASH_CACHE)))
     return empreinte
 
 
 def lire_membre_3mf(chemin: str | Path, membre: str) -> bytes:
     """
-    Lit un membre d'archive, avec cache LRU indexé par empreinte 3MF.
+    Lit un membre d’archive ; octets rendus, cache LRU concurrent indexé par SHA, aucune source modifiée.
     """
-    global _CACHE_OCTETS
-
     chemin = Path(chemin)
     cle = (empreinte_3mf(chemin), membre)
-    valeur = _CACHE.get(cle)
+    valeur = _recuperer(_CACHE, cle)
     if valeur is not None:
         if empreinte_3mf(chemin) != cle[0]:
             raise ValueError("3MF modifié pendant la lecture du membre")
-        _CACHE.move_to_end(cle)
         return valeur
 
     with ZipFile(chemin) as archive:
@@ -70,13 +106,7 @@ def lire_membre_3mf(chemin: str | Path, membre: str) -> bytes:
     if empreinte_3mf(chemin) != cle[0]:
         raise ValueError("3MF modifié pendant la lecture du membre")
 
-    if len(valeur) > _CACHE_MAX_OCTETS:
-        return valeur
-    while _CACHE and (len(_CACHE) >= _CACHE_MAX_ENTREES or _CACHE_OCTETS + len(valeur) > _CACHE_MAX_OCTETS):
-        _, supprime = _CACHE.popitem(last=False)
-        _CACHE_OCTETS -= len(supprime)
-    _CACHE[cle] = valeur
-    _CACHE_OCTETS += len(valeur)
+    _memoriser(cle, valeur)
     return valeur
 
 
@@ -102,10 +132,11 @@ def lire_texte_gcode_3mf(
 @contextmanager
 def ouvrir_membre_3mf(chemin: str | Path, membre: str):
     """
-    Ouvre un membre en flux, sans charger les gros G-code en mémoire.
+    Ouvre un membre en flux, sans charger les gros G-code en mémoire ; cache concurrent protégé.
+    Flux d’octets en sortie ; source inchangée, FAIL sur mutation pendant la lecture.
     """
     empreinte_initiale = empreinte_3mf(chemin)
-    donnees = _CACHE.get((empreinte_initiale, membre))
+    donnees = _recuperer(_CACHE, (empreinte_initiale, membre))
     if donnees is not None:
         flux = io.BytesIO(donnees)
         try:
@@ -135,15 +166,13 @@ def iter_lignes_gcode_3mf(chemin: str | Path, membre: str, encodage: str = "utf-
 
 def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1"):
     """
-    Analyse en flux et met en cache un résultat JSON borné par SHA du 3MF.
+    Analyse en flux et met en cache un résultat JSON borné par SHA du 3MF, avec compteur atomique en octets.
 
         Les résultats et les sources des analyseurs sont identifiés séparément ; les
         seuils/options font partie de la clé. Le résultat retourné est décodé à neuf,
         donc un appelant ne peut pas modifier l'objet conservé dans le cache.
 
     """
-    global _ANALYSE_OCTETS
-
     options_json = json.dumps(options, sort_keys=True, separators=(",", ":"), allow_nan=False)
     try:
         source = inspect.getsource(analyseur)
@@ -152,36 +181,29 @@ def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1"
     version_parseur = hashlib.sha256(source.encode("utf-8")).hexdigest()
     empreinte_initiale = empreinte_3mf(chemin)
     cle = (empreinte_initiale, membre, options_json, version, version_parseur)
-    valeur = _ANALYSE_CACHE.get(cle)
+    valeur = _recuperer(_ANALYSE_CACHE, cle)
     if valeur is not None:
         if empreinte_3mf(chemin) != empreinte_initiale:
             raise ValueError("3MF modifié pendant la lecture du résultat d'analyse")
-        _ANALYSE_CACHE.move_to_end(cle)
         return json.loads(valeur)
 
     resultat = analyseur(iter_lignes_gcode_3mf(chemin, membre))
     if empreinte_3mf(chemin) != empreinte_initiale:
         raise ValueError("3MF modifié pendant l'analyse du G-code")
     serialise = json.dumps(resultat, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-    if len(serialise) <= _CACHE_MAX_OCTETS:
-        while _ANALYSE_CACHE and (
-            len(_ANALYSE_CACHE) >= _CACHE_MAX_ENTREES or _ANALYSE_OCTETS + len(serialise) > _CACHE_MAX_OCTETS
-        ):
-            _, supprime = _ANALYSE_CACHE.popitem(last=False)
-            _ANALYSE_OCTETS -= len(supprime)
-        _ANALYSE_CACHE[cle] = serialise
-        _ANALYSE_OCTETS += len(serialise)
+    _memoriser(cle, serialise, analyse=True)
     return json.loads(serialise)
 
 
 def vider_cache_lecture() -> None:
     """
-    Vide le cache pour les tests et les opérations explicitement isolées.
+    Vide les caches et compteurs en octets atomiquement ; ne modifie aucune archive.
     """
     global _CACHE_OCTETS
     global _ANALYSE_OCTETS
-    _CACHE.clear()
-    _CACHE_OCTETS = 0
-    _ANALYSE_CACHE.clear()
-    _ANALYSE_OCTETS = 0
-    _HASH_CACHE.clear()
+    with _VERROU_CACHE:
+        _CACHE.clear()
+        _CACHE_OCTETS = 0
+        _ANALYSE_CACHE.clear()
+        _ANALYSE_OCTETS = 0
+        _HASH_CACHE.clear()

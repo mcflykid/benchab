@@ -1,23 +1,20 @@
-"""Mesure en flux la continuité des parois extérieures.
+"""Mesure en flux la continuité des parois extérieures avec l’interpréteur partagé.
 
-L'interpréteur partagé d'Impression-3D n'est pas repris tel quel : il conserve
-des événements et erreurs par fichier, alors que ce contrôle doit borner sa
-mémoire et ne retenir que des compteurs par couche. Les règles modales
-d'extrusion (M82/M83/G92), de rétraction et de mouvement sont reprises ici.
-Les heuristiques et seuils sont absolus, configurables et ne sont pas des
-spécifications fabricant.
+Les compteurs restent par couche et les diagnostics du lecteur sont bornés.
+Les heuristiques et seuils configurables ne sont pas des spécifications fabricant.
 """
 
 from __future__ import annotations
 
 import hashlib
+import inspect
 import math
 import re
 from collections import Counter
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
-from benchab.controles.gcode_interpreter import axes_homing
+from benchab.controles.gcode_interpreter import Interpreter, axes_homing
 from benchab.gcode.lecture import analyser_membre_gcode_3mf
 
 SEUILS_DEFAUT = {
@@ -32,45 +29,57 @@ RELATIONS_REFERENCE = {
     "inconnue",
 }
 _NUMBER = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)")
-_MOTS = re.compile(r"([A-Z])\s*(" + _NUMBER.pattern + r")", re.I)
 _CONFIG = re.compile(r"^;\s*outer_wall_acceleration\s*=\s*(" + _NUMBER.pattern + r")\s*$", re.I)
 _Z_META = re.compile(r"^;\s*Z\s*:\s*(" + _NUMBER.pattern + r")\s*$", re.I)
 
 
 class _Etat:
+    """Cumule les mesures par couche ; aucun état modal dupliqué ni commande machine."""
+
     def __init__(self, intervalle_z_mm, longueur_micro_mm):
-        self.xyz = [0.0, 0.0, 0.0]
-        self.xyz_relatif = False
-        self.e_relatif = None
-        self.e = 0.0
-        self.retraction = 0.0
-        self.outil = 0
-        self.apres_homing = False
-        self.homing_non_verifie = False
+        """Initialise compteurs et lecteur borné ; longueurs en mm, 128 diagnostics au plus puis résumé."""
+        self.lecteur = Interpreter(tool=0, error_limit=128)
         self.role = ""
         self.z_meta = None
         self.acceleration = None
         self.acceleration_configuree = None
         self.incomplet = False
+        self.homing_non_verifie = False
         self.derniere_fin = None
         self.stats = {}
         self.intervalle_z_mm = intervalle_z_mm
         self.longueur_micro_mm = longueur_micro_mm
 
     def _couche_stats(self, z):
+        """Renvoie les compteurs de la couche à Z en mm, sans réinterpréter les trajectoires."""
         if z not in self.stats:
-            self.stats[z] = {
-                "morceaux": 0,
-                "segments": 0,
-                "microsegments": 0,
-                "accelerations": Counter(),
-            }
+            self.stats[z] = {"morceaux": 0, "segments": 0, "microsegments": 0, "accelerations": Counter()}
         return self.stats[z]
 
+    def _evenement(self, evenement, ancien_outil):
+        """Applique les seules décisions métier du contrôle ; accélérations en mm/s², sans réinterprétation modale."""
+        op = evenement.get("command")
+        mots = evenement.get("parameters", {})
+        if self.lecteur.tool != ancien_outil or op == "G92" or evenement.get("kind") == "homing":
+            self.derniere_fin = None
+        if evenement.get("kind") == "homing" and "Z" in mots:
+            self.z_meta = None
+        # Le lecteur sait suivre G92 ; une mesure de couche ne qualifie pas pour
+        # autant le nouveau repère XYZ (docs/reference/continuite-paroi.md).
+        if op == "G92" and set(mots) & {"X", "Y", "Z"}:
+            self.incomplet = True
+        if evenement.get("homing_unverified"):
+            self.homing_non_verifie = True
+        if op == "M204":
+            valeur = mots.get("S", mots.get("P"))
+            if valeur is not None and math.isfinite(valeur) and valeur >= 0:
+                self.acceleration = valeur
+            else:
+                self.incomplet = True
+
     def ligne(self, ligne):
+        """Consomme une ligne et cumule les dépôts ; mm et mm/s², aucune commande exécutée."""
         ligne = ligne.strip()
-        if not ligne:
-            return
         config = _CONFIG.match(ligne)
         if config:
             self.acceleration_configuree = float(config.group(1))
@@ -79,141 +88,37 @@ class _Etat:
             self.z_meta = float(zmatch.group(1))
         if ligne.upper().startswith(";TYPE:"):
             self.role = ligne[6:].strip().lower()
-
-        commande = ligne.split(";", 1)[0].strip()
-        commande = re.sub(r"\([^)]*\)", "", commande).strip()
-        commande = re.sub(r"^N\d+\s*", "", commande, flags=re.I).split("*", 1)[0]
-        if not commande:
-            return
-        op = commande.split()[0].upper()
-        if re.match(r"^T(?:[-+]?\d|$)", op):
-            selection = re.fullmatch(r"T([0-3])", commande, re.I)
-            if selection is None:
-                self.incomplet = True
-                self.derniere_fin = None
-                return
-            outil = int(selection.group(1))
-            if outil != self.outil:
-                self.outil = outil
-                self.derniere_fin = None
-            return
-        if op == "M82":
-            self.e_relatif = False
-            return
-        if op == "M83":
-            self.e_relatif = True
-            return
-        if op == "G90":
-            self.xyz_relatif = False
-            return
-        if op == "G91":
-            self.xyz_relatif = True
-            return
-        if op == "G28":
-            try:
-                axes = axes_homing(commande[len(op):])
-            except ValueError:
-                self.incomplet = True
-                self.derniere_fin = None
-                return
-            self.apres_homing = any(self.xyz)
-            self.xyz = [0.0 if a in axes else p for a, p in zip("XYZ", self.xyz)]
-            if "Z" in axes:
-                self.z_meta = None
-            self.derniere_fin = None
-            return
-        if op == "G92":
-            mots = {k.upper(): float(v) for k, v in _MOTS.findall(commande[len(op) :])}
-            if not mots or any(k not in "XYZE" for k in mots):
-                self.incomplet = True
-                self.derniere_fin = None
-                return
-            if set(mots) & {"X", "Y", "Z"}:
-                self.incomplet = True
-                self.derniere_fin = None
-                return
-            if "E" in mots:
-                self.e = mots["E"]
-            self.derniere_fin = None
-            return
-        if op == "M204":
-            mots = {k.upper(): float(v) for k, v in _MOTS.findall(commande[len(op) :])}
-            valeur = mots.get("S", mots.get("P"))
-            if valeur is not None and math.isfinite(valeur) and valeur >= 0:
-                self.acceleration = valeur
-            else:
-                self.incomplet = True
-            return
-        if op not in {"G0", "G00", "G1", "G01"}:
-            if re.match(r"^G0*[01235][XYZEFIJKR]", op):
-                self.incomplet = True  # Format compact non interprété par ce lecteur borné.
-                self.derniere_fin = None
-            if op in {"G2", "G3", "G20", "G5", "G10", "G11", "M200", "M220", "M221"}:
-                self.incomplet = True
-                self.derniere_fin = None
-            return
-
-        mots_liste = _MOTS.findall(commande[len(op) :])
-        mots = {k.upper(): float(v) for k, v in mots_liste}
-        if len(mots) != len(mots_liste) or any(k not in "XYZEF" for k in mots):
+        ancien_outil = self.lecteur.tool
+        mouvement = self.lecteur.feed_line(ligne)
+        evenement = self.lecteur.last_event or {}
+        self._evenement(evenement, ancien_outil)
+        if self.lecteur.errors:
             self.incomplet = True
             self.derniere_fin = None
+        if mouvement is None:
             return
-        if not (set(mots) & {"X", "Y", "Z", "E"}):
-            return  # Les changements de débit seuls ne coupent pas une trajectoire.
-        depart = self.xyz.copy()
-        fin = [
-            depart[i] + mots.get(axe, 0.0) if self.xyz_relatif else mots.get(axe, depart[i])
-            for i, axe in enumerate("XYZ")
-        ]
-        self.xyz = fin
-        z = fin[2] if "Z" in mots else (self.z_meta if self.z_meta is not None else fin[2])
-
-        de = 0.0
-        if "E" in mots:
-            if self.e_relatif is None:
-                self.incomplet = True
-                self.derniere_fin = None
-                return
-            de = mots["E"] if self.e_relatif else mots["E"] - self.e
-            self.e = self.e + de if self.e_relatif else mots["E"]
-        if de < 0:
-            self.retraction += -de
+        # Un changement F seul n’interrompt pas le dépôt précédent ; les modes,
+        # rétractions et trajectoires sont déjà résolus par le lecteur commun.
+        if not set(evenement.get("parameters", {})) & {"X", "Y", "Z", "E"}:
+            return
+        if mouvement["deposited_length"] <= 0:
             self.derniere_fin = None
             return
-        depose = max(0.0, de - self.retraction)
-        self.retraction = max(0.0, self.retraction - de)
-        longueur = math.dist(depart, fin)
-        if longueur > 0 and self.apres_homing:
-            self.apres_homing = False
-            if depose > 0:
-                self.incomplet = True
-                self.homing_non_verifie = True
-                self.derniere_fin = None
-                return
-        if depose <= 0 or longueur <= 0:
+        fin = mouvement["end"]
+        z = fin[2] if "Z" in evenement.get("parameters", {}) else self.z_meta
+        z = fin[2] if z is None else z
+        if self.intervalle_z_mm is not None and not self.intervalle_z_mm[0] <= z <= self.intervalle_z_mm[1]:
             self.derniere_fin = None
             return
-        if self.intervalle_z_mm is not None and not (self.intervalle_z_mm[0] <= z <= self.intervalle_z_mm[1]):
+        if self.role not in {"outer wall", "outerwall", "external perimeter"}:
             self.derniere_fin = None
             return
-        role_exterieur = self.role in {"outer wall", "outerwall", "external perimeter"}
-        if not role_exterieur:
-            self.derniere_fin = None
-            return
-
         stats = self._couche_stats(round(z, 3))
-        fraction_deposee = min(1.0, depose / de)
-        longueur_deposee = longueur * fraction_deposee
-        debut_depose = [
-            depart[i] + (fin[i] - depart[i]) * (1.0 - fraction_deposee)
-            for i in range(3)
-        ]
-        contigu = self.derniere_fin is not None and math.dist(self.derniere_fin, debut_depose) <= 0.02
+        contigu = self.derniere_fin is not None and math.dist(self.derniere_fin, mouvement["deposition_start"]) <= 0.02
         if not contigu:
             stats["morceaux"] += 1
         stats["segments"] += 1
-        if longueur_deposee < self.longueur_micro_mm:
+        if mouvement["deposited_length"] < self.longueur_micro_mm:
             stats["microsegments"] += 1
         if self.acceleration is not None:
             stats["accelerations"][self.acceleration] += 1
@@ -386,7 +291,11 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
         membre = entree.name
         entree.close()
         archive.close()
-        version = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        version = hashlib.sha256(
+            Path(__file__).read_bytes()
+            + inspect.getsource(Interpreter).encode()
+            + inspect.getsource(axes_homing).encode()
+        ).hexdigest()
         return analyser_membre_gcode_3mf(chemin, membre, options, calculer, version=version)
     try:
         return calculer(entree)

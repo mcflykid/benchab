@@ -9,6 +9,7 @@ from pathlib import Path
 import trimesh
 
 from benchab import reglages as schema_reglages
+from benchab.controles.gcode_interpreter import Interpreter
 from benchab.fabrication import anycubic, remplissage_localise
 from benchab.fabrication.resistance import cle_classement
 from benchab.gcode.lecture import iter_lignes_gcode_3mf
@@ -282,16 +283,18 @@ RESISTANCE_ORCA = {
 
 
 def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
-    """Compte déplacements, rétractions et îlots courts des seules lignes d'infill."""
+    """Mesure les trajets XY de remplissage en mm ; rapport PASS/NON VÉRIFIÉ, aucune commande machine.
+
+    Le lecteur commun conserve modes et dette de rétraction ; les mesures partielles restent explicites.
+    """
     limite = float(ilot_court_mm)
     if not math.isfinite(limite) or limite < 0:
         raise ValueError("Le seuil de longueur d'îlot doit être fini et positif ou nul.")
     deplacements = retractions = courts = ilots = longs = 0
     longueur = 0.0
-    x = y = None
+    lecteur = Interpreter(error_limit=128)
     dans_remplissage = False
     ilot = None
-    retracte = False
 
     def terminer_ilot():
         nonlocal courts, ilots, ilot
@@ -301,36 +304,33 @@ def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
         ilot = None
 
     for ligne in gcode.splitlines():
+        dette_avant = lecteur.retracted.get(None, 0.0)
+        mouvement = lecteur.feed_line(ligne)
         if ligne.startswith(";TYPE:"):
             terminer_ilot()
             dans_remplissage = ligne[6:].strip() == "Sparse infill"
+        if mouvement is None:
             continue
-        if not (ligne.startswith("G1 ") or ligne.startswith("G0 ")):
+        if not dans_remplissage:
             continue
-        champs = {
-            element[0]: element[1:] for element in ligne.split(";")[0].split()[1:] if element[:1] in ("X", "Y", "E")
-        }
-        try:
-            nouveau_x = float(champs.get("X", x if x is not None else 0))
-            nouveau_y = float(champs.get("Y", y if y is not None else 0))
-            extrusion = float(champs["E"]) if "E" in champs else None
-        except ValueError:
-            continue
-        distance = math.hypot(nouveau_x - x, nouveau_y - y) if x is not None else 0.0
-        if extrusion is not None and extrusion < 0:
-            retracte = True
-            retractions += dans_remplissage
-        elif extrusion is not None and extrusion > 0:
-            retracte = False
-        if dans_remplissage:
-            if extrusion is not None and extrusion > 0 and distance > 0:
-                ilot = (ilot or 0.0) + distance
-            elif extrusion is None and ("X" in champs or "Y" in champs) and x is not None:
-                terminer_ilot()
-                deplacements += 1
-                longueur += distance
-                longs += distance > LONG_MM and not retracte
-        x, y = nouveau_x, nouveau_y
+        if mouvement["extrusion"] < 0:
+            terminer_ilot()
+            retractions += 1
+        distance_xy = math.dist(mouvement["start"][:2], mouvement["end"][:2])
+        fraction_deposee = mouvement["deposited_length"] / mouvement["length"] if mouvement["length"] else 0.0
+        depose = distance_xy * fraction_deposee
+        # Une partie du trajet peut seulement rembourser la rétraction ; elle
+        # ne constitue pas un îlot déposé (#13, contrat commun XYZ/E).
+        distance = distance_xy - depose
+        if distance > 0:
+            terminer_ilot()
+            deplacements += 1
+            longueur += distance
+            # Le remboursement peut finir pendant ce déplacement : l’absence
+            # de dette à l’arrivée ne prouve pas un trajet sans rétraction.
+            longs += distance > LONG_MM and dette_avant == 0 and mouvement["extrusion"] >= 0
+        if depose > 0:
+            ilot = (ilot or 0.0) + depose
     terminer_ilot()
     return {
         "deplacements": deplacements,
@@ -339,6 +339,9 @@ def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
         "longs_sans_retraction": longs,
         "ilots": ilots,
         "ilots_courts": courts,
+        "statut": "NON VÉRIFIÉ" if lecteur.errors else "PASS",
+        "couverture_complete": not lecteur.errors,
+        "erreurs": list(lecteur.errors),
     }
 
 
