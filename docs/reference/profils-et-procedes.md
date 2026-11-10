@@ -33,6 +33,32 @@ Ne pas revenir automatiquement au profil prudent à 12, ni copier 32 avec une
 température différente. Les réussites ne dispensent pas des contrôles.
 Voir les [fiches matière](filaments.md).
 
+## Réussite contextuelle avec vitesses relevées et mode Sport
+
+Une plaque de trois petites pièces en PLA Basic noir Anycubic a été déclarée
+parfaite le 08/11/2026, en 170 min, avec le mode Sport de la couche 6 à la fin.
+Il s’agit d’une impression de plaque, pas de trois essais indépendants.
+
+Les préparations conservées ont été relues le 10/11 : couche 0,20 mm, buse
+0,4 mm déclarée, températures 215 °C au démarrage puis 205 °C. Par rapport à la
+préparation initiale, les vitesses déclarées ont été multipliées par 1,3 et le
+plafond de débit est passé de 12 à 15,6 mm³/s. Le rapport Sport/Normal du profil
+est de 780/600 ; l’hypothèse d’un multiplicateur uniforme de 1,3 donnerait un
+scénario de 20,28 mm³/s. Ce chiffre n’est ni un débit physique mesuré ni une
+vitesse effectivement atteinte : le G-code exécuté n’a pas été retrouvé.
+
+L’apprentissage porte sur la réussite visuelle déclarée dans cette combinaison
+de pièce, matière, préparation et intervention en cours d’impression. La tenue,
+l’endurance, la masse consommée et le débit maximal restent non mesurés.
+Une autre préparation portant directement 20,28 mm³/s n’est pas validée par
+ce seul essai.
+
+Conserver ce retour comme piste de comparaison pour des conditions proches,
+avec ses fichiers et observations rattachés dans l’atelier privé. Ne pas revenir
+automatiquement à 12 mm³/s, ni transférer automatiquement 20,28 à une nouvelle
+pièce. Le plafond d’une nouvelle préparation reste explicite et distinct de
+l’observation ; U25 compare le G-code à ce plafond déclaré.
+
 ## Préserver les réglages utiles
 
 Les surcharges par objet, couches variables, pauses, parois utiles et filetages
