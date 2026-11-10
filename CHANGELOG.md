@@ -4,6 +4,8 @@ Versions livrées 1.0.0 et 1.0.1.
 
 ## Non publié
 
+- Lecteur G-code commun : continuité et trajets de remplissage raccordés, interpréteur découpé et caches concurrents protégés (#13, lot de consolidation ; arcs toujours NON VÉRIFIÉS).
+
 - Hooks : résolution du dossier à chaque appel et limite du filtre shell documentée (#21).
 - Aide CLI : options, positionnels et sous-commandes des contrôles et fabrications délégués visibles sans atelier (#98).
 - Relevé thermique : consignes G9111 et M104/M109 issues de l’interpréteur, avec ligne, cible et extinction (#99).

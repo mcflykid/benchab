@@ -31,7 +31,12 @@ def axes_homing(texte):
 
 class Interpreter:
     """Suit les états modaux XYZ et E en mm et le débit nominal, sans simuler le firmware."""
-    def __init__(self, tool=None):
+    def __init__(self, tool=None, *, error_limit=None):
+        """Initialise les états en mm ; budget de diagnostics facultatif, aucune commande machine."""
+        if error_limit is not None and (type(error_limit) is not int or error_limit < 1):
+            raise ValueError("Budget de diagnostics : entier strictement positif requis")
+        self.error_limit = error_limit
+        self.errors_truncated = False
         self.xyz = (0.0, 0.0, 0.0)
         self.relative_xyz = False
         self.relative_e = None
@@ -50,10 +55,55 @@ class Interpreter:
         self.dialect = "Anycubic/Orca nominal, modes XYZ et E indépendants"
 
     def error(self, message):
-        if message not in self.errors:
+        """Enregistre une couverture non vérifiée ; borne facultative des diagnostics, aucune unité."""
+        if self.error_limit is not None:
+            message = message[:1024]
+        if message in self.errors:
+            return
+        if self.error_limit is None or len(self.errors) < self.error_limit:
             self.errors.append(message)
+        elif not self.errors_truncated:
+            self.errors.append("Budget de diagnostics dépassé : détails supplémentaires non conservés")
+            self.errors_truncated = True
+
+    def _evenement(self, op, vals, c, *, kind="command"):
+        """Construit le contrat d’événement en unités natives, sans conserver l’historique des lignes."""
+        return {"kind": kind, "command": op, "parameters": vals, "raw": c,
+                "line": self.line_number, "tool": self.tool, "object": self.object,
+                "type": self.kind, "layer": self.layer}
 
     def feed_line(self, line):
+        """Lit une ligne ; positions et longueurs en mm, vitesse mm/min, ou None sans mouvement.
+
+        Aucune commande exécutée ; arcs non mesurables explicitement NON VÉRIFIÉS.
+        """
+        c = self._preparer_ligne(line)
+        if not c or self._traiter_objet(c):
+            return None
+        command = c.split()[0].upper()
+        if command in {"SET_VELOCITY_LIMIT", "SET_PRESSURE_ADVANCE"}:
+            return self._klipper(c, command)
+        opcode = self._opcode(c)
+        if opcode is None:
+            return None
+        op, tail = opcode
+        special = {"M73": self._progression, "M117": self._affichage, "G28": self._homing}.get(op)
+        if special is not None:
+            return special(c, op, tail)
+        vals = self._parametres(c, op, tail)
+        if vals is None:
+            return None
+        self.last_event = self._evenement(op, vals, c)
+        if op == "G9111":
+            return self._macro(tail)
+        if self._appliquer_mode(c, op, tail, vals):
+            return None
+        if op not in {"G0", "G1", "G2", "G3"}:
+            return self._autre(op)
+        return self._mouvement(c, op, tail, vals)
+
+    def _preparer_ligne(self, line):
+        """Prépare métadonnées et texte ; unités mm, sans conserver les lignes précédentes."""
         self.line_number += 1
         self.last_event = None
         line = line.strip()
@@ -75,111 +125,125 @@ class Interpreter:
         c = re.sub(r"^N\d+\s*", "", c, flags=re.I).split("*", 1)[0]
         if not c:
             return None
+        return c
+
+    def _traiter_objet(self, c):
+        """Suit les identités d’objet ; booléen de traitement, aucune géométrie inventée."""
         if c.startswith("EXCLUDE_OBJECT_START"):
             m = re.fullmatch(r"EXCLUDE_OBJECT_START\s+NAME=(\S+)", c)
             if not m:
                 self.error("début objet invalide : " + c)
-                return None
+                return True
             if self.object is not None:
                 self.error("début objet imbriqué : " + c)
-                return None
+                return True
             self.object = m.group(1)
-            return None
+            return True
         if c.startswith("EXCLUDE_OBJECT_END"):
             m = re.fullmatch(r"EXCLUDE_OBJECT_END(?:\s+NAME=(\S+))?", c)
             if not m or self.object is None or (m.group(1) and m.group(1) != self.object):
                 self.error("fin objet invalide ou contradictoire : " + c)
-                return None
+                return True
             self.object = None
-            return None
+            return True
         if c.startswith("EXCLUDE_OBJECT_DEFINE"):
-            return None
-        command = c.split()[0].upper()
-        if command in {"SET_VELOCITY_LIMIT", "SET_PRESSURE_ADVANCE"}:
-            # Sources primaires : Klipper G-Codes, toolhead.py (v0.12.0 et
-            # master), kinematics/extruder.py (master), consultés le 30/10/2026.
-            # L'ancien ACCEL_TO_DECEL et le nouveau MINIMUM_CRUISE_RATIO
-            # sont deux descriptions du lissage, pas deux accélérations à sommer.
-            velocity = command == "SET_VELOCITY_LIMIT"
-            allowed = (
-                {"VELOCITY", "ACCEL", "ACCEL_TO_DECEL", "MINIMUM_CRUISE_RATIO", "SQUARE_CORNER_VELOCITY"}
-                if velocity
-                else {"ADVANCE", "SMOOTH_TIME", "EXTRUDER"}
-            )
-            values = {}
-            valid = True
-            for token in c.split()[1:]:
-                if token.count("=") != 1:
+            return True
+        return False
+
+    def _valeurs_klipper(self, c, allowed):
+        """Décode les paramètres déclarés et leur validité ; unités natives, aucune simulation."""
+        values = {}
+        valid = True
+        for token in c.split()[1:]:
+            if token.count("=") != 1:
+                valid = False
+                break
+            key, raw_value = token.split("=")
+            key = key.upper()
+            if key not in allowed or key in values:
+                valid = False
+                break
+            if key == "EXTRUDER":
+                # Nom déclaré uniquement ; aucune identité de moteur physique
+                # ni correspondance avec Tn n'est déduite de cette chaîne.
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", raw_value):
                     valid = False
                     break
-                key, raw_value = token.split("=")
-                key = key.upper()
-                if key not in allowed or key in values:
-                    valid = False
-                    break
-                if key == "EXTRUDER":
-                    # Nom déclaré uniquement ; aucune identité de moteur physique
-                    # ni correspondance avec Tn n'est déduite de cette chaîne.
-                    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", raw_value):
-                        valid = False
-                        break
-                    values[key] = raw_value
-                    continue
-                if not re.fullmatch(NUMBER + r"(?:[eE][-+]?\d+)?", raw_value):
-                    valid = False
-                    break
-                try:
-                    value = float(raw_value)
-                except ValueError:
-                    valid = False
-                    break
-                if (
-                    not math.isfinite(value)
-                    or value < 0
-                    or (key in {"VELOCITY", "ACCEL", "ACCEL_TO_DECEL"} and value == 0)
-                    or (key == "MINIMUM_CRUISE_RATIO" and value >= 1)
-                    or (key == "SMOOTH_TIME" and value > 0.2)
-                ):
-                    valid = False
-                    break
-                values[key] = value
-            relation = "non_applicable"
-            if valid and {"ACCEL_TO_DECEL", "MINIMUM_CRUISE_RATIO"} <= values.keys():
-                # Profil indépendant du firmware : refuser une paire ambiguë sans
-                # ACCEL explicite, plutôt que supposer une limite machine initiale.
-                if "ACCEL" not in values:
-                    valid = False
-                    relation = "acceleration_absente"
-                else:
-                    expected = 1.0 - min(values["ACCEL_TO_DECEL"], values["ACCEL"]) / values["ACCEL"]
-                    valid = math.isclose(values["MINIMUM_CRUISE_RATIO"], expected, rel_tol=1e-9, abs_tol=1e-9)
-                    relation = "coherente" if valid else "contradictoire"
-            kind = "velocity_limit" if velocity else "pressure_advance"
-            self.last_event = {
-                "kind": kind if valid else "unsupported",
-                "command": command,
-                "parameters": values if valid else {},
-                "raw": c,
-                "line": self.line_number,
-                "tool": self.tool,
-                "object": self.object,
-                "type": self.kind,
-                "layer": self.layer,
-                "source_grammaire": "https://www.klipper3d.org/G-Codes.html#" + command.lower(),
-                "application_firmware": "NON VÉRIFIÉ",
-                "dynamique_simulee": False,
-            }
-            if velocity:
-                self.last_event["relation_ancien_nouveau"] = relation
-                if "ACCEL_TO_DECEL" in values:
-                    self.last_event["source_historique"] = (
-                        "https://github.com/Klipper3d/klipper/blob/v0.12.0/klippy/toolhead.py"
-                    )
+                values[key] = raw_value
+                continue
+            if not re.fullmatch(NUMBER + r"(?:[eE][-+]?\d+)?", raw_value):
+                valid = False
+                break
+            try:
+                value = float(raw_value)
+            except ValueError:
+                valid = False
+                break
+            if (
+                not math.isfinite(value)
+                or value < 0
+                or (key in {"VELOCITY", "ACCEL", "ACCEL_TO_DECEL"} and value == 0)
+                or (key == "MINIMUM_CRUISE_RATIO" and value >= 1)
+                or (key == "SMOOTH_TIME" and value > 0.2)
+            ):
+                valid = False
+                break
+            values[key] = value
+        return values, valid
+
+    def _klipper(self, c, command):
+        """Relève limites et pressure advance ; unités natives, application firmware NON VÉRIFIÉE."""
+        # Sources primaires : Klipper G-Codes, toolhead.py (v0.12.0 et
+        # master), kinematics/extruder.py (master), consultés le 30/10/2026.
+        # L'ancien ACCEL_TO_DECEL et le nouveau MINIMUM_CRUISE_RATIO
+        # sont deux descriptions du lissage, pas deux accélérations à sommer.
+        velocity = command == "SET_VELOCITY_LIMIT"
+        allowed = (
+            {"VELOCITY", "ACCEL", "ACCEL_TO_DECEL", "MINIMUM_CRUISE_RATIO", "SQUARE_CORNER_VELOCITY"}
+            if velocity
+            else {"ADVANCE", "SMOOTH_TIME", "EXTRUDER"}
+        )
+        values, valid = self._valeurs_klipper(c, allowed)
+        relation = "non_applicable"
+        if valid and {"ACCEL_TO_DECEL", "MINIMUM_CRUISE_RATIO"} <= values.keys():
+            # Profil indépendant du firmware : refuser une paire ambiguë sans
+            # ACCEL explicite, plutôt que supposer une limite machine initiale.
+            if "ACCEL" not in values:
+                valid = False
+                relation = "acceleration_absente"
             else:
-                self.last_event["compensation_extrusion_simulee"] = False
-            if not valid:
-                self.error("paramètres " + command + " non pris en charge : " + c)
-            return None
+                expected = 1.0 - min(values["ACCEL_TO_DECEL"], values["ACCEL"]) / values["ACCEL"]
+                valid = math.isclose(values["MINIMUM_CRUISE_RATIO"], expected, rel_tol=1e-9, abs_tol=1e-9)
+                relation = "coherente" if valid else "contradictoire"
+        kind = "velocity_limit" if velocity else "pressure_advance"
+        self.last_event = {
+            "kind": kind if valid else "unsupported",
+            "command": command,
+            "parameters": values if valid else {},
+            "raw": c,
+            "line": self.line_number,
+            "tool": self.tool,
+            "object": self.object,
+            "type": self.kind,
+            "layer": self.layer,
+            "source_grammaire": "https://www.klipper3d.org/G-Codes.html#" + command.lower(),
+            "application_firmware": "NON VÉRIFIÉ",
+            "dynamique_simulee": False,
+        }
+        if velocity:
+            self.last_event["relation_ancien_nouveau"] = relation
+            if "ACCEL_TO_DECEL" in values:
+                self.last_event["source_historique"] = (
+                    "https://github.com/Klipper3d/klipper/blob/v0.12.0/klippy/toolhead.py"
+                )
+        else:
+            self.last_event["compensation_extrusion_simulee"] = False
+        if not valid:
+            self.error("paramètres " + command + " non pris en charge : " + c)
+        return None
+
+    def _opcode(self, c):
+        """Reconnaît la commande et ses alias ; texte sans unité ou None sur refus."""
         m = re.match(r"^([GMT]\d+(?:\.\d+)?)", c, re.I)
         if not m:
             self.error("opcode non pris en charge : " + c.split()[0])
@@ -197,62 +261,74 @@ class Interpreter:
             return None
         op = m.group(1).upper()
         tail = c[m.end() :]
-        if op == "M73":
-            # Grammaire d'affichage observée dans les sorties natives Anycubic :
-            # QuietR/SportR sont des durées affichées, jamais des mouvements.
-            values = {}
-            valid = True
-            for token in tail.split():
-                match = re.fullmatch(r"(QuietR|SportR|P|R|Q|S)(" + NUMBER + r")", token, re.I)
-                if not match:
-                    valid = False
-                    break
-                key = match[1].upper()
-                value = float(match[2])
-                if key in values or not math.isfinite(value) or value < 0 or (key in {"P", "Q"} and value > 100):
-                    valid = False
-                    break
-                values[key] = value
-            if not values:
+        op = {"G00": "G0", "G01": "G1", "G02": "G2", "G03": "G3"}.get(op, op)
+        return op, tail
+
+    def _progression(self, c, op, tail):
+        """Relève la progression en unités d’affichage déclarées ; aucun effet physique."""
+        # Grammaire d'affichage observée dans les sorties natives Anycubic :
+        # QuietR/SportR sont des durées affichées, jamais des mouvements.
+        values = {}
+        valid = True
+        for token in tail.split():
+            match = re.fullmatch(r"(QuietR|SportR|P|R|Q|S)(" + NUMBER + r")", token, re.I)
+            if not match:
                 valid = False
-            if not valid:
-                self.error("paramètres M73 invalides : " + c)
-            self.last_event = {
-                "kind": "progress" if valid else "unsupported",
-                "command": op,
-                "parameters": values if valid else {},
-                "raw": c,
-                "line": self.line_number,
-                "tool": self.tool,
-                "object": self.object,
-                "type": self.kind,
-                "layer": self.layer,
-            }
+                break
+            key = match[1].upper()
+            value = float(match[2])
+            if key in values or not math.isfinite(value) or value < 0 or (key in {"P", "Q"} and value > 100):
+                valid = False
+                break
+            values[key] = value
+        if not values:
+            valid = False
+        if not valid:
+            self.error("paramètres M73 invalides : " + c)
+        self.last_event = {
+            "kind": "progress" if valid else "unsupported",
+            "command": op,
+            "parameters": values if valid else {},
+            "raw": c,
+            "line": self.line_number,
+            "tool": self.tool,
+            "object": self.object,
+            "type": self.kind,
+            "layer": self.layer,
+        }
+        return None
+
+    def _affichage(self, c, op, tail):
+        """Relève un texte d’affichage sans interpréter ses mots comme des axes."""
+        self.last_event = {
+            "kind": "display",
+            "command": op,
+            "parameters": {},
+            "raw": c,
+            "line": self.line_number,
+            "tool": self.tool,
+            "object": self.object,
+            "type": self.kind,
+            "layer": self.layer,
+        }
+        return None
+
+    def _homing(self, c, op, tail):
+        """Réinitialise les axes déclarés en mm et émet un événement ; référencement non exécuté."""
+        try:
+            axes = axes_homing(tail)
+        except ValueError as erreur:
+            self.error(str(erreur))
             return None
-        if op == "M117":
-            self.last_event = {
-                "kind": "display",
-                "command": op,
-                "parameters": {},
-                "raw": c,
-                "line": self.line_number,
-                "tool": self.tool,
-                "object": self.object,
-                "type": self.kind,
-                "layer": self.layer,
-            }
-            return None
-        if op == "G28":
-            try:
-                axes = axes_homing(tail)
-            except ValueError as erreur:
-                self.error(str(erreur))
-                return None
-            # L'ancien repère ne décrit plus le trajet qui suit le référencement.
-            # Voir docs/reference/controles.md, contrôle de débit.
-            self._apres_homing = any(self.xyz)
-            self.xyz = tuple(0.0 if a in axes else p for a, p in zip("XYZ", self.xyz))
-            return None
+        self.last_event = self._evenement("G28", dict.fromkeys(axes, 0.0), c, kind="homing")
+        # L'ancien repère ne décrit plus le trajet qui suit le référencement.
+        # Voir docs/reference/controles.md, contrôle de débit.
+        self._apres_homing = any(self.xyz)
+        self.xyz = tuple(0.0 if a in axes else p for a, p in zip("XYZ", self.xyz))
+        return None
+
+    def _parametres(self, c, op, tail):
+        """Valide les paramètres génériques ; dictionnaire en unités natives ou None sur refus."""
         words = WORDS.findall(tail)
         vals = {k.upper(): float(v) for k, v in words}
         # Le texte libre de l'écran et la macro constructeur ont une grammaire distincte.
@@ -266,101 +342,96 @@ class Interpreter:
                 self.error("paramètres modaux non pris en charge : " + c)
                 self.last_event = {"kind": "unsupported", "command": op, "parameters": {}, "raw": c}
                 return None
-        self.last_event = {
-            "kind": "command",
-            "command": op,
-            "parameters": vals,
-            "raw": c,
-            "line": self.line_number,
-            "tool": self.tool,
-            "object": self.object,
-            "type": self.kind,
-            "layer": self.layer,
-        }
-        if op == "G9111":
-            named = {}
-            values = {}
-            try:
-                for token in tail.split():
-                    key, value = token.split("=")
-                    if key not in ("extruderTemp", "bedTemp") or key in named:
-                        raise ValueError()
-                    named[key] = value
-                    values[key] = float(value)
-                    if not math.isfinite(values[key]) or values[key] < 0:
-                        raise ValueError()
-                if not values:
-                    raise ValueError()
-            except ValueError:
-                self.error("paramètre G9111 non fini/invalide")
-                self.last_event.update(kind="unsupported", parameters={}, opaque=True)
-                return None
-            self.last_event.update(kind="macro", parameters=values, opaque=True)
-            return None
-        if op in {"M201", "M203", "M204", "M205", "M104", "M109", "M140", "M190", "M106", "M107", "G4"}:
-            if WORDS.sub("", c[m.end() :]).strip():
-                self.error("paramètres commande non pris en charge : " + c)
-                self.last_event["kind"] = "unsupported"
-                return None
-        if not all(math.isfinite(v) for v in vals.values()):
+        if op != "G9111" and not all(math.isfinite(v) for v in vals.values()):
             self.error("paramètre non fini")
-            self.last_event.update(kind="unsupported", parameters={})
+            self.last_event = self._evenement(op, {}, c, kind="unsupported")
             return None
+        return vals
+
+    def _macro(self, tail):
+        """Relève les températures G9111 en °C ; macro opaque, aucune chauffe exécutée."""
+        named = {}
+        values = {}
+        try:
+            for token in tail.split():
+                key, value = token.split("=")
+                if key not in ("extruderTemp", "bedTemp") or key in named:
+                    raise ValueError()
+                named[key] = value
+                values[key] = float(value)
+                if not math.isfinite(values[key]) or values[key] < 0:
+                    raise ValueError()
+            if not values:
+                raise ValueError()
+        except ValueError:
+            self.error("paramètre G9111 non fini/invalide")
+            self.last_event.update(kind="unsupported", parameters={}, opaque=True)
+            return None
+        self.last_event.update(kind="macro", parameters=values, opaque=True)
+        return None
+
+    def _appliquer_mode(self, c, op, tail, vals):
+        """Suit modes et repères en mm ; booléen de traitement, dette de rétraction conservée."""
         if op == "M82":
             self.relative_e = False
-            return None
+            return True
         if op == "M83":
             self.relative_e = True
-            return None
+            return True
         if op == "G90":
             self.relative_xyz = False
-            return None
+            return True
         if op == "G91":
             self.relative_xyz = True
-            return None
+            return True
         if op.startswith("T"):
             self.tool = int(op[1:])
-            return None
+            return True
         if op == "G92":
             if not vals:
                 self.error("G92 sans axes explicites non pris en charge")
-                return None
-            if WORDS.sub("", c[m.end() :]).strip() or any(k not in "XYZE" for k in vals):
+                return True
+            if WORDS.sub("", tail).strip() or any(k not in "XYZE" for k in vals):
                 self.error("paramètres G92 non pris en charge : " + c)
-                return None
+                return True
             self.xyz = tuple(vals.get(a, p) for a, p in zip("XYZ", self.xyz))
             if "E" in vals:
                 self.e[None] = vals["E"]
-            return None
-        if op not in {"G0", "G1", "G2", "G3"}:
-            if op.startswith("G") and op not in {"G4", "G21", "G29", "G80", "G9111"}:
-                self.error("commande mouvement non prise en charge : " + op)
-            if op in {"G20", "M200", "M206", "M218", "M220", "M221", "G10", "G11"}:
-                self.error("commande affectant extrusion/coordonnées non prise en charge : " + op)
-            if op.startswith("M") and op not in {
-                "M201",
-                "M203",
-                "M204",
-                "M205",
-                "M104",
-                "M109",
-                "M140",
-                "M190",
-                "M106",
-                "M107",
-                "M73",
-                "M75",
-                "M77",
-                "M84",
-                "M18",
-                "M17",
-                "M400",
-                "M117",
-                "M900",
-            }:
-                self.error("commande M sans modèle explicite : " + op)
-            return None
-        tail = c[m.end() :]
+            return True
+        return False
+
+    def _autre(self, op):
+        """Signale les commandes sans modèle ; aucune commande inconnue assimilée à une mesure."""
+        if op.startswith("G") and op not in {"G4", "G21", "G29", "G80", "G9111"}:
+            self.error("commande mouvement non prise en charge : " + op)
+        if op in {"G20", "M200", "M206", "M218", "M220", "M221", "G10", "G11"}:
+            self.error("commande affectant extrusion/coordonnées non prise en charge : " + op)
+        if op.startswith("M") and op not in {
+            "M201",
+            "M203",
+            "M204",
+            "M205",
+            "M104",
+            "M109",
+            "M140",
+            "M190",
+            "M106",
+            "M107",
+            "M73",
+            "M75",
+            "M77",
+            "M84",
+            "M18",
+            "M17",
+            "M400",
+            "M117",
+            "M900",
+        }:
+            self.error("commande M sans modèle explicite : " + op)
+        return None
+
+    def _mouvement(self, c, op, tail, vals):
+        """Calcule trajet et dépôt nominaux en mm, vitesse mm/min ; arcs sans modèle refusés."""
         if WORDS.sub("", tail).strip() or any(k not in "XYZEF" for k in vals):
             self.error("paramètres mouvement non pris en charge : " + c)
             return None
@@ -389,14 +460,12 @@ class Interpreter:
             debt = max(0.0, debt - de)
         self.retracted[None] = debt
         self.xyz = end
-        if op in {"G2", "G3"}:
-            self.error("arc non analysé : " + op)
-            return None
         length = math.dist(start, end)
         if length > 0 and self._apres_homing:
             self._apres_homing = False
             if deposited > 0:
                 self.error("Segment d’extrusion immédiatement après G28 non vérifié")
+                self.last_event["homing_unverified"] = True
                 deposited = 0.0
         ratio = deposited / de if de > 0 else 0.0
         deposition_start = tuple(b - (b - a) * ratio for a, b in zip(start, end))

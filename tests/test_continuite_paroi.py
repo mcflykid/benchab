@@ -26,12 +26,16 @@ def test_positions_extrusion_absolue_conservees_par_outil(tmp_path):
     assert resultat["couches"][0]["morceaux"] == 3
 
 
-def test_format_compact_non_interprete_ne_reste_pas_pass(tmp_path):
+def test_format_compact_valide_est_mesure_par_le_lecteur_commun(tmp_path):
+    """La syntaxe compacte reconnue fournit deux segments ; une syntaxe invalide reste NON VÉRIFIÉE."""
     contenu = (
         "G90\nM83\n;Z:20\n;TYPE:Outer wall\nM204 S2000\n"
         "G0 X0 Y0 Z20\nG1 X10 E1 F600\nG1X20E1\n"
     )
-    assert controler(ecrire_gcode(tmp_path / "compact.gcode", contenu))["statut"] == "NON VÉRIFIÉ"
+    resultat = controler(ecrire_gcode(tmp_path / "compact.gcode", contenu))
+    assert resultat["statut"] == "PASS"
+    assert resultat["couches"][0]["segments"] == 2
+    assert controler(ecrire_gcode(tmp_path / "invalide.gcode", contenu + "G1X?E1\n"))["statut"] == "NON VÉRIFIÉ"
 
 
 def test_fragments_et_microsegments_depassent_seuils_absolus(tmp_path):
