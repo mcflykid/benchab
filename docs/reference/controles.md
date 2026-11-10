@@ -9,6 +9,8 @@ Les options `--declaration`, `--geometrie`, `--revue-locale` et `--reference`
 rattachent leurs preuves. `--relation-reference` distingue même source de modèle,
 seulement même machine/filament, et relation inconnue.
 Les constantes et critères vérifiables sont reliés dans [les règles](regles.md).
+La routine vérifie le [contrat de placement](placement.md) avant le premier
+contrôle ; une déclaration invalide donne une erreur localisée sans créer ses rapports.
 
 Les familles couvrent : plaques CLI/interface, réglages, pièces, paquet 3MF,
 finition/parois, débit, appuis, première couche, décollement, ponts internes,

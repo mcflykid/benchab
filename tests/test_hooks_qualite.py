@@ -53,6 +53,31 @@ def test_pre_refuse_declaration_pret_sans_preuves(tmp_path):
         hooks.pre({"cwd": str(tmp_path), "tool_input": {"file_path": "ETAT.md", "content": "PRÊT À IMPRIMER"}})
 
 
+def test_pre_resout_le_repli_cwd_a_chaque_appel(tmp_path, monkeypatch):
+    """Deux cwd successifs protègent chacun leur livrable relatif ; aucune écriture ni unité."""
+    for nom in ("premier", "second"):
+        projet = tmp_path / nom
+        projet.mkdir()
+        (projet / "piece.stl").write_text("fixture")
+        (projet / "LIVRABLES.json").write_text(json.dumps({"fichiers": [{"chemin": "piece.stl"}]}))
+        monkeypatch.chdir(projet)
+        with pytest.raises(RuntimeError, match="figé"):
+            hooks.pre({"tool_input": {"file_path": "piece.stl", "content": "mutation"}})
+        assert (projet / "piece.stl").read_text() == "fixture"
+
+
+def test_post_resout_source_relative_depuis_cwd_de_la_charge(tmp_path):
+    """Le cwd fourni identifie le projet relatif ; atelier inconnu signalé sans écriture."""
+    projet = tmp_path / "projet"
+    (projet / "src").mkdir(parents=True)
+    (projet / "qualite.json").write_text("{}")
+    (projet / "src/piece.py").write_text("fixture")
+    resultat = hooks.post({"cwd": str(projet), "tool_input": {"file_path": "src/piece.py"}})
+    assert resultat["code"] == 2
+    assert "indéterminé" in resultat["controle"]
+    assert not (projet / "ETAT.md").exists()
+
+
 def test_hook_explicitement_appele_est_mesure(tmp_path, monkeypatch, capsys, atelier_initialise):
     """Vérifie hook explicitement appele est mesure ; atelier initialisé, aucune machine touchée."""
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_input": {}})))

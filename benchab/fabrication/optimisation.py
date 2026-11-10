@@ -45,6 +45,19 @@ def _fichier_prive(base: Base, chemin: str | Path) -> Path:
     return resultat
 
 
+def _projet_prive(base: Base, projet: str | Path) -> Path:
+    """Résout un projet relatif à l’atelier ; Path sans unité, FAIL hors confinement ou sur lien."""
+    from benchab.chemins import sans_lien
+
+    brut = Path(projet).expanduser()
+    candidat = brut if brut.is_absolute() else base.prive / brut
+    # Le contrôle des liens précède resolve : sinon leur trace disparaît (#100).
+    dossier = sans_lien(candidat, racine=base.prive, strict=True)
+    if not dossier.is_dir():
+        raise ValueError("Projet d’optimisation privé requis.")
+    return dossier
+
+
 def positif(valeur, nom: str, *, nul: bool = False) -> float:
     if isinstance(valeur, bool):
         raise ValueError(f"{nom} : booléen interdit.")
@@ -384,14 +397,13 @@ def filaments(st: dict, config: dict, base: Base) -> tuple[dict, list[str]]:
 
 
 def proposer(base: Base, projet: str | Path, source: str | Path, objectif: str | None = None, maitre=None) -> dict:
-    """Calcule un candidat non imprimable ; tous les fichiers d'entrée sont dans l'espace privé."""
-    dossier = (
-        _fichier_prive(base, Path(projet) / "FABRICATION.json").parent
-        if (Path(projet) / "FABRICATION.json").exists()
-        else Path(projet)
-    )
-    if not dossier.resolve().is_relative_to(base.prive.resolve()) or not dossier.is_dir():
-        raise ValueError("Projet d’optimisation privé requis.")
+    """Calcule un candidat privé non imprimable ; rapport en mm, mm/s et mm/s², aucune source modifiée.
+
+    Le projet relatif part de base.prive ; données absentes ou confinement invalide refusés explicitement.
+    """
+    dossier = _projet_prive(base, projet)
+    if (dossier / "FABRICATION.json").exists():
+        _fichier_prive(base, dossier / "FABRICATION.json")
     source = _fichier_prive(base, source)
     configuration = charger_fabrication(dossier, objectif)
     profil, limites = _lire_maitre(base, configuration, maitre)
@@ -799,15 +811,13 @@ def comparer(
     trancher: bool = True,
     max_candidats: int = 3,
 ) -> dict:
-    """Compare la référence et une proposition sur des copies privées traçables."""
+    """Compare référence et candidat privés ; rapports PASS/WARN/FAIL/NON VÉRIFIÉ, mesures en mm et s.
+
+    Le projet relatif part de base.prive ; copies traçables, aucune source ni profil installé modifié.
+    """
     if type(max_candidats) is not int or not 2 <= max_candidats <= 5:
         raise ValueError("Le budget doit être un entier entre 2 et 5.")
-    projet = Path(projet).expanduser()
-    if not projet.is_absolute():
-        projet = base.prive / projet
-    projet = projet.resolve(strict=True)
-    if not projet.is_relative_to(base.prive.resolve()) or not projet.is_dir():
-        raise ValueError("Projet d’optimisation hors base.prive.")
+    projet = _projet_prive(base, projet)
     source = _fichier_prive(base, source)
     config = charger_fabrication(projet, objectif)
     profil, _limites = _lire_maitre(base, config, maitre)

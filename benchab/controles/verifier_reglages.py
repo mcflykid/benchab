@@ -20,7 +20,11 @@ from benchab.gcode.lecture import lire_texte_gcode_3mf
 
 def main(argv):
     """Exécute main avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en unités
-    natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
+    natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
+
+    Entrées : archive, placement et rapport ; retour 0 conforme, 1 non conforme ou 2 usage invalide.
+    Les consignes thermiques sont informatives et ne changent pas le verdict global.
+    """
     if len(argv) != 3:
         print(__doc__)
         return 2
@@ -36,6 +40,7 @@ def main(argv):
         f = 0.0
         hauteurs = set()
         temps = set()
+        consignes = []
         premiere = float(
             schema_reglages.decoder(z.read("Metadata/project_settings.config")).get("initial_layer_print_height", "0.2")
         )
@@ -45,6 +50,29 @@ def main(argv):
         it = Interpreter()
         for ligne in g:
             move = it.feed_line(ligne)
+            evenement = it.last_event or {}
+            commande = evenement.get("command")
+            parametres = evenement.get("parameters", {})
+            # Une seule grammaire thermique : G9111 utilise déjà les événements
+            # du lecteur commun, sans créer un verdict thermique (#99, #13).
+            cle_temperature = "extruderTemp" if commande == "G9111" else "S" if "S" in parametres else "R"
+            if (
+                commande in {"G9111", "M104", "M109"}
+                and evenement.get("kind") in {"macro", "command"}
+                and cle_temperature in parametres
+            ):
+                temperature = parametres[cle_temperature]
+                cible = parametres.get("T", evenement.get("tool"))
+                # M104 Tn vise la buse déclarée sans changer l’outil actif.
+                outil = int(cible) if isinstance(cible, (int, float)) and cible >= 0 and int(cible) == cible else None
+                temps.add(temperature)
+                consignes.append({
+                    "commande": commande,
+                    "ligne": evenement["line"],
+                    "outil": outil,
+                    "temperature_c": temperature,
+                    "extinction": temperature == 0,
+                })
             if ligne.startswith(";Z:"):
                 zc = float(ligne[3:])
             elif ligne.startswith(";HEIGHT:"):
@@ -56,9 +84,6 @@ def main(argv):
                 re.search(r"NAME=(\S+)", ligne).group(1)
             elif ligne.startswith("EXCLUDE_OBJECT_END"):
                 pass
-            elif ligne.startswith(("M104", "M109")):
-                m = re.search(r"S(\d+)", ligne)
-                temps.add(int(m.group(1))) if m else None
             elif move:
                 nx, ny = move["end"][:2]
                 x, y = move["deposition_start"][:2]
@@ -83,6 +108,7 @@ def main(argv):
             "plaque": pl["name"],
             "hauteurs_de_couche": sorted(hauteurs, key=float)[:6],
             "temperatures_buse": sorted(temps),
+            "consignes_buse": consignes,
             "objets": [],
         }
         centres = {

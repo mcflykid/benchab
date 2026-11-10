@@ -9,6 +9,10 @@ uv run benchab controle publication
 ```
 
 Les tests construisent leurs propres fixtures et isolent l’atelier privé.
+Les hooks résolvent le dossier courant à chaque appel, depuis la charge utile
+quand elle le fournit. Leur filtre des commandes shell est une aide heuristique,
+pas une barrière de sécurité : une écriture détournée peut lui échapper. Les
+contrôles explicites des livrables et des empreintes restent nécessaires (#21).
 La CI macOS exécute les tests unitaires sans slicer ; les essais natifs et Blender sont
 séparés et demandent leurs programmes externes. L’outil d’impact existant choisit
 les tests avec les imports, liens documentaires, appels Make et relations JSON
