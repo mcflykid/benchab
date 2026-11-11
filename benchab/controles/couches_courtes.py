@@ -31,6 +31,7 @@ import numpy as np
 import trimesh
 from shapely.affinity import affine_transform
 from shapely.ops import unary_union
+from shapely.strtree import STRtree
 
 _AIRE_INTERSECTION_MIN_MM2 = 1e-9
 
@@ -69,6 +70,35 @@ def _mesurer_recouvrement_xy(polygon, polygones_precedents, *, couche, union_pre
     return "recouvrement_partiel_xy_echantillonne", aire, fraction
 
 
+def _relations_projection_xy(polygones_precedents, polygones_courants):
+    """Indexe les relations entre deux coupes et signale les branches projetées.
+
+    Retourne, pour chaque polygone courant, ses indices parents précédents et
+    un booléen de branche. Les intersections sont confirmées par une aire en
+    mm² strictement supérieure à ``_AIRE_INTERSECTION_MIN_MM2``.
+    """
+    parents_par_courant = [[] for _ in polygones_courants]
+    branches = [False] * len(polygones_courants)
+    if not polygones_precedents or not polygones_courants:
+        return parents_par_courant, branches
+
+    arbre = STRtree(polygones_courants)
+    enfants_par_precedent = [[] for _ in polygones_precedents]
+    for indice_precedent, precedent in enumerate(polygones_precedents):
+        candidats = arbre.query(precedent, predicate="intersects")
+        for indice_courant_brut in candidats:
+            indice_courant = int(indice_courant_brut)
+            courant = polygones_courants[indice_courant]
+            if precedent.intersection(courant).area > _AIRE_INTERSECTION_MIN_MM2:
+                parents_par_courant[indice_courant].append(indice_precedent)
+                enfants_par_precedent[indice_precedent].append(indice_courant)
+    for enfants in enfants_par_precedent:
+        if len(enfants) > 1:
+            for indice_courant in enfants:
+                branches[indice_courant] = True
+    return parents_par_courant, branches
+
+
 def _rapport(track, terminal, lh, amax, hmin):
     """Construit le rapport historique et ses observations de coupes échantillonnées.
 
@@ -100,7 +130,6 @@ def _rapport(track, terminal, lh, amax, hmin):
         ambiguites.append("recouvrement_sous_precision_numerique")
     qualification_sections = {
         "statut": "NON VÉRIFIÉ",
-        "position_initiale": qualifications[0]["relation_appui_xy"],
         "candidat_pose_au_z_min_du_maillage": (
             qualifications[0]["relation_appui_xy"] == "premier_echantillon_du_maillage"
         ),
@@ -189,6 +218,12 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
         total = sum(polygon.area for polygon in polygons)
         small = [polygon for polygon in polygons if polygon.area <= amax + 1e-8]
         union_precedente = unary_union(polygones_precedents) if polygones_precedents else None
+        parents_par_polygone, branches_par_polygone = _relations_projection_xy(
+            polygones_precedents, polygons
+        )
+        indices_petites = [
+            index for index, polygon in enumerate(polygons) if polygon.area <= amax + 1e-8
+        ]
         # Une correspondance par recouvrement, jamais par centre arrondi. Un
         # trou vertical ou une couche vide termine la piste immédiatement.
         pairs = []
@@ -213,21 +248,8 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
             relation_appui, aire_recouverte, fraction_recouverte = _mesurer_recouvrement_xy(
                 polygon, polygones_precedents, couche=layer, union_precedente=union_precedente
             )
-            if union_precedente is None:
-                parents = []
-            else:
-                parents = [
-                    precedent
-                    for precedent in polygones_precedents
-                    if precedent.intersection(polygon).area > _AIRE_INTERSECTION_MIN_MM2
-                ]
-            branche = any(
-                sum(
-                    precedent.intersection(courant).area > _AIRE_INTERSECTION_MIN_MM2
-                    for courant in polygons
-                ) > 1
-                for precedent in parents
-            )
+            parents = parents_par_polygone[indices_petites[new_index]]
+            branche = branches_par_polygone[indices_petites[new_index]]
             track["samples"].append(
                 {
                     "z": z,

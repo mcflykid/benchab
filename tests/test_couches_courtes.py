@@ -12,7 +12,11 @@ import trimesh
 from shapely.geometry import box as polygon_box
 
 from benchab.controles.appuis_gcode import mesurer_appui
-from benchab.controles.couches_courtes import _mesurer_recouvrement_xy, analyse
+from benchab.controles.couches_courtes import (
+    _mesurer_recouvrement_xy,
+    _relations_projection_xy,
+    analyse,
+)
 
 
 def box(size, centre):
@@ -43,7 +47,9 @@ class CouchesCourtes(unittest.TestCase):
     def test_qualification_geometrique_releve_un_candidat_pose_sans_affirmer_contact_plateau(self):
         result = self.check_mesh([box((2, 2, 3), (0, 0, 1.5))])
         qualification = result[0]["qualification_sections"]
-        self.assertEqual(qualification["position_initiale"], "premier_echantillon_du_maillage")
+        self.assertEqual(
+            qualification["premiere_relation_appui_xy"], "premier_echantillon_du_maillage"
+        )
         self.assertTrue(qualification["candidat_pose_au_z_min_du_maillage"])
         self.assertEqual(qualification["statut"], "NON VÉRIFIÉ")
         self.assertFalse(qualification["contact_plateau_prouve"])
@@ -109,6 +115,26 @@ class CouchesCourtes(unittest.TestCase):
             "association_un_a_un_non_prouvee_branche_ou_fusion",
             branches[0]["qualification_sections"]["ambiguites"],
         )
+
+    def test_relations_projection_indexees_gardent_branche_et_fusion(self):
+        precedente = [polygon_box(0, 0, 6, 4)]
+        courantes = [polygon_box(0, 0, 2, 2), polygon_box(4, 0, 6, 2)]
+        parents, branches = _relations_projection_xy(precedente, courantes)
+        self.assertEqual(parents, [[0], [0]])
+        self.assertEqual(branches, [True, True])
+
+        precedentes = [polygon_box(0, 0, 2, 2), polygon_box(4, 0, 6, 2)]
+        fusion = [polygon_box(0, 0, 6, 2)]
+        parents, branches = _relations_projection_xy(precedentes, fusion)
+        self.assertEqual(parents, [[0, 1]])
+        self.assertEqual(branches, [False])
+
+    def test_relations_projection_indexees_excluent_le_contact_sans_aire(self):
+        parents, branches = _relations_projection_xy(
+            [polygon_box(0, 0, 1, 1)], [polygon_box(1, 0, 2, 1)]
+        )
+        self.assertEqual(parents, [[]])
+        self.assertEqual(branches, [False])
 
     def test_qualification_signale_un_vide_interieur_de_section(self):
         mesh = trimesh.creation.annulus(r_min=1, r_max=3, height=3)

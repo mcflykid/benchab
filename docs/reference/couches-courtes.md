@@ -8,8 +8,8 @@ gardent leurs champs `centre_xy_mm`, `de_z`, `a_z`, `hauteur_mm`, les aires,
 Le champ `qualification_sections` ajoute des observations numériques des
 sections, sans modifier ni préparer le modèle :
 
-- `position_initiale = premier_echantillon_du_maillage` signifie que la piste
-  est présente au premier prélèvement près du Z minimal du STL.
+- `premiere_relation_appui_xy = premier_echantillon_du_maillage` signifie que
+  la piste est présente au premier prélèvement près du Z minimal du STL.
   `candidat_pose_au_z_min_du_maillage` est seulement un candidat : une pièce
   flottante dans le premier intervalle Z peut donner le même échantillon.
   `contact_plateau_prouve` reste toujours faux.
@@ -69,3 +69,17 @@ leur adhérence ou tenue.
 La qualification structurée des positions intérieures/extérieures reste hors
 de ce lot : les rapports n’attribuent pas ces catégories. Il faudra une preuve
 géométrique distincte avant de les ajouter.
+
+Les relations de branche/fusion sont calculées par couche avec un `STRtree` des
+polygones courants. Seuls les candidats qui intersectent selon l’index reçoivent
+le calcul d’aire exact ; le même seuil strict de `1e-9 mm²` décide ensuite si
+une relation compte. L’association historique des pistes et ses règles
+d’égalité restent inchangées. Une coupe dense où presque tous les polygones se
+recouvrent peut toujours produire un grand nombre de candidats.
+
+Sur une mesure locale reproductible avec 400 carrés disjoints dans chacune de
+deux coupes (5 répétitions, médiane), le balayage complet de référence a examiné
+160 000 paires et trouvé 400 recouvrements en 62,915 ms ; l’index a renvoyé ces
+400 relations en 3,172 ms. Ce micro-témoin synthétique ne constitue pas une
+garantie de temps pour des maillages réels ; il vérifie surtout que les îlots
+disjoints ne provoquent plus une intersection exacte pour chaque paire.
