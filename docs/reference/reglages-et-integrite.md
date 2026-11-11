@@ -76,6 +76,17 @@ remplace pas `get_at`. Le contrôle des commandes machine utilise l'indice du
 mode déclaré et la lecture `get_at` demandée, puis compare aux limites
 configurées ; un M203 X780 attendu à 600 reste FAIL.
 
+Le [générateur automatique public Anycubic à la révision 6103ed8](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/GCode.cpp#L2856-L2873)
+arrondit la première valeur pour M203 dans ses branches Marlin et RepRap.
+Sur quatre copies de témoin Kobra S1 en format Klipper, le binaire local
+2.0.0.3 identifié par son SHA a produit pour Z les valeurs 7, 7, 8 et
+8 mm/s à partir de 7, 7,49, 7,5 et 8 mm/s respectivement. Les vecteurs
+de cardinalité exacte restent décimaux dans les réglages de sortie.
+Cette observation explique l’écart historique de 7,5 à 8 mm/s (#49).
+La filiation du binaire et son traitement des vecteurs courts dans
+ce générateur restent NON VÉRIFIÉS. Le contrôle strict signale toujours
+l’écart entre le G-code et la valeur déclarée.
+
 En **écriture par BENCHAB**, la longueur exacte reste obligatoire. Un WARN de
 lecture n'autorise pas une écriture hors cardinalité. Une origine dont le
 vecteur machine est court ou non résolu ne peut pas être modifiée ou complétée
