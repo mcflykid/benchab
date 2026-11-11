@@ -24,6 +24,24 @@ Ces choix de construction sont fondés sur les sources du moteur :
 Ils sont vérifiés par réouverture géométrique et tranchage réel. Aucun code
 tiers n'est repris pour les produire.
 
+## Copie avec empreinte source
+
+`benchab fabrication tracer-3mf SOURCE --sortie NOM.3mf` crée une copie neuve
+sous l’atelier privé. Il ajoute seulement
+`Metadata/benchab-provenance.json` avec le schéma 1, l’outil `BENCHAB` et le
+SHA-256 des octets du 3MF source, ainsi que l’Override `application/json`
+correspondant dans `[Content_Types].xml`. Aucun lien de paquet n’est ajouté.
+L’archive source, ses profils et les autres membres restent inchangés ; une
+sortie existante, une archive déjà marquée, signée ou structurellement invalide
+est refusée. Le contrôle d’intégrité des réglages exige zéro différence.
+
+Cette partie est facultative pour le format et ne vaut ni signature ni preuve
+d’auteur. La sonde locale sur Anycubic Slicer Next 2.0.0.3 a montré que le
+slicer accepte cette partie dans l’import, mais ne la conserve pas dans son
+export. La variante `MustPreserve` a été refusée par le moteur. La provenance
+doit donc être contrôlée après chaque réenregistrement ; l’outil ne garantit
+pas sa persistance native.
+
 Le profil de référence reste un choix explicite et empreinté. Un profil que
 le moteur réindexe est refusé par le lanceur ; aucune conversion silencieuse
 n'est faite pour rendre un ancien profil compatible. Les valeurs inconnues

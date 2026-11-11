@@ -24,6 +24,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Données : revalidation du répertoire d’export et du verrou avant publication, même si l’atelier est déjà ouvert (#138).
 - Contrôle : comparaison des réglages projet, objets, parties et plaques aux profils explicitement fournis ; écarts sensibles, provenance par clé et filiations de profils en lecture seule (#38).
 - Atelier : plan passif et réparation explicite d’une vue canonique, avec preuve de la source et sauvegarde relue (suite de #119).
+- 3MF : copie privée avec SHA-256 du source, partie JSON facultative et contrôle des membres conservés ; le slicer peut retirer cette provenance (#42).
 
 ## 1.3.0 — 2026-11-11
 

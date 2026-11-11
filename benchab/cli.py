@@ -222,6 +222,7 @@ def parser():
         "rattachements",
         "retour",
         "envois-slicer",
+        "tracer-3mf",
     ):
         route = fabrication.add_parser(nom, add_help=False)
         route.add_argument("-h", "--help", action="store_true", help="Affiche l’aide métier sans exécution")
@@ -597,6 +598,14 @@ def executer(arguments, base):
             directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
             try:
                 return int(module.main(directs, base=base) or 0)
+            except SystemExit as arret:
+                return _code_arret(arret)
+        if arguments.action == "tracer-3mf":
+            from benchab.fabrication.tracer_3mf import main as tracer
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(tracer(directs, base=base) or 0)
             except SystemExit as arret:
                 return _code_arret(arret)
         if arguments.action == "couches-variables":
