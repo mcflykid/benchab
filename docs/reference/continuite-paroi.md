@@ -76,7 +76,7 @@ sur la trajectoire analytique : angles pour X/Y et fraction de hauteur pour Z
 dans une hélice. La dette de rétraction déplace le début du dépôt le long de la
 courbe. Le repère physique reste distinct du repère de commande après G92.
 Les longueurs sont arrondies à 0,1 mm ; aucune corde n’est comptée. Les
-coordonnées et rayons au-delà de 1 000 000 mm sont refusés.
+bornes, extrémités et enveloppes circulaires au-delà de ±1 000 000 mm sont refusées.
 
 Cette extension concerne les mesures par boîte. Les contrôles de couverture
 première couche, de continuité et d’appuis qui attendent encore des segments

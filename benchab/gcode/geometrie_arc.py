@@ -28,10 +28,12 @@ def longueur_deposee_dans_boite(mouvement, bornes):
     cx, cy = arc["centre_xy_mm"]
     rayon = arc["rayon_mm"]
     a0, balayage = arc["angle_debut_rad"], arc["balayage_signe_rad"]
-    z0, z1 = mouvement["start"][2], mouvement["end"][2]
+    start, end = mouvement["start"], mouvement["end"]
+    z0, z1 = start[2], end[2]
     debut = arc["debut_depot_fraction"]
     if (
-        any(not math.isfinite(x) or abs(x) > _MAX_COORDONNEE_MM for x in (*bornes, cx, cy, rayon, z0, z1))
+        any(not math.isfinite(x) or abs(x) > _MAX_COORDONNEE_MM for x in (*bornes, *start, *end, cx, cy, rayon))
+        or max(abs(cx), abs(cy)) + rayon > _MAX_COORDONNEE_MM
         or xmin > xmax or ymin > ymax or zmin > zmax
     ):
         raise ValueError("Bornes ou arc hors domaine de mesure des régions.")

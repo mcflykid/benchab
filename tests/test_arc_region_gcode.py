@@ -59,3 +59,12 @@ def test_g92_ne_deplace_pas_la_boite_physique():
         {"physique": (20, 20, 31, 31, -1, 1), "commande": (0, 0, 11, 11, -1, 1)},
     )
     assert resultats == {"physique": 15.7, "commande": 0.0}
+
+
+def test_arc_depassant_le_domaine_nest_pas_partiellement_qualifie():
+    """Une boîte valide ne rend pas mesurable un arc qui sort du domaine."""
+    with pytest.raises(ValueError, match="hors domaine"):
+        _longueurs(
+            "G0 X1500000 Y0 F600", "G3 X-500000 Y0 I-1000000 J0 E1",
+            {"zone": (999000, 0, 1000000, 1000, -1, 1)},
+        )
