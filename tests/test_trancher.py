@@ -388,11 +388,15 @@ def test_validation_machine_refuse_membre_projet_ambigu_ou_trop_grand(tmp_path, 
 
 
 @pytest.mark.parametrize(
-    ("modele", "message"),
-    [("Anycubic Kobra S1 Max", "Modèle embarqué"), ("Anycubic Kobra S1 Combo", "différente entre source et copie")],
+    ("modele", "buse", "message"),
+    [
+        ("Anycubic Kobra S1 Max", ("0.4",), "Modèle embarqué"),
+        ("Anycubic Kobra S1 Combo", ("0.4",), "différente entre source et copie"),
+        ("Anycubic Kobra S1", (0.4,), "différente entre source et copie"),
+    ],
 )
-def test_validation_machine_recontrole_la_copie_reellement_destinee_au_moteur(monkeypatch, modele, message):
-    """Une copie transformée doit conserver la machine admise par le premier contrôle."""
+def test_validation_machine_recontrole_la_copie_reellement_destinee_au_moteur(monkeypatch, modele, buse, message):
+    """La copie doit conserver modèle et buse, jusque dans leur représentation embarquée."""
     with tempfile.TemporaryDirectory(prefix="benchab-copie-machine-", dir="/private/tmp") as racine:
         dossier = Path(racine)
         source = entree_3mf(dossier / "source.3mf")
@@ -401,7 +405,7 @@ def test_validation_machine_recontrole_la_copie_reellement_destinee_au_moteur(mo
         monkeypatch.setattr(trancher.tempfile, "mkdtemp", lambda **_options: str(travail))
 
         def normalisation_divergente(_source, copie, *_args, **_options):
-            entree_3mf(copie, modele=modele)
+            entree_3mf(copie, modele=modele, buse=buse)
             return {}
 
         def lancement_interdit(*_args, **_options):
