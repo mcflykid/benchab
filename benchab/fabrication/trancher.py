@@ -61,6 +61,7 @@ def normaliser(source, destination, usage="impression", identifiants=None):
 
 
 def diagnostic(debut):
+    """Résume le journal d’incident du slicer depuis un début en secondes Unix, sans conclure sur la cause."""
     dossier = Path.home() / "Library/Logs/DiagnosticReports"
     rapports = sorted(dossier.glob("AnycubicSlicerNext*.ips"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not rapports:
@@ -691,6 +692,7 @@ def servir():
 
 
 def client(arguments):
+    """Transmet les arguments historiques à la file locale et attend son code au plus 1 800 s."""
     parser = argparse.ArgumentParser(description="Adaptateur limité aux arguments de tranchage historique")
     parser.add_argument("--datadir")
     parser.add_argument("--arrange", choices=["0"])
@@ -879,6 +881,7 @@ def _visualiser(arguments):
 
 
 def main(arguments=None):
+    """Lance le service local, son arrêt, le client ou la visualisation et renvoie leur code."""
     arguments = sys.argv[1:] if arguments is None else arguments
     if arguments and arguments[0] == "--visualiser":
         return _visualiser(arguments)

@@ -37,6 +37,7 @@ PIECE = {
 
 
 def sha(path):
+    """Calcule le SHA-256 du fichier local en lecture seule pour identifier la preuve."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 

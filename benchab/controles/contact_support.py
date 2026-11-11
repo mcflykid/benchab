@@ -27,7 +27,9 @@ PIECE = {
 
 
 class ContactSupport:
+    """Accumule une projection nominale des interfaces et des écarts Z en mm, sans mesure physique."""
     def __init__(self, cellule=0.5, max_ecart=2.0, max_cellules=100000, max_echantillons=2000000, max_niveaux=200000):
+        """Initialise la grille et l’écart maximal en mm, avec des budgets de comptage sans unité."""
         if (
             not all(math.isfinite(x) and x > 0 for x in (cellule, max_ecart))
             or min(max_cellules, max_echantillons, max_niveaux) < 1
@@ -47,6 +49,7 @@ class ContactSupport:
         self.arret = None
 
     def ajouter(self, move, metadata):
+        """Ajoute un dépôt horizontal aux cellules XY ; dimensions WIDTH et HEIGHT en mm."""
         if not move or move.get("deposited", 0) <= 0:
             return
         self.segments += 1
@@ -113,6 +116,7 @@ class ContactSupport:
         self.mesures += 1
 
     def resultat(self, erreurs=()):
+        """Rend ESTIMATION, PARTIEL ou NON_MESURABLE, avec projection en mm² et écarts en mm."""
         gaps = []
         support_cells = sum(bool(s) for s, p in self.cols.values())
         if not self.arret and not erreurs:

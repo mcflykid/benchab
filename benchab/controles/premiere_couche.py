@@ -102,6 +102,7 @@ def deux_couches(g):
 
 
 def tracer(segs, origine, forme, pas):
+    """Projette les segments et leur largeur en mm sur une grille XY bornée de pas en mm."""
     if not math.isfinite(pas) or pas <= 0:
         raise ValueError("pas fini strictement positif requis")
     if len(forme) != 2 or any(not isinstance(n, int) or n <= 0 for n in forme) or math.prod(forme) > MAX_CELLS:
@@ -144,6 +145,7 @@ def tracer(segs, origine, forme, pas):
 
 
 def controler(g, ilot_max=3.0, creux_max=150.0, pas=0.1):
+    """Rend PASS, WARN ou NON VÉRIFIÉ pour le G-code, avec seuils en mm² et pas en mm."""
     try:
         for value in (ilot_max, creux_max, pas):
             if not math.isfinite(value) or value <= 0:
