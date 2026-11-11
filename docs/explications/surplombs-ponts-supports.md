@@ -28,8 +28,11 @@ besoin physique de support. La connexité repose sur l'égalité exacte des
 coordonnées d'arêtes ; aucune tolérance ne rapproche les sommets. Le rapport
 compte les arêtes ouvertes, non-manifold et d'orientation locale incohérente,
 et conserve le sens des triangles lus. Les normales ne démontrent pas une
-orientation physique correcte. Le SHA-256 source est comparé avant et après
-lecture, puis conservé dans le rapport.
+orientation physique correcte. Le descripteur et l'identité du chemin sont
+contrôlés avant et après lecture ; le SHA-256 est calculé sur les octets fournis
+au décodeur, puis conservé dans le rapport.
+Pour borner l'usage mémoire, la commande refuse les sources de plus de 64 Mio
+et les STL de plus de 50 000 triangles avant de construire le graphe Python.
 
 ## Choisir le support dans Slicer Next 2.0.0.3
 

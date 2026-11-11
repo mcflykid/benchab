@@ -1,13 +1,16 @@
 """Contrats de la cartographie numérique avant tranchage, sans slicer ni machine."""
 
+import hashlib
 import json
+import os
+import struct
 
 import numpy as np
+import pytest
 import trimesh
 
 from benchab.cli import CONTROLES_DIRECTS
 from benchab.controles import surplombs_connexes as sc
-from benchab.qualite.empreintes import sha256_fichier
 
 
 def test_controle_est_accessible_par_la_route_commune():
@@ -94,7 +97,7 @@ def test_cartographie_refuse_unite_non_etablie():
         sc.cartographier(trimesh.creation.box(), source="piece.stl", unite=None)
 
 
-def test_cli_ecrit_json_neuf_sans_toucher_au_maillage(tmp_path):
+def test_cli_ecrit_json_neuf_sans_toucher_au_maillage(tmp_path, monkeypatch):
     """Le parcours CLI écrit un rapport privé neuf, sans modifier l'entrée STL."""
     maillage = trimesh.creation.box(extents=[2, 2, 2])
     source = tmp_path / "fixture.stl"
@@ -102,12 +105,23 @@ def test_cli_ecrit_json_neuf_sans_toucher_au_maillage(tmp_path):
     empreinte = source.read_bytes()
     sortie = tmp_path / "rapport.json"
 
+    flux_charge = {}
+    charge_originale = sc.trimesh.load_mesh
+
+    def charger(flux, **options):
+        flux_charge["octets"] = flux.getvalue()
+        flux_charge["options"] = options
+        return charge_originale(flux, **options)
+
+    monkeypatch.setattr(sc.trimesh, "load_mesh", charger)
     assert sc.main([str(source), "--unite-mm", "--sortie", str(sortie)]) == 0
     rapport = json.loads(sortie.read_text())
 
     assert rapport["statut"] == "RENSEIGNÉE"
     assert rapport["unite"] == "mm"
-    assert rapport["source_sha256"] == sha256_fichier(source)
+    assert flux_charge["octets"] == empreinte
+    assert flux_charge["options"] == {"file_type": "stl", "process": False}
+    assert rapport["source_sha256"] == hashlib.sha256(flux_charge["octets"]).hexdigest()
     assert source.read_bytes() == empreinte
 
 
@@ -151,12 +165,58 @@ def test_adjacence_ne_fusionne_pas_les_coordonnees_proches():
     assert topologie["aretes_ouvertes"] == 6
 
 
-def test_cli_refuse_une_source_modifiee_pendant_la_lecture(tmp_path, monkeypatch, capsys):
-    """La sortie est refusée si les SHA-256 relus avant et après l'analyse diffèrent."""
+def test_cli_refuse_une_source_remplacee_pendant_la_lecture(tmp_path, monkeypatch, capsys):
+    """La lecture refuse un changement d'identité du chemin observé depuis le descripteur."""
     source = tmp_path / "fixture.stl"
     trimesh.creation.box().export(source)
-    empreintes = iter(["a" * 64, "b" * 64])
-    monkeypatch.setattr(sc, "sha256_fichier", lambda _chemin: next(empreintes))
+    remplacement = tmp_path / "remplacement.stl"
+    remplacement.write_bytes(source.read_bytes())
+    lecture_originale = os.read
+    remplace = False
+
+    def lire_et_remplacer(descripteur, taille):
+        nonlocal remplace
+        octets = lecture_originale(descripteur, taille)
+        if octets and not remplace:
+            os.replace(remplacement, source)
+            remplace = True
+        return octets
+
+    monkeypatch.setattr(sc.os, "read", lire_et_remplacer)
 
     assert sc.main([str(source), "--unite-mm"]) == 2
     assert "a changé pendant sa lecture" in capsys.readouterr().err
+
+
+def test_cli_refuse_budget_triangles_avant_decodage(tmp_path, monkeypatch, capsys):
+    """Le budget de triangles est vérifié depuis l'en-tête binaire avant le décodage du maillage."""
+    source = tmp_path / "trop-grand.stl"
+    nombre = sc.MAX_FACES + 1
+    source.write_bytes(bytes(80) + struct.pack("<I", nombre) + bytes(50 * nombre))
+    monkeypatch.setattr(sc.trimesh, "load_mesh", lambda *_args, **_kwargs: pytest.fail("décodage prématuré"))
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "budget de 50000 triangles" in capsys.readouterr().err
+
+
+def test_cli_refuse_budget_octets_avant_lecture(tmp_path, monkeypatch, capsys):
+    """Le budget de taille est vérifié sur le descripteur avant toute lecture du contenu."""
+    source = tmp_path / "trop-lourd.stl"
+    with source.open("wb") as fichier:
+        fichier.truncate(sc.MAX_SOURCE_OCTETS + 1)
+    monkeypatch.setattr(sc.os, "read", lambda *_args: pytest.fail("lecture prématurée"))
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "budget de 67108864 octets" in capsys.readouterr().err
+
+
+def test_cli_refuse_source_lien_symbolique(tmp_path, monkeypatch, capsys):
+    """Le lecteur refuse un lien avant d'ouvrir les octets ciblés."""
+    cible = tmp_path / "cible.stl"
+    cible.write_bytes(trimesh.creation.box().export(file_type="stl"))
+    source = tmp_path / "lien.stl"
+    source.symlink_to(cible)
+    monkeypatch.setattr(sc.os, "read", lambda *_args: pytest.fail("lecture de cible liée"))
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "ne peut pas être un lien symbolique" in capsys.readouterr().err

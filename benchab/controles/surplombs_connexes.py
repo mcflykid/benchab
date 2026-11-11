@@ -1,8 +1,14 @@
 """Cartographie avant tranchage des faces inclinées vers le bas d'un STL."""
 
 import argparse
+import hashlib
+import io
 import json
 import math
+import os
+import re
+import stat
+import struct
 import sys
 from collections import defaultdict, deque
 from pathlib import Path
@@ -11,7 +17,72 @@ import numpy as np
 import trimesh
 
 from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
-from benchab.qualite.empreintes import sha256_fichier
+
+MAX_SOURCE_OCTETS = 64 * 1024 * 1024
+MAX_FACES = 50_000
+
+
+def _compter_faces_stl(contenu):
+    """Compte les facettes STL binaires ou textuelles avant de créer les objets Python du graphe."""
+    if len(contenu) >= 84:
+        nombre = struct.unpack_from("<I", contenu, 80)[0]
+        if 84 + nombre * 50 == len(contenu):
+            return nombre
+    try:
+        texte = contenu.decode("ascii")
+    except UnicodeDecodeError as erreur:
+        raise ValueError("Le STL n'est ni un binaire de longueur cohérente ni un STL ASCII valide.") from erreur
+    nombre = sum(1 for _ in re.finditer(r"\bfacet\s+normal\b", texte, flags=re.IGNORECASE))
+    if nombre == 0:
+        raise ValueError("Le STL ne contient aucune facette reconnue.")
+    return nombre
+
+
+def _lire_source_stl(chemin):
+    """Lit une seule fois un STL ordinaire borné et relie ses octets à l'identité du fichier ouvert."""
+    source = Path(chemin)
+    avant_chemin = source.lstat()
+    if stat.S_ISLNK(avant_chemin.st_mode):
+        raise ValueError("La source STL ne peut pas être un lien symbolique.")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descripteur = os.open(source, flags)
+    try:
+        avant_fd = os.fstat(descripteur)
+        if not stat.S_ISREG(avant_fd.st_mode):
+            raise ValueError("La source STL doit être un fichier ordinaire.")
+        if (avant_fd.st_dev, avant_fd.st_ino) != (avant_chemin.st_dev, avant_chemin.st_ino):
+            raise ValueError("La source STL a changé entre son identification et son ouverture.")
+        if avant_fd.st_size > MAX_SOURCE_OCTETS:
+            raise ValueError(f"Le STL dépasse le budget de {MAX_SOURCE_OCTETS} octets.")
+        blocs = []
+        total = 0
+        while True:
+            bloc = os.read(descripteur, min(1024 * 1024, MAX_SOURCE_OCTETS + 1 - total))
+            if not bloc:
+                break
+            blocs.append(bloc)
+            total += len(bloc)
+            if total > MAX_SOURCE_OCTETS:
+                raise ValueError(f"Le STL dépasse le budget de {MAX_SOURCE_OCTETS} octets.")
+        contenu = b"".join(blocs)
+        apres_fd = os.fstat(descripteur)
+        apres_chemin = source.lstat()
+        signature_avant = (
+            avant_fd.st_dev, avant_fd.st_ino, avant_fd.st_size, avant_fd.st_mtime_ns, avant_fd.st_ctime_ns,
+        )
+        signature_apres = (
+            apres_fd.st_dev, apres_fd.st_ino, apres_fd.st_size, apres_fd.st_mtime_ns, apres_fd.st_ctime_ns,
+        )
+        if stat.S_ISLNK(apres_chemin.st_mode) or (apres_chemin.st_dev, apres_chemin.st_ino) != (
+            apres_fd.st_dev, apres_fd.st_ino,
+        ) or signature_apres != signature_avant or len(contenu) != avant_fd.st_size:
+            raise ValueError("La source STL a changé pendant sa lecture ; rapport refusé.")
+    finally:
+        os.close(descripteur)
+    nombre_faces = _compter_faces_stl(contenu)
+    if nombre_faces > MAX_FACES:
+        raise ValueError(f"Le STL dépasse le budget de {MAX_FACES} triangles.")
+    return contenu, hashlib.sha256(contenu).hexdigest(), nombre_faces
 
 
 def _adjacence_exacte(triangles):
@@ -184,13 +255,18 @@ def main(argv=None, *, prive=None):
             raise ValueError("--unite-mm est requis : STL ne porte pas d'unité déclarée.")
         if args.source.suffix.lower() != ".stl" or not args.source.is_file():
             raise ValueError("Une source STL existante est requise.")
-        empreinte_avant = sha256_fichier(args.source)
-        maillage = trimesh.load_mesh(args.source, process=False)
-        rapport = cartographier(maillage, source=args.source, unite="mm", angle_max_deg=args.angle_max_deg)
-        empreinte_apres = sha256_fichier(args.source)
-        if empreinte_apres != empreinte_avant:
-            raise ValueError("La source STL a changé pendant sa lecture ; rapport refusé.")
-        rapport["source_sha256"] = empreinte_avant
+        contenu, empreinte, nombre_faces = _lire_source_stl(args.source)
+        # Le décodeur consomme le blob empreinté ; rouvrir le chemin dissocierait preuve et maillage.
+        maillage = trimesh.load_mesh(io.BytesIO(contenu), file_type="stl", process=False)
+        if len(maillage.faces) != nombre_faces:
+            raise ValueError("Le nombre de triangles décodé diffère du contenu STL empreinté.")
+        rapport = cartographier(
+            maillage,
+            source=args.source,
+            unite="mm",
+            angle_max_deg=args.angle_max_deg,
+            source_sha256=empreinte,
+        )
         if args.sortie:
             sortie = sortie_privee(args.sortie, prive=prive)
             ecrire_json_neuf(sortie, rapport, entrees=[args.source])
