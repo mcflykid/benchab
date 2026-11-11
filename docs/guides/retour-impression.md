@@ -32,6 +32,9 @@ avec `sips` quand Pillow ne sait pas le lire. L’original est conservé octet p
 octet et les deux fichiers reçoivent une empreinte SHA-256. La commande n’ouvre
 pas SQLite et ne modifie aucun projet.
 
+Si la publication échoue avant le renommage, le dossier d’étape privé reste
+conservé pour diagnostic ; BENCHAB ne le supprime ni ne le déplace.
+
 Une liaison région/Z facultative est fournie par une déclaration JSON privée,
 au schéma strict suivant :
 

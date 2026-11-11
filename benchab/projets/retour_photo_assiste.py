@@ -8,7 +8,6 @@ import json
 import math
 import os
 import re
-import shutil
 import stat
 import subprocess
 import tempfile
@@ -23,6 +22,8 @@ from benchab.qualite.ecritures import PublicationNeuve, renommer_exclusif, sorti
 from benchab.qualite.empreintes import sha256_fichier
 
 _MAX_PHOTO_OCTETS = 50 * 1024 * 1024
+_MAX_APERCU_OCTETS = 12 * 1024 * 1024
+_MAX_FICHE_OCTETS = 2 * 1024 * 1024
 _MAX_PIXELS = 40_000_000
 _FORMATS = {".jpg", ".jpeg", ".png", ".heic"}
 _SHA = set("0123456789abcdef")
@@ -36,11 +37,57 @@ def _sha_valide(valeur):
 def _entree_prive(chemin):
     """Résout le fichier explicitement choisi, sans suivre de lien symbolique."""
     cible = sans_lien(chemin, strict=True)
-    if not cible.is_file() or cible.stat().st_size > _MAX_PHOTO_OCTETS:
+    info = cible.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_size > _MAX_PHOTO_OCTETS:
         raise ValueError("photo absente, non régulière ou supérieure à 50 Mio")
     if cible.suffix.lower() not in _FORMATS:
         raise ValueError("formats acceptés : HEIC, JPEG et PNG")
-    return cible
+    return cible, _signature(info)
+
+
+def _copier_photo(source, destination, identite_attendue):
+    """Copie en flux une photo régulière de 50 Mio maximum et renvoie son SHA et sa taille."""
+    source_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    destination_fd = None
+    try:
+        avant = os.fstat(source_fd)
+        if not stat.S_ISREG(avant.st_mode) or _signature(avant) != identite_attendue:
+            raise ValueError("photo source remplacée avant la copie")
+        if avant.st_size > _MAX_PHOTO_OCTETS:
+            raise ValueError("photo source supérieure à 50 Mio")
+        destination_fd = os.open(
+            destination,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        hachage = hashlib.sha256()
+        total = 0
+        with os.fdopen(source_fd, "rb") as entree:
+            source_fd = None
+            with os.fdopen(destination_fd, "wb") as sortie:
+                destination_fd = None
+                while bloc := entree.read(64 * 1024):
+                    total += len(bloc)
+                    if total > _MAX_PHOTO_OCTETS:
+                        raise ValueError("photo source supérieure à 50 Mio pendant la copie")
+                    sortie.write(bloc)
+                    hachage.update(bloc)
+                sortie.flush()
+                os.fsync(sortie.fileno())
+                apres_sortie = os.fstat(sortie.fileno())
+        apres_entree = os.stat(source, follow_symlinks=False)
+        if (
+            _signature(avant) != _signature(apres_entree)
+            or total != avant.st_size
+            or total != apres_sortie.st_size
+        ):
+            raise ValueError("photo source modifiée pendant la copie")
+        return hachage.hexdigest(), total
+    finally:
+        if source_fd is not None:
+            os.close(source_fd)
+        if destination_fd is not None:
+            os.close(destination_fd)
 
 
 def _apercu(photo, destination):
@@ -196,7 +243,7 @@ def creer_suggestion(
     Les nombres Z déclarés sont en mm. Aucun diagnostic visuel ou validation physique n’est produit.
     """
     racine = atelier_prive(prive)
-    source = _entree_prive(photo)
+    source, identite_source = _entree_prive(photo)
     cible = sortie_durable(destination, prive=racine)
     if cible.suffix or cible == racine or not cible.is_relative_to(racine):
         raise ValueError("une nouvelle destination de dossier sous l’atelier privé est requise")
@@ -204,52 +251,65 @@ def creer_suggestion(
         raise FileExistsError("dossier de suggestion existant ; aucun écrasement")
     cible.parent.mkdir(parents=True, exist_ok=True)
     sans_lien(cible, racine=racine)
-    source_sha = sha256_fichier(source)
     liaison = _lier_archive(archive_3mf, declaration, plaque, region_id)
     stage = Path(tempfile.mkdtemp(prefix=".retour-photo-", dir=cible.parent))
+    nom_stage = stage.name
     identite_stage = (stage.lstat().st_dev, stage.lstat().st_ino)
+    extension = source.suffix.lower()
+    copie = stage / f"photo-source{extension}"
+    source_sha, taille_source = _copier_photo(source, copie, identite_source)
+    apercu = stage / "apercu.jpg"
+    _apercu(copie, apercu)
+    taille_apercu = apercu.stat().st_size
+    if taille_apercu > _MAX_APERCU_OCTETS:
+        raise ValueError("aperçu JPEG supérieur à 12 Mio")
+    sha_apercu = sha256_fichier(apercu)
+    rapport = {
+        "schema": 1,
+        "suggestion": "CANDIDAT",
+        "cree_utc": datetime.now(timezone.utc).isoformat(),
+        "photo": {
+            "source_fichier": copie.name,
+            "source_sha256": source_sha,
+            "apercu_fichier": apercu.name,
+            "apercu_sha256": sha_apercu,
+            "format_apercu": "JPEG",
+        },
+        "liaison": liaison,
+        "interpretation_photo": "NON VÉRIFIÉ",
+        "limites": [
+            "La photo ne permet pas ici d’identifier le défaut, le modèle, la plaque ni une impression.",
+            "La région et la plage Z sont des déclarations utilisateur, non reconnues dans les pixels.",
+            "Aucune mesure physique, comparaison ni écriture projet/SQLite n’est effectuée.",
+        ],
+    }
+    brut_rapport = (json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
+    if len(brut_rapport) > _MAX_FICHE_OCTETS:
+        raise ValueError("fiche suggestion supérieure à 2 Mio")
+    fichier_rapport = stage / "suggestion.json"
+    with fichier_rapport.open("xb") as flux:
+        flux.write(brut_rapport)
+        flux.flush()
+        os.fsync(flux.fileno())
+    sha_fiche = hashlib.sha256(brut_rapport).hexdigest()
+    membres_attendus = {
+        copie.name: (source_sha, taille_source, _MAX_PHOTO_OCTETS),
+        apercu.name: (sha_apercu, taille_apercu, _MAX_APERCU_OCTETS),
+        fichier_rapport.name: (sha_fiche, len(brut_rapport), _MAX_FICHE_OCTETS),
+    }
+    parent_fd = os.open(cible.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        extension = source.suffix.lower()
-        copie = stage / f"photo-source{extension}"
-        shutil.copyfile(source, copie)
-        if sha256_fichier(source) != source_sha or sha256_fichier(copie) != source_sha:
-            raise ValueError("photo modifiée pendant sa copie")
-        apercu = stage / "apercu.jpg"
-        _apercu(copie, apercu)
-        rapport = {
-            "schema": 1,
-            "suggestion": "CANDIDAT",
-            "cree_utc": datetime.now(timezone.utc).isoformat(),
-            "photo": {
-                "source_fichier": copie.name,
-                "source_sha256": source_sha,
-                "apercu_fichier": apercu.name,
-                "apercu_sha256": sha256_fichier(apercu),
-                "format_apercu": "JPEG",
-            },
-            "liaison": liaison,
-            "interpretation_photo": "NON VÉRIFIÉ",
-            "limites": [
-                "La photo ne permet pas ici d’identifier le défaut, le modèle, la plaque ni une impression.",
-                "La région et la plage Z sont des déclarations utilisateur, non reconnues dans les pixels.",
-                "Aucune mesure physique, comparaison ni écriture projet/SQLite n’est effectuée.",
-            ],
-        }
-        fichier_rapport = stage / "suggestion.json"
-        fichier_rapport.write_text(
-            json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-        )
-        if sha256_fichier(source) != source_sha:
-            raise ValueError("photo source modifiée pendant la préparation")
-        renommer_exclusif(stage, cible)
-    except BaseException:
-        if _stage_est_le_meme(stage, identite_stage):
-            shutil.rmtree(stage)
-        raise
+        identite_stage_parent = os.stat(nom_stage, dir_fd=parent_fd, follow_symlinks=False)
+        if (identite_stage_parent.st_dev, identite_stage_parent.st_ino) != identite_stage:
+            raise ValueError("dossier de publication remplacé avant renommage")
+        renommer_exclusif(nom_stage, cible.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        _verifier_sortie_publiee(parent_fd, cible.name, identite_stage, membres_attendus)
+    finally:
+        os.close(parent_fd)
     return {
         **rapport,
         "fiche_privee": str(cible / "suggestion.json"),
-        "suggestion_sha256": sha256_fichier(cible / "suggestion.json"),
+        "suggestion_sha256": sha_fiche,
     }
 
 
@@ -354,7 +414,7 @@ def _json_sans_doublons(paires):
 
 def _lire_fiche_epinglee(chemin):
     """Lit une fiche JSON privée bornée et calcule son SHA sur les mêmes octets épinglés."""
-    plafond = 2 * 1024 * 1024
+    plafond = _MAX_FICHE_OCTETS
     fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as flux:
         avant = os.fstat(flux.fileno())
@@ -375,13 +435,55 @@ def _lire_fiche_epinglee(chemin):
     return brut, hashlib.sha256(brut).hexdigest()
 
 
-def _stage_est_le_meme(stage, identite):
-    """Nettoie seulement si le nom de stage désigne encore le dossier créé par cette opération."""
+def _lire_membre_publie(repertoire_fd, nom, attendu):
+    """Relit un membre depuis un dossier épinglé, sous limite d’octets et sans suivre de lien."""
+    sha_attendu, taille_attendue, limite = attendu
+    fd = os.open(nom, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=repertoire_fd)
+    with os.fdopen(fd, "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size > limite or avant.st_size != taille_attendue:
+            raise ValueError("membre final absent, remplacé ou hors budget : " + nom)
+        hachage = hashlib.sha256()
+        taille = 0
+        while bloc := flux.read(64 * 1024):
+            taille += len(bloc)
+            if taille > limite:
+                raise ValueError("membre final au-delà du budget : " + nom)
+            hachage.update(bloc)
+        apres = os.fstat(flux.fileno())
+    chemin_actuel = os.stat(nom, dir_fd=repertoire_fd, follow_symlinks=False)
+    sha = hachage.hexdigest()
+    if (
+        taille != taille_attendue
+        or sha != sha_attendu
+        or _signature(avant) != _signature(apres)
+        or _signature(apres) != _signature(chemin_actuel)
+    ):
+        raise ValueError("SHA, taille ou identité du membre final différent : " + nom)
+    return sha
+
+
+def _verifier_sortie_publiee(parent_fd, nom, identite_attendue, membres_attendus):
+    """Relit les trois membres d’une sortie finale sous des descripteurs de dossier épinglés."""
+    repertoire_fd = os.open(nom, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
     try:
-        info = stage.lstat()
-    except FileNotFoundError:
-        return False
-    return stat.S_ISDIR(info.st_mode) and (info.st_dev, info.st_ino) == identite
+        avant = os.fstat(repertoire_fd)
+        if not stat.S_ISDIR(avant.st_mode) or (avant.st_dev, avant.st_ino) != identite_attendue:
+            raise ValueError("dossier final différent du stage publié")
+        if set(os.listdir(repertoire_fd)) != set(membres_attendus):
+            raise ValueError("membres finaux absents ou inattendus")
+        for membre, attendu in membres_attendus.items():
+            _lire_membre_publie(repertoire_fd, membre, attendu)
+        apres = os.fstat(repertoire_fd)
+        chemin_actuel = os.stat(nom, dir_fd=parent_fd, follow_symlinks=False)
+        if (
+            (apres.st_dev, apres.st_ino) != identite_attendue
+            or _signature(avant) != _signature(apres)
+            or (chemin_actuel.st_dev, chemin_actuel.st_ino) != identite_attendue
+        ):
+            raise ValueError("dossier final remplacé pendant la relecture")
+    finally:
+        os.close(repertoire_fd)
 
 
 def _lire_declaration_privee(chemin, prive):

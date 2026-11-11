@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -48,6 +49,9 @@ def test_suggestion_preserve_photo_relies_zone_declaree_et_ne_touche_pas_au_proj
     )
 
     assert (destination / "photo-source.png").read_bytes() == photo.read_bytes()
+    assert rapport["suggestion_sha256"] == hashlib.sha256(
+        (destination / "suggestion.json").read_bytes()
+    ).hexdigest()
     assert rapport["photo"]["source_sha256"] == source_sha
     assert rapport["suggestion"] == "CANDIDAT"
     assert rapport["liaison"]["statut"] == "PASS"
@@ -309,20 +313,85 @@ def test_echec_renommage_ne_supprime_pas_un_dossier_remplace(tmp_path, monkeypat
     prive.mkdir()
     victime = {}
 
-    def remplacer_stage(stage, destination):
-        archive = stage.with_name("stage-cree-par-nous")
-        stage.rename(archive)
-        stage.mkdir()
-        (stage / "tiers.txt").write_text("ne pas supprimer")
+    def remplacer_stage(stage, destination, *, src_dir_fd, dst_dir_fd):
+        archive = "stage-cree-par-nous"
+        os.rename(stage, archive, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+        os.mkdir(stage, dir_fd=src_dir_fd)
+        with os.fdopen(
+            os.open(f"{stage}/tiers.txt", os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600, dir_fd=src_dir_fd),
+            "w",
+        ) as f:
+            f.write("ne pas supprimer")
         victime["archive"] = archive
-        victime["remplace"] = stage
+        victime["remplace"] = prive / stage
         raise FileExistsError("destination apparue")
 
     monkeypatch.setattr(retour_photo, "renommer_exclusif", remplacer_stage)
     with pytest.raises(FileExistsError):
         retour_photo.creer_suggestion(photo, prive / "candidate", prive=prive)
     assert (victime["remplace"] / "tiers.txt").read_text() == "ne pas supprimer"
-    assert (victime["archive"] / "suggestion.json").is_file()
+    assert (prive / victime["archive"] / "suggestion.json").is_file()
+
+
+@pytest.mark.parametrize("membre", ["photo-source.png", "apercu.jpg", "suggestion.json"])
+def test_verification_apres_renommage_refuse_membre_altere_sans_supprimer_sortie(tmp_path, monkeypatch, membre):
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    destination = prive / "candidate"
+    renommer_reel = retour_photo.renommer_exclusif
+    altered = {}
+
+    def alterer_apres_renommage(stage, cible, *, src_dir_fd, dst_dir_fd):
+        renommer_reel(stage, cible, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+        fichier = prive / cible / membre
+        original = fichier.read_bytes()
+        altered["bytes"] = b"x" * len(original)
+        fichier.write_bytes(altered["bytes"])
+
+    monkeypatch.setattr(retour_photo, "renommer_exclusif", alterer_apres_renommage)
+    with pytest.raises(ValueError, match="SHA|empreinte|diffère|remplacé"):
+        retour_photo.creer_suggestion(photo, destination, prive=prive)
+    assert destination.is_dir()
+    assert (destination / membre).read_bytes() == altered["bytes"]
+
+
+def test_erreur_avant_renommage_conserve_stage_prive_de_diagnostic(tmp_path, monkeypatch):
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    prive = tmp_path / "prive"
+    prive.mkdir()
+
+    def refus(stage, destination, *, src_dir_fd, dst_dir_fd):
+        raise FileExistsError("destination apparue")
+
+    monkeypatch.setattr(retour_photo, "renommer_exclusif", refus)
+    with pytest.raises(FileExistsError):
+        retour_photo.creer_suggestion(photo, prive / "candidate", prive=prive)
+    stages = list(prive.glob(".retour-photo-*"))
+    assert len(stages) == 1
+    assert (stages[0] / "photo-source.png").is_file()
+    assert (stages[0] / "suggestion.json").is_file()
+
+
+def test_photo_source_remplacee_avant_copie_est_refusee(tmp_path, monkeypatch):
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    lier_reel = retour_photo._lier_archive
+
+    def remplacer_source(*args, **kwargs):
+        photo.rename(tmp_path / "ancienne-photo.png")
+        Image.new("RGB", (6, 6), "black").save(photo)
+        return lier_reel(*args, **kwargs)
+
+    monkeypatch.setattr(retour_photo, "_lier_archive", remplacer_source)
+    with pytest.raises(ValueError, match="remplacée|modifiée|source"):
+        retour_photo.creer_suggestion(photo, prive / "candidate", prive=prive)
+    assert not (prive / "candidate").exists()
+    assert list(prive.glob(".retour-photo-*"))
 
 
 def test_heic_synthetic_converti_localement_si_sips_disponible(tmp_path):
