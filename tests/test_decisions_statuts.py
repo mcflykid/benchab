@@ -63,3 +63,27 @@ def test_preuve_archive_et_ligne_sqlite_ne_sortent_pas_de_l_atelier(atelier_init
         assert base.connexion.execute("SELECT count(*) FROM projets").fetchone()[0] == 0
     finally:
         base.fermer()
+
+
+@pytest.mark.parametrize("encodage", ["unicode", "parent"])
+def test_reference_json_validee_apres_decodage(tmp_path, atelier_initialise, encodage):
+    """Deux écritures JSON équivalentes d’un chemin doivent respecter la même frontière."""
+    if encodage == "unicode":
+        hors_atelier = json.dumps(str(tmp_path / "rapport.json")).replace("/", r"\u002f")
+    else:
+        hors_atelier = '".."'
+    donnees = '{"preuve":{"chemin":' + hors_atelier + "}}"
+    assert "/" not in donnees
+    base = Base(atelier_initialise, creer=False)
+    try:
+        dossier = base.prive / "export"
+        avant = {p.name: p.read_bytes() for p in dossier.iterdir() if p.is_file()}
+        with pytest.raises(ValueError, match="sortie durable"):
+            base.ecrire(
+                "INSERT INTO projets (id,nom,donnees_json) VALUES (?,?,?)",
+                ("fixture", "Fixture", donnees),
+            )
+        assert base.connexion.execute("SELECT count(*) FROM projets").fetchone()[0] == 0
+        assert {p.name: p.read_bytes() for p in dossier.iterdir() if p.is_file()} == avant
+    finally:
+        base.fermer()

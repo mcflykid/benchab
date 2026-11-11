@@ -16,6 +16,8 @@ publication, BENCHAB réserve le verrou SQLite d’écriture, y compris en mode
 WAL, afin qu’un autre commit ne devance pas le manifeste. Il ne modifie
 aucune ligne dans cette phase. Un écrivain peut reprendre dès la libération
 du verrou (#226). La validation des références parcourt toujours toute la base.
+Elle contrôle les chemins après décodage des champs JSON. Un refus annule
+l’écriture SQLite et conserve les exports précédents.
 Les projets, leurs fichiers, les observations et les préférences restent privés.
 Le savoir général publiable est sélectionné séparément dans `benchab/reference/`.
 
