@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "retours": [
+    {
+      "id": "asnext-issue-9",
+      "date_retour": "2026-09-18",
+      "date_relecture": "2026-11-11",
+      "source": "https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/issues/9",
+      "nature": "hypothèse externe",
+      "conditions": {
+        "machine": "Anycubic Kobra S1 Combo",
+        "version_logiciel": "Anycubic Slicer Next 2.0.0.3",
+        "systeme": "Windows 11"
+      },
+      "observation": "Un utilisateur rapporte que la limite de débit du premier slot semble influer sur les trajectoires d’autres slots. Un autre commentaire décrit un ralentissement analogue avec plusieurs matières.",
+      "limites": "Signalement communautaire non reproduit par BENCHAB ; archive, G-code et pièces jointes non examinés ici ; aucune mesure locale ni confirmation indépendante du fonctionnement interne."
+    },
+    {
+      "id": "asnext-issue-4",
+      "date_retour": "2026-08-20",
+      "date_relecture": "2026-11-11",
+      "source": "https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/issues/4",
+      "nature": "hypothèse externe",
+      "conditions": {
+        "machine": "Anycubic Kobra S1 Combo avec ACE Pro",
+        "version_logiciel": "Anycubic Slicer Next 1.3.9.4 et versions ultérieures signalées",
+        "systeme": "Windows 11"
+      },
+      "observation": "Un utilisateur rapporte une affectation erronée à un slot unique avec des profils de filament personnalisés à partir de la version 1.3.9.4 ; il indique que son scénario avec profils sauvegardés fonctionnait encore en 1.3.9.3.",
+      "limites": "Signalement communautaire d’un seul auteur, sans journal fourni ; vidéos et projet joints non examinés ici ; versions et résultat non reproduits par BENCHAB."
+    }
+  ]
+}

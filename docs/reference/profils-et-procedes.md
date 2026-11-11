@@ -32,6 +32,9 @@ ensemble. Certains retours mentionnent supports difficiles et défauts locaux ;
 Ne pas revenir automatiquement au profil prudent à 12, ni copier 32 avec une
 température différente. Les réussites ne dispensent pas des contrôles.
 Voir les [fiches matière](filaments.md).
+Les signalements du slicer vus en ligne sont conservés comme hypothèses
+contextualisées dans le [registre communautaire](retours-communautaires.md) ;
+ils ne remplacent pas les contrôles locaux.
 
 ## Réussite contextuelle avec vitesses relevées et mode Sport
 
