@@ -83,20 +83,16 @@ def _valeur(valeur):
 def _valeur_indexee(reglages: dict, cle: str, index: int):
     """Lit la valeur filament typée à son index déclaré (mm/s, °C ou mm) ; refuse NON VÉRIFIÉ."""
     definition = reglages_types.definition(cle)
-    if definition["type"] == "inconnu" and cle.endswith(("_BRASS", "_HS")):
-        # Le slicer dédouble explicitement quelques clés matière par buse ; le suffixe
-        # choisit une variante de la clé typée (docs/reference/slicer-anycubic.md).
-        definition = reglages_types.definition(cle.rsplit("_", 1)[0])
     # Les vecteurs de modes machine peuvent compter trois valeurs sans représenter trois filaments
     # (docs/reference/slicer-anycubic.md) ; le type du schéma prime sur toute indexation.
     if definition["type"] != "liste_filament":
         raise ValueError(f"{cle} n’est pas un vecteur filament typé.")
-    cle_typee = cle.rsplit("_", 1)[0] if cle.endswith(("_BRASS", "_HS")) else cle
     valeur = reglages.get(cle)
     if valeur is None:
         return None
     contexte = {**reglages, **getattr(reglages, "contexte", {})}
-    attendu = reglages_types.longueur_attendue(cle_typee, contexte)
+    # Une clé suffixée exige ses propres identités, pas celles d'une autre variante (#103).
+    attendu = reglages_types.longueur_attendue(cle, contexte)
     if attendu is None:
         raise ValueError(f"Correspondance filament NON VÉRIFIÉE : {cle}.")
     if not isinstance(valeur, list) or len(valeur) != attendu:
@@ -123,29 +119,8 @@ def lire_3mf(source: str | Path):
         if noms.count(CONFIGURATION) != 1 or noms.count(OBJETS) != 1:
             raise ValueError("Réglages de projet ou objets absents/dupliqués dans le 3MF.")
         reglages = reglages_types.decoder(archive.read(CONFIGURATION).decode("utf-8"))
-        ids_filaments = reglages.get("filament_settings_id")
-        contexte = {
-            "printer_settings_id": reglages.get("printer_settings_id", ""),
-            "filament_settings_id": ids_filaments if isinstance(ids_filaments, list) else [],
-            "nombre_filaments_declares": len(ids_filaments) if isinstance(ids_filaments, list) else 0,
-            "correspondances_filaments": {},
-        }
-        # Le schéma Anycubic lie les vecteurs de matière aux slots actifs déclarés ;
-        # un résidu plus long reste NON VÉRIFIÉ (docs/reference/slicer-anycubic.md).
-        if isinstance(ids_filaments, list):
-            for cle, valeur in reglages.items():
-                definition = reglages_types.definition(cle)
-                if definition["type"] == "inconnu" and cle.endswith(("_BRASS", "_HS")):
-                    definition = reglages_types.definition(cle.rsplit("_", 1)[0])
-                if (
-                    definition["type"] == "liste_filament"
-                    and cle != "filament_settings_id"
-                    and isinstance(valeur, list)
-                    and len(valeur) == len(ids_filaments)
-                ):
-                    cle_typee = cle.rsplit("_", 1)[0] if cle.endswith(("_BRASS", "_HS")) else cle
-                    contexte["correspondances_filaments"][cle_typee] = list(ids_filaments)
-        reglages.contexte.update(contexte)
+        # Les identités et résidus restent qualifiés par le dictionnaire commun (#103).
+        reglages.contexte.update(reglages_types.contexte_filaments(reglages))
         xml = ET.fromstring(archive.read(OBJETS))
         geometrie = {
             nom: hashlib.sha256(archive.read(nom)).hexdigest()

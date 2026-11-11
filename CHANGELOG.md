@@ -2,6 +2,13 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir — 1.3.0
+
+- Réglages : contexte commun des slots filament, identités et ordre conservés, variantes suffixées appariées séparément et résidus NON VÉRIFIÉS (#103).
+- Envoi : avertissements natifs par plaque, codes inconnus conservés et origine non établie signalée (#109).
+- Revue locale : mesures de recul et recouvrement recalculées depuis les lignes G-code liées ; contradiction bloquante et données manquantes explicites (#111).
+- Envoi : l'indicateur de conformité reflète le verdict complet, y compris les contrôles communs (#125).
+
 ## 1.2.0 — 2026-11-11
 
 - G-code : arcs G2/G3 du dialecte G17 XY documenté calculés analytiquement, longueur et débit nominaux exacts ; repère spatial distinct après G92 XYZ. Les contrôles géométriques qui ne modélisent pas encore les arcs restent NON VÉRIFIÉS (#13).

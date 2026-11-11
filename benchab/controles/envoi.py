@@ -3,6 +3,7 @@
 from xml.etree.ElementTree import ParseError
 from zipfile import BadZipFile
 
+from benchab.controles.avertissements_slicer import controler as avertissements_slicer
 from benchab.controles.commandes_machine import controler as commandes_machine
 from benchab.controles.continuite_paroi import controler as continuite_paroi
 from benchab.controles.identifiants_filaments import controler as identifiants
@@ -33,6 +34,8 @@ def controler(
             comparaison = {"fichier": str(reference), "relation": relation_reference, "plaque": numero}
         continuite = continuite_paroi(chemin, plaque=numero, reference=comparaison)
         resultats.append({**continuite, "plaque": numero})
+    # Un avertissement déclaré reste visible sans déduire une compatibilité physique (#109).
+    resultats.append({"controle": "avertissements natifs du slicer", **avertissements_slicer(chemin)})
     historique = None
     if declaration is None:
         limites.append("Déclaration absente : les contrôles historiques d’envoi restent NON VÉRIFIÉS.")
@@ -77,6 +80,7 @@ def controler(
         **(historique or {}),
         "statut": statut,
         "code": code_statut(statut),
+        "conforme_numerique": statut == "PASS",
         "resultats": resultats,
         "controles_communs": communs,
         "zones_locales": historique.get("zones_locales") if historique else None,

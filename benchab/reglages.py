@@ -66,6 +66,51 @@ def nombre_filaments_metadata(donnees, *, consommateur=None, extrudeurs=()):
     return nombre_profils if nombre_profils == nombre_couleurs else None
 
 
+def contexte_filaments(donnees, *, consommateur=None):
+    """Construit les identités et cardinalités explicites des slots ; dict PASS/NON VÉRIFIÉ sans unité.
+
+    L'ordre et les résidus des listes restent intacts. Une liste n'est appariée
+    que si ses identités déclarées et sa cardinalité concordent ; aucune
+    diffusion ni modification des réglages (docs/reference/contexte-filaments.md).
+    """
+    if not isinstance(donnees, dict):
+        raise ValueError("Dictionnaire de réglages requis pour le contexte filament")
+    if consommateur not in (None, "cli", "preset_bundle"):
+        raise ValueError("Consommateur de réglages non qualifié")
+    identites = donnees.get("filament_settings_id")
+    valides = isinstance(identites, list) and bool(identites) and all(
+        isinstance(nom, str) and bool(nom.strip()) for nom in identites
+    )
+    contexte = {
+        "filament_settings_id": copy.deepcopy(identites) if isinstance(identites, list) else [],
+        "nombre_filaments_declares": len(identites) if valides else 0,
+        "correspondances_filaments": {},
+        "diagnostics_filaments": [],
+    }
+    # Une déclaration de filament sans profil ne doit pas masquer le profil machine existant (#103).
+    if "printer_settings_id" in donnees:
+        contexte["printer_settings_id"] = copy.deepcopy(donnees["printer_settings_id"])
+    if consommateur is not None:
+        contexte["consommateur_reglages"] = consommateur
+    for cle, valeur in donnees.items():
+        if cle == "filament_settings_id" or definition(cle, valeur=valeur)["type"] != "liste_filament":
+            continue
+        apparie = valides and isinstance(valeur, list) and len(valeur) == len(identites)
+        if apparie:
+            contexte["correspondances_filaments"][cle] = list(identites)
+        contexte["diagnostics_filaments"].append({
+            "cle": cle, "statut": "PASS" if apparie else "NON VÉRIFIÉ",
+            "taille_observee": len(valeur) if isinstance(valeur, list) else None,
+            "taille_declaree": contexte["nombre_filaments_declares"],
+            "detail": ("Identités ordonnées conservées" if apparie
+                       else "Correspondance absente ou cardinalité non appariée"),
+        })
+    contexte["statut_contexte_filaments"] = "PASS" if valides and all(
+        d["statut"] == "PASS" for d in contexte["diagnostics_filaments"]
+    ) else "NON VÉRIFIÉ"
+    return contexte
+
+
 def longueur_attendue(cle, contexte):
     """Renvoie une longueur certaine ou None/NON VÉRIFIÉ ; ne crée aucune règle de diffusion implicite."""
     contexte = {**contexte, **getattr(contexte, "contexte", {})}
