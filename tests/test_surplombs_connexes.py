@@ -170,7 +170,7 @@ def test_visibilite_verticale_echantillonnee_sur_temoin_ferme():
     maillage = trimesh.creation.box(extents=[2, 2, 2])
     maillage.apply_translation([0, 0, 3])
 
-    rapport = sc.cartographier(maillage, source="cube.stl", unite="mm", plateau_z_mm=0.0)
+    rapport = sc.cartographier(maillage, source="cube.stl", unite="mm", source_sha256="a" * 64, plateau_z_mm=0.0)
 
     groupe = rapport["groupes"][0]
     visibilite = groupe["visibilite_verticale_plateau"]["visées_échantillonnées"]
@@ -193,7 +193,7 @@ def test_visibilite_verticale_signale_un_obstacle_incline():
     )
     maillage = trimesh.util.concatenate([cible, obstacle])
 
-    rapport = sc.cartographier(maillage, source="obstacle.stl", unite="mm", plateau_z_mm=0.0)
+    rapport = sc.cartographier(maillage, source="obstacle.stl", unite="mm", source_sha256="a" * 64, plateau_z_mm=0.0)
 
     visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
     assert visibilite["statut"] == "OBSTRUÉE"
@@ -213,7 +213,7 @@ def test_visibilite_verticale_surface_inclinee_hors_point_reste_locale():
     )
     maillage = trimesh.util.concatenate([cible, obstacle])
 
-    rapport = sc.cartographier(maillage, source="pente.stl", unite="mm", plateau_z_mm=0.0)
+    rapport = sc.cartographier(maillage, source="pente.stl", unite="mm", source_sha256="a" * 64, plateau_z_mm=0.0)
 
     visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
     assert visibilite["statut"] == "DÉGAGÉE"
@@ -227,7 +227,9 @@ def test_visibilite_verticale_plateau_invalide_est_ambigu(plateau):
     maillage = trimesh.creation.box(extents=[2, 2, 2])
     maillage.apply_translation([0, 0, 3])
 
-    rapport = sc.cartographier(maillage, source="cube.stl", unite="mm", plateau_z_mm=plateau)
+    rapport = sc.cartographier(
+        maillage, source="cube.stl", unite="mm", source_sha256="a" * 64, plateau_z_mm=plateau
+    )
 
     visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
     assert visibilite["statut"] == "AMBIGUË"
@@ -249,7 +251,7 @@ def test_visibilite_verticale_contact_au_plan_est_ambigu():
 
     rapport = sc.cartographier(
         trimesh.util.concatenate([cible, contact, borne_basse]),
-        source="contact.stl", unite="mm", plateau_z_mm=-1.0,
+        source="contact.stl", unite="mm", source_sha256="a" * 64, plateau_z_mm=-1.0,
     )
 
     visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
@@ -268,7 +270,8 @@ def test_visibilite_verticale_projection_verticale_alignee_est_ambigue():
     )
 
     rapport = sc.cartographier(
-        trimesh.util.concatenate([cible, verticale]), source="verticale.stl", unite="mm", plateau_z_mm=-1.0
+        trimesh.util.concatenate([cible, verticale]), source="verticale.stl", unite="mm",
+        source_sha256="a" * 64, plateau_z_mm=-1.0,
     )
 
     echantillon = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]["echantillons"][0]
@@ -289,7 +292,8 @@ def test_visibilite_verticale_superposition_de_triangles_est_ambigue():
     )
 
     rapport = sc.cartographier(
-        trimesh.util.concatenate([cible, obstacles]), source="doublon.stl", unite="mm", plateau_z_mm=0.0
+        trimesh.util.concatenate([cible, obstacles]), source="doublon.stl", unite="mm",
+        source_sha256="a" * 64, plateau_z_mm=0.0,
     )
 
     echantillon = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]["echantillons"][0]
@@ -305,6 +309,15 @@ def test_visibilite_verticale_opt_in_seul_change_le_rapport():
 
     assert "visibilite_verticale_plateau" not in historique["groupes"][0]
     assert historique["groupes"][0]["acces_plateau"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_visibilite_verticale_refuse_un_sha_absent_ou_mal_forme():
+    """Le mode opt-in refuse une provenance qui ne peut pas identifier le STL mesuré."""
+    maillage = trimesh.creation.box()
+
+    for sha in (None, "not-a-sha"):
+        with pytest.raises(ValueError, match="SHA-256 du STL exact"):
+            sc.cartographier(maillage, source="cube.stl", unite="mm", source_sha256=sha, plateau_z_mm=-2)
 
 
 def test_cli_active_visibilite_uniquement_sur_demande_et_lie_le_sha(tmp_path):
@@ -331,7 +344,7 @@ def test_visibilite_verticale_borne_et_annonce_les_rayons_omis(monkeypatch):
     maillage = trimesh.Trimesh(vertices=sommets, faces=[[0, 2, 1], [0, 3, 2]], process=False)
 
     visibilite = sc.cartographier(
-        maillage, source="deux-faces.stl", unite="mm", plateau_z_mm=0.0
+        maillage, source="deux-faces.stl", unite="mm", source_sha256="a" * 64, plateau_z_mm=0.0
     )["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
 
     assert visibilite["rayons_total"] == 1

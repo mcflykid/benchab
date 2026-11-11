@@ -253,10 +253,10 @@ def _visibilite_groupe(triangles, indices, plateau_z_mm, plan_valide, budget):
 def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None, plateau_z_mm=None):
     """Mesure les groupes de faces orientées vers le bas sans prédire les supports physiques.
 
-    Entrées : maillage triangulé, provenance, unité explicite (« mm »), seuil en degrés et SHA-256 facultatif.
+    Entrées : maillage triangulé, provenance, unité (« mm »), seuil en degrés et SHA-256 facultatif.
     Sortie : groupes connexes avec aires en mm², altitudes/hauteurs en mm et angles en degrés.
     La topologie est mesurée par égalité exacte des coordonnées ; aucun sommet n'est fusionné ni triangle réorienté.
-    Les visées vers le plateau sont opt-in et bornées ; accès global et ponts restent NON VÉRIFIÉS.
+    Les visées opt-in exigent un SHA-256 du STL exact et sont bornées ; accès global et ponts restent NON VÉRIFIÉS.
     Aucun réglage n'est modifié.
     """
     if unite != "mm":
@@ -265,6 +265,10 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
         raise ValueError("L'angle maximal doit être fini, supérieur à 0 et inférieur ou égal à 90 degrés.")
     if not isinstance(maillage, trimesh.Trimesh) or len(maillage.faces) == 0:
         raise ValueError("Un maillage triangulé non vide est requis.")
+    if plateau_z_mm is not None and (
+        not isinstance(source_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", source_sha256) is None
+    ):
+        raise ValueError("Les visées vers le plateau exigent le SHA-256 du STL exact.")
     if len(maillage.faces) > MAX_FACES:
         raise ValueError(f"Le STL dépasse le budget de {MAX_FACES} triangles.")
     if not np.isfinite(maillage.vertices).all() or not np.isfinite(maillage.face_normals).all():

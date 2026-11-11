@@ -37,7 +37,9 @@ et les STL de plus de 50 000 triangles avant de construire le graphe Python.
 L'option opt-in `--plateau-z-mm Z` ajoute, pour chaque groupe, des visées
 verticales depuis les barycentres de faces sélectionnées vers le plan horizontal
 `Z` déclaré en mm. Le rapport conserve l'identifiant de face et le point XYZ
-de chaque visée ; au plus 256 rayons sont calculés au total. Les triangles
+de chaque visée, sous le libellé `visées_échantillonnées`, et exige le SHA-256
+du STL exact ; au plus 256 rayons sont calculés au total. Le CLI calcule ce SHA
+sur les octets mêmes qu'il décode. Les triangles
 projetés, leurs intersections et les contacts sont évalués avec une tolérance
 de distance de `0,000001 mm` et de poids barycentrique `0,000000001`. Un plan
 non fini ou qui atteint une face candidate est AMBIGUË. Une projection XY
