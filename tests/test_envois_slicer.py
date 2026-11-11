@@ -247,6 +247,9 @@ class EtatFinalArchive(unittest.TestCase):
 
 
 class AuditMultiPlaques(unittest.TestCase):
+    setUp = Envois.setUp
+
+
     def test_toutes_plaques_masses_et_outils(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = envoi(tmp, "multi.gcode.3mf", utilise="1.00, 2.00")
@@ -264,6 +267,42 @@ class AuditMultiPlaques(unittest.TestCase):
                 z.writestr("Metadata/plate_2.gcode", "; filament used [g] = -1\n")
             with self.assertRaises(ValueError):
                 E.lire(p)
+
+    def test_alias_de_numero_de_plaque_refuse(self):
+        """Deux noms ZIP représentant la plaque 1 ne donnent pas deux consommations."""
+        p = envoi(self.src, "ambigu.gcode.3mf")
+        with zipfile.ZipFile(p, "a") as z:
+            z.writestr("Metadata/plate_01.gcode", b"; filament used [g] = 1.0\n")
+        with self.assertRaisesRegex(ValueError, "numéro de plaque dupliqué"):
+            E.lire(p)
+        copies, deja, erreurs = E.archiver(self.src, self.arc)
+        self.assertEqual((copies, deja), ([], 0))
+        self.assertIn("numéro de plaque dupliqué", erreurs[0])
+        self.assertEqual(list(self.arc.glob("*.gcode.3mf")), [])
+
+    def test_archive_complete_crc_requis_meme_pour_un_membre_non_analyse(self):
+        """Un aperçu endommagé ne peut pas être archivé comme une source contrôlée."""
+        p = envoi(self.src, "crc.gcode.3mf")
+        contenu = b"archive_apercu_jetable"
+        with zipfile.ZipFile(p, "a") as z:
+            z.writestr("Metadata/apercu.txt", contenu, compress_type=zipfile.ZIP_STORED)
+        data = p.read_bytes()
+        assert data.count(contenu) == 1
+        p.write_bytes(data.replace(contenu, b"x" + contenu[1:]))
+        with self.assertRaises(ValueError):
+            E.lire(p)
+
+    def test_masses_et_outils_lus_en_flux_avec_decodage_historique(self):
+        """Les octets ignorés et la première mesure restent traités comme avant."""
+        p = envoi(self.src, "flux.gcode.3mf", utilise=None)
+        copie = p.with_name("flux-octets.gcode.3mf")
+        with zipfile.ZipFile(p) as source, zipfile.ZipFile(copie, "w") as dest:
+            dest.writestr("Metadata/project_settings.config", source.read("Metadata/project_settings.config"))
+            dest.writestr("Metadata/plate_1.gcode", b" \xffT2 ; outil\r\n; filament used [g] = 0, 2\r\n"
+                          b"; filament used [g] = 0, 999\n")
+        rapport = E.lire(copie)
+        self.assertEqual(rapport["filaments_utilises"], [1, 2])
+        self.assertEqual(rapport["filament_utilise_g"], [0.0, 2.0])
 
     def test_masse_manquante_pas_de_total_partiel(self):
         with tempfile.TemporaryDirectory() as tmp:

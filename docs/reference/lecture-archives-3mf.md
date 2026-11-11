@@ -51,6 +51,11 @@ empreinte reste disponible et le lecteur refuse un contexte lié à un autre
 fichier, même si le membre demandé est en cache. Le catalogue garde son plafond
 de 256 Mio par archive et de 128 Mio par G-code de support.
 
+L’inventaire des envois locaux lit masses et outils par plaque en flux, sans
+charger tout le G-code. Le CRC de chaque membre reste vérifié. Deux graphies
+du même numéro de plaque sont refusées avant inventaire ou archivage ; une
+copie neuve doit garder le SHA-256 de l’archive entièrement contrôlée.
+
 Le XML se lit avec `xml()` : DTD et entités sont refusées en UTF-8, UTF-16 et
 UTF-32 avant ElementTree. Les réglages se lisent avec `reglages()`, qui délègue
 au dictionnaire typé existant sans ajouter de normalisation. Le contexte est

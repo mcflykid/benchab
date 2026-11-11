@@ -6,6 +6,7 @@ Aucun accès réseau, commande d'imprimante ou recherche dans un compte install�
 """
 
 import hashlib
+import io
 import json
 import math
 import os
@@ -15,8 +16,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from benchab import reglages as schema_reglages
-from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.archives_3mf import Archive3MF
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.qualite.ecritures import PublicationNeuve, valider_chemins
 
 CLES = (
@@ -39,6 +40,10 @@ CLES = (
     "nozzle_type",
 )
 SUFFIXE = {"brass": "_BRASS", "hardened_steel": "_HS"}
+_REGLES_PROJET = "Metadata/project_settings.config"
+_MAX_LIGNE_GCODE = 1024 * 1024
+_MASSE = re.compile(r"^; (?:total )?filament used \[g\] = ([^\n]+)")
+_OUTIL = re.compile(r"^\s*T(\d+)(?=\s|;|$)")
 
 
 def sha(p):
@@ -49,39 +54,51 @@ def sha(p):
     return h.hexdigest()
 
 
+def _lire_plaque(archive, membre):
+    """Lit masse déclarée en g et indices d’outils par plaque, sans charger le G-code entier."""
+    masses, outils = None, set()
+    with archive.ouvrir_flux(membre) as flux, io.TextIOWrapper(
+        flux, encoding="utf-8", errors="ignore", newline="\n",
+    ) as texte:
+        while ligne := texte.readline(_MAX_LIGNE_GCODE + 1):
+            if len(ligne) > _MAX_LIGNE_GCODE:
+                raise ValueError("ligne G-code hors budget : " + membre)
+            if masses is None and (mesure := _MASSE.match(ligne)):
+                masses = [float(x) for x in mesure[1].split(",")]
+                if any(not math.isfinite(x) or x < 0 for x in masses):
+                    raise ValueError("masse de filament non finie ou négative : " + membre)
+            if selection := _OUTIL.match(ligne):
+                outils.add(int(selection[1]))
+    # Une masse positive peut être publiée sans commande T explicite.
+    outils.update(i for i, x in enumerate(masses or []) if x > 0)
+    return {"gcode": membre, "filament_utilise_g": masses, "filaments_utilises": sorted(outils)}
+
+
+def _verifier_reste(archive, deja_lus):
+    """Contrôle le CRC de chaque autre membre sans le charger en mémoire."""
+    for membre in archive.noms():
+        if membre in deja_lus or membre.endswith("/"):
+            continue
+        with archive.ouvrir_flux(membre) as flux:
+            while flux.read(64 * 1024):
+                pass
+
+
 def lire(p):
-    """Réglages embarqués d'un .gcode.3mf envoyé. Lève ValueError si ce n'est pas un 3MF tranché
-    lisible. Réglages en unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage
-    inconnu transformé."""
+    """Inventorie un 3MF tranché sans écriture ; masses en g, réglages typés, refus si archive ambiguë."""
     p = Path(p)
-    initial = sha(p)
     try:
-        with zipfile.ZipFile(p) as z:
-            if len(set(z.namelist())) != len(z.namelist()):
-                raise ValueError("membres ZIP dupliqués")
-            if z.testzip() is not None:
-                raise ValueError("archive ZIP corrompue")
-            if "Metadata/project_settings.config" not in z.namelist():
+        with Archive3MF(p) as archive:
+            initial = sha(p)
+            archive.verifier_source(p)
+            if _REGLES_PROJET not in archive.noms():
                 raise ValueError(f"{p.name} : réglages absents")
-            st = schema_reglages.decoder(z.read("Metadata/project_settings.config"))
-            g = [n for n in z.namelist() if re.match(r"Metadata/plate_\d+\.gcode$", n)]
-            if not isinstance(st, dict):
-                raise ValueError("réglages JSON invalides")
-            if not g:
+            st = archive.reglages(_REGLES_PROJET)
+            plaques = plaques_gcode_archive(archive)
+            if not plaques:
                 raise ValueError(f"{p.name} : aucun G-code de plaque")
-            details, outils = [], set()
-            for nom in sorted(g, key=lambda n: int(re.search(r"plate_(\d+)", n)[1])):
-                txt = lire_texte_gcode_3mf(p, nom, erreurs="ignore")
-                u = re.search(r"^; (?:total )?filament used \[g\] = ([^\n]+)", txt, re.M)
-                masses = [float(x) for x in u.group(1).split(",")] if u else None
-                if masses is not None and any(not math.isfinite(x) or x < 0 for x in masses):
-                    raise ValueError("masse de filament non finie ou négative : " + nom)
-                # Une commande T peut sélectionner un outil sans masse publiée,
-                # et une masse positive peut exister sans sélection T explicite.
-                utilises = {int(t) for t in re.findall(r"^\s*T(\d+)(?=\s|;|$)", txt, re.M)}
-                utilises.update(i for i, x in enumerate(masses or []) if x > 0)
-                outils.update(utilises)
-                details.append({"gcode": nom, "filament_utilise_g": masses, "filaments_utilises": sorted(utilises)})
+            details = [_lire_plaque(archive, nom) for _, nom in plaques]
+            _verifier_reste(archive, {_REGLES_PROJET, *(nom for _, nom in plaques)})
             # Une plaque non renseignée interdit de présenter un total partiel
             # comme la consommation de l'archive entière.
             utilise = None
@@ -95,18 +112,19 @@ def lire(p):
                 "fichier": p.name,
                 "envoye_le": f"{m[2]}/{m[1]} {m[3]}:{m[4]}" if m else None,
                 "nom": m[5] if m else p.stem,
-                "sha256": sha(p),
+                "sha256": initial,
                 "octets": p.stat().st_size,
-                "plaques": len(g),
+                "plaques": len(plaques),
                 "filament_utilise_g": utilise,
-                "filaments_utilises": sorted(outils),
+                "filaments_utilises": sorted({outil for detail in details for outil in detail["filaments_utilises"]}),
                 "details_plaques": details,
                 "reglages": {k: st.get(k) for k in CLES if k in st},
                 **temperature_appliquee(st),
             }
-        if sha(p) != initial or rapport["sha256"] != initial:
-            raise ValueError("source modifiée pendant lecture")
-        return rapport
+            if sha(p) != initial:
+                raise ValueError("source modifiée pendant lecture")
+            archive.verifier_source(p)
+            return rapport
     except (zipfile.BadZipFile, json.JSONDecodeError, KeyError, TypeError, AttributeError, UnicodeError) as e:
         raise ValueError(f"{p.name} : archive 3MF illisible ({e})") from e
 
@@ -225,11 +243,8 @@ def archiver(source, archive):
                 shutil.copy2(p, temp)
                 if sha(temp) != e["sha256"] or sha(p) != e["sha256"]:
                     raise ValueError(f"{p.name} : copie ou source modifiée, publication refusée")
-                with zipfile.ZipFile(temp) as z:
-                    if len(set(z.namelist())) != len(z.namelist()):
-                        raise ValueError("membres ZIP dupliqués")
-                    if z.testzip() is not None:
-                        raise ValueError("copie ZIP corrompue")
+                # Le SHA identique à la source dont tous les CRC ont été
+                # relus prouve la copie, sans décompresser une seconde fois.
                 publication.publier()
             e.update(archive=cible.name, etat_archive="verifiee")
             ancienne = next((a for a in connus if a["archive"] == e["archive"] and a["sha256"] == e["sha256"]), None)

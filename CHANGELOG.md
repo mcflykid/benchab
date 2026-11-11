@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.5.0
 
+- Envois : refuse les plaques homonymes et lit les masses et outils en flux, avec CRC complet et copie vérifiée par SHA-256 (#147, suite de #122).
+
 - Guide : relie les premiers essais d’une machine ou d’une bobine aux témoins, aux températures, aux mesures d’ajustement et au retour d’impression (#74).
 - Savoir : génère hors ligne une vitrine du corpus public, par matière, réglage, défaut, entretien et code, avec statuts et portées (#75).
 - Connaissances : lit les PDF textuels page par page avec l’extra optionnel, les empreintes et les limites explicites (#114).
