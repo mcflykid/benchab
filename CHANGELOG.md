@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir
+## 1.13.0 — 2026-11-11
 
 - Première couche : ajoute une mesure optionnelle des arcs G17 planaires,
   sans approximation par la corde (suite de #123).
