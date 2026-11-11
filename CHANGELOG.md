@@ -5,6 +5,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 ## À venir — 1.5.0
 
 - Guide : relie les premiers essais d’une machine ou d’une bobine aux témoins, aux températures, aux mesures d’ajustement et au retour d’impression (#74).
+- Qualité : complète les annotations du module commun d’empreintes, sans changer ses résultats (suite de #127).
 
 - Visionneuse : l’index et les flux G-code des supports partagent le contexte 3MF et conservent le cache par empreinte (suite de #122).
 - Atelier : propose un candidat privé de SHA exact pour un lien de vue cassé, avec ambiguïtés explicites et sans réparation automatique (suite de #119).

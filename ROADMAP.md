@@ -97,10 +97,13 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 | Géométrie et 3MF | #105 : placement traçable ; #110 : intention de couverture Z ; #112 : remplacement ciblé ; #113 : échanges indexés de découpe |
 | Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages/inserts ; #29 : clips ; #31 : placement dans la visionneuse |
 | Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
-| Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien ; #74 : premiers essais guidés |
+| Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
 
 ### 4. Conserver les expériences à leur bon niveau de preuve
+
+Le [guide des premiers essais](docs/guides/premiers-essais.md) (#74) aide à
+préparer le témoin et à consigner les mesures dans leur portée.
 
 Les tickets suivants exigent une recette ou des données supplémentaires ; ils
 ne sont pas fermés par une simulation ou par un simple rapport numérique :

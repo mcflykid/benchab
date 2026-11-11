@@ -149,6 +149,38 @@ def test_zone_fine_sans_couverture_reste_fail_et_transformation_z_inconnue_nv(tm
     assert rapport_z["statut"] == "NON VÉRIFIÉ"
 
 
+def test_zone_fine_plus_courte_que_tolerance_exige_une_plage_explicite(tmp_path):
+    """La tolérance de jointure ne remplace aucune preuve de couverture."""
+    source = _cube_3mf(tmp_path / "zone-mince.3mf", ranges="<objects/>")
+    rapport = analyser(source, {"schema": 1, "intentions": [{
+        "objet_id": "1", "type": "zone_fine", "min_z_mm": 4, "max_z_mm": 4.0005, "hauteur_max_mm": 0.12,
+    }]})
+    assert rapport["statut"] == "FAIL"
+
+
+def test_zone_fine_ne_prend_pas_la_plage_voisine_a_sa_frontiere(tmp_path):
+    """Une plage adjacente ne doit pas imposer sa hauteur hors de la zone."""
+    xml = ('<objects><object id="1"><range min_z="0" max_z="4">'
+           '<option opt_key="layer_height">0.2</option></range><range min_z="4" max_z="6">'
+           '<option opt_key="layer_height">0.1</option></range></object></objects>')
+    source = _cube_3mf(tmp_path / "frontiere.3mf", ranges=xml)
+    rapport = analyser(source, {"schema": 1, "intentions": [{
+        "objet_id": "1", "type": "zone_fine", "min_z_mm": 4, "max_z_mm": 6, "hauteur_max_mm": 0.12,
+    }]})
+    assert rapport["statut"] == "PASS"
+
+
+def test_tolerance_de_couverture_ne_relache_pas_la_hauteur_maximale(tmp_path):
+    """Une hauteur déclarée trop forte échoue même avec un seuil de jointure plus large."""
+    xml = ('<objects><object id="1"><range min_z="4" max_z="6">'
+           '<option opt_key="layer_height">0.15</option></range></object></objects>')
+    source = _cube_3mf(tmp_path / "hauteur-excessive.3mf", ranges=xml)
+    rapport = analyser(source, {"schema": 1, "intentions": [{
+        "objet_id": "1", "type": "zone_fine", "min_z_mm": 4, "max_z_mm": 6, "hauteur_max_mm": 0.12,
+    }]}, tolerance_mm=0.05)
+    assert rapport["statut"] == "FAIL"
+
+
 def test_une_inclinaison_z_tres_faible_reste_non_verifiee(tmp_path):
     transform = "1 0 0.0000000005 0 1 0 0 0 1 0 0 0"
     source = _cube_3mf(tmp_path / "inclinaison-epsilon.3mf", transform=transform)

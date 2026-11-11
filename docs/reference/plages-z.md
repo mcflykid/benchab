@@ -38,9 +38,10 @@ une géométrie illisible ne vaut pas PASS.
 
 Les intervalles sont les plages variables explicitement stockées dans le 3MF.
 Le contrôle ne reconstitue pas la hauteur de chaque couche après traitement par
-le slicer, ni le résultat du G-code. La tolérance de comparaison vaut 0,001 mm
-par défaut et peut être réglée jusqu’à 0,1 mm avec `--tolerance-mm`. Le code de
-sortie est 0 pour PASS, 2 pour FAIL et NON VÉRIFIÉ. Voir
+le slicer, ni le résultat du G-code. La tolérance de couverture vaut 0,001 mm
+par défaut et peut être réglée jusqu’à 0,1 mm avec `--tolerance-mm`. Elle ne
+remplace pas une plage explicite et ne relève pas la hauteur maximale de
+`zone_fine`. Le code de sortie est 0 pour PASS, 2 pour FAIL et NON VÉRIFIÉ. Voir
 le suivi du projet : #110.
 
 Quand `Metadata/project_settings.config` contient `layer_height`, le rapport

@@ -193,7 +193,7 @@ def _lire_contexte(source, identifiant):
             return racine, plages, reglages, "assemblage ou liaison objet/plage non qualifiée"
         composant = composants[0]
         noms_path = {
-            nom for nom in composant.attrib if nom == "path" or nom.rsplit("}", 1)[-1] == "path"
+            nom for nom in composant.attrib if nom.endswith("}path")
         }
         if len(noms_path) > 1 or set(composant.attrib) - {"objectid", "transform"} - noms_path:
             return racine, plages, reglages, "attribut de composant non qualifié"
@@ -232,7 +232,7 @@ def _lire_contexte(source, identifiant):
         return racine, plages, reglages, None
 
 
-def _lire_geometrie(source, racine):
+def _lire_geometrie(source):
     """Lit les bornes Z (mm) d’une archive déjà reliée à son instance imprimable."""
 
     # Le lecteur partagé valide les unités 3MF et applique les transforms d’instance.
@@ -294,17 +294,17 @@ def _lire_plages(racine, identifiant):
 def _couvre(intervalles, debut, fin, tolerance):
     """Vérifie une couverture contiguë de l’intervalle en mm, sans combler les trous."""
     curseur = debut
-    morceaux = []
-    for gauche, droite, hauteur in intervalles:
-        if droite < debut - tolerance or gauche > fin + tolerance:
-            continue
-        morceaux.append([max(debut, gauche), min(fin, droite), hauteur])
+    # Une frontière seule n'apporte ni couverture ni hauteur dans la zone (docs/reference/plages-z.md).
+    morceaux = [
+        (max(debut, gauche), min(fin, droite), hauteur)
+        for gauche, droite, hauteur in intervalles
+        if droite > debut and gauche < fin
+    ]
+    for gauche, droite, _ in morceaux:
         if gauche > curseur + tolerance:
             return False, morceaux
         curseur = max(curseur, droite)
-        if curseur >= fin - tolerance:
-            return True, morceaux
-    return curseur >= fin - tolerance, morceaux
+    return bool(morceaux) and curseur >= fin - tolerance, morceaux
 
 
 def _evaluer_intention(item, geometrie, intervalles, tolerance):
@@ -346,7 +346,7 @@ def _evaluer_intention(item, geometrie, intervalles, tolerance):
     if not couverte:
         statut = "FAIL"
         erreur = "couverture explicite incomplète de l’intervalle demandé"
-    elif seuil is not None and any(hauteur > seuil + tolerance for _, _, hauteur in morceaux):
+    elif seuil is not None and any(hauteur > seuil for _, _, hauteur in morceaux):
         statut = "FAIL"
         erreur = "zone déclarée fine couverte par une hauteur au-delà du seuil"
     else:
@@ -381,14 +381,14 @@ def analyser(source, declaration, *, tolerance_mm=0.001):
     objets = []
     for item in intentions:
         try:
-            racine, plages_xml, reglages_projet, erreur = _lire_contexte(source, item["objet_id"])
+            _, plages_xml, reglages_projet, erreur = _lire_contexte(source, item["objet_id"])
             if erreur:
                 objets.append({
                     "objet_id": item["objet_id"], "intention": item["type"],
                     "statut": "NON VÉRIFIÉ", "erreur": erreur,
                 })
                 continue
-            geometrie, erreur = _lire_geometrie(source, racine)
+            geometrie, erreur = _lire_geometrie(source)
             if erreur:
                 objets.append({
                     "objet_id": item["objet_id"], "intention": item["type"],
@@ -439,7 +439,7 @@ def analyser(source, declaration, *, tolerance_mm=0.001):
 
 
 def main(argv=None):
-    """Interface de contrôle Z en lecture seule ; code 0 PASS, 1 FAIL, 2 NON VÉRIFIÉ."""
+    """Interface de contrôle Z en mm et en lecture seule ; code 0 PASS, 2 FAIL ou NON VÉRIFIÉ."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Archive 3MF source, préservée")
     parser.add_argument("intention", type=Path, help="JSON d’intention explicite, unités mm")
