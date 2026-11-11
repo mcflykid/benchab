@@ -148,7 +148,20 @@ trajectoires différentes sur le coupon du binaire identifié (#80 et #89).
 Le résultat ne qualifie ni les autres valeurs, ni l’écart Z ou le retrait
 physique. Le fraisage nominal prolonge le catalogue de fixations (#27).
 
-## Prochaine version : 1.11.0
+## Version 1.11.0 — coutures, sections et reprise
+
+Le contrôle des coutures rattache les départs de boucles à des régions
+déclarées sur une plaque et un objet précis. Son aperçu est lié aux octets
+du 3MF (#26). Les sections XY distinguent intérieur, extérieur et ambiguïté ;
+l’appui estimé depuis le G-code reste une mesure séparée (#108).
+
+La restauration des noms conserve le tranchage natif et vérifie
+intégralement la copie publiée (#182, suite de #122). En cas de table
+JSONL absente, un candidat peut être préparé hors de l’export depuis la
+base en lecture seule. Il ne remplace aucune donnée ; sa preuve indique
+les empreintes à revérifier (#119).
+
+## Prochaine version : 1.12.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -165,7 +178,8 @@ Traiter les prérequis avant les nouveaux réglages :
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs et
-  écrivains spécialisés. La normalisation est migrée ; les autres
+  écrivains spécialisés. La normalisation et la restauration des noms
+  de plaques utilisent le lecteur commun ; les autres
   transformations d’archives du slicer exigent leurs propres preuves ; les remplacements Core de 1.8 restent distincts.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
@@ -185,7 +199,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 | Lot | Travaux restant ouverts |
 | --- | --- |
 | Concevoir et assembler | #32 : élargir les fiches au-delà des blocs percés ; #27 : filetages et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
-| Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
+| Examiner les défauts | #28 : observations photo ; #93 : îlots de surplomb, accès vertical au plan déclaré et présentation dans la visionneuse |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
 
@@ -216,8 +230,8 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
   primitives communes de lecture, de copie et de publication.
 - #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
   de surplombs, de première couche et de débit.
-- #119 : préparer la copie prouvée d’un export manquant, qualifier les autres
-  familles de reprise et la preuve d’exécution
+- #119 : qualifier l’application d’une reprise après vérification de sa preuve,
+  les autres familles de reprise et la preuve d’exécution
   au-delà du contenu déclaré d’un rapport JUnit. Une vue canonique peut être régénérée après
   contrôle du plan et copie vérifiée de l’ancienne vue. La cible d’un lien cassé
   peut être recréée par copie prouvée ; un original introuvable reste NON VÉRIFIÉ.
