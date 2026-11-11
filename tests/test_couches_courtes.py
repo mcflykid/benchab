@@ -7,9 +7,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 import trimesh
 from shapely.geometry import box as polygon_box
 
+from benchab.controles.appuis_gcode import mesurer_appui
 from benchab.controles.couches_courtes import _mesurer_recouvrement_xy, analyse
 
 
@@ -59,6 +61,29 @@ class CouchesCourtes(unittest.TestCase):
         self.assertEqual(
             flottant["qualification_sections"]["fraction_recouvrement_xy_min"], 0.0
         )
+
+    def test_comparaison_synthetique_sections_et_appui_gcode_supporte(self):
+        """Un support G-code peut appuyer un îlot sans recouvrement STL précédent."""
+        result = self.check_mesh(
+            [box((10, 10, 2), (0, 0, 1)), box((2, 2, 2), (15, 0, 5))]
+        )
+        ilot = next(r for r in result if r["centre_xy_mm"] == (15.0, 0.0))
+        qualification = ilot["qualification_sections"]
+        self.assertEqual(
+            qualification["premiere_relation_appui_xy"],
+            "sans_recouvrement_xy_echantillonne",
+        )
+        self.assertEqual(qualification["fraction_recouvrement_xy_min"], 0.0)
+        self.assertEqual(qualification["statut"], "NON VÉRIFIÉ")
+
+        points = np.array([[15.0, y, 0.2] for y in (-0.3, 0.0, 0.3)])
+        resultat_gcode = mesurer_appui(
+            points, points, recouvrement_min_mm=0.05, pas_mm=0.15
+        )
+        self.assertEqual(resultat_gcode["points"], 3)
+        self.assertEqual(resultat_gcode["points_avec_appui_pct"], 100.0)
+        self.assertAlmostEqual(resultat_gcode["recouvrement_min_echantillonne_mm"], 0.4)
+        self.assertEqual(resultat_gcode["longueur_max_parcours_sans_appui_mm"], 0.0)
 
     def test_qualification_quantifie_un_recouvrement_partiel_de_coupes(self):
         result = self.check_mesh(

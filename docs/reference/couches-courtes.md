@@ -50,3 +50,22 @@ G-code ; `appuis_gcode` estime le voisinage XY de trajectoires échantillonnées
 Ces observations portent sur des fichiers différents et ne se fusionnent pas
 automatiquement avec une piste STL. Aucune catégorie ne déduit une cause de
 picots ni une validation physique.
+
+## Comparaison synthétique reproductible
+
+Le test `test_comparaison_synthetique_sections_et_appui_gcode_supporte` place
+un îlot de maillage séparé à X = 15 mm, au-dessus d’un solide distinct. Les
+sections du STL donnent `sans_recouvrement_xy_echantillonne`, fraction minimale
+0.0 et statut `NON VÉRIFIÉ`. Un nuage synthétique de trois points de parcours
+et trois points de support coïncidents, chacun avec demi-largeur 0.2 mm,
+transmis à `appuis_gcode.mesurer_appui` donne 3 points appuyés sur 3 (100 %),
+recouvrement nominal minimal 0.4 mm et longueur maximale sans appui 0 mm.
+
+Ce témoin n’est pas issu d’un trancheur : il vérifie seulement que des supports
+ajoutés dans un G-code peuvent fournir une géométrie d’appui absente des coupes
+du modèle avant tranchage. Il ne qualifie ni le placement réel de supports, ni
+leur adhérence ou tenue.
+
+La qualification structurée des positions intérieures/extérieures reste hors
+de ce lot : les rapports n’attribuent pas ces catégories. Il faudra une preuve
+géométrique distincte avant de les ajouter.
