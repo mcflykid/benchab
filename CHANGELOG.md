@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## Non publié
+## 1.14.0 — 2026-11-11
 
 - Retour photo : un format privé commun à une photo importée ou déjà
   disponible distingue suggestion, confirmation et mesure. La comparaison
