@@ -71,7 +71,23 @@ relecture. Le guide de premiers essais (#74), la vitrine du savoir (#75), la
 lecture PDF optionnelle (#114) et la mise à jour des guides (#149) facilitent
 la lecture des preuves. Aucun contrôle n’atteste une impression physique.
 
-## Prochaine version : 1.6.0
+## Version 1.6.0 — preuves d’atelier et géométrie
+
+La version documente la reprise explicite de la cible manquante d’un lien de
+vue privée (#119). Le rapport de purge sépare transitions T, matrice
+conditionnelle et purge physique (#72). Le contrôle de volume déposé utilise
+l’enveloppe analytique des arcs G17 qualifiés (#123). Les couches courtes
+décrivent les recouvrements et ambiguïtés des coupes XY (#108) ; la
+cartographie STL mesure des groupes de faces par arête partagée (#93).
+Ces contrôles ne décident pas d’un appui physique ni d’un réglage à appliquer.
+
+Les quatre grands modules ciblés sont séparés (#23). La CI vérifie les types
+de cinq frontières communes (#69). Le résumé des plages Z garde un rapport
+complet privé (#35) et les études utilisent le lecteur 3MF borné (#122).
+Le chantier de cohérence des réglages est clos après vérification des deux
+volets livrés et des archives sources conservées (#39).
+
+## Prochaine version : 1.7.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -81,12 +97,12 @@ Traiter les prérequis avant les nouveaux réglages :
   contrôle Ruff D10x introduit par #37.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
-  La mesure dans une boîte peut utiliser la courbe ; la couverture des autres
-  contrôles demeure NON VÉRIFIÉE tant qu’elle n’est pas qualifiée. #133 a conservé
+  La mesure dans une boîte et l’enveloppe du dépôt peuvent utiliser la courbe ;
+  première couche, continuité et cinématique restent à qualifier. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs après
-  l’aperçu, la préparation et le planning. #112 étudie les remplacements ciblés
+  l’aperçu, la préparation, le planning, les envois et les études. #112 étudie les remplacements ciblés
   sans altérer le reste du 3MF.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
@@ -131,16 +147,15 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 
 ### 5. Entretenir le code et organiser l’apprentissage
 
-- #19 : coût des transactions ; #23 : modules trop longs.
-- #127 puis #69 : rattrapage des annotations et types ; #68 : finition et ACE.
-- #35 : rapports courts et détaillés, avec progression déjà apportée par le diagnostic.
-- #39 regroupe le savoir et la cohérence des réglages. La vitrine locale (#75)
-  et la lecture textuelle PDF optionnelle (#114) restent séparées du corpus.
-- #119 regroupe le diagnostic, la réparation conservatrice et l’apprentissage des
-  incidents. Le plan passif signale les vues privées absentes ou divergentes.
-  Une vue canonique peut être régénérée explicitement, après contrôle du plan et
-  sauvegarde vérifiée de la version précédente. La réparation des liens et les
-  autres familles de connaissances restent à traiter.
+- #19 : coût des transactions. Un prototype de réemploi des JSONL préserve les
+  octets, mais la validation des références parcourt encore la base. Le prototype
+  ne suffit pas à clore le chantier.
+- #127 : rattrapage des annotations ; #68 : suite de la finition et de l’ACE.
+- #35 : compléter les rapports courts après les parcours d’envoi et de plages Z.
+- #119 : relier les incidents corrigés à leur preuve de non-régression. Une vue
+  canonique peut être régénérée après contrôle du plan et copie vérifiée de
+  l’ancienne vue. La cible d’un lien cassé peut être recréée par copie prouvée ;
+  les originaux absents et les autres familles de reprise restent à qualifier.
 
 La boucle attendue est : retour sourcé → défaut reproduit → correctif → test de
 régression → contrôle et relecture → livraison. Une vue peut être régénérée depuis
