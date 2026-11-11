@@ -12,6 +12,64 @@ from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
 
 
+class _FluxBorne(io.RawIOBase):
+    """Relais séquentiel borné ; ferme le membre et vérifie sa taille à EOF."""
+
+    TAILLE_BLOC = 64 * 1024
+
+    def __init__(self, flux, info):
+        """Relie un membre ZIP à son entrée d’index vérifiée ; tailles en octets."""
+        super().__init__()
+        self._flux = flux
+        self._info = info
+        self._lus = 0
+        self._ferme = False
+
+    def read(self, taille=-1):
+        """Lit au plus 64 Kio ; contrôle taille et CRC quand la fin est atteinte."""
+        if self._ferme:
+            raise ValueError("lecture d’un flux fermé")
+        demande = self.TAILLE_BLOC if taille is None or taille < 0 else min(taille, self.TAILLE_BLOC)
+        if demande == 0:
+            return b""
+        donnees = self._flux.read(demande)
+        self._lus += len(donnees)
+        if self._lus > self._info.file_size:
+            raise ValueError(f"taille réelle dépassée : {self._info.filename}")
+        if not donnees and self._lus != self._info.file_size:
+            raise ValueError(f"taille réelle incohérente : {self._info.filename}")
+        return donnees
+
+    def readable(self):
+        """Indique que le relais accepte la lecture séquentielle."""
+        return not self._ferme
+
+    def seekable(self):
+        """Déclare le flux non seekable pour interdire la relecture non comptée."""
+        return False
+
+    def readinto(self, tampon):
+        """Remplit un tampon limité au bloc maximal du lecteur."""
+        donnees = self.read(len(tampon))
+        tampon[:len(donnees)] = donnees
+        return len(donnees)
+
+    def close(self):
+        """Ferme le membre ZIP sous-jacent une seule fois."""
+        if not self._ferme:
+            self._ferme = True
+            self._flux.close()
+            super().close()
+
+    def __enter__(self):
+        """Renvoie ce flux borné pour un bloc with."""
+        return self
+
+    def __exit__(self, *_):
+        """Ferme le flux même si l’appelant sort avant EOF."""
+        self.close()
+
+
 class Archive3MF:
     """Lecteur contextuel d’un 3MF ; tailles en octets, erreurs en ValueError.
 
@@ -163,6 +221,34 @@ class Archive3MF:
     def ouvrir(self, membre):
         """Expose un flux mémoire d’un membre après lecture bornée complète."""
         flux = io.BytesIO(self.lire(membre))
+        self._flux_ouverts.append(flux)
+        try:
+            yield flux
+        finally:
+            flux.close()
+            if flux in self._flux_ouverts:
+                self._flux_ouverts.remove(flux)
+
+    @contextlib.contextmanager
+    def ouvrir_flux(self, membre):
+        """Ouvre un flux séquentiel non repositionnable, tampon brut de 64 Kio.
+
+        Le membre déclaré est réservé au budget cumulatif avant décompression :
+        une lecture partielle ne permet donc pas de relire gratuitement le reste.
+        CRC et taille sont contrôlés par zipfile lorsque le consommateur atteint EOF.
+        """
+        if self._archive is None:
+            raise RuntimeError("ouvrir Archive3MF avec un bloc with")
+        try:
+            info = self._infos[membre]
+        except KeyError as erreur:
+            raise KeyError(membre) from erreur
+        if info.file_size > self.taille_max_membre:
+            raise ValueError(f"budget par membre dépassé : {membre}")
+        if self._octets_lus + info.file_size > self.taille_max_totale:
+            raise ValueError("budget cumulatif de lecture dépassé")
+        self._octets_lus += info.file_size
+        flux = io.BufferedReader(_FluxBorne(self._archive.open(info), info), buffer_size=_FluxBorne.TAILLE_BLOC)
         self._flux_ouverts.append(flux)
         try:
             yield flux

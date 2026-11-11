@@ -45,8 +45,9 @@ preuves restent privés et ne sont pas réécrits par cette version.
 
 Traiter les prérequis avant les nouveaux réglages :
 
-- **Annotations** : #37 débloque #36, #35, #34, #33 et #42. Mettre à jour les
-  annotations des modules modifiés au fil des lots, puis activer le contrôle Ruff prévu.
+- **Annotations** : #37 active le contrôle Ruff D10x sur les portées nouvelles
+  ou modifiées et débloque #36, #35, #34, #33 et #42. #127 suit le rattrapage
+  des portées anciennes par lots.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
 - **Fichiers et archives** : #122 poursuit la migration des familles hors contrôles ;
@@ -95,7 +96,7 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 
 - #18 : répartiteur CLI ; #19 : coût des transactions ; #23 : modules trop longs.
 - #66 et #67 : validation des requêtes et séparation des gabarits de la visionneuse.
-- #37 puis #69 : annotations et types ; #68 : contrôles de finition et ACE.
+- #127 puis #69 : rattrapage des annotations et types ; #68 : finition et ACE.
 - #35 : rapports courts et détaillés, avec progression déjà apportée par le diagnostic.
 - #34 : évaluation du graphe de tests d’impact ; #33 : installation optionnelle.
 - #39 regroupe le savoir et la cohérence des réglages ; #40 porte la provenance

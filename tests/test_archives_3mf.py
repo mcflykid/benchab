@@ -96,6 +96,66 @@ def test_archive_ferme_un_flux_dont_le_context_manager_a_fuite(tmp_path):
     gestionnaire.__exit__(None, None, None)
 
 
+def test_flux_lit_par_blocs_et_compte_les_relectures(tmp_path):
+    path = tmp_path / "stream-bounded.3mf"
+    _zip(path, [("gcode", b"abcdef")])
+    with Archive3MF(path, taille_max_totale=8) as archive:
+        with archive.ouvrir_flux("gcode") as flux:
+            assert flux.read(0) == b""
+            assert flux.read(2) == b"ab"
+            assert flux.read(2) == b"cd"
+            assert flux.read(2) == b"ef"
+            assert flux.read(2) == b""
+        with pytest.raises(ValueError, match="cumul"):
+            with archive.ouvrir_flux("gcode") as flux:
+                flux.read()
+
+
+def test_flux_partiel_ne_force_pas_une_seconde_decompression(tmp_path):
+    path = tmp_path / "partial.3mf"
+    _zip(path, [("gcode", b"abcdef")])
+    with Archive3MF(path, taille_max_totale=6) as archive:
+        with archive.ouvrir_flux("gcode") as flux:
+            assert flux.read(1) == b"a"
+        with pytest.raises(ValueError, match="cumul"):
+            with archive.ouvrir_flux("gcode"):
+                pytest.fail("Le budget déclaré doit être réservé avant toute décompression")
+
+
+def test_flux_verifie_crc_a_eof_et_se_ferme_apres_contexte(tmp_path):
+    path = tmp_path / "crc.3mf"
+    _zip(path, [("gcode", b"abcdef")])
+    with Archive3MF(path) as archive:
+        with archive.ouvrir_flux("gcode") as flux:
+            echappe = flux
+            assert flux.read() == b"abcdef"
+            assert flux.read() == b""
+    assert echappe.closed
+
+
+def test_flux_corrompu_signale_le_crc_a_eof(tmp_path):
+    path = tmp_path / "bad-crc.3mf"
+    _zip(path, [("gcode", b"abcdef")])
+    contenu = bytearray(path.read_bytes())
+    debut_index = contenu.index(b"PK\x01\x02")
+    contenu[debut_index + 16] ^= 1  # Altère le CRC indexé, sans toucher aux données.
+    path.write_bytes(contenu)
+    with Archive3MF(path) as archive:
+        with archive.ouvrir_flux("gcode") as flux:
+            with pytest.raises(zipfile.BadZipFile, match="CRC"):
+                while flux.read(2):
+                    pass
+
+
+def test_flux_non_seekable_refuse_le_seek(tmp_path):
+    path = tmp_path / "non-seekable.3mf"
+    _zip(path, [("gcode", b"abcdef")])
+    with Archive3MF(path) as archive:
+        with archive.ouvrir_flux("gcode") as flux:
+            with pytest.raises((AttributeError, OSError)):
+                flux.seek(0)
+
+
 def test_identite_fichier_reverifiee_a_la_fermeture(tmp_path):
     path = tmp_path / "changed.3mf"
     _zip(path, [("a", b"A")])

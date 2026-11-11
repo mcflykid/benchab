@@ -9,11 +9,15 @@ import inspect
 import io
 import json
 import re
+import stat
 from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
-from zipfile import ZipFile
+
+from benchab.archives_3mf import Archive3MF
+from benchab.chemins import sans_lien
+from benchab.qualite.empreintes import sha256_fichier
 
 _CACHE_MAX_OCTETS = 96 * 1024 * 1024
 _CACHE_MAX_ENTREES = 128
@@ -60,30 +64,31 @@ def _memoriser(cle, valeur, *, analyse=False):
 
 
 def _cle_stat(chemin: Path) -> tuple[int, int, int, int, int]:
-    stat = chemin.stat()
-    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+    info = chemin.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("Empreinte 3MF : fichier régulier requis")
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
 
 
 def empreinte_3mf(chemin: str | Path) -> str:
     """
     Retourne le SHA-256 du 3MF complet, avec invalidation par stat et cache concurrent protégé.
-    Chemin sans unité ; lecture seule, FAIL si le fichier change pendant le calcul.
+    Chemin sans unité ; lecture seule, FAIL sur lien, fichier spécial ou mutation.
     """
-    chemin = Path(chemin)
-    stat = _cle_stat(chemin)
+    # Un résultat déjà mémorisé ne qualifie jamais un autre chemin lié (#122).
+    chemin = sans_lien(chemin, strict=True)
+    signature = _cle_stat(chemin)
     with _VERROU_CACHE:
-        empreinte = _HASH_CACHE.get(stat)
+        empreinte = _HASH_CACHE.get(signature)
     if empreinte is not None:
-        if _cle_stat(chemin) != stat:
+        if _cle_stat(chemin) != signature:
             raise ValueError("3MF modifié pendant la vérification de son empreinte")
         return empreinte
-    with chemin.open("rb") as fichier:
-        empreinte = hashlib.file_digest(fichier, "sha256").hexdigest()
-        apres = _cle_stat(chemin)
-    if apres != stat:
+    empreinte = sha256_fichier(chemin)
+    if _cle_stat(chemin) != signature:
         raise ValueError("3MF modifié pendant le calcul de son empreinte")
     with _VERROU_CACHE:
-        _HASH_CACHE[stat] = empreinte
+        _HASH_CACHE[signature] = empreinte
         if len(_HASH_CACHE) > 256:
             _HASH_CACHE.pop(next(iter(_HASH_CACHE)))
     return empreinte
@@ -101,8 +106,8 @@ def lire_membre_3mf(chemin: str | Path, membre: str) -> bytes:
             raise ValueError("3MF modifié pendant la lecture du membre")
         return valeur
 
-    with ZipFile(chemin) as archive:
-        valeur = archive.read(membre)
+    with Archive3MF(chemin) as archive:
+        valeur = archive.lire(membre)
     if empreinte_3mf(chemin) != cle[0]:
         raise ValueError("3MF modifié pendant la lecture du membre")
 
@@ -112,8 +117,8 @@ def lire_membre_3mf(chemin: str | Path, membre: str) -> bytes:
 
 def membres_gcode_3mf(chemin: str | Path) -> tuple[str, ...]:
     """Liste les membres G-code de plaque dans un ordre stable."""
-    with ZipFile(chemin) as archive:
-        membres = archive.namelist()
+    with Archive3MF(chemin) as archive:
+        membres = archive.noms()
     return tuple(sorted(nom for nom in membres if re.fullmatch(r"Metadata/plate_\d+\.gcode", nom)))
 
 
@@ -147,8 +152,8 @@ def ouvrir_membre_3mf(chemin: str | Path, membre: str):
                 raise ValueError("3MF modifié pendant la lecture du membre")
         return
     try:
-        with ZipFile(chemin) as archive:
-            with archive.open(membre) as flux:
+        with Archive3MF(chemin) as archive:
+            with archive.ouvrir_flux(membre) as flux:
                 yield flux
     finally:
         if empreinte_3mf(chemin) != empreinte_initiale:

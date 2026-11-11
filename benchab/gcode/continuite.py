@@ -12,10 +12,10 @@ import math
 import re
 from collections import Counter
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile
 
 from benchab.controles.gcode_interpreter import Interpreter, axes_homing
-from benchab.gcode.lecture import analyser_membre_gcode_3mf
+from benchab.gcode.lecture import analyser_membre_gcode_3mf, membres_gcode_3mf
 
 SEUILS_DEFAUT = {
     "morceaux_par_couche": 10,
@@ -129,23 +129,6 @@ class _Etat:
 
 class _PlaqueAmbigue(ValueError):
     """Un 3MF multi-plaques doit être sélectionné explicitement."""
-
-
-def _ouvrir_gcode(chemin, plaque=None):
-    """Retourne un flux texte et son propriétaire ZIP éventuel."""
-    chemin = Path(chemin)
-    if chemin.suffix.lower() != ".3mf":
-        return chemin.open("r", encoding="utf-8", errors="replace"), None
-    archive = ZipFile(chemin)
-    membres = [n for n in archive.namelist() if re.fullmatch(r"Metadata/plate_\d+\.gcode", n)]
-    if plaque is not None:
-        membres = [n for n in membres if n == f"Metadata/plate_{int(plaque)}.gcode"]
-    if len(membres) != 1:
-        archive.close()
-        if not membres:
-            raise _PlaqueAmbigue("aucun G-code pour la plaque sélectionnée")
-        raise _PlaqueAmbigue("plusieurs plaques G-code sans sélection")
-    return archive.open(membres[0]), archive
 
 
 def _options(intervalle_z_mm, seuils_absolus, longueur_micro_mm, reference):
@@ -288,17 +271,21 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
     def calculer(lignes):
         return _analyser_lignes(lignes, **options)
 
-    entree, archive = _ouvrir_gcode(chemin, plaque)
-    if archive is not None:
-        membre = entree.name
-        entree.close()
-        archive.close()
+    if Path(chemin).suffix.lower() == ".3mf":
+        membres = list(membres_gcode_3mf(chemin))
+        if plaque is not None:
+            membres = [nom for nom in membres if nom == f"Metadata/plate_{int(plaque)}.gcode"]
+        if len(membres) != 1:
+            if not membres:
+                raise _PlaqueAmbigue("aucun G-code pour la plaque sélectionnée")
+            raise _PlaqueAmbigue("plusieurs plaques G-code sans sélection")
         version = hashlib.sha256(
             Path(__file__).read_bytes()
             + inspect.getsource(Interpreter).encode()
             + inspect.getsource(axes_homing).encode()
         ).hexdigest()
-        return analyser_membre_gcode_3mf(chemin, membre, options, calculer, version=version)
+        return analyser_membre_gcode_3mf(chemin, membres[0], options, calculer, version=version)
+    entree = Path(chemin).open("r", encoding="utf-8", errors="replace")
     try:
         return calculer(entree)
     finally:

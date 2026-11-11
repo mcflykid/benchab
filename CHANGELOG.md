@@ -8,6 +8,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Envoi : avertissements natifs par plaque, codes inconnus conservés et origine non établie signalée (#109).
 - Revue locale : mesures de recul et recouvrement recalculées depuis les lignes G-code liées ; contradiction bloquante et données manquantes explicites (#111).
 - Envoi : l'indicateur de conformité reflète le verdict complet, y compris les contrôles communs (#125).
+- Qualité : Ruff D10x contrôle les nouveaux modules et portées publiques modifiées ; les annotations historiques sont reprises par lots (#37, suite #127).
+- Lecture 3MF : flux G-code séquentiel borné avec caches SHA préservés et garde de chemin avant le cache (première étape de #122).
 
 ## 1.2.0 — 2026-11-11
 

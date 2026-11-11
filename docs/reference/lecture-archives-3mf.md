@@ -11,6 +11,18 @@ refus de liens symboliques et ouverture non bloquante, puis vérifiée comme
 fichier régulier par `fstat`; l’identité du descripteur est revérifiée à la
 fermeture.
 
+`ouvrir_flux(membre)` expose un flux séquentiel non seekable. Chaque appel à `read()`
+rend au plus 64 Kio, même si l’appelant demande davantage. La taille déclarée est
+réservée au budget cumulatif avant l’ouverture du membre : une lecture partielle ne
+peut donc pas provoquer une seconde décompression gratuite. La taille réelle et le
+CRC sont contrôlés par `zipfile` si le consommateur atteint EOF ; une sortie partielle
+ferme le membre sans décompresser le reste. Les flux échappés sont fermés à la sortie
+du contexte d’archive. `ouvrir()` garde son comportement historique de flux mémoire.
+
+Les lecteurs G-code et le contrôle de continuité utilisent ce parcours pour les membres
+`Metadata/plate_N.gcode`. Les caches SHA et analyse restent en place ; les membres
+mis en cache sont rendus depuis le cache borné existant.
+
 Le XML se lit avec `xml()` : DTD et entités sont refusées en UTF-8, UTF-16 et
 UTF-32 avant ElementTree. Les réglages se lisent avec `reglages()`, qui délègue
 au dictionnaire typé existant sans ajouter de normalisation. Le contexte est

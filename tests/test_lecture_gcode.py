@@ -35,6 +35,19 @@ def test_cache_invalide_automatiquement_si_le_3mf_change(tmp_path):
     vider_cache_lecture()
 
 
+def test_cache_ne_contourne_pas_la_garde_du_chemin_source(tmp_path):
+    """La même empreinte ne rend pas admissible un chemin lié."""
+    paquet = tmp_path / "tranche.3mf"
+    membre = "Metadata/plate_1.gcode"
+    with ZipFile(paquet, "w") as archive:
+        archive.writestr(membre, "G1 X1\n")
+    assert lire_membre_3mf(paquet, membre) == b"G1 X1\n"
+    lien = tmp_path / "alias.3mf"
+    lien.symlink_to(paquet)
+    with pytest.raises(ValueError, match="Lien symbolique"):
+        lire_membre_3mf(lien, membre)
+
+
 def test_analyseur_gcode_reutilise_les_resultats_par_options(tmp_path):
     paquet = tmp_path / "tranche.3mf"
     membre = "Metadata/plate_1.gcode"
