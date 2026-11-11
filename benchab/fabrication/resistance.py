@@ -308,7 +308,10 @@ def reglages_3mf(path):
 
 
 def auditer_projet(projet, tranche=None, registre=None):
-    """Audite les déclarations des pièces et réglages 3MF ; rapporte statuts, SHA et limites, sans modifier le projet."""
+    """Audite les déclarations des pièces et réglages 3MF ; rapporte statuts, SHA et limites, sans modifier le projet.
+
+    Le registre et le fichier tranché sont facultatifs ; les preuves manquantes restent explicites.
+    """
     projet = Path(projet)
     declarations, h = lire_parametres(projet)
     efforts = declarations.get("EFFORTS") or {}
@@ -379,7 +382,7 @@ def cle_classement(variante):
 
 
 def main(argv=None, *, prive=None):
-    """Exécute l’audit mécanique déclaré ; lit projet et registre, écrit un rapport neuf et renvoie un code de statut."""
+    """Audite les déclarations mécaniques et écrit un rapport neuf ; renvoie un code de statut."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--projet", type=Path, required=True)
     p.add_argument("--json", type=Path, required=True)
