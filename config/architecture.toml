@@ -50,6 +50,6 @@ contrainte = "Noms et version du paquet restent inchangés ; collisions de chemi
 duree = "Tant que le viewer hors ligne dépend de Three.js 0.160.0"
 consommateur = "benchab/visualisation/hors_ligne.py"
 preuve_fichier = "TIERS.md"
-preuve_sha256 = "305b4dcc193d5e4ab0430816a47ec06dfa2c6be4518a6b221bcf122812136957"
+preuve_sha256 = "2fb1cb050124974e95fbe87c0fb80fa09cdd629e51ca7169293ea8f3e8a8fc37"
 source_fichier = "benchab/visualisation/vendor/three-0.160.0/PROVENANCE.json"
 source_sha256 = "643df710616434743b53b360800dee9cbea88309f878724ad84ea11bee9f48c6"

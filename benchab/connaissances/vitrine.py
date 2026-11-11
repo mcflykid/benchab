@@ -4,13 +4,14 @@ import argparse
 import hashlib
 import json
 import re
-import subprocess
 import sys
+import tempfile
 from html import escape
 from pathlib import Path
 
 from benchab.chemins import sans_lien
 from benchab.donnees.reference import CHAMPS
+from benchab.processus import executer
 from benchab.qualite.ecritures import PublicationNeuve, destination_neuve
 from benchab.qualite.frontiere import verifier as verifier_frontiere
 
@@ -39,19 +40,24 @@ def _lire_versionne(racine):
     if not source.is_file() or source.stat().st_size > _MAX_CORPUS:
         raise ValueError("Le corpus doit être un fichier ordinaire de 8 Mio au plus.")
     objet = f"HEAD:{_CORPUS.as_posix()}"
-    commande = ["git", "-C", str(racine), "cat-file"]
-    try:
-        taille = subprocess.run([*commande, "-s", objet], check=True, capture_output=True, timeout=15)
-        if not 0 < int(taille.stdout) <= _MAX_CORPUS:
-            raise ValueError("Corpus versionné vide ou supérieur à 8 Mio.")
-        blob = subprocess.run([*commande, "blob", objet], check=True, capture_output=True, timeout=15).stdout
-    except (OSError, subprocess.SubprocessError) as erreur:
-        raise ValueError("Corpus BENCHAB versionné dans HEAD introuvable.") from erreur
+    with tempfile.TemporaryDirectory(prefix="benchab-vitrine-") as diagnostics:
+        resultat = executer(["git", "rev-parse", "--verify", objet], cwd=racine, diagnostics=diagnostics, delai=15)
+    oid = resultat.stdout.strip()
+    if not resultat.ok or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", oid):
+        raise ValueError("Corpus BENCHAB versionné dans HEAD introuvable.")
     with source.open("rb") as fichier:
         lu = fichier.read(_MAX_CORPUS + 1)
-    if lu != blob:
+    if not 0 < len(lu) <= _MAX_CORPUS:
+        raise ValueError("Corpus vide ou supérieur à 8 Mio.")
+    # Git identifie un blob par son type, sa longueur et ses octets. Le lanceur
+    # ne reçoit ni le corpus ni le texte rendu (docs/reference/vitrine-savoir.md).
+    algo = "sha1" if len(oid) == 40 else "sha256"
+    empreinte_git = hashlib.new(algo, usedforsecurity=False)
+    empreinte_git.update(f"blob {len(lu)}".encode("ascii") + b"\0")
+    empreinte_git.update(lu)
+    if empreinte_git.hexdigest() != oid:
         raise ValueError("Le corpus local ne correspond pas au corpus versionné dans HEAD.")
-    return source, blob
+    return source, lu
 
 
 def _fiches(corpus):
