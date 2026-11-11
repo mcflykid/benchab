@@ -87,6 +87,47 @@ def test_jeu_mesure_prioritaire_mais_bobine_differente_refusee():
     assert origine["statut"] == "NON MESURÉ"
 
 
+@pytest.mark.parametrize(("forme", "langues"), [("clip-languette", 1), ("clip-double", 2)])
+def test_clips_ont_un_logement_et_une_epaule_sans_validation_physique(forme, langues):
+    """Le réassemblage mesure l’encombrement nominal, pas la souplesse des langues."""
+    original = trimesh.creation.box((40, 40, 40))
+    parties, _ = G.couper(original, COUPE)
+    corps, extras, rapport = C.appliquer(original, parties, COUPE, {"type": forme})
+    assert not extras
+    assert rapport["clip"]["nombre_languettes"] == langues
+    assert rapport["clip"]["epaulement_nominal_mm"] > 0
+    assert rapport["clip"]["insertion_reelle"] == "NON VÉRIFIÉ"
+    assert rapport["jeu_lateral_par_face_mm"] == max(C.JEUX)
+    assert rapport["reassemblage"]["statut"] == "PASS"
+    assert corps["dessous"].bounds[1, 2] > 5
+    assert corps["dessus"].volume < parties["dessus"].volume
+
+
+def test_clip_ne_reutilise_pas_un_jeu_mesure_sur_une_autre_famille():
+    """Un jeu déclaré n'est prioritaire que pour le connecteur et la bobine annoncés."""
+    options = {
+        "type": "clip-languette", "bobine": "FIXTURE",
+        "mesure_jeu": {
+            "valeur_mm": 0.3, "nature": "lateral_par_face", "reference": "témoin synthétique",
+            "bobine": "FIXTURE", "connecteur": "clip-double",
+        },
+    }
+    with pytest.raises(ValueError, match="connecteur"):
+        C.politique_jeu(options)
+    options["mesure_jeu"]["connecteur"] = "clip-languette"
+    jeu, provenance = C.politique_jeu(options)
+    assert jeu == 0.3
+    assert provenance["reference"] == "témoin synthétique"
+
+
+def test_clip_double_refuse_si_son_epaule_ne_depasse_pas_le_jeu():
+    """Une dimension trop petite ne crée pas une retenue apparente dans le rapport."""
+    original = trimesh.creation.box((40, 40, 40))
+    parties, _ = G.couper(original, COUPE)
+    with pytest.raises(ValueError, match="épaulement"):
+        C.appliquer(original, parties, COUPE, {"type": "clip-double", "diametre": 2.0})
+
+
 def test_paroi_insuffisante_et_pieces_deplacees_ne_passent_pas():
     original = trimesh.creation.box((40, 40, 40))
     parts, _ = G.couper(original, COUPE)
@@ -145,6 +186,26 @@ def test_chaine_export_reouvert_mm_pose_reversible_et_original_intact(tmp_path, 
     source.write_bytes("source changée".encode())
     with pytest.raises(ValueError, match="Source|format"):
         A.calculer(plan_altere)
+
+
+@pytest.mark.parametrize("forme", ["clip-languette", "clip-double"])
+def test_clip_reouvert_depuis_un_export_3mf_ne_touche_pas_a_l_original(tmp_path, forme):
+    """Deux pièces fermées se réouvrent avec des poses inverses, sans profil ni validation réelle."""
+    source = tmp_path / "original.stl"
+    trimesh.creation.box((40, 40, 40)).export(source)
+    avant = source.read_bytes()
+    plan = A.nouveau_plan(source, "mm", 2)
+    plan["coupes"][0]["connecteur"] = {"type": forme}
+    resultat = A.calculer(plan)
+    sortie = A.exporter(resultat, tmp_path / forme, "3mf")
+    rapport = json.loads((sortie / "decoupe.json").read_text())
+    assert source.read_bytes() == avant
+    assert rapport["reassemblage"]["statut"] == "PASS"
+    assert rapport["reglages_impression"]["export"].startswith("NON PRÊT")
+    assert len(rapport["fichiers"]) == 2
+    for nom, pose in rapport["poses_export"].items():
+        assert lire_3mf(sortie / (nom + ".3mf")).to_mesh().is_volume
+        assert np.allclose(np.array(pose["vers_reassemblage"]) @ pose["vers_plateau"], np.eye(4))
 
 
 def test_modele_technique_propose_reduction_des_surplombs():

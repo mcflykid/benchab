@@ -58,4 +58,18 @@ invalides sans corriger la géométrie.
 Pour les formats destinés au slicer, continuer par
 [fabrication](../reference/fabrication.md), contrôle d’envoi, relecture et vote. Les accessoires ne gonflent pas le nombre de
 pièces demandé. Les modèles sans géométrie dans leur 3MF ne sont pas reconstruits
-depuis le G-code. Les clips et le catalogue de fixations restent suivis dans #29 et #27.
+depuis le G-code. Le catalogue de fixations reste suivi dans #27.
+
+Les choix `clip-languette` et `clip-double` ajoutent, sur une coupe plane,
+une languette à rampe ou deux languettes opposées et leurs logements.
+Le plan doit choisir la forme explicitement. Le contrôle compare
+l’encombrement fermé, le jeu latéral par face, la course nominale des
+languettes et la matière autour de la gorge. Il ne valide ni la force
+d’insertion, ni la retenue, ni la fatigue (#29).
+
+Pour un jeu issu d’un témoin, déclarer dans `mesure_jeu` la convention
+`lateral_par_face`, `valeur_mm`, `reference`, le même `connecteur` et
+la même `bobine` que dans les options du connecteur. Sinon, le haut de la
+plage de l’éprouvette ou de la plage explicitement sourcée reste NON MESURÉ.
+Une mesure sur une cheville ronde ne qualifie pas un clip. Le placement
+interactif des clips reste suivi dans #31.

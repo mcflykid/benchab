@@ -1,7 +1,7 @@
 """Connecteurs géométriques du lot 6B ; aucun n'est validé physiquement.
 
-Le jeu est radial. Sans mesure applicable, le haut de la plage du témoin de
-jeux existant est retenu et déclaré non mesuré. Aucun jeu par matière 1.1.
+Le jeu est radial dans le catalogue historique et latéral par face pour les clips.
+Sans mesure applicable, le haut de la plage du témoin de jeux est une hypothèse.
 """
 
 import math
@@ -24,15 +24,32 @@ CATALOGUE = {
     "rotule-double": "Rotule double : deux douilles et axe à deux sphères séparé",
     "douille": "Douilles et goupille imprimée séparément",
     "canal-tige": "Canal pour tige de renfort",
+    "clip-languette": "Clip à une languette et rampe nominale",
+    "clip-double": "Clip à deux languettes opposées",
     "aucun": "Joint plat, collage ou pose",
 }
+_CLIPS = {"clip-languette", "clip-double"}
 
 
 def politique_jeu(options):
+    """Renvoie le jeu nominal en mm et sa provenance ; aucun ajustement physique n’est déduit.
+
+    Pour un clip, une mesure déclarée de même famille et bobine prévaut.
+    Sans mesure, le haut de la plage sourcée reste NON MESURÉ.
+    """
+    type_ = options.get("type")
+    clip = isinstance(type_, str) and type_ in _CLIPS
+    nature = "lateral_par_face" if clip else "radial"
     mesure = options.get("mesure_jeu")
     if mesure is not None:
-        if not isinstance(mesure, dict) or not mesure.get("reference") or mesure.get("nature") != "radial":
-            raise ValueError("Une mesure exige nature=radial et une référence physique explicite")
+        if not isinstance(mesure, dict) or not mesure.get("reference") or mesure.get("nature") != nature:
+            raise ValueError(f"Une mesure exige nature={nature} et une référence physique explicite")
+        if clip and (
+            mesure.get("connecteur") != type_
+            or not isinstance(mesure.get("reference"), str) or not mesure["reference"].strip()
+            or not isinstance(mesure.get("bobine"), str) or not mesure["bobine"].strip()
+        ):
+            raise ValueError("La mesure d’un clip exige le même connecteur et une bobine explicite")
         if mesure.get("bobine") and mesure["bobine"] != options.get("bobine"):
             raise ValueError("La mesure de jeu ne concerne pas la bobine déclarée")
         valeur = mesure.get("valeur_mm")
@@ -56,7 +73,7 @@ def politique_jeu(options):
             "limite": "Haut de plage U30, aucune tenue physique déduite ; imprimer le témoin de jeu",
         }
     if type(valeur) not in (int, float) or not math.isfinite(valeur) or not 0 < valeur <= 2:
-        raise ValueError("Jeu radial fini entre 0 et 2 mm exigé")
+        raise ValueError("Jeu fini entre 0 et 2 mm exigé" if clip else "Jeu radial fini entre 0 et 2 mm exigé")
     return float(valeur), provenance
 
 
@@ -89,6 +106,60 @@ def conseiller(*, mobile=False, renfort=False, section_mm2=None):
 
 def _cylindre(r, longueur, z=0.0):
     return mf.Manifold.cylinder(longueur, r, r, 64, True).translate([0, 0, z])
+
+
+def _boite_clip(x0, x1, demi_y, z0, z1):
+    """Crée un volume rectangulaire local en mm, centré sur Y."""
+    return mf.Manifold.cube([x1 - x0, 2 * demi_y, z1 - z0]).translate([x0, -demi_y, z0])
+
+
+def _clip_nominal(type_, rayon, longueur, jeu, paroi):
+    """Construit deux volumes complémentaires et leur garde, sans calcul de déformation."""
+    double = type_ == "clip-double"
+    branches = [(-0.55 * rayon, -1), (0.55 * rayon, 1)] if double else [(0.0, 1)]
+    epaisseur = 0.30 * rayon if double else 0.40 * rayon
+    demi_y = 0.65 * rayon
+    debord = (0.28 if double else 0.40) * rayon
+    haut = longueur / 2
+    epaule = haut - min(0.65 * rayon, longueur / 4)
+    base = min(haut, max(0.5, epaisseur))
+    if debord - jeu <= 1e-6 or epaule - jeu <= 1e-6:
+        raise ValueError("Le clip exige un épaulement supérieur au jeu et une gorge utile.")
+    if double and branches[1][0] - branches[0][0] - epaisseur - 2 * debord <= jeu + 1e-6:
+        raise ValueError("La course nominale des deux languettes se recouvre.")
+
+    males, logements = [], []
+    bord_x = 0.0
+    for centre, signe in branches:
+        demi_x = epaisseur / 2
+        tige = _boite_clip(centre - demi_x, centre + demi_x, demi_y, -base, haut)
+        # Section XZ de la rampe : l’épaulement reste large derrière la gorge.
+        contour = [(0.0, epaule), (signe * (demi_x + debord), epaule), (signe * demi_x, haut), (0.0, haut)]
+        if signe < 0:
+            contour.reverse()
+        tete = mf.Manifold.extrude(mf.CrossSection([contour]), 2 * demi_y)
+        tete = tete.rotate([90, 0, 0]).translate([centre, demi_y, 0])
+        males.append(tige + tete)
+        # L’entrée réserve la course vers l’intérieur, mais pas le dépassement
+        # extérieur ; ce dernier est logé seulement au-delà de l’épaulement.
+        gorge_x = sorted((centre - signe * (demi_x + debord + jeu), centre + signe * (demi_x + jeu)))
+        tete_x = sorted((centre - signe * (demi_x + jeu), centre + signe * (demi_x + debord + jeu)))
+        gorge = _boite_clip(*gorge_x, demi_y + jeu, -1e-4, haut + jeu)
+        poche = _boite_clip(*tete_x, demi_y + jeu, epaule - jeu, haut + jeu)
+        logements.append(gorge + poche)
+        bord_x = max(bord_x, *(abs(x) for x in (*gorge_x, *tete_x)))
+    male = mf.Manifold.batch_boolean(males, mf.OpType.Add)
+    femelle = mf.Manifold.batch_boolean(logements, mf.OpType.Add)
+    garde = _boite_clip(-bord_x - paroi, bord_x + paroi, demi_y + jeu + paroi, -base - paroi, haut + jeu + paroi)
+    mesures = {
+        "nombre_languettes": len(branches),
+        "epaisseur_nominale_mm": epaisseur,
+        "course_laterale_nominale_mm": debord,
+        "epaulement_nominal_mm": debord - jeu,
+        "insertion_reelle": "NON VÉRIFIÉ",
+        "limite": "Une déformation est nécessaire à l’insertion ; aucune force, tenue ou fatigue ne sont calculées.",
+    }
+    return male, femelle, garde, math.hypot(bord_x, demi_y + jeu), mesures
 
 
 def _profil(type_, rayon):
@@ -147,10 +218,18 @@ def _position(parties, original, coupe, options, rayon, paroi):
 
 
 def appliquer(original, parties, coupe, options=None):
+    """Ajoute un connecteur nominal à deux maillages complémentaires et rend leur contrôle.
+
+    Les dimensions et jeux sont en mm ; sorties : corps, pièces séparées et
+    rapport WARN ou FAIL (NON VÉRIFIÉ sans connecteur). Aucun montage réel n’est validé.
+    """
     options = dict(options or {})
     type_ = options.get("type", "douille")
-    if type_ not in CATALOGUE:
-        raise ValueError("Connecteur inconnu ; utiliser uniquement le catalogue du lot 6B")
+    if not isinstance(type_, str) or type_ not in CATALOGUE:
+        raise ValueError("Connecteur inconnu ; utiliser uniquement le catalogue de découpe")
+    clip = type_ in _CLIPS
+    if clip and coupe.get("type") != "plan":
+        raise ValueError("Les clips nominaux exigent une coupe plane.")
     if set(parties) != {"dessous", "dessus"}:
         raise ValueError("Deux faces complémentaires dessous/dessus exigées")
     if reassemblage(original, parties)["statut"] != "PASS":
@@ -184,13 +263,18 @@ def appliquer(original, parties, coupe, options=None):
             raise ValueError(f"{cle} : nombre fini entre 0,2 et 500 mm")
         dimensions[cle] = float(v)
     r, longueur, paroi = dimensions["diametre"] / 2, dimensions["longueur"], dimensions["paroi_min"]
-    point, n, transformation = _position(parties, original, coupe, options, r + jeu / 0.85, paroi)
+    outils_clip = _clip_nominal(type_, r, longueur, jeu, paroi) if clip else None
+    rayon_position = outils_clip[3] if outils_clip else r + jeu / 0.85
+    point, n, transformation = _position(parties, original, coupe, options, rayon_position, paroi)
 
     def place(outil):
         return outil.transform(transformation[:3])
 
     extras, tige = {}, None
-    if type_.startswith("cheville-"):
+    if outils_clip:
+        male, femelle, garde, _, _ = outils_clip
+        aa, bb = a + place(male), b - place(femelle)
+    elif type_.startswith("cheville-"):
         profil = _profil(type_, r)
         male = _extrusion(profil, longueur)
         # Dilatation au bas puis conicité : le minimum au bout reste égal au jeu
@@ -279,7 +363,7 @@ def appliquer(original, parties, coupe, options=None):
         },
         {"controle": "Interférences au réassemblage", "statut": bilan["statut"]},
         {
-            "controle": "Jeu radial de conception",
+            "controle": "Jeu latéral de conception par face" if clip else "Jeu radial de conception",
             "statut": "PASS",
             "minimum_mm": jeu,
             "maximum_mm": jeu / 0.85 if type_.startswith("cheville-") else jeu,
@@ -314,7 +398,7 @@ def appliquer(original, parties, coupe, options=None):
         "type": type_,
         "libelle": CATALOGUE[type_],
         **dimensions,
-        "jeu_radial_mm": jeu,
+        **({"jeu_lateral_par_face_mm": jeu, "clip": outils_clip[4]} if outils_clip else {"jeu_radial_mm": jeu}),
         "position_mm": point.tolist(),
         "axe": n.tolist(),
         "efforts": efforts,
