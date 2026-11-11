@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import sqlite3
 import stat
 from pathlib import Path
 
@@ -19,11 +20,20 @@ _MAX_FICHE = 8 * 1024 * 1024
 
 
 def _json_objet(texte: str) -> dict:
-    """Décode un objet JSON privé sans accepter les constantes numériques non finies."""
+    """Décode un objet JSON privé sans clé répétée ni constante numérique non finie."""
     def constante(_: str):
         raise ValueError("constante JSON non finie")
 
-    resultat = json.loads(texte, parse_constant=constante)
+    def paires_uniques(paires):
+        """Refuse les clés répétées, y compris dans les objets JSON imbriqués."""
+        resultat = {}
+        for cle, valeur in paires:
+            if cle in resultat:
+                raise ValueError("clé JSON dupliquée")
+            resultat[cle] = valeur
+        return resultat
+
+    resultat = json.loads(texte, parse_constant=constante, object_pairs_hook=paires_uniques)
     if not isinstance(resultat, dict):
         raise ValueError("objet JSON attendu")
     return resultat
@@ -200,6 +210,8 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
             if correspondance is None or not isinstance(masses, list) or not masses:
                 return _nv(retour_id, "masse ou identité d’une plaque absente")
             numero = int(correspondance[1])
+            if numero < 1:
+                return _nv(retour_id, "numéro de plaque inférieur à 1")
             masse_invalide = any(
                 type(masse) not in (int, float) or not math.isfinite(masse) or masse < 0
                 for masse in masses
@@ -212,6 +224,8 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
                 type(outil) is not int or outil < 0 for outil in outils_declares
             ):
                 return _nv(retour_id, "indices d’outils G-code absents ou invalides")
+            if any(outil >= len(masses) for outil in outils_declares):
+                return _nv(retour_id, "index d’outil hors du vecteur de masse")
             plaques.append({
                 "numero": numero,
                 "gcode": membre,
@@ -219,7 +233,7 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
                     {
                         "index_gcode": index,
                         "grammes_estimes": float(masse),
-                        "selectionne_dans_gcode": index in outils_declares,
+                        "indice_repere_dans_envoi": index in outils_declares,
                     }
                     for index, masse in enumerate(masses)
                 ],
@@ -240,8 +254,9 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
             "limites": [
                 "Le retour est une déclaration humaine ; le fichier envoyé ne prouve pas le fichier exécuté.",
                 "L’index du vecteur G-code n’identifie pas un emplacement ACE ni une bobine.",
+                "Un index repéré peut provenir d’une masse positive sans commande T explicite.",
                 "Les grammes du G-code sont une estimation du slicer, pas une mesure physique.",
             ],
         }
-    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as erreur:
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, sqlite3.Error, json.JSONDecodeError) as erreur:
         return _nv(retour_id, f"source incomplète ou illisible : {erreur}")

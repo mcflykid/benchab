@@ -8,6 +8,10 @@ import zipfile
 from pathlib import Path
 
 from benchab.donnees.base import Base
+from benchab.fabrication import preparation as PR
+from benchab.projets.envois import enregistrer as enregistrer_envoi
+from benchab.projets.preparations import enregistrer as enregistrer_preparation
+from benchab.projets.retours import confirmer
 from benchab.projets.plan_consommation import estimer_retour
 
 
@@ -198,6 +202,130 @@ class PlanConsommation(unittest.TestCase):
         self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
         self.assertIsNone(resultat["estimation"])
         self.assertIn("association d’envoi absente ou ambiguë", resultat["motifs"])
+
+    def _remplacer_archive_et_sha(self, plaques):
+        """Remplace le 3MF synthétique et relie sa nouvelle empreinte aux lignes de fixture."""
+        source = self.racine / "remplacement.gcode.3mf"
+        with zipfile.ZipFile(source, "w") as archive:
+            archive.writestr("Metadata/project_settings.config", json.dumps({"filament_ids": ["f1", "f2"]}))
+            for nom, gcode in plaques.items():
+                archive.writestr(nom, gcode)
+        nouveau_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+        self.archive_prive.write_bytes(source.read_bytes())
+        with self.base.transaction() as connexion:
+            association = json.loads(connexion.execute(
+                "SELECT donnees_json FROM decisions WHERE id='association-fixture'"
+            ).fetchone()[0])
+            association["envoi"]["sha256"] = nouveau_sha
+            connexion.execute(
+                "UPDATE decisions SET donnees_json=? WHERE id='association-fixture'",
+                (json.dumps(association),),
+            )
+            retour = json.loads(connexion.execute(
+                "SELECT donnees_json FROM retours WHERE id=?", (self.retour_id,)
+            ).fetchone()[0])
+            retour["envois_identifies"][0]["sha256"] = nouveau_sha
+            contenu = json.dumps(retour)
+            connexion.execute("UPDATE retours SET donnees_json=? WHERE id=?", (contenu, self.retour_id))
+            connexion.execute("UPDATE impressions SET donnees_json=? WHERE id=?", (contenu, self.retour_id))
+        return nouveau_sha
+
+    def test_index_repere_par_masse_positive_meme_sans_commande_t(self):
+        """Le champ décrit un repère dans l'envoi, jamais une sélection de T prouvée."""
+        self._remplacer_archive_et_sha({
+            "Metadata/plate_1.gcode": "; filament used [g] = 0, 12.5\nG1 X1 E1\n",
+        })
+
+        resultat = estimer_retour(self.base, self.retour_id)
+
+        outil = resultat["estimation"]["plaques"][0]["outils"][1]
+        self.assertEqual(outil["grammes_estimes"], 12.5)
+        self.assertTrue(outil["indice_repere_dans_envoi"])
+        self.assertNotIn("selectionne_dans_gcode", outil)
+
+    def test_numero_de_plaque_zero_refuse_le_plan(self):
+        """Une plaque doit commencer à l'index 1 ; l'index zéro reste NON VÉRIFIÉ."""
+        self._remplacer_archive_et_sha({
+            "Metadata/plate_0.gcode": "; filament used [g] = 12.5\nT0\nG1 X1 E1\n",
+        })
+
+        resultat = estimer_retour(self.base, self.retour_id)
+
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertIsNone(resultat["estimation"])
+        self.assertIn("numéro de plaque inférieur à 1", resultat["motifs"])
+
+    def test_outil_hors_vecteur_de_masse_refuse_le_plan(self):
+        """Un T hors du vecteur, même sans supposer un index réservé, bloque l'estimation."""
+        self._remplacer_archive_et_sha({
+            "Metadata/plate_1.gcode": "; filament used [g] = 0, 0\nT2\nG1 X1 E1\n",
+        })
+
+        resultat = estimer_retour(self.base, self.retour_id)
+
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertIsNone(resultat["estimation"])
+        self.assertIn("index d’outil hors du vecteur de masse", resultat["motifs"])
+
+    def test_parcours_reel_envoi_et_retour_sans_sql_de_fixture(self):
+        """Les APIs de préparation, d'envoi et de retour produisent un plan lisible."""
+        temporaire = tempfile.TemporaryDirectory()
+        self.addCleanup(temporaire.cleanup)
+        atelier = Path(temporaire.name).resolve()
+        base = Base(atelier)
+        self.addCleanup(base.fermer)
+        projet = base.prive / "projets/recette-api"
+        fiche = projet / "preparations/P01/PREPARATION.json"
+        fiche.parent.mkdir(parents=True)
+        lignes = b"T1\nG1 X1 Y1 E1\n"
+        fiche.write_text(json.dumps({
+            "id": "P01",
+            "gcode": {"1": {
+                "sha256": hashlib.sha256(lignes).hexdigest(),
+                "commandes_sha256": PR.commandes(lignes),
+            }},
+        }), encoding="utf-8")
+        enregistrer_preparation(base, fiche)
+        source = atelier / "envoi.gcode.3mf"
+        with zipfile.ZipFile(source, "w") as archive:
+            archive.writestr("Metadata/project_settings.config", json.dumps({"filament_ids": ["f1", "f2"]}))
+            archive.writestr("Metadata/plate_1.gcode", "; filament used [g] = 0, 12.5\n" + lignes.decode())
+        envoi = enregistrer_envoi(base, projet, "P01", source)
+        retour = confirmer(
+            base, projet, "reussie", "retour synthétique déclaré", preparation="P01",
+            ensemble_complet=True, envois=[envoi["fichier"]],
+        )
+
+        resultat = estimer_retour(base, retour["retour"]["id"])
+
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(resultat["estimation"]["plaques"][0]["outils"][1]["grammes_estimes"], 12.5)
+        self.assertIsNone(resultat["affectation_bobine"])
+
+    def test_json_de_retour_a_cles_dupliquees_reste_non_verifie(self):
+        """Une déclaration JSON ambiguë ne fournit aucune estimation."""
+        valeur = self.base.connexion.execute(
+            "SELECT donnees_json FROM retours WHERE id=?", (self.retour_id,)
+        ).fetchone()[0]
+        chaine = valeur.replace('"id": "retour-fixture"', '"id":"autre","id":"retour-fixture"')
+        self.assertNotEqual(chaine, valeur)
+        with self.base.transaction() as connexion:
+            connexion.execute("UPDATE retours SET donnees_json=? WHERE id=?", (chaine, self.retour_id))
+            connexion.execute("UPDATE impressions SET donnees_json=? WHERE id=?", (chaine, self.retour_id))
+
+        resultat = estimer_retour(self.base, self.retour_id)
+
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertIsNone(resultat["estimation"])
+
+    def test_erreur_sqlite_est_rendue_non_verifiee(self):
+        """Une connexion indisponible produit un refus structuré, sans traceback applicatif."""
+        self.base.fermer()
+
+        resultat = estimer_retour(self.base, self.retour_id)
+
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertIsNone(resultat["estimation"])
 
 
 if __name__ == "__main__":
