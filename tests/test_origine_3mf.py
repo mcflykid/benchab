@@ -336,6 +336,16 @@ def test_manifeste_origine_refuse_un_crc_member_invalide(tmp_path):
         origine_3mf._manifeste_zip(source)
 
 
+def test_lecture_bornee_origine_refuse_un_lien_symbolique(tmp_path):
+    """Les lectures d’origine ne suivent pas un alias de la source 3MF."""
+    source = _source(tmp_path)
+    alias = tmp_path / "alias.3mf"
+    alias.symlink_to(source)
+
+    with pytest.raises(ValueError, match="symbolique"):
+        origine_3mf._membre_borne(alias, "Metadata/model_settings.config", 8 * 1024 * 1024)
+
+
 def test_matrice_identite_garde_liaison_sans_permission_inutile():
     """Conserve les deux liaisons ; seul le volume dont V @ M change reçoit une permission exacte."""
     with tempfile.TemporaryDirectory(dir="/private/tmp") as dossier:
