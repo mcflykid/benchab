@@ -494,18 +494,23 @@ def planifier(entree, *, binaire=None) -> dict:
 
 
 def _manifeste_zip(chemin: Path) -> tuple[list[str], dict[str, str]]:
-    archive = _archive(chemin)
-    try:
+    """Retourne noms ordonnés et SHA des membres ; lecture complète bornée et CRC vérifiés."""
+    with Archive3MF(
+        chemin,
+        taille_max_membre=_MAX_ARCHIVE,
+        taille_max_totale=_MAX_ARCHIVE,
+        taille_max_xml=64 * 1024 * 1024,
+    ) as archive:
+        noms = archive.noms()
         empreintes = {}
-        for info in archive.infolist():
+        for nom in noms:
             hachage = hashlib.sha256()
-            with archive.open(info) as membre:
+            with archive.ouvrir_flux(nom) as membre:
                 for bloc in iter(lambda: membre.read(1024 * 1024), b""):
                     hachage.update(bloc)
-            empreintes[info.filename] = hachage.hexdigest()
-        return archive.namelist(), empreintes
-    finally:
-        archive.close()
+            empreintes[nom] = hachage.hexdigest()
+        archive.verifier_source(chemin)
+        return list(noms), empreintes
 
 
 def _membre_borne(chemin: Path, nom: str, maximum: int) -> bytes:
