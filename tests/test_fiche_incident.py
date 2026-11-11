@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import os
 import subprocess
+import sys
 
 import pytest
 
@@ -125,6 +127,81 @@ def test_junit_opt_in_rapporte_les_cas_declares_sans_authentifier_execution(inci
     assert rapport["execution"]["statut"] == "NON VÉRIFIÉ"
     assert rapport["execution"]["rapport_junit"]["statut"] == "CONTENU RAPPORTÉ : TOUS LES CAS SANS ÉCHEC"
     assert rapport["execution"]["rapport_junit"]["cas_attendus"] == 1
+
+
+def test_junit_retrouve_le_cas_du_rapport_pytest_xunit1(incident):
+    """L’export xunit1 porte `file` ; xunit2 sans ce champ reste manquant."""
+    depot, prive, declaration, preuve, _ = incident
+    execution = subprocess.run(
+        [
+            sys.executable, "-m", "pytest", "-q", "-o", "junit_family=xunit1",
+            "--junitxml=" + str(preuve), "tests/test_regression.py",
+        ],
+        cwd=depot,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert execution.returncode == 0, execution.stderr
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_exemple",
+        }],
+    })
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+
+    rapport = incidents.fiche(declaration, depot=depot, prive=prive)
+
+    assert rapport["execution"]["rapport_junit"]["cas_trouves"] == 1
+    assert rapport["execution"]["statut"] == "NON VÉRIFIÉ"
+
+    execution_defaut = subprocess.run(
+        [
+            sys.executable, "-m", "pytest", "-q", "-o", "junit_family=xunit2",
+            "--junitxml=" + str(preuve), "tests/test_regression.py",
+        ],
+        cwd=depot,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert execution_defaut.returncode == 0, execution_defaut.stderr
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    rapport_defaut = incidents.fiche(declaration, depot=depot, prive=prive)
+    assert rapport_defaut["execution"]["rapport_junit"]["statut"] == "CONTENU RAPPORTÉ : CAS MANQUANT"
+
+
+def test_ouverture_junit_est_non_bloquante(incident, monkeypatch):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_exemple",
+        }],
+    })
+    preuve.write_text(
+        '<testsuite><testcase file="tests/test_regression.py" '
+        'classname="tests.test_regression" name="test_exemple"/></testsuite>',
+        encoding="utf-8",
+    )
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    ouvert = os.open
+    drapeaux = []
+
+    def ouverture_surveillee(chemin, flags, *args, **kwargs):
+        drapeaux.append(flags)
+        return ouvert(chemin, flags, *args, **kwargs)
+
+    monkeypatch.setattr(incidents.os, "open", ouverture_surveillee)
+
+    incidents.fiche(declaration, depot=depot, prive=prive)
+
+    assert drapeaux[-1] & os.O_NONBLOCK
 
 
 def test_junit_signale_un_cas_attendu_absent(incident):

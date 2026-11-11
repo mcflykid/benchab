@@ -73,7 +73,7 @@ def _empreinte_fichier(info):
 
 def _lire_junit(fichier):
     """Lit une preuve JUnit régulière une fois ; SHA et XML portent sur les mêmes octets."""
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     fd = os.open(fichier, flags)
     try:
         avant = os.fstat(fd)
