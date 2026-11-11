@@ -5,9 +5,8 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
 
-import pytest
-
 from benchab.cli import main as main_benchab
+from benchab.controles import couverture_plages_z
 from benchab.controles.couverture_plages_z import analyser, main
 
 
@@ -391,6 +390,10 @@ def test_cli_rapport_neuf_affiche_resume_court_et_detail_sur_demande(tmp_path, c
     complet = json.loads(sortie.read_text(encoding="utf-8"))
     assert resume == {
         "statut": "PASS",
+        "statuts_objets": {"PASS": 1},
+        "total_objets": 1,
+        "objets_affiches": 1,
+        "objets_omis": 0,
         "points_importants": [{
             "objet_id": "1", "intention": "totale", "statut": "PASS",
             "geometrie_z_mm": [0.0, 10.0], "intervalle_attendu_mm": [0.0, 10.0],
@@ -407,8 +410,8 @@ def test_cli_rapport_neuf_affiche_resume_court_et_detail_sur_demande(tmp_path, c
     assert len(detail["objets"][0]["couverture_explicite_mm"]) == 100
 
     ancien = sortie.read_bytes()
-    with pytest.raises(ValueError, match="Destination existante"):
-        main([str(source), str(declaration), "--sortie", str(sortie)])
+    assert main([str(source), str(declaration), "--sortie", str(sortie)]) == 2
+    assert "Destination existante : écrasement refusé" in capsys.readouterr().err
     assert sortie.read_bytes() == ancien
 
 
@@ -428,3 +431,64 @@ def test_resume_echec_conserve_le_message_exact_et_l_identifiant_objet(tmp_path,
         "erreur": rapport["objets"][0]["erreur"],
     }]
     assert resume["points_importants"][0]["erreur"]
+
+
+def test_resume_multobjet_plafonne_et_priorise_erreurs_sans_pass_induit(tmp_path, capsys, monkeypatch):
+    """Le résumé affiche d’abord les erreurs/statuts non qualifiés et compte explicitement tout objet omis."""
+    source = tmp_path / "source.3mf"
+    source.write_bytes(b"fixture")
+    declaration = tmp_path / "intention.json"
+    declaration.write_text("{}")
+    rapport = {
+        "statut": "FAIL",
+        "objets": [{"objet_id": str(i), "intention": "totale", "statut": "PASS"} for i in range(7)]
+        + [
+            {"objet_id": "7", "intention": "totale", "statut": "NON VÉRIFIÉ", "erreur": "liage inconnu"},
+            {"objet_id": "8", "intention": "totale", "statut": "FAIL", "erreur": "couverture incomplète"},
+        ],
+    }
+    monkeypatch.setattr(couverture_plages_z, "analyser", lambda *_args, **_kwargs: rapport)
+    sortie = tmp_path / "prive" / "rapport.json"
+
+    assert main([str(source), str(declaration), "--sortie", str(sortie)]) == 2
+    resume = json.loads(capsys.readouterr().out)
+    assert resume["statut"] == "FAIL"
+    assert resume["statuts_objets"] == {"PASS": 7, "NON VÉRIFIÉ": 1, "FAIL": 1}
+    assert resume["total_objets"] == 9
+    assert resume["objets_affiches"] == 5
+    assert resume["objets_omis"] == 4
+    assert [item["objet_id"] for item in resume["points_importants"]] == ["7", "8", "0", "1", "2"]
+
+
+def test_cli_sortie_invalide_lien_et_existante_code2_sans_traceback(tmp_path, capsys):
+    """Les placements refusés gardent leur diagnostic, rendent 2 et ne traversent aucun lien."""
+    prive = tmp_path / "prive"
+    assert main_benchab(["--prive", str(prive), "init"]) == 0
+    source = _cube_3mf(tmp_path / "source.3mf")
+    declaration = tmp_path / "intention.json"
+    declaration.write_text(json.dumps({"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]}))
+    route = ["--prive", str(prive), "controle", "plages-z", str(source), str(declaration)]
+
+    invalide = Path.cwd() / "sortie-hors-privee-fixture.json"
+    assert main_benchab([*route, "--sortie", str(invalide)]) == 2
+    diagnostic = capsys.readouterr().err
+    assert diagnostic == "BENCHAB : Le rapport doit rester dans l'atelier privé ou temporaire système.\n"
+    assert "Traceback" not in diagnostic
+
+    rapports = prive / "rapports"
+    rapports.mkdir(exist_ok=True)
+    alias = prive / "alias-fixture"
+    alias.symlink_to(rapports, target_is_directory=True)
+    assert main_benchab([*route, "--sortie", str(alias / "rapport.json")]) == 2
+    diagnostic = capsys.readouterr().err
+    assert diagnostic.startswith("BENCHAB : Lien symbolique refusé : ")
+    assert "Traceback" not in diagnostic
+
+    existant = rapports / "ancien.json"
+    existant.write_text("rapport antérieur")
+    avant = existant.read_bytes()
+    assert main_benchab([*route, "--sortie", str(existant)]) == 2
+    diagnostic = capsys.readouterr().err
+    assert diagnostic == f"BENCHAB : Destination existante : écrasement refusé : {existant}\n"
+    assert "Traceback" not in diagnostic
+    assert existant.read_bytes() == avant

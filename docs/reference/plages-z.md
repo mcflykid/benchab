@@ -54,7 +54,8 @@ le suivi du projet : #110.
 Sans option de sortie, la commande conserve son rapport JSON complet dans stdout.
 `--sortie <chemin>` publie le même rapport complet dans un nouveau fichier, refuse
 toute destination existante et affiche un résumé JSON contenant le statut, les
-statuts et identifiants d’objet importants, ainsi que le chemin du rapport.
+comptes par statut et au plus cinq objets importants (erreurs et statuts non
+vérifiés en premier), ainsi que le nombre total/omis et le chemin du rapport.
 Ajouter `--detail` à `--sortie` affiche aussi le rapport complet dans stdout.
 Le résumé ne remplace pas le rapport et ne présente aucune validation physique.
 
