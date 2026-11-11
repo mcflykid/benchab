@@ -19,6 +19,25 @@ G = (
 
 
 class Apercu(unittest.TestCase):
+    def test_titre_litteral_peut_contenir_le_marqueur_des_donnees(self):
+        """Le titre reste littéral et les données de la page autonome restent un JSON valide."""
+        import re
+
+        titre = "Témoin __DONNEES__"
+        with tempfile.TemporaryDirectory() as dossier:
+            root = Path(dossier)
+            source = root / "p.gcode"
+            source.write_text(G)
+            sortie = root / "page.html"
+            A.page(source, sortie, titre=titre)
+            html = sortie.read_text()
+
+        self.assertTrue("<h1>Témoin __DONNEES__</h1>" in html, "le titre contenant le marqueur reste littéral")
+        donnees = re.search(r"const D = (.*?);\nconst cv =", html, re.S).group(1)
+        self.assertEqual(json.loads(donnees)["titre"], titre)
+        self.assertIn("data:text/javascript;base64,", html)
+        self.assertNotIn('<script src=', html)
+
     def test_scripts_lisibles_sont_inclus_sans_urls_externes(self):
         """Le document autonome injecte ses scripts empaquetés et garde ses commandes DOM."""
         from importlib.resources import files

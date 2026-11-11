@@ -226,7 +226,9 @@ def page(f, sortie, defauts=None, titre=None, zones=None, colonnes=None):
             .replace(">", "\\u003e")
             .replace("&", "\\u0026")
         )
-        html = GABARIT.replace("__TITRE__", html_lib.escape(donnees["titre"])).replace("__DONNEES__", payload)
+        remplacements = {"__TITRE__": html_lib.escape(donnees["titre"]), "__DONNEES__": payload}
+        # Une passe empêche le marqueur littéral d’un titre de devenir le second gabarit (#136).
+        html = re.sub(r"__TITRE__|__DONNEES__", lambda match: remplacements[match.group(0)], GABARIT)
         from benchab.visualisation.hors_ligne import autonome
 
         html = autonome(html)
