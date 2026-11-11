@@ -14,6 +14,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
+| `controle plages-z` | Compare les plages de couches d’un 3MF à une intention Z explicite, en mm, sans écriture |
 | `fabrication exportable`, `rattachements`, `envois-slicer`, `retour`, `planning` | Livrables, historique et retours |
 | `fabrication tracer-3mf SOURCE --sortie NOM.3mf` | Copie privée avec empreinte source facultative ; conservation native NON VÉRIFIÉE |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
@@ -28,6 +29,8 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `machine profils-cibles`, `affectations-ace` | Profils de travail et correspondance des filaments |
 | `machine cloud-lecture`, `telemetrie`, `session-compte` | Lecture Cloud ; tests simulés, autorisation réseau distincte |
 | `vote --preparer`, `vote DOSSIER`, `vote --etat` | [Conseil et relecture](vote.md) |
+
+Voir le format et les limites du [contrôle des plages Z](plages-z.md).
 
 Les contrôles spécialisés supplémentaires sont listés par `uv run benchab controle --help`.
 Les cibles Make des projets générés utilisent ces mêmes modules ; elles ne créent

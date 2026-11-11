@@ -44,6 +44,7 @@ CONTROLES_DIRECTS = {
     "appuis-gcode": "appuis_gcode",
     "assemblage": "assemblage",
     "ecarts-profils-3mf": "ecarts_profils_3mf",
+    "plages-z": "couverture_plages_z",
 }
 
 
