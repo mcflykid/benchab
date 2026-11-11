@@ -10,15 +10,20 @@ Score de risque d'accroche : indicateur heuristique documenté dans README.md, j
 import hashlib
 import json
 import math
+import os
 import re
+import stat
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree as E
 
-from benchab import reglages as schema_reglages
-from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.archives_3mf import Archive3MF, decoder_xml
+from benchab.controles.rapports import _protege
+from benchab.gcode.lecture import iter_lignes_gcode_3mf, plaques_gcode_archive
 from benchab.machine.configuration import charger as configuration_machine
+from benchab.qualite.ecritures import PublicationNeuve, _sans_lien
 from benchab.qualite.statuts import code_statut
 
 OK, KO, AV, NV = "PASS", "FAIL", "WARNING", "NON VÉRIFIÉ"
@@ -46,28 +51,80 @@ def sha(p):
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 
+def _lire_preuve_existante(path):
+    """Lit une ancienne preuve régulière sans suivre de lien ni accepter une lecture instable."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(fd, "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size > 32 * 1024 * 1024:
+            raise ValueError("Destination de rapport non régulière ou trop volumineuse")
+        contenu = flux.read(32 * 1024 * 1024 + 1)
+        apres = os.fstat(flux.fileno())
+
+    def identite(info):
+        return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+    if len(contenu) > 32 * 1024 * 1024 or identite(avant) != identite(apres):
+        raise ValueError("Destination modifiée pendant la comparaison")
+    courant = path.lstat()
+    if not stat.S_ISREG(courant.st_mode) or identite(courant) != identite(apres):
+        raise ValueError("Destination remplacée pendant la comparaison")
+    return contenu
+
+
+def _examiner_groupe(destination, contenus, annexes_absentes, entrees):
+    """Compare les octets d’un groupe de preuves, sans écrire ni associer une annexe orpheline."""
+    cibles = []
+    existants = {}
+    for nom in (*contenus, *annexes_absentes):
+        cible = _sans_lien(destination / nom)
+        _protege(cible)
+        if cible.resolve() in entrees:
+            raise ValueError("Collision entrée, sortie ou rapport : écrasement refusé.")
+        if nom in contenus:
+            cibles.append(cible)
+        try:
+            existants[nom] = _lire_preuve_existante(cible)
+        except FileNotFoundError:
+            continue
+    if len({p.resolve() for p in cibles}) != len(cibles):
+        raise ValueError("Collision entre les sorties du rapport : écrasement refusé.")
+    attendu = {nom: texte.encode("utf-8") for nom, texte in contenus.items()}
+    return cibles, "identique" if existants == attendu else "différent" if existants else "vide"
+
+
 class Rapport:
+    """Regroupe les constats d’un niveau sans changer les entrées ni les preuves précédentes."""
+
     def __init__(self, nom, cfg_path):
+        """Prépare un rapport depuis le nom du niveau et le chemin de sa configuration."""
         self.nom, self.items = nom, []
         self.base = Path(cfg_path).resolve().parent
+        self.entrees = [Path(cfg_path).resolve()]
+
+    def ajouter_entrees(self, *chemins):
+        """Enregistre les fichiers lus pour interdire leur collision avec les preuves publiées."""
+        for chemin in chemins:
+            if chemin is not None:
+                self.entrees.append(Path(chemin).absolute())
 
     def add(self, controle, statut, detail="", **extra):
         self.items.append({"controle": controle, "statut": statut, "detail": detail, **extra})
         return statut
 
-    def ecrire(self):
-        """Rend les contrôles et leurs statuts dans les rapports de projet."""
+    def ecrire(self, supplementaires=None):
+        """Publie les rapports JSON/Markdown et preuves complémentaires sans écrasement.
+
+        Un rejeu identique est sans écriture ; un contenu différent est rangé en dossier
+        `rejeu-*`. Les rapports du même contrôle sont préparés et publiés ensemble.
+        """
         out = self.base / "preuves/qualite"
-        out.mkdir(parents=True, exist_ok=True)
         cpt = {s: sum(1 for i in self.items if i["statut"] == s) for s in (OK, KO, AV, NV)}
         global_ = KO if cpt[KO] else (NV if cpt[NV] else (AV if cpt[AV] else OK))
-        (out / f"{self.nom}.json").write_text(
-            json.dumps(
-                {"niveau": self.nom, "statut_global": global_, "compte": cpt, "controles": self.items},
-                indent=1,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
+        contenu_json = json.dumps(
+            {"niveau": self.nom, "statut_global": global_, "compte": cpt, "controles": self.items},
+            indent=1,
+            ensure_ascii=False,
         )
         lignes = [
             f"# {self.nom} : {global_}  ({cpt[OK]} PASS, {cpt[KO]} FAIL, {cpt[AV]} WARNING, {cpt[NV]} NON VÉRIFIÉ)",
@@ -78,7 +135,37 @@ class Rapport:
             for i in self.items
             if i["statut"] != OK
         ]
-        (out / f"{self.nom}.md").write_text("\n".join(lignes) + "\n", encoding="utf-8")
+        contenus_base = {
+            f"{self.nom}.json": contenu_json,
+            f"{self.nom}.md": "\n".join(lignes) + "\n",
+        }
+        supplementaires = supplementaires or {}
+        if set(contenus_base) & set(supplementaires):
+            raise ValueError("Preuve complémentaire en collision avec le rapport principal")
+        contenus = {**contenus_base, **supplementaires}
+        if any(not isinstance(nom, str) or Path(nom).name != nom or nom in (".", "..") for nom in contenus):
+            raise ValueError("Nom de preuve complémentaire invalide")
+        entrees = {_sans_lien(p).resolve() for p in self.entrees}
+        # Un arrêt précoce ne doit pas faire passer un ancien tableau pour sa propre annexe (#160).
+        annexes_absentes = ("plaques.json",) if self.nom == "niveau3" and "plaques.json" not in contenus else ()
+        destination = out
+        cibles, etat = _examiner_groupe(destination, contenus, annexes_absentes, entrees)
+        if etat == "différent":
+            # L'empreinte porte sur tous les noms et octets ; le rejeu vérifie encore chaque fichier.
+            serialise = json.dumps(contenus, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            destination = out / f"rejeu-{hashlib.sha256(serialise.encode('utf-8')).hexdigest()}"
+            cibles, etat = _examiner_groupe(destination, contenus, annexes_absentes, entrees)
+            if etat == "différent":
+                raise ValueError(f"Preuve de rejeu incomplète ou différente, conservée : {destination}")
+        if etat == "vide":
+            with PublicationNeuve(self.entrees, cibles) as publication:
+                for cible in cibles:
+                    publication.temporaire(cible).write_text(contenus[cible.name], encoding="utf-8")
+                publication.publier()
+            if destination != out:
+                print(f"Résultat différent conservé dans une nouvelle preuve : {destination}")
+        elif destination != out:
+            print(f"Rejeu identique à la preuve existante : {destination}")
         print("\n".join(lignes[:1] + lignes[2:40]))
         return global_
 
@@ -95,17 +182,75 @@ def charger(cfg_path):
 
 def objets_3mf(path):
     """Plaques -> noms d'objets d'un 3MF Anycubic/Orca (model_settings.config)."""
-    cfg = zipfile.ZipFile(path).read("Metadata/model_settings.config").decode()
-    noms = dict(re.findall(r'<object id="(\d+)">\s*<metadata key="name" value="([^"]+)"', cfg))
+    with Archive3MF(path) as archive:
+        return _objets_3mf_archive(archive)
+
+
+def _objets_3mf_archive(archive):
+    """Extrait les plaques dans l'ordre du XML depuis un contexte 3MF déjà ouvert."""
+    cfg = archive.xml("Metadata/model_settings.config")
+    noms = {}
+    identifiants = set()
+    for objet in cfg.iter():
+        if objet.tag.rsplit("}", 1)[-1] != "object":
+            continue
+        identifiant = objet.get("id", "")
+        if not re.fullmatch(r"\d+", identifiant):
+            continue
+        identifiant_normalise = int(identifiant)
+        if identifiant_normalise in identifiants:
+            raise ValueError("identifiant d’objet ambigu dans model_settings.config")
+        identifiants.add(identifiant_normalise)
+        valeurs_nom = [
+            metadata.get("value")
+            for metadata in objet
+            if metadata.tag.rsplit("}", 1)[-1] == "metadata" and metadata.get("key") == "name"
+        ]
+        if len(valeurs_nom) > 1:
+            raise ValueError("noms d’objet ambigus dans model_settings.config")
+        if valeurs_nom and valeurs_nom[0]:
+            noms[str(identifiant_normalise)] = valeurs_nom[0]
     plaques = []
-    for pl in re.findall(r"<plate>(.*?)</plate>", cfg, re.S):
-        nom = re.search(r'key="plater_name" value="([^"]*)"', pl)
-        ids = re.findall(r'key="object_id" value="(\d+)"', pl)
-        plaques.append({"nom": nom.group(1) if nom else "", "objets": [noms.get(i, "?" + i) for i in ids]})
+    for plaque in cfg.iter():
+        if plaque.tag.rsplit("}", 1)[-1] != "plate":
+            continue
+        metadata = [element for element in plaque.iter() if element.tag.rsplit("}", 1)[-1] == "metadata"]
+        nom = next((m.get("value") for m in metadata if m.get("key") == "plater_name"), None)
+        ids = [m.get("value", "") for m in metadata if m.get("key") == "object_id"]
+        plaques.append({
+            "nom": nom or "",
+            "objets": [noms.get(str(int(i)), "?" + i) for i in ids if re.fullmatch(r"\d+", i)],
+        })
     return plaques
 
 
+def _indices_slice_info(info):
+    """Valide les index de plaque positifs et uniques, dans l'ordre XML, avant de lire les G-code."""
+    resultat, vus = [], set()
+    for plaque in info.findall("plate"):
+        index_brut = [
+            metadata.get("value") for metadata in plaque.findall("metadata") if metadata.get("key") == "index"
+        ]
+        if len(index_brut) != 1:
+            raise ValueError("index de plaque absent ou dupliqué dans slice_info.config")
+        try:
+            index = int(index_brut[0])
+        except (TypeError, ValueError) as erreur:
+            raise ValueError("index de plaque invalide dans slice_info.config") from erreur
+        if index < 1:
+            raise ValueError("index de plaque non positif dans slice_info.config")
+        if index in vus:
+            raise ValueError("index de plaque dupliqué dans slice_info.config")
+        vus.add(index)
+        resultat.append(index)
+    return resultat
+
+
 def niveau1(cfg_path):
+    """Contrôle intégrité, maillages et dimensions en mm depuis la configuration du projet.
+
+    Renvoie PASS, FAIL, WARNING ou NON VÉRIFIÉ et préserve les fichiers de preuve existants.
+    """
     import trimesh
 
     cfg, base, P = charger(cfg_path)
@@ -117,6 +262,12 @@ def niveau1(cfg_path):
     S = json.loads(man.read_text())
     R.add("manifeste présent", OK)
     modeles = {**S["models"], **S.get("options", {})}
+    R.ajouter_entrees(
+        man,
+        *(P("stl_assemblage") / (m + ".stl") for m in modeles),
+        *(P("stl_impression") / (m + ".stl") for m in modeles),
+        *(P(k) for k in ("plaques_3mf", "tranche_3mf") if k in cfg),
+    )
     inst = {p["name"]: p["model"] for p in S["parts"]}
     inst.update({n: n for n in S.get("options", {})})
     vol = cfg.get("volume_impression_mm", configuration_machine()["placement"]["plateau_xyz_mm"])
@@ -261,28 +412,45 @@ def niveau3(cfg_path):
     cfg, base, P = charger(cfg_path)
     R = Rapport("niveau3", cfg_path)
     t3, pl = P("tranche_3mf"), P("placement")
+    R.ajouter_entrees(t3, pl, P("plaques_3mf") if "plaques_3mf" in cfg else None)
     if not t3.exists():
         R.add("3MF tranché présent", KO, str(t3))
         return R.ecrire()
-    z = zipfile.ZipFile(t3)
-    if "Metadata/slice_info.config" not in z.namelist():
-        R.add("3MF tranché", KO, "pas de slice_info : non tranché")
-        return R.ecrire()
-    from xml.etree import ElementTree as E
-
-    info = E.fromstring(z.read("Metadata/slice_info.config"))
-    from benchab.fabrication.anycubic import resultats
-
     try:
-        mesures = resultats(t3)
-        for mesure in mesures:
-            if not lire_texte_gcode_3mf(t3, f"Metadata/plate_{mesure['index']}.gcode").strip():
-                raise ValueError("G-code vide")
+        with Archive3MF(t3) as archive:
+            noms_archive = archive.noms()
+            if "Metadata/slice_info.config" not in noms_archive:
+                R.add("3MF tranché", KO, "pas de slice_info : non tranché")
+                return R.ecrire()
+            octets_info = archive.lire(
+                "Metadata/slice_info.config", limite_octets=Archive3MF.MAX_XML_OCTETS,
+            )
+            info = decoder_xml(octets_info, limite_octets=Archive3MF.MAX_XML_OCTETS)
+            indices = _indices_slice_info(info)
+            from benchab.fabrication.anycubic import resultats_xml
+
+            mesures = resultats_xml(octets_info)
+            if [mesure["index"] for mesure in mesures] != indices:
+                raise ValueError("index de plaque incohérent dans slice_info.config")
+            membres_gcode = dict(plaques_gcode_archive(archive))
+            for mesure in mesures:
+                index = mesure["index"]
+                membre = membres_gcode.get(index)
+                if membre is None:
+                    raise ValueError(f"G-code absent pour la plaque {index}")
+                non_vide = False
+                for ligne in iter_lignes_gcode_3mf(t3, membre, archive=archive):
+                    non_vide = non_vide or bool(ligne.strip())
+                if not non_vide:
+                    raise ValueError(f"G-code vide pour la plaque {index}")
+            noms = [p["nom"] for p in _objets_3mf_archive(archive)]
+            st = archive.reglages()
+            archive.verifier_source(t3)
     except (ValueError, KeyError, E.ParseError, zipfile.BadZipFile) as exc:
         R.add("résultats du tranchage", KO, str(exc))
         return R.ecrire()
-    noms = [p["nom"] for p in objets_3mf(t3)]
     obj = json.loads(pl.read_text())["objects"] if pl.exists() else []
+    R.ajouter_entrees(*(P("stl_impression") / (o["model"] + ".stl") for o in obj if "model" in o))
     od = cfg.get("objectifs_duree_h", {})
     marge = od.get("marge", 0.15)
     tableau = []
@@ -335,7 +503,7 @@ def niveau3(cfg_path):
     from benchab.controles import couches_courtes as mod
 
     if obj:
-        st_cool = schema_reglages.decoder(z.read("Metadata/project_settings.config"))
+        st_cool = st
         for o in obj:
             file = P("stl_impression") / (o["model"] + ".stl")
             if not file.exists():
@@ -356,7 +524,6 @@ def niveau3(cfg_path):
                     mitigation=mitigation,
                 )
     # Réglages globaux de première couche et de trajectoire (lecture des réglages réellement embarqués).
-    st = schema_reglages.decoder(z.read("Metadata/project_settings.config"))
     rc = st.get("reduce_crossing_wall")
     R.add("évitement des parois en déplacement (reduce_crossing_wall)", OK if str(rc) == "1" else AV, f"valeur {rc}")
     R.add(
@@ -372,6 +539,7 @@ def niveau3(cfg_path):
     from benchab.controles.routine import controler as routine
 
     if P("plaques_3mf").exists() and pl.exists():
+        _protege(base / "preuves/audit/slicer")
         controle = routine(P("plaques_3mf"), t3, pl, base / "preuves/audit/slicer")
         R.add(
             "routine controler-3mf.sh (placement, réglages, disposition, débits)",
@@ -380,12 +548,7 @@ def niveau3(cfg_path):
         )
     else:
         R.add("routine controler-3mf.sh", NV, "fichiers manquants")
-    (base / "preuves/qualite").mkdir(parents=True, exist_ok=True)
-    (base / "preuves/qualite/plaques.json").write_text(
-        json.dumps(tableau, indent=1, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    return R.ecrire()
+    return R.ecrire({"plaques.json": json.dumps(tableau, indent=1, ensure_ascii=False)})
 
 
 def incrementiel(cfg_path, ancien):
@@ -418,6 +581,7 @@ def resume(cfg_path):
 
 
 def main(argv=None):
+    """Lance le contrôle historique demandé et renvoie son code, ou 2 en cas de refus."""
     a = list(sys.argv[1:] if argv is None else argv)
     if len(a) < 2:
         print(__doc__)
@@ -432,7 +596,11 @@ def main(argv=None):
     if f is None:
         print(__doc__)
         return 2
-    s = f(a[1])
+    try:
+        s = f(a[1])
+    except (OSError, ValueError, KeyError, TypeError) as erreur:
+        print(f"Publication de qualité refusée : {erreur}", file=sys.stderr)
+        return 2
     return code_statut(s) if s is not None else 0
 
 

@@ -95,6 +95,16 @@ de G-code ou de réglage n’est ramenée à une simple date. Même un conteneur
 Le contrôle de réimpression vérifie le verrou local et les empreintes, sans
 transformer leur identité en accord d’envoi ou en observation physique.
 
+Les contrôles historiques `benchab qualite niveau1` et `niveau3` publient les
+rapports JSON/Markdown et, pour le niveau 3, `plaques.json` comme un groupe neuf.
+Un rejeu aux octets identiques ne réécrit rien. Si le résultat diffère, la
+nouvelle version est rangée dans `preuves/qualite/rejeu-<sha256>/` et son
+emplacement est annoncé. L’empreinte porte sur tous les noms et octets du groupe ;
+un résultat déjà conservé est relu et vérifié. Un groupe de rejeu incomplet ou
+altéré est conservé et signalé. Un ancien tableau seul ne devient jamais celui
+d’un contrôle interrompu. Les destinations liées, les collisions avec les
+entrées et les préparations figées sont refusées avant publication.
+
 ## Contrôles privés d’un projet L
 
 Les fichiers `src/controles/*.py` exposent `verifier(projet)` et renvoient un

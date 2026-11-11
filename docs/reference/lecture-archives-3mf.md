@@ -23,6 +23,12 @@ Les lecteurs G-code et le contrôle de continuité utilisent ce parcours pour le
 `Metadata/plate_N.gcode`. Les caches SHA et analyse restent en place ; les membres
 mis en cache sont rendus depuis le cache borné existant.
 
+Le contrôle qualité lit la liste de plaques et les noms d’objets depuis le XML
+borné de `model_settings.config`. Le niveau 3 lit résultats slicer, réglages
+typés et G-code des plaques depuis le même contexte d’archive ; les index
+numériques ambigus sont refusés et chaque G-code associé à une mesure doit être
+présent et non vide.
+
 Une même instance peut être rouverte après fermeture : chaque contexte repart
 avec un index et un quota neufs. Une réentrée pendant un contexte actif échoue
 sans fermer ni modifier celui-ci.

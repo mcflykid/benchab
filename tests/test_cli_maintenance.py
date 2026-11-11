@@ -2,15 +2,19 @@
 
 import hashlib
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 from zipfile import ZipFile
 
 from benchab.cli import main
+from benchab.donnees import sauvegarde
 from benchab.qualite import archives
 
 
-def test_sauvegarde_restauration_et_verrou_depuis_cli(tmp_path, atelier_initialise):
-    """Vérifie sauvegarde restauration et verrou depuis cli ; atelier initialisé, aucune machine touchée."""
+def test_sauvegarde_restauration_et_verrou_depuis_cli(tmp_path, atelier_initialise, monkeypatch):
+    """Vérifie les trois commandes sur un atelier jetable et un volume simulé en octets."""
+    # La politique du seuil réel est testée séparément avec un espace insuffisant (#163).
+    monkeypatch.setattr(sauvegarde.shutil, "disk_usage", lambda _: SimpleNamespace(free=15 * 1024**3))
     prive = tmp_path / "prive"
     source = prive / "projets/fixture"
     source.mkdir(parents=True)
