@@ -15,10 +15,12 @@ from benchab.visualisation.stockage_commentaires import ouvrir_dossier, sans_lie
 
 
 def texte(value):
+    """Convertit une valeur en texte et échappe les caractères HTML, guillemets compris."""
     return html.escape(str(value), quote=True)
 
 
 def url(projet="", **kw):
+    """Construit le lien relatif de l’atelier avec le nom de projet et les paramètres encodés."""
     return "/atelier?" + urlencode({"projet": projet, **kw})
 
 
@@ -80,6 +82,7 @@ STYLE = (
 
 
 def document(titre, corps):
+    """Assemble le titre échappé et un corps HTML déjà préparé. Renvoie des octets UTF-8."""
     return (
         (
             '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta '
@@ -110,6 +113,7 @@ def document(titre, corps):
 
 
 def tableau(entetes, lignes):
+    """Renvoie un tableau HTML avec en-têtes échappés et cellules déjà rendues."""
     return (
         '<div class="table"><table><thead><tr>'
         + "".join(('<th scope="col">' + texte(x) + "</th>" for x in entetes))
@@ -120,10 +124,12 @@ def tableau(entetes, lignes):
 
 
 def lien(href, label):
+    """Renvoie une ancre HTML dont la destination et le libellé sont échappés."""
     return '<a href="' + texte(href) + '">' + texte(label) + "</a>"
 
 
 def pieces_projet(root, nom, q):
+    """Lit les noms des pièces du manifeste du projet. Renvoie une liste vide si le manifeste manque."""
     p = Path(root) / "projets" / nom
     rel = q.get("manifeste", "candidats/assemblage.json")
     from benchab.qualite.publication import chemin_projet
@@ -139,6 +145,7 @@ def pieces_projet(root, nom, q):
 
 
 def preparations(root, nom):
+    """Recense les préparations Pnn du projet avec leurs données, leur SHA et leur chemin relatif."""
     out = {}
     p = Path(root) / "projets" / nom
     for f in sorted((p / "preparations").glob("P[0-9]*/PREPARATION.json")):
@@ -187,6 +194,7 @@ def preuves_declarees(root, nom, q, preps):
 
 
 def aide_ouverture():
+    """Renvoie le fragment HTML qui explique les fichiers consultables et leur usage."""
     return (
         '<details class="carte"><summary>Quel fichier ouvrir ?</summary>\n<'
         "p><strong>Pour consulter un projet : choisissez son nom dans le c"
@@ -215,6 +223,7 @@ def aide_ouverture():
 
 
 def page_catalogue(root, recherche=""):
+    """Filtre le catalogue privé par nom, titre ou pièce. Renvoie la page en octets UTF-8."""
     query = recherche.casefold().strip()
     rows = []
     for projet in catalogue(root):
@@ -254,6 +263,7 @@ def page_catalogue(root, recherche=""):
 
 
 def page_connaissances(root, recherche=""):
+    """Affiche jusqu’à cent connaissances de l’atelier avec leur provenance et leur niveau de preuve."""
     from benchab.connaissances.memoire import chercher
 
     resultats = chercher(root, recherche)
@@ -288,6 +298,7 @@ def page_connaissances(root, recherche=""):
 
 
 def page_automatisation(root, nom, params):
+    """Renvoie la page de préparation en octets UTF-8 pour le projet et la préparation demandés."""
     from benchab.organisation.automatisation import cache_projet, planifier
     from benchab.organisation.synthese_atelier import bilan, comparer_preparations, connaissances
 
