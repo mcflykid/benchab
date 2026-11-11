@@ -24,6 +24,11 @@ _SHA256 = re.compile(r"[a-fA-F0-9]{64}\Z")
 
 
 def identifiant(valeur: str) -> str:
+    """Valide un identifiant de préparation ; retourne sa forme canonique ou lève `ValueError`.
+
+    L’entrée est un nom sans unité ; la validation suit les règles des fiches
+    privées et ne crée ni ne modifie de projet. Voir le [guide de préparation](../../docs/guides/preparer-une-piece.md).
+    """
     return valider_nom(valeur)
 
 
@@ -58,11 +63,24 @@ def _fichier_prive(base: Base, chemin: str | Path, projet: Path | None = None) -
 
 
 def chemin_relatif(base: Base, chemin: str | Path) -> str:
+    """Renvoie le chemin POSIX d’un fichier privé existant, après contrôle des liens.
+
+    Reçoit la base BENCHAB et un chemin absolu ou relatif ; retourne un chemin
+    relatif à `base.prive`, ou lève `ValueError`. Aucun fichier n’est lu ni écrit.
+    Voir le guide [préparer une pièce](../../docs/guides/preparer-une-piece.md).
+    """
     fichier = _fichier_prive(base, chemin)
     return fichier.relative_to(base.prive.resolve()).as_posix()
 
 
 def commandes(contenu: bytes) -> str:
+    """Hache les commandes G-code en SHA-256 après retrait des commentaires.
+
+    Reçoit des octets décodés en UTF-8 avec remplacement des caractères invalides ;
+    retourne 64 caractères hexadécimaux. La normalisation sert à comparer les
+    commandes entre préparations, sans modifier ni valider physiquement le G-code.
+    Voir le [guide de préparation](../../docs/guides/preparer-une-piece.md).
+    """
     lignes = contenu.decode("utf-8", "ignore").splitlines()
     code = "\n".join(ligne.split(";")[0].strip() for ligne in lignes if ligne.split(";")[0].strip())
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
@@ -91,6 +109,12 @@ def gcodes(archive: str | Path) -> dict:
 
 
 def verifier_gcodes(plaques: dict) -> None:
+    """Refuse une fiche sans plaque ou sans commande G-code exploitable.
+
+    Reçoit le dictionnaire de plaques de `gcodes` ; retourne `None` si chaque
+    empreinte de commandes est présente, sinon lève `ValueError`. Ne modifie
+    aucune archive ni préparation figée. Voir le [guide de préparation](../../docs/guides/preparer-une-piece.md).
+    """
     if not plaques:
         raise ValueError("Aucun G-code de plaque dans le fichier.")
     vide = hashlib.sha256(b"").hexdigest()
@@ -100,6 +124,12 @@ def verifier_gcodes(plaques: dict) -> None:
 
 
 def statuts_rapport(rapport: str | Path) -> dict:
+    """Compte récursivement les statuts d’un rapport JSON de contrôle.
+
+    Reçoit le chemin d’un rapport JSON objet ou liste ; retourne un compte par
+    statut, avec `NON VÉRIFIÉ` si aucun statut n’est déclaré. Le rapport reste
+    inchangé ; voir le parcours de préparation du [guide](../../docs/guides/preparer-une-piece.md).
+    """
     contenu = json.loads(Path(rapport).read_text(encoding="utf-8"))
     if not isinstance(contenu, (dict, list)):
         raise ValueError("Rapport attendu : objet ou liste JSON.")
@@ -108,6 +138,13 @@ def statuts_rapport(rapport: str | Path) -> dict:
 
 
 def comparer_envoi(envoi: dict, attendu: dict) -> dict:
+    """Associe les plaques d’un envoi aux empreintes de commandes préparées.
+
+    Reçoit deux dictionnaires indexés par numéro de plaque ; retourne un libellé
+    par plaque indiquant l’unicité, l’ambiguïté ou l’écart des empreintes SHA-256.
+    Cette comparaison numérique ne prouve ni l’exécution du fichier ni un résultat
+    physique et ne modifie pas les fiches. Voir le [guide de préparation](../../docs/guides/preparer-une-piece.md).
+    """
     resultat = {}
     for numero, plaque in envoi.items():
         correspondances = [
