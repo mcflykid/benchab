@@ -6593,7 +6593,15 @@
         "corpus_3mf_projet"
       ],
       "type": "inconnu",
-      "longueur": null
+      "longueur": null,
+      "lecture_conditionnelle": {
+        "unite": "mm3",
+        "ordre": "source-vers-destination",
+        "revision_source": "6103ed8b511609658d00d0538cc7f0609cdb57da",
+        "fichier_source": "src/OrcaSlicer.cpp",
+        "lignes_source": [2607, 2660],
+        "validation_binaire": false
+      }
     },
     "flush_volumes_vector": {
       "formes": [

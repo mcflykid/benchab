@@ -2,12 +2,15 @@
 
 import hashlib
 import json
+import sqlite3
+import threading
 
 import pytest
 
 from benchab.donnees.base import Base
 from benchab.donnees.vues import generer
 from benchab.qualite import plan_reparation
+from benchab.qualite.ecritures import PublicationNeuve
 
 
 def _atelier(racine):
@@ -183,6 +186,106 @@ def test_plan_nouvre_pas_une_base_a_journal_wal(tmp_path, monkeypatch):
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["actions"] == []
     assert _empreintes(prive) == avant
+
+
+def test_plan_refuse_bascule_wal_apres_lecture_initiale_entete(tmp_path, monkeypatch):
+    """Le mode journal effectif est vérifié après l'ouverture de l'instantané SQLite."""
+    prive = _atelier(tmp_path)
+    entete_originale = plan_reparation._entete_sqlite
+    bascule_effectuee = False
+
+    def entete_puis_bascule(chemin):
+        nonlocal bascule_effectuee
+        entete = entete_originale(chemin)
+        if not bascule_effectuee:
+            bascule_effectuee = True
+            with sqlite3.connect(chemin) as connexion:
+                assert connexion.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
+        return entete
+
+    monkeypatch.setattr(plan_reparation, "_entete_sqlite", entete_puis_bascule)
+
+    rapport = plan_reparation.planifier(prive)
+
+    assert bascule_effectuee
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["actions"] == []
+    assert "journal" in rapport["detail"].lower()
+
+
+def test_appliquer_refuse_wal_effectif_avant_preuve(tmp_path, monkeypatch):
+    """Un passage WAL après l'en-tête initial est refusé avant preuve ou copie."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    entete_originale = plan_reparation._entete_sqlite
+    bascule_effectuee = False
+
+    def entete_puis_bascule(chemin):
+        nonlocal bascule_effectuee
+        entete = entete_originale(chemin)
+        if not bascule_effectuee:
+            bascule_effectuee = True
+            with sqlite3.connect(chemin) as connexion:
+                assert connexion.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
+        return entete
+
+    monkeypatch.setattr(plan_reparation, "_entete_sqlite", entete_puis_bascule)
+
+    with pytest.raises(ValueError, match="journal"):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+
+    assert bascule_effectuee
+    assert not cible.exists()
+    assert not list((prive / "sauvegardes/vues").glob("reprise-lien-*.json"))
+    assert index.is_symlink() and candidat.read_bytes() == attendu
+
+
+@pytest.mark.parametrize("apres_copie", [False, True])
+def test_appliquer_refuse_base_remplacee_apres_preuve(tmp_path, monkeypatch, apres_copie):
+    """Le changement d’identité SQLite avant ou juste après la copie interdit PASS."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    base = prive / "benchab.sqlite"
+    publieur = PublicationNeuve.publier
+
+    def remplacer_base_apres_preuve(publication):
+        resultat = publieur(publication)
+        if any(
+            chemin == cible if apres_copie else chemin.name.startswith("reprise-lien-")
+            for chemin in publication.sorties
+        ):
+            remplacement = tmp_path / "base-remplacement.sqlite"
+            remplacement.write_bytes(base.read_bytes())
+            remplacement.replace(base)
+        return resultat
+
+    monkeypatch.setattr(PublicationNeuve, "publier", remplacer_base_apres_preuve)
+
+    with pytest.raises(ValueError, match="Identité du chemin SQLite modifiée"):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+
+    if apres_copie:
+        assert cible.read_bytes() == attendu
+    else:
+        assert not cible.exists()
+    assert index.is_symlink() and candidat.read_bytes() == attendu
+    assert list((prive / "sauvegardes/vues").glob("reprise-lien-*.json"))
 
 
 def test_appliquer_vue_absente_depuis_plan_conserve_sqlite(tmp_path):
@@ -499,3 +602,239 @@ def test_plan_lien_casse_ignore_un_homonyme_a_la_racine(tmp_path):
     proposition = next(item for item in rapport["propositions_liens"] if item["cible"] == "vues/INDEX.md")
     assert proposition["candidat"] == "candidat.md"
     assert rapport["statut"] == "WARN"
+
+
+def test_appliquer_candidat_recree_la_cible_du_lien_sans_remplacer_le_lien(tmp_path):
+    """La reprise copie une preuve SHA exacte vers une cible absente et garde le lien."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidats/INDEX.md"
+    candidat.parent.mkdir()
+    candidat.write_bytes(attendu)
+    candidat_avant = candidat.read_bytes()
+    lien_avant = index.readlink()
+    base_sha = hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest()
+    rapport = plan_reparation.planifier(prive, candidats=["candidats/INDEX.md"])
+
+    resultat = plan_reparation.appliquer_candidat_lien(
+        prive, rapport, "vues/INDEX.md", "candidats/INDEX.md"
+    )
+
+    preuve = prive / resultat["preuve"]
+    preuve_json = json.loads(preuve.read_text(encoding="utf-8"))
+    assert resultat["statut"] == "PASS"
+    assert cible.read_bytes() == attendu
+    assert index.is_symlink() and index.readlink() == lien_avant
+    assert candidat.read_bytes() == candidat_avant
+    assert preuve_json["lien_relatif"] == "recuperation/INDEX.md"
+    assert preuve_json["cible_avant"] == "ABSENTE"
+    assert preuve_json["candidat_sha256"] == hashlib.sha256(attendu).hexdigest()
+    assert hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest() == base_sha
+
+
+def test_ecriture_sqlite_concurrente_ne_committe_pas_entre_preuve_et_copie(tmp_path, monkeypatch):
+    """La transaction RO garde le rendu source fixe jusqu'à la copie du candidat."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    attendu = index.read_bytes()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    base = prive / "benchab.sqlite"
+    with sqlite3.connect(base) as connexion:
+        assert connexion.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal"
+    tentatives = []
+    publier = PublicationNeuve.publier
+
+    def tenter_ecriture_apres_preuve(publication):
+        resultat = publier(publication)
+        if not any(path.name.startswith("reprise-lien-") for path in publication.sorties):
+            return resultat
+
+        def ecrire():
+            try:
+                with sqlite3.connect(base, timeout=0.15) as connexion:
+                    connexion.execute(
+                        "UPDATE projets SET nom=? WHERE id=?", ("Projet concurrent", "demo")
+                    )
+                tentatives.append("COMMIT")
+            except sqlite3.OperationalError as erreur:
+                raison = str(erreur).lower()
+                tentatives.append("BLOQUÉE" if "locked" in raison or "busy" in raison else "ERREUR")
+
+        ecrivain = threading.Thread(target=ecrire)
+        ecrivain.start()
+        ecrivain.join(timeout=2)
+        assert not ecrivain.is_alive(), "L'écrivain doit terminer ou échouer avant la copie."
+        return resultat
+
+    monkeypatch.setattr(PublicationNeuve, "publier", tenter_ecriture_apres_preuve)
+
+    resultat = plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+
+    assert resultat["statut"] == "PASS"
+    assert tentatives == ["BLOQUÉE"]
+    assert cible.read_bytes() == attendu
+    with sqlite3.connect(base) as connexion:
+        nom = connexion.execute("SELECT nom FROM projets WHERE id='demo'").fetchone()[0]
+    assert nom == "Projet témoin"
+
+
+def test_appliquer_candidat_refuse_candidat_change_et_cible_apparue(tmp_path):
+    """La reprise replanifie sous verrou et refuse une preuve modifiée ou une cible occupée."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    candidat.write_bytes(b"preuve modifiee")
+
+    with pytest.raises((ValueError, RuntimeError)):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+    assert not cible.exists()
+    assert index.is_symlink()
+
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    deplace = prive / "deplace/candidat.md"
+    deplace.parent.mkdir()
+    candidat.rename(deplace)
+    with pytest.raises((ValueError, RuntimeError)):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+    assert not cible.exists()
+    assert deplace.read_bytes() == attendu
+
+    deplace.rename(candidat)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    cible.write_bytes(b"octets apparus apres le plan")
+    avant = cible.read_bytes()
+    with pytest.raises((ValueError, RuntimeError)):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+    assert cible.read_bytes() == avant
+    assert index.is_symlink()
+
+
+def test_appliquer_candidat_refuse_lien_change_depuis_plan(tmp_path):
+    """Le SHA et l'identité du lien du plan empêchent de suivre une cible remplacée."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(index.read_bytes())
+    index.unlink()
+    index.symlink_to("restauration/premiere.md")
+    (prive / "vues/restauration").mkdir()
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    index.unlink()
+    index.symlink_to("restauration/seconde.md")
+
+    with pytest.raises(ValueError, match="modifié depuis le plan"):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+
+    assert not (prive / "vues/restauration/premiere.md").exists()
+    assert not (prive / "vues/restauration/seconde.md").exists()
+
+
+def test_plan_ne_propose_pas_de_cible_sous_parent_lie(tmp_path):
+    """Un parent de destination symbolique reste NON VÉRIFIÉ et n'est jamais copié."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(index.read_bytes())
+    index.unlink()
+    cible_reelle = prive / "vues/reelle"
+    cible_reelle.mkdir()
+    (prive / "vues/liee").symlink_to(cible_reelle, target_is_directory=True)
+    index.symlink_to("liee/INDEX.md")
+
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["propositions_liens"] == []
+    assert not (cible_reelle / "INDEX.md").exists()
+
+
+def test_plan_refuse_une_cible_de_lien_avec_composant_point(tmp_path):
+    """Un chemin de lien non canonique reste NON VÉRIFIÉ même s'il résout dans vues/."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(index.read_bytes())
+    index.unlink()
+    (prive / "vues/recuperation").mkdir()
+    index.symlink_to("./recuperation/INDEX.md")
+
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["propositions_liens"] == []
+    assert not (prive / "vues/recuperation/INDEX.md").exists()
+
+
+def test_appliquer_candidat_refuse_manifeste_et_vue_canonique(tmp_path):
+    """Une cible de lien égale au manifeste ou à une autre vue n'est jamais copiée."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(index.read_bytes())
+    manifeste = prive / "vues/manifest.json"
+    manifeste.unlink()
+    index.unlink()
+    index.symlink_to("manifest.json")
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    with pytest.raises(ValueError):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+    assert not manifeste.exists()
+    assert index.is_symlink()
+
+    index.unlink()
+    etat = next((prive / "vues/etats").glob("*.md"))
+    relatif_etat = etat.relative_to(prive).as_posix()
+    etat.unlink()
+    index.symlink_to("etats/" + etat.name)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    with pytest.raises(ValueError):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+    assert not etat.exists()
+    assert index.is_symlink()
+    assert relatif_etat.startswith("vues/etats/")
+
+
+def test_cli_applique_candidat_de_lien_explicitement(tmp_path, capsys):
+    """La CLI copie un candidat uniquement après plan explicite et option dédiée."""
+    from benchab import cli
+
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(index.read_bytes())
+    index.unlink()
+    (prive / "vues/recuperation").mkdir()
+    index.symlink_to("recuperation/INDEX.md")
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    plan = tmp_path / "plan.json"
+    plan.write_text(json.dumps(rapport), encoding="utf-8")
+
+    code = cli.main([
+        "--prive", str(prive), "controle", "appliquer-reparation-vue",
+        "--plan", str(plan), "--cible", "vues/INDEX.md", "--candidat", "candidat.md",
+    ])
+
+    resultat = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert resultat["statut"] == "PASS"
+    assert (prive / "vues/recuperation/INDEX.md").read_bytes() == candidat.read_bytes()
+    assert index.is_symlink()

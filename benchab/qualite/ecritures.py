@@ -1,6 +1,4 @@
-"""
-
-Publication locale sans écrasement, après préparation et validation privées.
+"""Publier des fichiers locaux sans écrasement après préparation privée.
 
 Chaque lien publié est atomique ; l'ensemble de plusieurs fichiers ne l'est pas.
 Les lecteurs doivent attendre le retour de publier(). Aucun fichier préexistant
@@ -26,7 +24,12 @@ from benchab.qualite.empreintes import sha256_fichier as _sha
 
 
 def sortie_privee(chemin, *, prive=None):
-    """Valide un chemin privé/temporaire ; Path sans unité, FAIL hors périmètre ou lien, aucune écriture."""
+    """Vérifier qu'une sortie reste privée ou temporaire hors dépôt.
+
+    Entrées : chemin et racine privée optionnelle, sans unité.
+    Sortie : chemin absolu validé.
+    Échec : ValueError sur un lien ou une sortie hors périmètre ; aucune écriture.
+    """
     from benchab.chemins import atelier_prive, est_temporaire_hors_depot
 
     chemin = _sans_lien(chemin)
@@ -37,7 +40,12 @@ def sortie_privee(chemin, *, prive=None):
 
 
 def sortie_durable(chemin, *, prive=None):
-    """Valide un chemin de preuve sous l’atelier choisi ; Path sans unité, FAIL hors atelier/lien, sans écriture."""
+    """Vérifier qu'une preuve reste sous l'atelier privé choisi.
+
+    Entrées : chemin et racine privée optionnelle, sans unité.
+    Sortie : chemin absolu validé.
+    Échec : ValueError sur un lien ou une sortie hors atelier ; aucune écriture.
+    """
     from benchab.chemins import atelier_prive
 
     racine = atelier_prive(prive)
@@ -48,10 +56,12 @@ def sortie_durable(chemin, *, prive=None):
 
 
 def destination_neuve(chemin, *, prive=None, temporaire=True):
-    """Valide une destination neuve sans unité, privée ou jetable ; FAIL sur lien/existant, sans création.
+    """Réserver la validation d'une destination privée encore absente.
 
-    Le temporaire doit rester hors checkout public ; cette garde ne réserve pas
-    le nom. L'appelant publie ensuite exclusivement (docs/reference/chemins-et-atelier.md).
+    Entrées : chemin, racine privée optionnelle et mode temporaire, sans unité.
+    Sortie : chemin validé ; FileExistsError si la destination existe déjà.
+    Aucun fichier n'est créé et le nom n'est pas réservé ; publier exclusivement
+    ensuite (docs/reference/chemins-et-atelier.md).
     """
     garde = sortie_privee if temporaire else sortie_durable
     cible = garde(chemin, prive=prive)
@@ -83,13 +93,12 @@ def verifier_references_durables(valeur, prive, *, champ=None):
 
 
 def ouvrir_verrou(nom, directory):
-    """
-    Création exclusive ou ouverture du même verrou stable, sans le retirer.
+    """Obtenir le descripteur du verrou stable sans le retirer.
 
-        ENOENT a été observé à la création concurrente sous macOS. La reprise est
-        bornée et ne concerne que cette fenêtre : aucun verrou acquis n’est forcé.
-        Une erreur permanente, un lien ou un parent détaché restent bloquants.
-
+    Entrées : nom de fichier et descripteur du dossier parent, sans unité.
+    Sortie : descripteur ouvert sur un fichier ordinaire.
+    Erreurs : OSError après huit tentatives de reprise de l'absence transitoire.
+    Invariant : ne supprime ni ne force un verrou détenu ailleurs.
     """
     erreur = None
     for tentative in range(8):
@@ -113,8 +122,11 @@ def ouvrir_verrou(nom, directory):
 
 
 def acquerir_verrou(verrou, delai=5.0):
-    """
-    Attente bornée ; le verrou détenu ailleurs n'est jamais forcé.
+    """Attendre au plus le délai fourni pour obtenir le verrou exclusif.
+
+    Entrées : descripteur du verrou et délai en secondes (défaut : 5 s).
+    Sortie : aucune valeur ; ValueError si le délai est invalide ou dépassé.
+    Invariant : ne force jamais la libération d'un verrou détenu ailleurs.
     """
     import math
 
@@ -133,15 +145,12 @@ def acquerir_verrou(verrou, delai=5.0):
 
 
 def modifier_json(path, modifier):
-    """
-    Lecture/modification/remplacement atomique, sérialisé entre processus.
+    """Vérifier les données puis publier leur remplacement JSON sous verrou.
 
-        Le verrou porte sur un fichier stable voisin, jamais sur l'inode remplacé.
-        Le callback travaille sur les dernières données relues sous verrou. Une
-        interruption avant replace laisse l'original complet. Les autres écrivains
-        doivent utiliser la même transaction ; une modification externe observée
-        avant publication est refusée. Les parents sont résolus puis épinglés.
-
+    Entrées : chemin du JSON et callback recevant le dictionnaire chargé.
+    Sortie : valeur renvoyée par le callback ; aucune unité.
+    Échec : ValueError si le JSON ou le fichier change hors transaction.
+    Invariant : conserve l'original complet en cas d'échec avant remplacement.
     """
     path = Path(path)
     if path.is_symlink():

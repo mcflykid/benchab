@@ -50,6 +50,10 @@ Une revue locale ne vaut que pour la zone et l’empreinte qu’elle vise ; un f
 modifié invalide sa preuve. Le contrôle de [continuité](continuite-paroi.md)
 utilise des seuils absolus et précise la portée de toute référence.
 
+Le [contrôle des changements d’outil](purge-changements.md) sépare les
+transitions écrites dans le G-code et le calcul conditionnel d’une matrice.
+Il ne mesure pas une purge physique.
+
 Une opportunité de découpe n’est ni une coupe calculée ni une validation de
 connecteur. Les [contrôles propres à la découpe](../guides/decoupe.md) sont distincts.
 Le contrôle de publication est décrit dans le [guide développeur](../guides/developpement.md).
