@@ -254,8 +254,9 @@ def normaliser(source, destination, usage="impression", identifiants=None, *, co
                 for nom in noms:
                     information = entree.information(nom)
                     if nom in remplacements:
-                        with sortie.open(information, "w") as cible:
-                            cible.write(remplacements[nom])
+                        # Ces deux membres sont déjà bornés en mémoire ; garder
+                        # le chemin d’écriture testé en cas de panne de ZIP.
+                        sortie.writestr(information, remplacements[nom])
                     else:
                         with entree.ouvrir_flux(nom) as flux, sortie.open(information, "w") as cible:
                             shutil.copyfileobj(flux, cible)
