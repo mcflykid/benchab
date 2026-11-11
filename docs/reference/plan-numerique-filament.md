@@ -8,7 +8,12 @@ Le résultat reste toujours `NON VÉRIFIÉ`. Quand les sources sont complètes, 
 
 Le champ `indice_repere_dans_envoi` indique seulement que l’index figure parmi les indices `filaments_utilises` du lecteur. Cette liste peut être alimentée par une commande `T` ou par une masse positive, même sans commande `T` explicite ; le champ ne prouve donc pas une sélection physique d’outil.
 
-Ce plan n’écrit pas dans SQLite et ne change aucune masse de bobine. La commande refuse les bases WAL ou non identifiées et garde les lectures dans un snapshot transactionnel à délai borné. Elle ne crée pas d’atelier absent et n’instancie ni Base applicative ni mesure.
+Ce plan n’écrit pas dans SQLite et ne change aucune masse de bobine. La
+commande refuse les bases WAL ou non identifiées et lit les relations dans
+une transaction de lecture. L’attente d’un verrou SQLite est limitée à une
+seconde ; le calcul des empreintes et la lecture de l’archive suivent leurs
+propres budgets de lecture. La commande ne crée pas d’atelier absent et ne
+lance aucune mesure d’usage.
 
 Le résultat n’établit pas que le 3MF envoyé est celui exécuté, ne relie pas un index G-code à un outil physique, à un emplacement ACE ou à une bobine, et ne transforme pas les grammes estimés en consommation réelle. Le suivi de ces preuves reste ouvert dans #77.
 
