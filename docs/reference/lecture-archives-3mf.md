@@ -108,3 +108,11 @@ membres de plaque dans un seul contexte borné. Un indice unique comme
 Une plaque aux clés `index`, `prediction` ou `weight` absentes, répétées ou
 mal formées est refusée. Les métriques de dépôt et les opérations du lanceur
 sont inchangées (#169).
+
+À l’import d’une source de nouveau projet, la copie privée du 3MF passe les
+mêmes budgets et contrôles CRC avant l’inscription. Ses octets restent ceux
+de l’original : aucune normalisation ni extraction n’est effectuée (#122).
+
+À la sortie d’un tranchage, les résultats, réglages attendus, membres de plaque
+et CRC sont vérifiés depuis une même lecture du 3MF. Deux fichiers G-code qui
+portent le même numéro sous des graphies différentes sont refusés (#171).

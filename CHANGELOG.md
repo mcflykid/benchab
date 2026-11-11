@@ -2,6 +2,15 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir
+
+- Tranchage : refuse deux membres G-code pour un même numéro de plaque et
+  contrôle l’archive de sortie dans un même contexte (#171).
+- Archives : contrôle intégralement la copie d’un 3MF avant l’inscription
+  d’un nouveau projet, sans changer ses octets (suite de #122).
+- Incidents : compare une liste explicite de cas à un rapport JUnit borné ;
+  l’exécution des tests reste non attestée (suite de #119).
+
 ## 1.8.0 — 2026-11-11
 
 - 3MF : remplace une cible directe ou une feuille non partagée d’un assemblage

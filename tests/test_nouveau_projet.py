@@ -139,6 +139,18 @@ class NouveauProjet(unittest.TestCase):
         self.assertIn("sortie fixture exacte", json.loads(
             (projet / "preuves/controles/execution_cassee.json").read_text())["sortie_complete"])
 
+    def test_source_3mf_crc_invalide_ne_cree_pas_de_projet(self):
+        """Une copie 3MF au CRC incorrect ne publie ni projet ni ligne SQLite."""
+        source = self.prive / "source.3mf"
+        with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("Metadata/notes.txt", b"preuve 1234")
+        brut = source.read_bytes().replace(b"preuve 1234", b"preuve 5678")
+        source.write_bytes(brut)
+        with self.assertRaises((ValueError, zipfile.BadZipFile)):
+            self.creer("crc-invalide", sources=[source])
+        self.assert_absent("crc-invalide")
+        self.assertEqual(source.read_bytes(), brut)
+
     def test_objectifs_opt_in_et_collision_preserve(self):
         for objectif in sorted(N.OBJECTIFS):
             projet = self.creer("objectif-" + objectif, objectif=objectif)

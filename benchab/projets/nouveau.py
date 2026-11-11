@@ -22,6 +22,7 @@ import uuid
 import zipfile
 from pathlib import Path
 
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive
 from benchab.donnees.base import Base
 from benchab.gabarits.ressources import fichiers as fichiers_gabarit
@@ -192,10 +193,10 @@ def _copier_sources(stage: Path, nom: str, sources):
         ) or source_sha != copie_sha:
             raise ValueError("source modifiée pendant la copie ou copie différente")
         if suffix.endswith(".3mf"):
-            with zipfile.ZipFile(dest) as archive:
-                names = archive.namelist()
-                if len(names) != len(set(names)) or archive.testzip():
-                    raise ValueError("archive source invalide ou contenant des doublons")
+            # Vérifier la copie entière avant l’inscription, sans transformer l’original (#122).
+            with Archive3MF(dest) as archive:
+                archive.verifier()
+                archive.verifier_source(dest)
         rows.append({"chemin": dest.relative_to(stage).as_posix(), "sha256": source_sha, "nom_original": path.name})
     return rows
 
