@@ -32,6 +32,7 @@ from pathlib import Path
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.qualite.ecritures import PublicationNeuve
 
 # Critères de la revue P07 (26/10/2026), seuils théoriques jusqu'aux retours d'impression ; les réviser avec date.
 CRITERES = {
@@ -224,11 +225,14 @@ def revoir(tranche, envoi, revue_p, faits_p):
     return {"env": env, "faits": faits, "auto": auto, "gardees": gardees, "reste": reste, "plaques": resume_pl}
 
 
-def ecrire(res, revue_p, faits_p):
-    """Publie les preuves de revue liées aux zones, sans valider physiquement la pièce."""
+def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
+    """Écrit les JSON de revue liés par SHA-256, dont les mesures en mm si fournies.
+
+    En mode neuf, refuse toute collision ; aucune validation physique ni correction des mesures déclarées.
+    """
     fp = Path(faits_p)
-    fp.parent.mkdir(parents=True, exist_ok=True)
-    fp.write_text(
+    rp = Path(revue_p)
+    faits = (
         json.dumps(
             {
                 "outil": "outils/controles/revue_locale.py",
@@ -242,11 +246,13 @@ def ecrire(res, revue_p, faits_p):
             },
             ensure_ascii=False,
         )
-        + "\n",
-        encoding="utf-8",
-    )
+        + "\n"
+    ).encode("utf-8")
     preuve = [
-        {"fichier": Path(os.path.relpath(fp.resolve(), Path(revue_p).resolve().parent)).as_posix(), "sha256": sha(fp)}
+        {
+            "fichier": Path(os.path.relpath(fp.absolute(), rp.absolute().parent)).as_posix(),
+            "sha256": hashlib.sha256(faits).hexdigest(),
+        }
     ]  # relatif à la revue, comme le lit zones_locales.evaluer
     zones = dict(res["gardees"])
     for i, j in res["auto"].items():
@@ -263,7 +269,20 @@ def ecrire(res, revue_p, faits_p):
         "auteur": "revue_locale.py (critères déclarés) ; décisions humaines conservées",
         "zones": dict(sorted(zones.items())),
     }
-    Path(revue_p).write_text(json.dumps(doc, ensure_ascii=False, indent=0) + "\n", encoding="utf-8")
+    if "mesures_recul_recouvrement" in res:
+        doc["mesures_recul_recouvrement"] = res["mesures_recul_recouvrement"]
+    revue = (json.dumps(doc, ensure_ascii=False, indent=0) + "\n").encode("utf-8")
+    if sorties_neuves:
+        # PublicationNeuve revalide et lie les sorties exclusivement : une course ne peut écraser un voisin.
+        with PublicationNeuve([], [rp, fp]) as publication:
+            publication.temporaire(fp).write_bytes(faits)
+            publication.temporaire(rp).write_bytes(revue)
+            publication.publier()
+    else:
+        # Le parcours historique réécrit sa revue explicitement choisie après avoir gardé ses décisions.
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.write_bytes(faits)
+        rp.write_bytes(revue)
 
 
 def main(argv):

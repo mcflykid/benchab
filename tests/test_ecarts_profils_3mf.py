@@ -210,6 +210,30 @@ def test_famille_machine_compare_le_vecteur_natif_exact(tmp_path):
     assert rapport["comparaisons"][0]["valeur_3mf"] == ["500", "600"]
 
 
+def test_coherence_distingue_ecart_prouve_et_sources_incompletes(tmp_path):
+    """Le même profil peut servir à deux slots ; la matière contradictoire reste visible malgré les inconnus."""
+    modele = tmp_path / "scene.3mf"
+    _archive(modele, {
+        "printer_model": "Machine de test",
+        "filament_settings_id": ["PLA-A", "PLA-A"],
+        "filament_type": ["PLA", "PETG"],
+    })
+    machine = _profil(tmp_path / "machine.json", "machine", "Machine", {"printer_model": "Machine de test"})
+    pla = _profil(tmp_path / "pla.json", "filament", "PLA-A", {"filament_type": ["PLA"]})
+    rapport = ecarts_profils_3mf.comparer(modele, [machine, pla])
+    coherence = rapport["coherence"]
+    assert coherence["statut"] == "WARN"
+    controles = {(r["cle"], r["slot"]): r for r in coherence["resultats"]}
+    assert controles["printer_model", None]["statut"] == "PASS"
+    assert controles["wall_sequence", None]["statut"] == "NON VÉRIFIÉ"
+    assert controles["filament_type", 1]["statut"] == "PASS"
+    ecart = controles["filament_type", 2]
+    assert ecart["statut"] == "WARN"
+    assert (ecart["valeur_3mf"], ecart["valeur_profil"]) == ("PETG", "PLA")
+    assert ecart["source_3mf"]["sha256"] == hashlib.sha256(modele.read_bytes()).hexdigest()
+    assert ecart["source_profil"]["sha256"] == hashlib.sha256(pla.read_bytes()).hexdigest()
+
+
 def test_profils_modifies_pendant_comparaison_refuses_le_rapport(tmp_path, monkeypatch):
     """Une mutation après résolution change le SHA et annule le rapport."""
     modele = tmp_path / "scene.3mf"

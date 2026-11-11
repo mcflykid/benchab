@@ -53,6 +53,12 @@ trois essais par cause identifiée. Ces noms de fonctions orientent une enquête
 ils ne prouvent pas à eux seuls la cause. `sandbox-exec` ne fait pas partie du
 parcours. Aucun accès aux profils installés n’est nécessaire au lanceur.
 
+Une cause non identifiée est plafonnée uniquement pour la même opération et le
+même contexte vérifiable : SHA-256 source pour le tranchage et la visualisation,
+mode explicite (`aide` ou `defauts`) pour l’inspection. Les anciennes inconnues
+sans ce contexte restent dans l’historique, mais ne sont pas agrégées à une
+nouvelle demande ; elles ne permettent pas de déterminer si la cause est commune.
+
 ## Relire le résultat
 
 Rouvrir le 3MF, contrôler toutes les plaques et les paramètres réellement

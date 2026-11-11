@@ -4,18 +4,16 @@ import argparse
 import json
 import math
 import re
-import zipfile
 from pathlib import Path
+from zipfile import BadZipFile
 
+from benchab.archives_3mf import Archive3MF
 from benchab.donnees.base import Base
 from benchab.fabrication.anycubic import resultats
 from benchab.projets.envois import lire_fiche
 
 _ID_PREPARATION = re.compile(r"P[0-9]+\Z")
-_NOMS_PLATE = re.compile(
-    r'<metadata key="plater_id" value="([0-9]+)"\s*/>\s*'
-    r'<metadata key="plater_name" value="([^"]*)"\s*/>'
-)
+_MAX_MODEL_SETTINGS_XML = 8 * 1024 * 1024
 
 
 def _fichier_dans(racine: Path, relatif: str) -> Path | None:
@@ -51,9 +49,24 @@ def _preparation_courante(projet: Path) -> Path | None:
 
 
 def _noms_plaques(archive: Path) -> dict[str, str]:
-    with zipfile.ZipFile(archive) as paquet:
-        contenu = paquet.read("Metadata/model_settings.config").decode("utf-8")
-    return dict(_NOMS_PLATE.findall(contenu))
+    """Lit les noms de plaque depuis un membre indexé, sans modifier le 3MF."""
+    with Archive3MF(archive, taille_max_xml=_MAX_MODEL_SETTINGS_XML) as paquet:
+        racine = paquet.xml("Metadata/model_settings.config")
+    noms = {}
+    for plaque in racine.findall(".//plate"):
+        identifiants = [
+            meta.get("value") for meta in plaque.findall("metadata")
+            if meta.get("key") == "plater_id" and meta.get("value", "").isdecimal()
+        ]
+        titres = [
+            meta.get("value") for meta in plaque.findall("metadata")
+            if meta.get("key") == "plater_name" and meta.get("value") is not None
+        ]
+        if len(identifiants) == 1 and len(titres) == 1:
+            if identifiants[0] in noms:
+                raise ValueError("Identifiant de plaque dupliqué dans model_settings.config")
+            noms[identifiants[0]] = titres[0]
+    return noms
 
 
 def plaques_pretes(projets_root: str | Path, base: Base | None = None) -> list[dict]:
@@ -213,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         rapport = rendre(plaques_pretes(projets, base), args.creneau)
         with sortie.open("x", encoding="utf-8") as flux:
             flux.write(rapport)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError, zipfile.BadZipFile) as erreur:
+    except (OSError, ValueError, KeyError, json.JSONDecodeError, BadZipFile) as erreur:
         parser.error(str(erreur))
     finally:
         base.fermer()

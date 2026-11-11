@@ -11,8 +11,10 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -388,18 +390,86 @@ def _environnement_slicer(travail):
     }
 
 
-def _verifier_limite_causes(prive):
-    """Partage le plafond de trois incidents entre inspection et tranchage (docs/reference/slicer-anycubic.md)."""
-    echecs = {}
-    for famille in ("tranchages", "options-slicer"):
-        for ancien in (_prive(prive) / "mesures" / famille).glob("*.json"):
-            if ancien.is_symlink() or ancien.stat().st_size > 8 * 1024**2:
-                raise ValueError("Rapport d'incident invalide ; nouveau lancement refusé")
-            cause = json.loads(ancien.read_text()).get("diagnostic", {}).get("cause")
-            if cause:
-                groupe = GROUPES_CAUSES.get(cause, cause)
-                echecs[groupe] = echecs.get(groupe, 0) + 1
-    if any(nombre >= 3 for nombre in echecs.values()):
+def _cle_incident(rapport, operation=None, *, mode=None):
+    """Identifie une cause ou une inconnue reliée par opération et SHA/contexte explicite."""
+    diagnostic_rapport = rapport.get("diagnostic", {})
+    cause = diagnostic_rapport.get("cause") if isinstance(diagnostic_rapport, dict) else None
+    if cause and cause != "inconnue":
+        return ("cause", GROUPES_CAUSES.get(cause, cause))
+    if cause != "inconnue":
+        return None
+    incident = rapport.get("incident", {})
+    operation = operation or incident.get("operation") or rapport.get("operation")
+    mode = mode or rapport.get("mode")
+    if operation is None and mode == "visualisation":
+        operation = "visualisation"
+    elif operation is None and mode in {"aide", "defauts"}:
+        operation = "options-slicer"
+    if operation == "options-slicer":
+        if mode in {"aide", "defauts"}:
+            return ("inconnue", operation, mode)
+        return None
+    if operation in {"tranchage", "visualisation"}:
+        empreinte = rapport.get("source_sha256")
+        if isinstance(empreinte, str) and re.fullmatch(r"[0-9a-f]{64}", empreinte):
+            return ("inconnue", operation, empreinte)
+    return None
+
+
+def _plafond_atteint(rapports, *, operation, source_sha256=None, mode=None):
+    """Teste le plafond sur des rapports déjà chargés, sans confondre les contextes inconnus."""
+    comptes = {}
+    for rapport, operation_historique in rapports:
+        cle = _cle_incident(rapport, operation_historique)
+        if cle is not None:
+            comptes[cle] = comptes.get(cle, 0) + 1
+    if any(cle[0] == "cause" and nombre >= 3 for cle, nombre in comptes.items()):
+        return True
+    courant = _cle_incident(
+        {"diagnostic": {"cause": "inconnue"}, "source_sha256": source_sha256},
+        operation,
+        mode=mode,
+    )
+    return courant is not None and comptes.get(courant, 0) >= 3
+
+
+def _lire_rapport_limite(chemin, *, libelle="Rapport d'incident invalide"):
+    """Lit jusqu'à 8 Mio de JSON ordinaire sans suivre de lien ; refuse fichiers changeants ou hors borne."""
+    chemin = Path(chemin)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        descripteur = os.open(chemin, flags)
+    except OSError as erreur:
+        raise ValueError(libelle) from erreur
+    limite = 8 * 1024**2
+    with os.fdopen(descripteur, "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size > limite:
+            raise ValueError(libelle)
+        contenu = flux.read(limite + 1)
+        apres = os.fstat(flux.fileno())
+        if len(contenu) > limite or len(contenu) != apres.st_size or (
+            avant.st_dev, avant.st_ino, avant.st_size, avant.st_mtime_ns
+        ) != (apres.st_dev, apres.st_ino, apres.st_size, apres.st_mtime_ns):
+            raise ValueError(libelle)
+    try:
+        return json.loads(contenu.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as erreur:
+        raise ValueError(libelle) from erreur
+
+
+def _verifier_limite_causes(prive, *, operation="tranchage", source_sha256=None, mode=None):
+    """Partage le plafond des causes établies ; les inconnues exigent même opération et contexte."""
+    def rapports():
+        familles = (("tranchages", "tranchage"), ("options-slicer", "options-slicer"))
+        for famille, contexte in familles:
+            for ancien in (_prive(prive) / "mesures" / famille).glob("*.json"):
+                rapport = _lire_rapport_limite(
+                    ancien, libelle="Rapport d'incident invalide ; nouveau lancement refusé"
+                )
+                yield rapport, contexte
+
+    if _plafond_atteint(rapports(), operation=operation, source_sha256=source_sha256, mode=mode):
         raise ValueError("Trois essais atteints pour une cause : aucun nouveau lancement autorisé.")
 
 
@@ -424,11 +494,14 @@ def inspecter_options(*, prive=None, mode="aide"):
     commande += ["--help"] if mode == "aide" else ["--export-settings", str(travail / "defauts.json")]
     debut = time.time()
     journal = travail / "options.log"
-    resultat = {"commande": commande, "journal": str(journal), "journal_natif": str(journal), "travail": str(travail)}
+    resultat = {
+        "commande": commande, "journal": str(journal), "journal_natif": str(journal),
+        "travail": str(travail), "mode": mode,
+    }
     from benchab.processus import executer
 
     with verrou_slicer(), journal.open("x") as flux:
-        _verifier_limite_causes(prive)
+        _verifier_limite_causes(prive, operation="options-slicer", mode=mode)
         # Même une demande d'aide peut engendrer des enfants : le groupe commun
         # garantit leur arrêt au délai (docs/reference/slicer-anycubic.md).
         proc = executer(commande, cwd=travail, env=_environnement_slicer(travail),
@@ -719,8 +792,16 @@ def archiver_echec(resultat, demande, prive):
     diagnostic_incident = resultat.get("diagnostic", {})
     pile = diagnostic_incident.get("pile_complete", diagnostic_incident.get("fonctions", []))
     (dossier / "pile.txt").write_text("\n".join(pile) + "\n", encoding="utf-8")
+    mode = resultat.get("mode")
+    operation = (
+        "options-slicer" if mode in {"aide", "defauts"}
+        else mode if mode == "visualisation"
+        else "tranchage" if demande.get("source") is not None
+        else "options-slicer"
+    )
     resultat["incident"] = {
         "dossier": str(dossier),
+        "operation": operation,
         "relance_automatique": False,
         "reglage_impression_modifie": False,
         "cause_etablie": False,
@@ -762,7 +843,9 @@ def trancher(demande, *, prive=None, destination_finale=None):
     ):
         raise ValueError("La sortie finale doit rester dans l’espace privé ou temporaire.")
     with verrou_slicer():
-        _verifier_limite_causes(prive)
+        source = demande.get("source")
+        empreinte_source = sha256(chemin_temporaire(source)) if source is not None else None
+        _verifier_limite_causes(prive, operation="tranchage", source_sha256=empreinte_source)
         # Le précontrôle initial peut dater d'avant l'attente du verrou; relire juste avant le moteur.
         if destination is not None and (destination.exists() or destination.is_symlink()):
             raise ValueError("Destination apparue avant le moteur ; aucun lancement effectué.")
@@ -864,14 +947,25 @@ def servir():
                     if reponse.exists():
                         continue
                     try:
-                        echecs = {}
-                        for ancien in ECHANGE.glob("*.resultat.json"):
-                            cause = json.loads(ancien.read_text()).get("diagnostic", {}).get("cause")
-                            if cause:
-                                echecs[cause] = echecs.get(cause, 0) + 1
-                        if any(nombre >= 3 for nombre in echecs.values()):
+                        if requete.is_symlink() or requete.stat().st_size > 8 * 1024**2:
+                            raise ValueError("Demande slicer invalide ; lecture refusée")
+                        demande_donnees = json.loads(requete.read_text())
+
+                        def rapports_existants():
+                            for ancien in ECHANGE.glob("*.resultat.json"):
+                                yield _lire_rapport_limite(
+                                    ancien, libelle="Rapport d'incident invalide ; nouveau lancement refusé"
+                                ), "tranchage"
+
+                        source_demande = demande_donnees.get("source")
+                        empreinte_source = (
+                            sha256(chemin_temporaire(source_demande)) if source_demande is not None else None
+                        )
+                        if _plafond_atteint(
+                            rapports_existants(), operation="tranchage", source_sha256=empreinte_source
+                        ):
                             raise ValueError("Trois essais atteints pour une cause : arrêt sans nouveau lancement.")
-                        resultat = trancher(json.loads(requete.read_text()))
+                        resultat = trancher(demande_donnees)
                     except Exception as erreur:
                         resultat = {"code": 2, "erreur": str(erreur), "modifications": []}
                     ecrire_json(reponse, resultat)
@@ -1002,13 +1096,12 @@ def _visualiser(arguments):
         raise ValueError("Accusé privé neuf exigé")
     debut = time.time()
     with verrou_slicer(), tempfile.TemporaryDirectory(prefix="benchab-visualiser-", dir="/private/tmp") as tmp:
-        echecs = {}
-        for ancien in (_prive(args.prive) / "mesures/echecs").glob("*/incident.json"):
-            cause = json.loads(ancien.read_text()).get("diagnostic", {}).get("cause")
-            if cause:
-                groupe = GROUPES_CAUSES.get(cause, cause)
-                echecs[groupe] = echecs.get(groupe, 0) + 1
-        if any(nombre >= 3 for nombre in echecs.values()):
+        def rapports_echecs():
+            for ancien in (_prive(args.prive) / "mesures/echecs").glob("*/incident.json"):
+                yield _lire_rapport_limite(ancien, libelle="Rapport d'incident invalide ; ouverture refusée"), None
+
+        attendu = args.sha256
+        if _plafond_atteint(rapports_echecs(), operation="visualisation", source_sha256=attendu):
             ecrire_json(accuse, {"code": 2, "erreur": "Trois essais atteints pour une cause : ouverture refusée"})
             return 2
         travail = Path(tmp)
@@ -1016,7 +1109,6 @@ def _visualiser(arguments):
             (travail / nom).mkdir()
         copie = travail / "tranche.3mf"
         shutil.copyfile(source, copie)
-        attendu = args.sha256
         if sha256(source) != attendu or sha256(copie) != attendu:
             raise ValueError("Copie de visualisation divergente")
         env = {

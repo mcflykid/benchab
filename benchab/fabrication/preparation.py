@@ -6,12 +6,13 @@ import json
 import re
 import shutil
 import time
-import zipfile
 from pathlib import Path
+from zipfile import BadZipFile
 
+from benchab.archives_3mf import Archive3MF
 from benchab.donnees.base import Base
 from benchab.fabrication.resistance import auditer_projet
-from benchab.gcode.lecture import lire_membre_3mf, membres_gcode_3mf
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.mesure.environnement import collecter, verifier_rapport
 from benchab.projets.preparations import enregistrer, valider_nom
 from benchab.qualite.ecritures import PublicationNeuve, renommer_exclusif
@@ -68,22 +69,24 @@ def commandes(contenu: bytes) -> str:
 
 
 def gcodes(archive: str | Path) -> dict:
+    """Hache les plaques par numéro ; index/CRC bornés, aucune lecture ni mutation hors archive."""
     fichier = Path(archive)
-    with zipfile.ZipFile(fichier) as paquet:
-        noms = paquet.namelist()
-        if len(noms) != len(set(noms)):
-            raise ValueError("Membres ZIP dupliqués.")
-        if paquet.testzip() is not None:
-            raise ValueError("Archive ZIP corrompue.")
-        membres = sorted(membres_gcode_3mf(fichier))
-    resultat = {}
-    for membre in membres:
-        contenu = lire_membre_3mf(fichier, membre)
-        numero = re.fullmatch(r"Metadata/plate_(\d+)\.gcode", membre).group(1)
-        resultat[numero] = {
-            "sha256": hashlib.sha256(contenu).hexdigest(),
-            "commandes_sha256": commandes(contenu),
-        }
+    with Archive3MF(fichier) as paquet:
+        noms = paquet.noms()
+        if not noms:
+            raise ValueError("Archive ZIP vide.")
+        # Le rejet des alias est numérique ; l'ordre lexical conserve les fiches historiques.
+        plaques = sorted(plaques_gcode_archive(paquet), key=lambda item: item[1])
+        noms_plaques = {membre for _, membre in plaques}
+        paquet.verifier(membres=(nom for nom in noms if nom not in noms_plaques))
+        resultat = {}
+        for _, membre in plaques:
+            contenu = paquet.lire(membre)
+            numero = re.fullmatch(r"Metadata/plate_(\d+)\.gcode", membre).group(1)
+            resultat[numero] = {
+                "sha256": hashlib.sha256(contenu).hexdigest(),
+                "commandes_sha256": commandes(contenu),
+            }
     return resultat
 
 
@@ -312,11 +315,10 @@ def creer(
         if not isinstance(contenu_precedent.get("gcode"), dict):
             raise ValueError("G-code de la préparation précédente absent.")
 
-    with zipfile.ZipFile(plaques_source) as archive:
-        if not archive.namelist() or len(archive.namelist()) != len(set(archive.namelist())):
+    with Archive3MF(plaques_source) as archive:
+        if not archive.noms():
             raise ValueError("3MF des plaques vide ou avec des membres dupliqués.")
-        if archive.testzip() is not None:
-            raise ValueError("3MF des plaques corrompu.")
+        archive.verifier()
     gcode = gcodes(tranche_source)
     verifier_gcodes(gcode)
     rapports_controles = {chemin: statuts_rapport(chemin) for chemin in controles}
@@ -517,7 +519,7 @@ def main(argv: list[str] | None = None, *, base: Base | None = None) -> int:
             )
             print(json.dumps({k: str(v) if isinstance(v, Path) else v for k, v in rapport.items()}, ensure_ascii=False))
             return 0
-    except (OSError, ValueError, TypeError, KeyError, zipfile.BadZipFile) as erreur:
+    except (OSError, ValueError, TypeError, KeyError, BadZipFile) as erreur:
         parser.error(str(erreur))
     finally:
         if fermer and instance is not None:

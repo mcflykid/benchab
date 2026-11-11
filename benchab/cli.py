@@ -198,6 +198,15 @@ def parser():
         default=os.environ.get("BENCHAB_IDENTIFIANTS_SLICER"),
         help="Catalogue privé des identifiants permanents des profils de filament",
     )
+    revue_archive = fabrication.add_parser(
+        "revue-archive", help="Revoit puis contrôle une archive déjà tranchée, sans relancer le slicer"
+    )
+    revue_archive.add_argument("archive", type=Path)
+    revue_archive.add_argument("--declaration", type=Path, required=True)
+    revue_archive.add_argument("--revue-source", type=Path)
+    revue_archive.add_argument("--geometrie", type=Path)
+    revue_archive.add_argument("--reference", type=Path)
+    revue_archive.add_argument("--sortie", type=Path, required=True)
     fabrication.add_parser("comparer-remplissages").add_argument("etude", type=Path)
     planning = fabrication.add_parser("planning")
     planning.add_argument("--projets", type=Path)
@@ -213,6 +222,7 @@ def parser():
         "rattachements",
         "retour",
         "envois-slicer",
+        "tracer-3mf",
     ):
         route = fabrication.add_parser(nom, add_help=False)
         route.add_argument("-h", "--help", action="store_true", help="Affiche l’aide métier sans exécution")
@@ -545,6 +555,22 @@ def executer(arguments, base):
             )
             print(json.dumps(resultat, ensure_ascii=False, indent=2))
             return resultat["code"]
+        if arguments.action == "revue-archive":
+            from benchab.fabrication.revue_archive import executer
+
+            resultat = executer(
+                arguments.archive,
+                arguments.declaration,
+                sortie=arguments.sortie,
+                prive=base.prive,
+                revue_source=arguments.revue_source,
+                geometrie=arguments.geometrie,
+                reference=arguments.reference,
+            )
+            print(json.dumps({cle: resultat[cle] for cle in (
+                "statut", "code", "rapport", "rapport_initial", "revue", "faits_revue", "resume_revue"
+            )}, ensure_ascii=False, indent=2))
+            return resultat["code"]
         if arguments.action == "comparer-remplissages":
             from benchab.fabrication.comparer_remplissages import cli
 
@@ -572,6 +598,14 @@ def executer(arguments, base):
             directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
             try:
                 return int(module.main(directs, base=base) or 0)
+            except SystemExit as arret:
+                return _code_arret(arret)
+        if arguments.action == "tracer-3mf":
+            from benchab.fabrication.tracer_3mf import main as tracer
+
+            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            try:
+                return int(tracer(directs, base=base) or 0)
             except SystemExit as arret:
                 return _code_arret(arret)
         if arguments.action == "couches-variables":

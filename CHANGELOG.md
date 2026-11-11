@@ -4,6 +4,12 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.4.0
 
+- Slicer : regroupe les incidents inconnus uniquement par opération et contexte vérifiable ; conserve le plafond des causes identifiées (#143).
+
+- Fabrication : parcours explicite de revue et contrôle final d’une archive déjà tranchée, sans relancer le slicer (#106).
+
+- Profils : signale les écarts documentés de matière, machine et procédé, avec les sources et les contrôles manquants visibles (#41).
+
 - Envoi : distingue la compatibilité documentée par produit et génération ACE, le carton, l’entrée arrière et le format de démarrage ASN qualifié (#71).
 - Aperçu : les plaques 3MF ambiguës sont refusées ; le catalogue peut reprendre une référence valide sans modifier les sources (#140, suite de #122).
 - Contrôle d’envoi : première étape #71, HRC et diamètre de buse déclarés de façon optionnelle, sans verdict de compatibilité physique.
@@ -20,6 +26,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Données : revalidation du répertoire d’export et du verrou avant publication, même si l’atelier est déjà ouvert (#138).
 - Contrôle : comparaison des réglages projet, objets, parties et plaques aux profils explicitement fournis ; écarts sensibles, provenance par clé et filiations de profils en lecture seule (#38).
 - Atelier : plan passif et réparation explicite d’une vue canonique, avec preuve de la source et sauvegarde relue (suite de #119).
+- 3MF : copie privée avec SHA-256 du source, partie JSON facultative et contrôle des membres conservés ; le slicer peut retirer cette provenance (#42).
 
 ## 1.3.0 — 2026-11-11
 
@@ -33,6 +40,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Import : attribution déclarée des modèles, liée à leur SHA-256 et conservée à la reprise (#36).
 - Réglages : comparaison des valeurs énumérées avec les essais du binaire ASN identifié ; les replis observés échouent et les valeurs non essayées restent NON VÉRIFIÉES (première étape de #80).
 - Lecture 3MF : intégrité avant/après, noms et résultats de plaques et optimisation utilisent les limites et le décodage communs (suite de #122).
+- Lecture 3MF : préparation et planning utilisent l’index partagé, CRC vérifié, empreintes G-code conservées et noms de plaque XML bornés (suite de #122).
 - Qualification ASN : tranchage natif d’une sonde synthétique à deux volumes ; rôles, géométrie et réglages contrôlés, effet de la densité mesuré dans le G-code (#48).
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import io
 import os
 import re
@@ -304,6 +305,19 @@ class Archive3MF:
         if self._archive is None:
             raise RuntimeError("ouvrir Archive3MF avec un bloc with")
         return self._infos[membre].file_size
+
+    def information(self, membre):
+        """Renvoie une copie des métadonnées ZIP validées pour recopier un membre sans réécriture annexe."""
+        if self._archive is None:
+            raise RuntimeError("ouvrir Archive3MF avec un bloc with")
+        return copy.copy(self._infos[membre])
+
+    @property
+    def commentaire(self):
+        """Renvoie le commentaire global ZIP en octets ; aucune donnée du paquet n'est modifiée."""
+        if self._archive is None:
+            raise RuntimeError("ouvrir Archive3MF avec un bloc with")
+        return bytes(self._archive.comment)
 
     def verifier(self, *, membres=None):
         """Contrôle taille/CRC des noms fournis (tous par défaut), en blocs de 64 Kio, sans extraction."""

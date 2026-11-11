@@ -39,7 +39,8 @@ class PlanningFabricationTests(unittest.TestCase):
         with zipfile.ZipFile(archive, "w") as paquet:
             paquet.writestr(
                 "Metadata/model_settings.config",
-                '<metadata key="plater_id" value="1" />\n<metadata key="plater_name" value="Plaque témoin" />',
+                '<config><plate><metadata key="plater_id" value="1" />'
+                '<metadata key="plater_name" value="Plaque témoin" /></plate></config>',
             )
             paquet.writestr("Metadata/plate_1.gcode", "G1 X1 Y1 E1\n")
         donnees = json.loads(self.fiche.read_text(encoding="utf-8"))
@@ -48,6 +49,37 @@ class PlanningFabricationTests(unittest.TestCase):
         (self.projet / "DECLARATION-ENVOI.json").write_text(
             json.dumps({"filaments": {"1": {"matiere": "PLA"}}}), encoding="utf-8"
         )
+
+    def test_noms_plaques_refuse_les_entrees_ambiguës_sans_modifier_source(self):
+        """Le lecteur commun refuse un index ZIP dupliqué et ne réécrit pas le tranchage."""
+        archive = self.projet / "preparations/P02/tranche.3mf"
+        with zipfile.ZipFile(archive, "w") as paquet:
+            paquet.writestr("Metadata/model_settings.config", "<metadata key=\"plater_id\" value=\"1\" />")
+            paquet.writestr("Metadata/plate_1.gcode", "G1 X1 Y1 E1\n")
+            with self.assertWarns(UserWarning):
+                paquet.writestr("Metadata/plate_1.gcode", "G1 X2 Y2 E1\n")
+        avant = archive.read_bytes()
+        with self.assertRaises(ValueError):
+            planning._noms_plaques(archive)
+        self.assertEqual(archive.read_bytes(), avant)
+
+    def test_xml_interdit_est_refuse_avant_les_resultats_slicer(self):
+        """DTD et entités ne sont pas analysées et ne déclenchent aucune lecture de résultat slicer."""
+        archive = self.projet / "preparations/P02/tranche.3mf"
+        contenu_interdit = (
+            '<!DOCTYPE config [<!ENTITY plaque "Piégée">]><config><plate>'
+            '<metadata key="plater_id" value="1"/><metadata key="plater_name" value="&plaque;"/>'
+            '</plate></config>'
+        )
+        with zipfile.ZipFile(archive, "w") as paquet:
+            paquet.writestr("Metadata/model_settings.config", contenu_interdit)
+            paquet.writestr("Metadata/plate_1.gcode", "G1 X1 Y1 E1\n")
+        avant = archive.read_bytes()
+        with patch.object(planning, "resultats") as lire_resultats:
+            with self.assertRaisesRegex(ValueError, "DOCTYPE et ENTITY sont interdits"):
+                planning.plaques_pretes(self.base.prive / "projets")
+        lire_resultats.assert_not_called()
+        self.assertEqual(archive.read_bytes(), avant)
 
     def test_collecte_estimations_et_chemin_relatif_sans_envoi(self):
         lectures = [{"index": 1, "secondes": 7200, "grammes": 15.26}]

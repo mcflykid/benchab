@@ -41,6 +41,50 @@ class PreparationFabricationTests(unittest.TestCase):
         with zipfile.ZipFile(self.tranche, "w") as archive:
             archive.writestr("Metadata/plate_1.gcode", code_gcode)
 
+    def test_lecture_gcode_refuse_index_duplique_sans_modifier_le_3mf(self):
+        """Les chemins dupliqués ou deux graphies du même numéro ne produisent pas de fiche ambiguë."""
+        for membres in (
+            [("Metadata/plate_1.gcode", "G1 X1\n"), ("Metadata/plate_1.gcode", "G1 X2\n")],
+            [("Metadata/plate_1.gcode", "G1 X1\n"), ("Metadata/plate_01.gcode", "G1 X2\n")],
+        ):
+            with zipfile.ZipFile(self.tranche, "w") as archive:
+                deja_ecrits = set()
+                for nom, contenu in membres:
+                    if nom in deja_ecrits:
+                        with self.assertWarns(UserWarning):
+                            archive.writestr(nom, contenu)
+                    else:
+                        archive.writestr(nom, contenu)
+                        deja_ecrits.add(nom)
+            avant = self.tranche.read_bytes()
+            with self.assertRaises(ValueError):
+                preparation.gcodes(self.tranche)
+            self.assertEqual(self.tranche.read_bytes(), avant)
+
+    def test_lecture_gcode_conserve_les_empreintes_canoniques(self):
+        """Les SHA bruts et normalisés restent identiques et la source n'est pas modifiée."""
+        contenu = b"; commentaire\nG1 X1 Y1 ; avance\n"
+        self.ecrire_tranche(contenu.decode())
+        avant = self.tranche.read_bytes()
+        attendu = {
+            "1": {
+                "sha256": hashlib.sha256(contenu).hexdigest(),
+                "commandes_sha256": hashlib.sha256(b"G1 X1 Y1").hexdigest(),
+            }
+        }
+        self.assertEqual(preparation.gcodes(self.tranche), attendu)
+        self.assertEqual(self.tranche.read_bytes(), avant)
+
+    def test_lecture_gcode_conserve_ordre_lexical_historique(self):
+        """L'ordre des clés de fiche reste lexical même si les numéros sont lus pour rejeter les alias."""
+        with zipfile.ZipFile(self.tranche, "w") as archive:
+            archive.writestr("Metadata/plate_2.gcode", "G1 X2\n")
+            archive.writestr("Metadata/plate_10.gcode", "G1 X10\n")
+        avant = self.tranche.read_bytes()
+        resultat = preparation.gcodes(self.tranche)
+        self.assertEqual(list(resultat), ["10", "2"])
+        self.assertEqual(self.tranche.read_bytes(), avant)
+
     def creer(self, **options):
         plaques = options.pop("plaques", self.plaques)
         tranche = options.pop("tranche", self.tranche)

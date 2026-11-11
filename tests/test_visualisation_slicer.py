@@ -75,6 +75,99 @@ def test_ouvrir_refuse_fichier_non_tranche_ou_change(tmp_path, monkeypatch):
         T.demander_ouverture(tranche, prive=prive, sha_attendu="0" * 64)
 
 
+def test_visualisation_ne_melange_pas_les_inconnues_de_sources_distinctes(tmp_path, monkeypatch):
+    """Les échecs inconnus de visualisation ne bloquent que la même source répétée trois fois."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = archive(prive / "tranche.3mf")
+    source_sha = T.sha256(source)
+    dossiers = prive / "mesures/echecs"
+    for indice in range(3):
+        incident = dossiers / str(indice) / "incident.json"
+        incident.parent.mkdir(parents=True)
+        incident.write_text(json.dumps({
+            "mode": "visualisation", "code": -11, "source_sha256": f"{indice + 1:064x}",
+            "diagnostic": {"cause": "inconnue"},
+        }), encoding="utf-8")
+    monkeypatch.setattr(T, "ECHANGE", tmp_path / "echange")
+    accuse = prive / "accuse.json"
+    moteurs = []
+
+    class Moteur:
+        pid = 12345
+
+        def __init__(self, *args, **kwargs):
+            moteurs.append(args)
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(T.subprocess, "Popen", Moteur)
+    assert T.main([
+        "--visualiser", str(source), "--prive", str(prive), "--accuse", str(accuse), "--sha256", source_sha,
+    ]) == 0
+    assert len(moteurs) == 1
+    assert source.exists()
+
+
+def test_visualisation_bloque_trois_inconnues_de_la_meme_source(tmp_path, monkeypatch):
+    """Trois incidents inconnus au même SHA refusent la visualisation avant le moteur."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = archive(prive / "tranche.3mf")
+    source_sha = T.sha256(source)
+    dossiers = prive / "mesures/echecs"
+    for indice in range(3):
+        incident = dossiers / str(indice) / "incident.json"
+        incident.parent.mkdir(parents=True)
+        incident.write_text(json.dumps({
+            "mode": "visualisation", "code": -11, "source_sha256": source_sha,
+            "diagnostic": {"cause": "inconnue"},
+        }), encoding="utf-8")
+    monkeypatch.setattr(T, "ECHANGE", tmp_path / "echange")
+    monkeypatch.setattr(T.subprocess, "Popen", lambda *a, **k: pytest.fail("Aucun lancement attendu"))
+    accuse = prive / "accuse.json"
+
+    assert T.main([
+        "--visualiser", str(source), "--prive", str(prive), "--accuse", str(accuse), "--sha256", source_sha,
+    ]) == 2
+    assert json.loads(accuse.read_text())["code"] == 2
+
+
+def test_visualisation_ne_compte_pas_les_inconnues_de_tranchage(tmp_path, monkeypatch):
+    """Le même SHA ne mélange pas une opération de tranchage avec une ouverture graphique."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = archive(prive / "tranche.3mf")
+    source_sha = T.sha256(source)
+    dossiers = prive / "mesures/echecs"
+    for indice in range(3):
+        incident = dossiers / str(indice) / "incident.json"
+        incident.parent.mkdir(parents=True)
+        incident.write_text(json.dumps({
+            "incident": {"operation": "tranchage"}, "code": 250, "source_sha256": source_sha,
+            "diagnostic": {"cause": "inconnue"},
+        }), encoding="utf-8")
+    monkeypatch.setattr(T, "ECHANGE", tmp_path / "echange")
+    accuse = prive / "accuse.json"
+    moteurs = []
+
+    class Moteur:
+        pid = 12345
+
+        def __init__(self, *args, **kwargs):
+            moteurs.append(args)
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(T.subprocess, "Popen", Moteur)
+    assert T.main([
+        "--visualiser", str(source), "--prive", str(prive), "--accuse", str(accuse), "--sha256", source_sha,
+    ]) == 0
+    assert len(moteurs) == 1
+
+
 def test_aucune_session_installee_lue_implicitement(monkeypatch):
     from benchab.machine import cloud_lecture as C
 
