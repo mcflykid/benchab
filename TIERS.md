@@ -1,6 +1,6 @@
 # Composants tiers
 
-Inventaire des versions verrouillées, vérifié le 05/11/2026. Les dépendances restent
+Inventaire des versions verrouillées, vérifié le 11/11/2026. Les dépendances restent
 séparées du code BENCHAB et conservent leurs notices lors de l’installation.
 Le contrôle de publication compare cet inventaire à `uv.lock` et aux licences
 des copies intégrées ; toute licence inconnue ou AGPL est bloquante.
@@ -14,6 +14,10 @@ des copies intégrées ; toute licence inconnue ou AGPL est bloquante.
 meshoptimizer : Copyright (c) 2016-2026, Arseny Kapoulkine. Les fichiers des
 distributions conservent leurs licences. Les traitements ne changent pas la
 licence des modèles d'entrée.
+
+L’extra PDF épingle `pypdf 7.0.1` depuis sa [publication officielle signée](https://github.com/py-pdf/pypdf/releases/tag/7.0.1) ;
+sa licence BSD-3-Clause est déclarée dans le `pyproject.toml` amont et le
+fichier [LICENSE](https://github.com/py-pdf/pypdf/blob/7.0.1/LICENSE).
 
 | 3d-print-modeling, contrôles assemblage/parois/contacts/invariants | Copie figée identifiée par SHA-256 dans `benchab/tiers/modeling-sources.json` | MIT, Mohsen Esmaeili (2026) | Fonctions issues des scripts `assembly_check.py`, `wallcheck.py`, `fitmap.py`, `checks_template.py` ; licence vérifiée avant import et conservée dans `benchab/tiers/modeling-LICENSE.txt`. Aucun programme source exécuté. |
 | cryptography | `50.0.2` (contrainte `>=50,<51`) | Apache-2.0 ou BSD-3-Clause | API AES-128-CBC/PKCS7 pour décoder la réponse de handshake MQTT locale; aucune copie de code tiers. Licence duale indiquée par le dépôt officiel [pyca/cryptography](https://github.com/pyca/cryptography/blob/main/LICENSE). |
@@ -90,6 +94,7 @@ les licences duales cryptography et packaging, la branche Apache-2.0 est retenue
 | pygltflib | 1.16.5 | MIT |
 | pygments | 2.21.0 | BSD-2-Clause |
 | pymeshlab | 2025.7.post1 | GPL-3.0-only |
+| pypdf | 7.0.1 | BSD-3-Clause |
 | pyparsing | 3.3.3 | MIT |
 | pytest | 9.2.0 | MIT |
 | python-dateutil | 4.0.0 | BSD-3-Clause |

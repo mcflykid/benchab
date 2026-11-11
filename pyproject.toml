@@ -25,6 +25,9 @@ dependencies = [
     "trimesh>=5.2.0",
 ]
 
+[project.optional-dependencies]
+pdf = ["pypdf==7.0.1"]
+
 [project.scripts]
 benchab = "benchab.cli:main"
 
