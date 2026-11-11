@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.4.0
 
+- Profils : signale les écarts documentés de matière, machine et procédé, avec les sources et les contrôles manquants visibles (#41).
+
 - Envoi : distingue la compatibilité documentée par produit et génération ACE, le carton, l’entrée arrière et le format de démarrage ASN qualifié (#71).
 - Aperçu : les plaques 3MF ambiguës sont refusées ; le catalogue peut reprendre une référence valide sans modifier les sources (#140, suite de #122).
 - Contrôle d’envoi : première étape #71, HRC et diamètre de buse déclarés de façon optionnelle, sans verdict de compatibilité physique.

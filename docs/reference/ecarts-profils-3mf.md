@@ -52,3 +52,19 @@ exacts par identité : 261 comparaisons procédé et 86 machine sur une archive
 (7 écarts), puis 95 filament et 86 machine sur une autre (aucun écart).
 Dans chaque cas, la famille sans identité exacte reste NON VÉRIFIÉE.
 Les archives et les 646 profils contrôlés sont restés intacts.
+
+## Cohérence documentaire des réglages
+
+Le champ `coherence` isole cinq rapprochements : modèle d’imprimante et
+matière de buse avec le profil machine fourni ; ordre des parois et motif
+clairsemé avec le profil de procédé ; matière avec le profil du filament
+correspondant à chaque case exacte. Les clés et leurs familles viennent du
+[dictionnaire typé](reglages-et-integrite.md). La référence de chaque règle
+est la valeur du profil explicite ou de son parent résolu ; la ligne
+contient l’empreinte de ce fichier et celle du 3MF.
+
+Un écart établi donne WARN même si d’autres sources manquent ; celles-ci
+restent NON VÉRIFIÉES dans le détail. Le statut général de comparaison est
+indépendant et tient compte du reste du périmètre. Les signalements
+[communautaires](retours-communautaires.md) ne fixent aucun seuil et aucun
+écart ne confirme la matière ou la buse réellement montées.

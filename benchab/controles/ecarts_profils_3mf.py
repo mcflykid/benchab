@@ -10,6 +10,7 @@ from pathlib import Path
 
 from benchab import integrite_3mf, reglages
 from benchab.chemins import sans_lien
+from benchab.controles import coherence_profils
 from benchab.machine.profil_maitre import resoudre_preset
 from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
 from benchab.qualite.empreintes import sha256_fichier
@@ -256,7 +257,7 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=(), avant_interventi
                     continue
                 ligne = _comparaison(
                     chemin, cle, valeur[indice], valeur_profil, preset,
-                    slot_id=identite, archive=archive,
+                    slot_id=identite, slot=indice + 1, archive=archive,
                 )
                 comparaisons.append(ligne)
                 if ligne["statut"] == "DIFFÉRENT":
@@ -354,6 +355,7 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=(), avant_interventi
         "profils_sha256_avant": sha_avant, "profils_sha256_apres": sha_apres,
         "comparaisons": comparaisons, "differences": différences, "non_verifies": non_verifies,
         "interventions_manuelles": interventions,
+        "coherence": coherence_profils.evaluer(comparaisons, contexte, sha_3mf_avant),
         "profils": [
             {"categorie": p["categorie"], "name": nom,
              "heritages": [
@@ -378,7 +380,7 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=(), avant_interventi
     }
 
 
-def _comparaison(chemin, cle, valeur_3mf, valeur_profil, preset, *, slot_id=None, archive):
+def _comparaison(chemin, cle, valeur_3mf, valeur_profil, preset, *, slot_id=None, slot=None, archive):
     """Décrit une égalité ou un écart exact et ses deux origines, avec sensibilité lexicale."""
     domaines = _sensibilites(cle)
     origine = preset["resolution"]["origine_par_cle"].get(cle)
@@ -399,6 +401,7 @@ def _comparaison(chemin, cle, valeur_3mf, valeur_profil, preset, *, slot_id=None
     }
     if slot_id is not None:
         ligne["slot_id"] = slot_id
+        ligne["slot"] = slot
     return ligne
 
 
@@ -435,7 +438,9 @@ def main(argv=None, *, prive=None):
             for heritage in profil["heritages"]
         )
         ecrire_json_neuf(cible, rapport, entrees=entrees)
-        print(json.dumps({"statut": rapport["statut"], "rapport": str(cible)}, ensure_ascii=False))
+        print(json.dumps({
+            "statut": rapport["statut"], "coherence": rapport["coherence"]["statut"], "rapport": str(cible),
+        }, ensure_ascii=False))
         return {"PASS": 0, "WARN": 1, "NON VÉRIFIÉ": 2}[rapport["statut"]]
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as erreur:
         parser.error(str(erreur))
