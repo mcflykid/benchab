@@ -4,6 +4,10 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.6.0
 
+- Rapports : ajoute une sortie privée complète et un résumé plafonné pour le
+  contrôle des plages Z, avec JSON historique conservé (suite de #35).
+- Îlots : décrit les recouvrements et ambiguïtés entre coupes XY, sans conclure
+  sur les appuis réellement tranchés (suite de #108).
 - Maintenance : sépare les entrées, copies et publications des quatre gros modules
   en conservant les rapports des témoins et l’invalidation des études (#23).
 - Atelier : restaure une cible de lien privé absente par copie d’identité prouvée et conserve le lien et sa preuve (suite de #119).
