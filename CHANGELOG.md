@@ -12,6 +12,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Lecture 3MF : flux G-code séquentiel borné avec caches SHA préservés et garde de chemin avant le cache (première étape de #122).
 - Lecture 3MF : réouverture avec un index et un quota neufs, réentrée simultanée refusée (#128) ; import des modèles et réglages sur le lecteur commun (#122).
 
+- Import : attribution déclarée des modèles, liée à leur SHA-256 et conservée à la reprise (#36).
+
 ## 1.2.0 — 2026-11-11
 
 - G-code : arcs G2/G3 du dialecte G17 XY documenté calculés analytiquement, longueur et débit nominaux exacts ; repère spatial distinct après G92 XYZ. Les contrôles géométriques qui ne modélisent pas encore les arcs restent NON VÉRIFIÉS (#13).
