@@ -14,10 +14,12 @@ NON_VERIFIE = "NON VÉRIFIÉ"
 
 
 def empreinte(path):
+    """Retourne le SHA-256 hexadécimal des octets du fichier."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def ecrire_json(path, data):
+    """Publie un JSON UTF-8 sur un nouveau chemin, sans écraser un fichier existant."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as f:
@@ -25,6 +27,7 @@ def ecrire_json(path, data):
 
 
 def seuils_valides(seuils):
+    """Vérifie les seuils de centre et boîte en pixels ainsi que le recouvrement entre 0 et 1."""
     if not isinstance(seuils, dict):
         raise ValueError("seuils doit être un objet")
     cles = {"iou_min", "centre_max_px", "bbox_max_px"}
@@ -38,6 +41,7 @@ def seuils_valides(seuils):
 
 
 def masque(path, mode, seuil):
+    """Retourne le masque booléen en pixels selon luminosité ou alpha et le seuil entier de 0 à 255."""
     if mode not in ("clair", "sombre", "alpha"):
         raise ValueError("mode de masque : clair, sombre ou alpha")
     if isinstance(seuil, bool) or not isinstance(seuil, int) or not 0 <= seuil <= 255:
@@ -52,6 +56,7 @@ def masque(path, mode, seuil):
 
 
 def valider_contrat(data):
+    """Vérifie version, vues, projections et seuils déclarés du contrat. Lève une erreur si invalides."""
     if data.get("version") != VERSION:
         raise ValueError("version de contrat non prise en charge")
     seuils_valides(data.get("seuils"))
@@ -76,6 +81,7 @@ def valider_contrat(data):
 
 
 def figer(specification, destination):
+    """Fige le besoin, les vues et leurs empreintes dans un nouveau contrat JSON."""
     specification, destination = Path(specification).resolve(), Path(destination).resolve()
     data = json.loads(specification.read_text(encoding="utf-8"))
     if not isinstance(data.get("besoin"), str) or not data["besoin"].strip():
@@ -135,11 +141,13 @@ def figer(specification, destination):
 
 
 def caracteristiques(m):
+    """Retourne boîte et centre du masque non vide, en pixels d’image."""
     y, x = np.where(m)
     return np.array([x.min(), y.min(), x.max() + 1, y.max() + 1]), np.array([x.mean(), y.mean()])
 
 
 def comparer(contrat, rendus, sortie, _data=None):
+    """Compare contrat et rendus sans recalage, avec verdicts PASS, FAIL ou NON VÉRIFIÉ."""
     contrat = Path(contrat).resolve()
     sortie = Path(sortie) if sortie is not None else None
     data = _data if _data is not None else json.loads(contrat.read_text(encoding="utf-8"))
@@ -382,6 +390,7 @@ def evaluer(contrat, manifest, sortie=None):
 
 
 def audit_evaluation(contrat, rapport):
+    """Rejoue une évaluation liée au contrat et aux SHA des entrées, ou renvoie FAIL si périmée."""
     rapport = Path(rapport).resolve()
     ancien = json.loads(rapport.read_text(encoding="utf-8"))
     if ancien.get("type") != "evaluation-visuelle-v1" or ancien.get("contrat_sha256") != empreinte(contrat):
@@ -401,6 +410,7 @@ def audit_evaluation(contrat, rapport):
 
 
 def main(argv=None):
+    """Exécute l’action de référence visuelle et renvoie les codes 0, 1 ou 2 selon le résultat."""
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="commande", required=True)
     f = sub.add_parser("figer")
