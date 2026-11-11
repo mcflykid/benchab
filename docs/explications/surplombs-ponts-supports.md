@@ -42,9 +42,11 @@ du STL exact ; au plus 256 rayons sont calculés au total. Le CLI calcule ce SHA
 sur les octets mêmes qu'il décode. Les triangles
 projetés, leurs intersections et les contacts sont évalués avec une tolérance
 de distance de `0,000001 mm` et de poids barycentrique `0,000000001`. Un plan
-non fini ou qui atteint une face candidate est AMBIGUË. Une projection XY
-dégénérée alignée au rayon, une intersection de frontière, un contact avec le
-plan ou des triangles superposés donnent aussi AMBIGUË. Une visée DÉGAGÉE ne
+non fini ou qui atteint une face candidate rend les visées de ce groupe
+ambiguës, sans invalider un groupe distinct plus haut. Une projection XY
+dégénérée alignée, une frontière ou des triangles superposés rendent la visée
+ambiguë si leur altitude touche le segment. Les contacts avec le plan ou
+avec une autre face au départ restent également ambigus. Une visée DÉGAGÉE ne
 signifie que l'absence d'intersection détectée sur ce segment échantillonné ;
 une visée OBSTRUÉE indique un triangle numérique rencontré entre ses deux
 extrémités. Si des faces sont omises par le budget, l'agrégat reste AMBIGUË.

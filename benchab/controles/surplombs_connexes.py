@@ -150,9 +150,20 @@ def _evaluer_rayon_vertical(triangles, face_source, point, plateau_z_mm):
     """Classe une visée ponctuelle en mm ; contacts, projections dégénérées et doublons sont ambigus."""
     x, y, z_depart = (float(valeur) for valeur in point)
     tolerance = TOLERANCE_VISIBILITE_MM
+    # Seul le segment fermé doit entrer dans le calcul ; les contacts aux
+    # bornes sont ensuite distingués d'un obstacle strictement intermédiaire.
+    minimum, maximum = triangles.min(axis=1), triangles.max(axis=1)
+    candidats = (
+        (minimum[:, 0] - tolerance <= x) & (maximum[:, 0] + tolerance >= x)
+        & (minimum[:, 1] - tolerance <= y) & (maximum[:, 1] + tolerance >= y)
+        & (minimum[:, 2] - tolerance <= z_depart) & (maximum[:, 2] + tolerance >= plateau_z_mm)
+    )
+    candidats[face_source] = False
+    triangles = triangles[candidats]
+    if not len(triangles):
+        return {"statut": "DÉGAGÉE", "raison": "aucun triangle détecté sur le segment ouvert"}
     xy = triangles[:, :, :2]
     altitudes = triangles[:, :, 2]
-    indices = np.arange(len(triangles))
     a, b, c = xy[:, 0], xy[:, 1], xy[:, 2]
     determinant = (
         (b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1])
@@ -162,7 +173,6 @@ def _evaluer_rayon_vertical(triangles, face_source, point, plateau_z_mm):
         np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1), np.linalg.norm(a - c, axis=1),
     ), axis=1)
     degeneres = np.abs(determinant) <= tolerance * longueurs.max(axis=1)
-    potentiels_degeneres = degeneres & (indices != face_source)
     point_xy = np.asarray([x, y])
     for cote in range(3):
         depart = xy[:, cote]
@@ -177,41 +187,37 @@ def _evaluer_rayon_vertical(triangles, face_source, point, plateau_z_mm):
         )
         projection = depart + fractions[:, None] * direction
         distance = np.linalg.norm(projection - point_xy, axis=1)
-        z_segment = altitudes[:, cote] + fractions * (altitudes[:, (cote + 1) % 3] - altitudes[:, cote])
-        if np.any(
-            potentiels_degeneres & (distance <= tolerance)
-            & (z_segment >= plateau_z_mm - tolerance) & (z_segment <= z_depart + tolerance)
-        ):
+        # La projection d'une arête verticale perd toute son étendue Z.
+        # La boîte déjà filtrée en Z suffit ici à conserver une ambiguïté.
+        if np.any(degeneres & (distance <= tolerance)):
             return {"statut": "AMBIGUË", "raison": "projection XY dégénérée sur la visée"}
 
-    bornes = (
-        (xy[:, :, 0].min(axis=1) - tolerance <= x) & (xy[:, :, 0].max(axis=1) + tolerance >= x)
-        & (xy[:, :, 1].min(axis=1) - tolerance <= y) & (xy[:, :, 1].max(axis=1) + tolerance >= y)
-    )
-    non_degeneres = (~degeneres) & (indices != face_source) & bornes
     denominateur = np.where(degeneres, 1.0, determinant)
     alpha = ((b[:, 0] - x) * (c[:, 1] - y) - (b[:, 1] - y) * (c[:, 0] - x)) / denominateur
     beta = ((c[:, 0] - x) * (a[:, 1] - y) - (c[:, 1] - y) * (a[:, 0] - x)) / denominateur
     gamma = 1.0 - alpha - beta
     poids = np.column_stack((alpha, beta, gamma))
     interieur_ferme = (
-        non_degeneres
+        (~degeneres)
         & np.all(poids >= -TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
         & np.all(poids <= 1 + TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
     )
     z_intersection = np.einsum("ij,ij->i", poids, altitudes)
     avant_depart = z_intersection < z_depart - tolerance
+    if np.any(interieur_ferme & (np.abs(z_intersection - z_depart) <= tolerance)):
+        return {"statut": "AMBIGUË", "raison": "contact avec une autre face au départ"}
     touche_plan = interieur_ferme & avant_depart & (np.abs(z_intersection - plateau_z_mm) <= tolerance)
     if np.any(touche_plan):
         return {"statut": "AMBIGUË", "raison": "contact avec le plan de plateau"}
     frontiere = np.any(np.abs(poids) <= TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
-    if np.any(interieur_ferme & avant_depart & frontiere):
+    au_dessus_du_plan = z_intersection > plateau_z_mm + tolerance
+    if np.any(interieur_ferme & avant_depart & au_dessus_du_plan & frontiere):
         return {"statut": "AMBIGUË", "raison": "intersection sur la frontière d'une projection"}
-    contacts = np.sort(z_intersection[interieur_ferme & avant_depart & (z_intersection > plateau_z_mm)])
+    contacts = np.sort(z_intersection[interieur_ferme & avant_depart & au_dessus_du_plan])
     if len(contacts) > 1 and np.any(np.diff(contacts) <= tolerance):
         return {"statut": "AMBIGUË", "raison": "superposition de triangles sur la visée"}
     if len(contacts):
-        return {"statut": "OBSTRUÉE", "obstacle_z_mm": round(float(contacts[0]), 6)}
+        return {"statut": "OBSTRUÉE", "obstacle_z_mm": round(float(contacts[-1]), 6)}
     return {"statut": "DÉGAGÉE", "raison": "aucun triangle détecté sur le segment ouvert"}
 
 
@@ -282,13 +288,6 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
     # Le seuil décrit seulement une inclinaison géométrique ; il ne constitue pas une règle de support.
     angle_faces = np.degrees(np.arccos(np.clip(np.abs(normales[:, 2]), 0.0, 1.0)))
     selection = (normales[:, 2] < 0) & (angle_faces <= angle_max_deg)
-    selection_ids = np.flatnonzero(selection)
-    plateau_valide = (
-        plateau_z_mm is not None
-        and math.isfinite(plateau_z_mm)
-        and bool(len(selection_ids))
-        and plateau_z_mm < float(triangles[selection_ids, :, 2].min() - TOLERANCE_VISIBILITE_MM)
-    )
     adjacency, topologie = _adjacence_exacte(triangles)
     composante, voisins = _composantes_faces(len(maillage.faces), adjacency)
     groupes = []
@@ -334,9 +333,15 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
             "pont_possible": {"statut": "NON VÉRIFIÉ", "raison": "franchissabilité non mesurée"},
         }
         if plateau_z_mm is not None:
+            # Un groupe au niveau du plateau ne prive pas un îlot distinct
+            # de visées au-dessus de ce même plan.
+            plateau_valide = math.isfinite(plateau_z_mm) and plateau_z_mm < (
+                float(sommets_z.min()) - TOLERANCE_VISIBILITE_MM
+            )
             groupe["visibilite_verticale_plateau"] = _visibilite_groupe(
                 triangles, faces, float(plateau_z_mm), plateau_valide, budget_rayon
             )
+            groupe["acces_plateau"]["raison"] = "visées ponctuelles uniquement ; aucun accès global ni tranchage établi"
             budget_rayon -= groupe["visibilite_verticale_plateau"]["visées_échantillonnées"]["rayons_total"]
         groupes.append(groupe)
     return {

@@ -279,6 +279,33 @@ def test_visibilite_verticale_projection_verticale_alignee_est_ambigue():
     assert echantillon["raison"] == "projection XY dégénérée sur la visée"
 
 
+def test_face_sur_le_plateau_n_invalide_pas_un_autre_groupe():
+    """Une face au niveau du plateau ne doit pas rendre tous les autres îlots indéterminés."""
+    maillage = trimesh.Trimesh(
+        vertices=[[0, 0, 0], [2, 0, 0], [0, 2, 0], [5, 0, 2], [7, 0, 2], [5, 2, 2]],
+        faces=[[0, 2, 1], [3, 5, 4]], process=False,
+    )
+    rapport = sc.cartographier(maillage, source="deux.stl", unite="mm", source_sha256="a" * 64, plateau_z_mm=0)
+    mesures = [g["visibilite_verticale_plateau"]["visées_échantillonnées"] for g in rapport["groupes"]]
+    assert [m["statut"] for m in mesures] == ["AMBIGUË", "DÉGAGÉE"]
+    assert [m["rayons_total"] for m in mesures] == [0, 1]
+
+
+def test_frontiere_bien_sous_le_plan_est_hors_visée():
+    """Une arête projetée sur XY ne compte que si son altitude touche le segment déclaré."""
+    triangles = np.array([[[0, 0, 2], [2, 0, 2], [0, 2, 2]], [[0, 0, -2], [2, 0, -2], [0, 2, -2]]], dtype=float)
+    assert sc._evaluer_rayon_vertical(triangles, 0, (1, 1, 2), 0)["statut"] == "DÉGAGÉE"
+
+
+def test_face_superposee_au_depart_reste_ambigue():
+    """Deux triangles coïncidents au départ ne forment pas une visée qualifiée."""
+    triangle = [[0, 0, 2], [2, 0, 2], [0, 2, 2]]
+    triangles = np.array([triangle, triangle], dtype=float)
+    resultat = sc._evaluer_rayon_vertical(triangles, 0, (0.5, 0.5, 2), 0)
+    assert resultat["statut"] == "AMBIGUË"
+    assert "départ" in resultat["raison"]
+
+
 def test_visibilite_verticale_superposition_de_triangles_est_ambigue():
     """Deux obstacles superposés à même Z ne sont pas arbitrés par leur ordre de triangles."""
     cible = trimesh.Trimesh(
