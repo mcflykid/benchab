@@ -7,10 +7,12 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.connaissances.memoire import _empreinte_blob_git
+from benchab.processus import executer
 from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
 from benchab.qualite.empreintes import sha256_fichier
 
@@ -56,6 +58,16 @@ def _env_git():
     )
 
 
+def _git_court(depot, arguments, env, diagnostics):
+    """Lit une petite réponse Git via le lanceur commun : 5 s, 8 Kio par flux, sans journal durable."""
+    resultat = executer(
+        ["git", *arguments], cwd=depot, env=env, diagnostics=diagnostics, delai=5, limite_queue=8192,
+    )
+    if resultat.raison != "TERMINE" or resultat.sortie_tronquee:
+        raise ValueError(f"Lecture Git incomplète : {resultat.raison}.")
+    return resultat.stdout if resultat.returncode == 0 else ""
+
+
 def fiche(declaration, *, depot, prive):
     """Vérifie les liens de la fiche privée, sans unité ni exécution de test.
 
@@ -98,30 +110,24 @@ def fiche(declaration, *, depot, prive):
         raise ValueError("Dépôt Git local requis.")
     env = _env_git()
     try:
-        objet = subprocess.run(
-            ["git", "-C", str(depot), "rev-parse", "--verify", "--end-of-options", revision + "^{commit}"],
-            capture_output=True, env=env, timeout=5, check=False,
-        )
-        if objet.returncode or objet.stdout.strip() != revision.encode("ascii"):
-            raise ValueError("La révision ne désigne pas un commit Git local exact.")
-        empreintes = []
-        # L’arbre du commit distingue les liens et les fichiers, tous deux stockés en blobs.
-        for nom in noms:
-            membre = subprocess.run(
-                ["git", "-C", str(depot), "--literal-pathspecs", "ls-tree", "-z", revision, "--", nom],
-                capture_output=True, env=env, timeout=5, check=False,
-            )
-            info, _, chemin_git = membre.stdout.removesuffix(b"\0").partition(b"\t")
-            mode, _, oid = info.partition(b" blob ")
-            if (
-                membre.returncode or chemin_git != os.fsencode(nom) or mode not in {b"100644", b"100755"}
-                or not _SHA_GIT.fullmatch(oid.decode("ascii", errors="replace"))
-            ):
-                raise ValueError("Fichier de test régulier absent du commit : " + nom)
-            digest, code = _empreinte_blob_git(depot, oid.decode("ascii"), env)
-            if code:
-                raise ValueError("Blob Git de test absent : " + nom)
-            empreintes.append({"chemin": nom, "sha256": digest})
+        with tempfile.TemporaryDirectory(prefix="benchab-fiche-incident-") as diagnostics:
+            objet = _git_court(depot, ["rev-parse", "--verify", revision + "^{commit}"], env, diagnostics)
+            if objet.strip() != revision:
+                raise ValueError("La révision ne désigne pas un commit Git local exact.")
+            empreintes = []
+            # L’arbre du commit distingue les liens et les fichiers, tous deux stockés en blobs.
+            for nom in noms:
+                membre = _git_court(
+                    depot, ["--literal-pathspecs", "ls-tree", "-z", revision, "--", nom], env, diagnostics,
+                )
+                info, _, chemin_git = membre.removesuffix("\0").partition("\t")
+                mode, _, oid = info.partition(" blob ")
+                if chemin_git != nom or mode not in {"100644", "100755"} or not _SHA_GIT.fullmatch(oid):
+                    raise ValueError("Fichier de test régulier absent du commit : " + nom)
+                digest, code = _empreinte_blob_git(depot, oid, env)
+                if code:
+                    raise ValueError("Blob Git de test absent : " + nom)
+                empreintes.append({"chemin": nom, "sha256": digest})
     except subprocess.TimeoutExpired as erreur:
         raise ValueError("Délai de lecture de la révision ou du blob Git dépassé.") from erreur
 

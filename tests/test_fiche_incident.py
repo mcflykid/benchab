@@ -26,7 +26,7 @@ def incident(tmp_path):
     subprocess.run(["git", "-C", str(depot), "add", chemin], check=True)
     subprocess.run(
         ["git", "-C", str(depot), "-c", "user.name=Fixture",
-         "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"],
+         "-c", "user.email=fixture-synthetique", "commit", "-qm", "fixture"],
         check=True,
     )
     revision = subprocess.check_output(["git", "-C", str(depot), "rev-parse", "HEAD"], text=True).strip()
@@ -85,7 +85,7 @@ def test_lien_git_ne_compte_pas_comme_fichier_de_test(incident):
     subprocess.run(["git", "-C", str(depot), "add", chemin], check=True)
     subprocess.run(
         ["git", "-C", str(depot), "-c", "user.name=Fixture",
-         "-c", "user.email=fixture@example.invalid", "commit", "-qm", "lien"],
+         "-c", "user.email=fixture-synthetique", "commit", "-qm", "lien"],
         check=True,
     )
     declaration["revision"] = subprocess.check_output(
