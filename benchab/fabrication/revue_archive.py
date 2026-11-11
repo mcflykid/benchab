@@ -60,11 +60,11 @@ def executer(archive, declaration, *, sortie, prive, revue_source=None, geometri
             raise ValueError("La revue source n’est plus liée aux empreintes de l’archive ou de la géométrie.")
     ecrire_json_neuf(initial, initial_resultat, entrees=entrees)
     resultat_revue = revue_locale.revoir(
-        archive, initial, revue_source or revue, faits
+        archive, initial, revue_source or initial, faits
     )
     if revue_source and sha256_fichier(revue_source) != empreintes[str(revue_source)]:
         raise ValueError("La revue source a changé pendant la lecture ; aucune nouvelle revue publiée.")
-    revue_locale.ecrire(resultat_revue, revue, faits)
+    revue_locale.ecrire(resultat_revue, revue, faits, sorties_neuves=True)
     controle_final = envoi.controler(
         archive,
         declaration,

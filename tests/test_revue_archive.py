@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from benchab.cli import parser
+from benchab.controles import revue_locale
 from benchab.fabrication import revue_archive
 
 
@@ -74,7 +75,7 @@ def test_parcours_revue_archive_reutilise_controles_et_preserve_source(tmp_path,
             "reste": ["zone-1"], "plaques": {},
         }
 
-    def ecrire(res, revue, faits):
+    def ecrire(res, revue, faits, **options):
         appels.append(("ecrire", revue, faits))
         Path(faits).write_text("{}", encoding="utf-8")
         Path(revue).write_text(json.dumps({
@@ -164,3 +165,107 @@ def test_parcours_refuse_preuve_humaine_perimee(tmp_path, monkeypatch):
         )
 
     assert revue.read_bytes() == revue_avant
+
+
+def test_collision_apparue_apres_validation_refuse_le_parcours_sans_ecraser(tmp_path, monkeypatch):
+    """Une preuve apparue après la garde reste intacte ; la tranche et la revue source aussi."""
+    archive = tmp_path / "tranche.3mf"
+    archive.write_bytes(b"archive temoin stable")
+    declaration = tmp_path / "declaration.json"
+    declaration.write_text("{}", encoding="utf-8")
+    revue_source = tmp_path / "REVUE-HUMAINE.json"
+    revue_octets = json.dumps({
+        "tranche_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+        "geometrie_sha256": None,
+        "zones": {},
+    }).encode("utf-8")
+    revue_source.write_bytes(revue_octets)
+    sortie = tmp_path / "final.json"
+    collision = tmp_path / "final-faits.json"
+    collision_octets = b"preuve concurrente conservee"
+
+    def controler(*args, **kwargs):
+        rapport = _rapport_initial(archive)
+        if kwargs.get("revue_locale") is None:
+            collision.write_bytes(collision_octets)
+            return rapport
+        return {"statut": "NON VÉRIFIÉ", "code": 2, "resultats": []}
+
+    def revoir(tranche, envoi, revue, faits):
+        assert Path(revue) == revue_source
+        return {
+            "env": json.loads(Path(envoi).read_text())["zones_locales"],
+            "faits": {}, "auto": {}, "gardees": {}, "reste": [], "plaques": {},
+        }
+
+    monkeypatch.setattr(revue_archive.envoi, "controler", controler)
+    monkeypatch.setattr(revue_archive.revue_locale, "revoir", revoir)
+
+    with pytest.raises(ValueError, match="Destination existante"):
+        revue_archive.executer(
+            archive, declaration, sortie=sortie, revue_source=revue_source, prive=tmp_path
+        )
+
+    assert collision.read_bytes() == collision_octets
+    assert archive.read_bytes() == b"archive temoin stable"
+    assert revue_source.read_bytes() == revue_octets
+    assert not sortie.exists()
+
+
+def test_ecriture_revue_publie_sha_relatif_et_decision_humaine(tmp_path):
+    """L’écriture neuve conserve le lien relatif final et la décision humaine telle quelle."""
+    faits = tmp_path / "preuves/faits.json"
+    revue = tmp_path / "REVUE.json"
+    decision = {
+        "decision": "justifie", "justification": "examen humain conservé", "auteur": "atelier",
+        "derniere_couche_verifiee": True, "preuves": [{"fichier": "photo.png", "sha256": "a" * 64}],
+    }
+    revue_locale.ecrire(
+        {
+            "env": {"tranche_sha256": "b" * 64, "geometrie_sha256": None},
+            "faits": {}, "plaques": {}, "gardees": {"zone-1": decision}, "auto": {"zone-2": "critère déclaré"},
+        },
+        revue,
+        faits,
+        sorties_neuves=True,
+    )
+
+    contenu = json.loads(revue.read_text(encoding="utf-8"))
+    assert contenu["zones"]["zone-1"] == decision
+    preuve_auto = contenu["zones"]["zone-2"]["preuves"][0]
+    assert preuve_auto["fichier"] == "preuves/faits.json"
+    assert hashlib.sha256((tmp_path / preuve_auto["fichier"]).read_bytes()).hexdigest() == preuve_auto["sha256"]
+
+
+def test_sans_revue_source_le_parcours_donne_un_etat_neutre_explicite(tmp_path, monkeypatch):
+    """Une revue voisine apparue après validation ne devient pas une source de décisions."""
+    archive = tmp_path / "tranche.3mf"
+    archive.write_bytes(b"archive temoin")
+    declaration = tmp_path / "declaration.json"
+    declaration.write_text("{}", encoding="utf-8")
+    sortie = tmp_path / "final.json"
+    voisine = tmp_path / "final-revue.json"
+    octets_voisins = b'{"zones":{"zone-voisine":{"decision":"justifie"}}}'
+
+    def controler(*args, **kwargs):
+        if kwargs.get("revue_locale") is None:
+            voisine.write_bytes(octets_voisins)
+            return _rapport_initial(archive)
+        return {"statut": "NON VÉRIFIÉ", "code": 2, "resultats": []}
+
+    def revoir(tranche, envoi, revue, faits):
+        assert Path(revue) == Path(envoi)
+        assert "zones" not in json.loads(Path(revue).read_text())
+        return {
+            "env": json.loads(Path(envoi).read_text())["zones_locales"],
+            "faits": {}, "auto": {}, "gardees": {}, "reste": [], "plaques": {},
+        }
+
+    monkeypatch.setattr(revue_archive.envoi, "controler", controler)
+    monkeypatch.setattr(revue_archive.revue_locale, "revoir", revoir)
+
+    with pytest.raises(ValueError, match="Destination existante"):
+        revue_archive.executer(archive, declaration, sortie=sortie, prive=tmp_path)
+
+    assert voisine.read_bytes() == octets_voisins
+    assert archive.read_bytes() == b"archive temoin"
