@@ -43,8 +43,10 @@ sur les octets mêmes qu'il décode. Les triangles
 projetés, leurs intersections et les contacts sont évalués avec une tolérance
 de distance de `0,000001 mm` et de poids barycentrique `0,000000001`. Un plan
 non fini ou qui atteint une face candidate rend les visées de ce groupe
-ambiguës, sans invalider un groupe distinct plus haut. Une projection XY
-dégénérée alignée, une frontière ou des triangles superposés rendent la visée
+ambiguës, sans invalider un groupe distinct plus haut. Pour une projection XY
+dégénérée alignée, les intersections de ses arêtes donnent les bornes Z de la
+fibre au point visé ; elle ne rend le rayon ambigu que si cette fibre touche
+le segment. Une frontière ou des triangles superposés rendent la visée
 ambiguë si leur altitude touche le segment. Les contacts avec le plan ou
 avec une autre face au départ restent également ambigus. Une visée DÉGAGÉE ne
 signifie que l'absence d'intersection détectée sur ce segment échantillonné ;

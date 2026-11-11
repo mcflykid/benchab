@@ -297,6 +297,33 @@ def test_frontiere_bien_sous_le_plan_est_hors_visée():
     assert sc._evaluer_rayon_vertical(triangles, 0, (1, 1, 2), 0)["statut"] == "DÉGAGÉE"
 
 
+def test_projection_verticale_bien_hors_intervalle_z_ne_bloque_pas():
+    """La boîte Z d'un triangle dégénéré ne suffit pas si la fibre au rayon reste au-dessus du segment."""
+    p = 2 / 3
+    triangles = np.asarray([
+        [[0, 0, 2], [2, 0, 2], [0, 2, 2]],
+        [[p, p, 100], [p, p, 200], [p + 1, p, 1]],
+    ], dtype=float)
+
+    resultat = sc._evaluer_rayon_vertical(triangles, 0, (p, p, 2), 0)
+
+    assert resultat["statut"] == "DÉGAGÉE"
+
+
+def test_projection_verticale_dont_fibre_z_traverse_le_segment_reste_ambigue():
+    """Les bornes Z de la fibre dégénérée peuvent être de part et d'autre du segment mesuré."""
+    p = 2 / 3
+    triangles = np.asarray([
+        [[0, 0, 2], [2, 0, 2], [0, 2, 2]],
+        [[p - 1, p, -2], [p + 1, p, -2], [p, p, 4]],
+    ], dtype=float)
+
+    resultat = sc._evaluer_rayon_vertical(triangles, 0, (p, p, 2), 0)
+
+    assert resultat["statut"] == "AMBIGUË"
+    assert resultat["raison"] == "projection XY dégénérée sur la visée"
+
+
 def test_face_superposee_au_depart_reste_ambigue():
     """Deux triangles coïncidents au départ ne forment pas une visée qualifiée."""
     triangle = [[0, 0, 2], [2, 0, 2], [0, 2, 2]]

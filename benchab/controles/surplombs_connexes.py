@@ -173,24 +173,48 @@ def _evaluer_rayon_vertical(triangles, face_source, point, plateau_z_mm):
         np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1), np.linalg.norm(a - c, axis=1),
     ), axis=1)
     degeneres = np.abs(determinant) <= tolerance * longueurs.max(axis=1)
-    point_xy = np.asarray([x, y])
+    point_xy = np.asarray([x, y], dtype=float)
+    z_fibre_min = np.full(len(triangles), np.inf)
+    z_fibre_max = np.full(len(triangles), -np.inf)
     for cote in range(3):
         depart = xy[:, cote]
         arrivee = xy[:, (cote + 1) % 3]
         direction = arrivee - depart
         longueur2 = np.einsum("ij,ij->i", direction, direction)
+        longueur_nulle = longueur2 <= tolerance * tolerance
+        proche_depart = np.linalg.norm(depart - point_xy, axis=1) <= tolerance
+        proche_arrivee = np.linalg.norm(arrivee - point_xy, axis=1) <= tolerance
+        aretes_ponctuelles = degeneres & longueur_nulle & proche_depart & proche_arrivee
+        z_debut, z_fin = altitudes[:, cote], altitudes[:, (cote + 1) % 3]
+        z_fibre_min = np.minimum(
+            z_fibre_min,
+            np.where(aretes_ponctuelles, np.minimum(z_debut, z_fin), np.inf),
+        )
+        z_fibre_max = np.maximum(
+            z_fibre_max,
+            np.where(aretes_ponctuelles, np.maximum(z_debut, z_fin), -np.inf),
+        )
+        assez_long = ~longueur_nulle
         fractions = np.zeros(len(triangles), dtype=float)
-        assez_long = longueur2 > tolerance * tolerance
         fractions[assez_long] = np.clip(
             np.einsum("ij,ij->i", point_xy - depart[assez_long], direction[assez_long])
             / longueur2[assez_long], 0.0, 1.0,
         )
         projection = depart + fractions[:, None] * direction
         distance = np.linalg.norm(projection - point_xy, axis=1)
-        # La projection d'une arête verticale perd toute son étendue Z.
-        # La boîte déjà filtrée en Z suffit ici à conserver une ambiguïté.
-        if np.any(degeneres & (distance <= tolerance)):
-            return {"statut": "AMBIGUË", "raison": "projection XY dégénérée sur la visée"}
+        touche_arete = degeneres & assez_long & (distance <= tolerance)
+        z_arete = z_debut + fractions * (z_fin - z_debut)
+        z_fibre_min = np.minimum(z_fibre_min, np.where(touche_arete, z_arete, np.inf))
+        z_fibre_max = np.maximum(z_fibre_max, np.where(touche_arete, z_arete, -np.inf))
+    # Les arêtes qui traversent le même XY décrivent les bornes Z de la fibre
+    # du triangle projeté dégénéré ; une seule arête ne suffit pas pour trancher.
+    fibre_touche_segment = (
+        degeneres & np.isfinite(z_fibre_min)
+        & (z_fibre_max >= plateau_z_mm - tolerance)
+        & (z_fibre_min <= z_depart + tolerance)
+    )
+    if np.any(fibre_touche_segment):
+        return {"statut": "AMBIGUË", "raison": "projection XY dégénérée sur la visée"}
 
     denominateur = np.where(degeneres, 1.0, determinant)
     alpha = ((b[:, 0] - x) * (c[:, 1] - y) - (b[:, 1] - y) * (c[:, 0] - x)) / denominateur
