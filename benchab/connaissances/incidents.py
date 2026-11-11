@@ -36,6 +36,7 @@ _DELAI_CI = 5
 _API_GITHUB = "https://api.github.com"
 _WORKFLOW_CI = ".github/workflows/tests.yml"
 _ETAPE_CI = "Run uv run pytest -q"
+_ETAPE_ARTEFACT_CI = "Publier le JUnit de la tentative"
 
 
 class _SansRedirection(urllib.request.HTTPRedirectHandler):
@@ -50,7 +51,8 @@ def _get_github_public(url):
     """Lit un endpoint public GitHub fixe : GET sans identifiants, 5 s et 256 Kio."""
     partie = urllib.parse.urlsplit(url)
     chemin_autorise = re.fullmatch(
-        r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[1-9][0-9]*/attempts/[1-9][0-9]*(?:/jobs)?",
+        r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/"
+        r"(?:runs/[1-9][0-9]*/attempts/[1-9][0-9]*(?:/jobs)?|artifacts/[1-9][0-9]*)",
         partie.path,
     )
     if (
@@ -159,7 +161,7 @@ def _ci_non_verifiee(run_id, tentative, raison):
     }
 
 
-def _observer_ci_github(reference, revision, depot_local):
+def _observer_ci_github(reference, revision, depot_local, *, artefact=False):
     """Vérifie une tentative publique précise sans authentifier la fiche ni son exécution."""
     if not isinstance(reference, str) or not (
         match := re.fullmatch(r"([1-9][0-9]{0,19})/([1-9][0-9]{0,3})", reference)
@@ -221,6 +223,13 @@ def _observer_ci_github(reference, revision, depot_local):
         or etapes_cible[0].get("conclusion") != "success"
     ):
         return _ci_non_verifiee(run_id, tentative, "étape pytest unique absente ou non réussie")
+    publication = {}
+    if artefact:
+        etapes_publication = [e for e in etapes if isinstance(e, dict) and e.get("name") == _ETAPE_ARTEFACT_CI]
+        publication["publication_junit"] = (
+            len(etapes_publication) == 1 and etapes_publication[0].get("status") == "completed"
+            and etapes_publication[0].get("conclusion") == "success"
+        )
     return {
         "statut": "OBSERVATION CI PUBLIQUEMENT VÉRIFIÉE",
         "source": "API publique GitHub, réponse sans authentification",
@@ -234,10 +243,49 @@ def _observer_ci_github(reference, revision, depot_local):
         "job": "tests",
         "etape": _ETAPE_CI,
         "conclusion": "success",
+        **publication,
         "portee": (
             "Observation publique du run ; ne prouve ni l’identité de l’exécuteur "
             "ni l’authenticité d’un rapport JUnit."
         ),
+    }
+
+
+def _observer_artefact_junit(reference, observation, execution, taille):
+    """Associe le résultat par cas aux octets JUnit d’une tentative publique vérifiée."""
+    inconnu = {"statut": "NON VÉRIFIÉ"}
+    if not isinstance(reference, str) or re.fullmatch(r"[1-9][0-9]{0,19}", reference) is None:
+        return {**inconnu, "motif": "identifiant d’artefact GitHub invalide"}
+    if observation["statut"] != "OBSERVATION CI PUBLIQUEMENT VÉRIFIÉE":
+        return {**inconnu, "motif": "tentative GitHub non concordante"}
+    if observation.get("publication_junit") is not True:
+        return {**inconnu, "motif": "étape de publication JUnit absente ou non réussie"}
+    if "rapport_junit" not in execution:
+        return {**inconnu, "motif": "preuve JUnit locale et cas déclarés requis"}
+
+    url = f"{_API_GITHUB}/repos/{observation['depot']}/actions/artifacts/{reference}"
+    try:
+        artefact = _get_github_public(url)
+    except (OSError, http.client.HTTPException, ValueError, TypeError):
+        return {**inconnu, "motif": "métadonnées publiques de l’artefact indisponibles"}
+    run = artefact.get("workflow_run")
+    if (
+        not isinstance(run, dict) or type(run.get("id")) is not int or run.get("id") != observation["run_id"]
+        or run.get("head_sha") != observation["revision"] or run.get("head_branch") != "main"
+        or artefact.get("name") != f"benchab-junit-{observation['tentative']}.xml"
+        or artefact.get("expired") is not False
+        or type(artefact.get("id")) is not int or artefact.get("id") != int(reference)
+    ):
+        return {**inconnu, "motif": "artefact, révision ou tentative non concordants"}
+    if (
+        artefact.get("digest") != f"sha256:{execution['sha256']}"
+        or type(artefact.get("size_in_bytes")) is not int or artefact.get("size_in_bytes") != taille
+    ):
+        return {**inconnu, "motif": "octets JUnit différents de l’artefact GitHub"}
+    return {
+        "statut": "ARTEFACT JUNIT CI VÉRIFIÉ", "id": int(reference), "sha256": execution["sha256"],
+        "rapport_junit": execution["rapport_junit"],
+        "portee": "Résultat des cas rapporté par la tentative vérifiée.",
     }
 
 
@@ -381,7 +429,7 @@ def _git_court(depot, arguments, env, diagnostics):
     return resultat.stdout if resultat.returncode == 0 else ""
 
 
-def fiche(declaration, *, depot, prive, ci_github=None):
+def fiche(declaration, *, depot, prive, ci_github=None, artefact_github=None):
     """Vérifie les liens privés vers un commit, ses tests et un rapport optionnel.
 
     Le PASS porte sur les octets Git et, si elle est fournie, l’empreinte du
@@ -390,6 +438,8 @@ def fiche(declaration, *, depot, prive, ci_github=None):
     NON VÉRIFIÉE. Aucun code, projet, réglage ou unité n’est écrit. Une révision
     ou un rapport non démontré lève ValueError. L’observation CI publique est
     ajoutée seulement si `ci_github` contient explicitement `ID/TENTATIVE`.
+    L’identifiant d’artefact permet en plus de comparer les octets JUnit de
+    la preuve à l’empreinte publiée pour cette tentative.
     """
     if (
         not isinstance(declaration, dict)
@@ -397,6 +447,8 @@ def fiche(declaration, *, depot, prive, ci_github=None):
         or type(declaration["schema"]) is not int or declaration["schema"] != 1
     ):
         raise ValueError("Déclaration d’incident schéma 1 et champs exacts requis.")
+    if artefact_github is not None and ci_github is None:
+        raise ValueError("--artefact-github exige --ci-github ID/TENTATIVE.")
     issue, revision = declaration["issue"], declaration["revision"]
     if type(issue) is not int or not 1 <= issue <= 10**9:
         raise ValueError("Numéro d’issue BENCHAB positif requis.")
@@ -448,6 +500,7 @@ def fiche(declaration, *, depot, prive, ci_github=None):
         raise ValueError("Délai de lecture de la révision ou du blob Git dépassé.") from erreur
 
     execution = {"statut": "NON VÉRIFIÉ", "portee": "Le rapport déclaré n’authentifie pas une exécution."}
+    donnees_junit = None
     if "preuve_execution" in declaration:
         preuve = declaration["preuve_execution"]
         if not isinstance(preuve, dict) or not {"chemin", "sha256"} <= preuve.keys():
@@ -487,7 +540,11 @@ def fiche(declaration, *, depot, prive, ci_github=None):
         "execution": execution, "validation_physique": False,
     }
     if ci_github is not None:
-        resultat["ci_github"] = _observer_ci_github(ci_github, revision, depot)
+        resultat["ci_github"] = _observer_ci_github(ci_github, revision, depot, artefact=artefact_github is not None)
+        if artefact_github is not None:
+            resultat["ci_github"]["preuve_cas"] = _observer_artefact_junit(
+                artefact_github, resultat["ci_github"], execution, len(donnees_junit or b""),
+            )
     return resultat
 
 
@@ -514,6 +571,7 @@ def main(argv=None, *, racine=None):
     parser.add_argument(
         "--ci-github", metavar="ID/TENTATIVE", help="Observe explicitement une tentative CI publique GitHub"
     )
+    parser.add_argument("--artefact-github", metavar="ID", help="Relie la preuve JUnit à un artefact CI public")
     args = parser.parse_args(argv)
     try:
         prive = atelier_prive(racine)
@@ -525,7 +583,9 @@ def main(argv=None, *, racine=None):
         if len(contenu) > _MAX_DECLARATION:
             raise ValueError("Déclaration au-delà de 64 Kio.")
         donnees = json.loads(contenu, object_pairs_hook=_cles_uniques)
-        rapport = fiche(donnees, depot=args.depot, prive=prive, ci_github=args.ci_github)
+        rapport = fiche(
+            donnees, depot=args.depot, prive=prive, ci_github=args.ci_github, artefact_github=args.artefact_github,
+        )
         digest = hashlib.sha256(contenu).hexdigest()
         if sha256_fichier(source) != digest:
             raise ValueError("La déclaration a changé pendant la vérification.")
