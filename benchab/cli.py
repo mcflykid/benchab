@@ -50,7 +50,8 @@ CONTROLES_DIRECTS = {
     "plages-z": "couverture_plages_z",
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
-    "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "plages-z", "surplombs-connexes", "ponts-surplombs",
+    "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
+    "surplombs-connexes", "ponts-surplombs",
     "purge-changements",
 })
 

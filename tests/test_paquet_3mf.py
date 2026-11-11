@@ -253,6 +253,38 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.invoke("--json", self.source)[0], 2)
         self.assertEqual(self.source.read_bytes(), self.data)
 
+    def test_resume_conserve_inventaire_et_etat_structurel(self):
+        """Le résumé référence l’inventaire complet neuf sans modifier le verdict structurel."""
+        prive = self.root / "prive"
+        prive.mkdir()
+        rapport = prive / "rapport 3mf.json"
+        inventaire = [(f"Metadata/plate_{n}.gcode", b"G90") for n in range(1, 65)]
+        self.source.write_bytes(make_zip([(PROJECT_SETTINGS, b"{}"), *inventaire]))
+        code, complet, erreurs = self.invoke()
+        self.assertEqual(code, 0, erreurs)
+        output, errors = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            code = main([str(self.source), "--resume", "--json", str(rapport)], prive=prive)
+        self.assertEqual(code, 0, errors.getvalue())
+        detail = json.loads(complet)
+        resume = json.loads(output.getvalue())
+        self.assertEqual(json.loads(rapport.read_bytes()), detail)
+        self.assertEqual(resume["archive_sha256"], detail["archive_sha256"])
+        self.assertEqual(resume["statut"], detail["statut"])
+        self.assertEqual(resume["rapport"], str(rapport))
+        self.assertEqual(resume["nombre_membres"], len(detail["members"]))
+        self.assertEqual(resume["nombre_membres_gcode"], 64)
+        self.assertFalse(resume["ready_to_send"])
+        self.assertFalse(resume["physically_validated"])
+        self.assertLess(len(output.getvalue()), len(complet))
+
+    def test_resume_refuse_sans_rapport(self):
+        """Un résumé exige une destination pour le détail avant inspection."""
+        code, output, erreurs = self.invoke("--resume")
+        self.assertEqual(code, 2)
+        self.assertEqual(output, "")
+        self.assertIn("--resume exige --sortie", erreurs)
+
     def test_ancestor_symlink_and_fifo_refused(self):
         link = self.root / "alias"
         link.symlink_to(self.root, target_is_directory=True)
