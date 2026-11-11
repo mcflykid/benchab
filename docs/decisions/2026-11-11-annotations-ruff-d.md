@@ -40,4 +40,8 @@ La CI fournit la base de la PR ou le commit précédent du push, récupère l'hi
 python -m benchab.qualite.annotations --base <révision-base> --tete HEAD --racine .
 ```
 
-Le contrôleur exige que `HEAD` corresponde à la révision demandée. Il ne modifie aucun fichier. Ruff D10x reste activé uniquement dans ce contrôle progressif ; le rattrapage global se fera ultérieurement par lots.
+Le contrôleur exige que `HEAD` corresponde à la révision demandée. Il utilise
+le lanceur commun avec délais de 10 s pour Git et 30 s pour Ruff. Les captures
+sont temporaires et relues en octets pour le diff NUL ; aucun fichier du dépôt
+n'est modifié. Ruff D10x reste limité à ce contrôle progressif et le rattrapage
+global se poursuit par lots (#127).

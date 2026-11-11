@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import subprocess
 import sys
+import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+
+from benchab.processus import executer
 
 
 @dataclass(frozen=True)
@@ -21,13 +23,27 @@ class Changement:
     verifier_module: bool
 
 
+def _commande(racine, arguments, *, delai):
+    """Exécute un outil borné en secondes et relit ses captures privées en octets."""
+    with tempfile.TemporaryDirectory(prefix="benchab-annotations-") as temporaire:
+        resultat = executer(arguments, cwd=racine, diagnostics=temporaire, delai=delai,
+                            conserver_capture=True, limite_queue=8192)
+        if resultat.diagnostic is None:
+            raise ValueError("Capture de diagnostic absente")
+        dossier = Path(resultat.diagnostic).parent
+        sortie, erreur = dossier / "stdout.log", dossier / "stderr.log"
+        # Le diff NUL exige les octets d'origine, pas la queue texte du lanceur (#37).
+        if any(f.stat().st_size > 32 * 1024 * 1024 for f in (sortie, erreur)):
+            raise ValueError("Budget de capture d'annotations dépassé (32 Mio)")
+        return resultat.code_controle, sortie.read_bytes(), erreur.read_bytes()
+
+
 def _git(racine: Path, *arguments: str) -> bytes:
-    """Exécute Git sans shell ; entrées : racine et arguments ; sortie : octets ; échec explicite."""
-    try:
-        return subprocess.run(["git", *arguments], cwd=racine, check=True, capture_output=True).stdout
-    except (OSError, subprocess.CalledProcessError) as erreur:
-        detail = getattr(erreur, "stderr", b"")
-        raise ValueError(f"Git a échoué ({' '.join(arguments[:2])}) : {detail.decode(errors='replace')}") from erreur
+    """Exécute Git sans shell ; sortie en octets, échec explicite sans modifier le dépôt."""
+    code, sortie, erreur = _commande(racine, ["git", *arguments], delai=10)
+    if code:
+        raise ValueError(f"Git a échoué ({' '.join(arguments[:2])}) : {erreur.decode(errors='replace')}")
+    return sortie
 
 
 def _definitions(arbre):
@@ -113,20 +129,14 @@ def controler(racine: Path, base: str, tete: str) -> list[str]:
     chemins = [c.chemin for c in changements]
     if not chemins:
         return []
+    code, sortie, erreur = _commande(
+        racine, [sys.executable, "-m", "ruff", "check", "--select", "D10", "--output-format", "json", *chemins],
+        delai=30,
+    )
+    if code not in (0, 1):
+        raise ValueError(f"Ruff a échoué ({code}) : {erreur.decode(errors='replace')}")
     try:
-        resultat = subprocess.run(
-            [sys.executable, "-m", "ruff", "check", "--select", "D10", "--output-format", "json", *chemins],
-            cwd=racine,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError as erreur:
-        raise ValueError(f"Ruff est indisponible : {erreur}") from erreur
-    if resultat.returncode not in (0, 1):
-        raise ValueError(f"Ruff a échoué ({resultat.returncode}) : {resultat.stderr}")
-    try:
-        diagnostics = json.loads(resultat.stdout)
+        diagnostics = json.loads(sortie)
     except json.JSONDecodeError as erreur:
         raise ValueError("Ruff n'a pas renvoyé de diagnostic JSON valide.") from erreur
     par_chemin = {(racine / c.chemin).resolve(): c for c in changements}

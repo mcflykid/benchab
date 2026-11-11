@@ -19,7 +19,8 @@ def _depot(tmp_path: Path, contenu: str, nom: str = "module.py") -> tuple[Path, 
         ).stdout.strip()
 
     git("init", "-q")
-    git("config", "user.email", "test@example.invalid")
+    # Git accepte une identité synthétique sans adresse réelle dans ce dépôt jetable.
+    git("config", "user.email", "fixture-synthetique")
     git("config", "user.name", "Test")
     chemin = racine / "benchab" / "qualite"
     chemin.mkdir(parents=True)
