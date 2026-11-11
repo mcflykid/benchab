@@ -21,6 +21,7 @@
           "rectilinear": {"statut": "PASS", "valeur_embarquee": "rectilinear"},
           "zigzag": {"statut": "PASS", "valeur_embarquee": "zigzag"},
           "crosshatch": {"statut": "PASS", "valeur_embarquee": "crosshatch"},
+          "supportcubic": {"statut": "PASS", "valeur_embarquee": "supportcubic"},
           "zig-zag": {"statut": "FAIL", "valeur_embarquee": "zigzag"},
           "benchab_fixture_inconnue": {"statut": "FAIL", "valeur_embarquee": "crosshatch"}
         },

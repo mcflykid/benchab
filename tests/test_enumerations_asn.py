@@ -15,6 +15,7 @@ ASN = {
     [
         ("sparse_infill_pattern", "zigzag"),
         ("sparse_infill_pattern", "crosshatch"),
+        ("sparse_infill_pattern", "supportcubic"),
         ("internal_solid_infill_pattern", "monotonic"),
         ("top_surface_pattern", "monotonicline"),
         ("bottom_surface_pattern", "rectilinear"),
@@ -46,6 +47,7 @@ def test_inconnu_reste_non_verifie():
         ({"version": ASN["version"]}, "sparse_infill_pattern", "grid"),
         ({**ASN, "sha256": "0" * 64}, "sparse_infill_pattern", "grid"),
         (ASN, "sparse_infill_pattern", "motif jamais tenté"),
+        ({**ASN, "sha256": "0" * 64}, "sparse_infill_pattern", "supportcubic"),
         (ASN, "locked_skeleton_infill_pattern", "rectilinear"),
         (ASN, "support_interface_pattern", "grid"),
         ({**ASN, "sha256": "0" * 64}, "support_interface_pattern", "concentric"),
