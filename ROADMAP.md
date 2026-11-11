@@ -456,7 +456,20 @@ de 95–96 à 76–77 ms, avec des exports identiques. La validation des
 références parcourt encore toutes les lignes (#19). Les contrats de
 quatre modules de conception sont documentés (#127).
 
-## Prochaine version : 1.27.0
+## Version 1.27.0 — assemblages locaux et ouvertures oblongues
+
+Le comparateur 3MF accepte jusqu’à seize feuilles Core locales distinctes
+dans un assemblage, à ordre, identifiants, placements et géométries
+identiques. Une modification de peinture est localisée par objet et
+facette sur un témoin de deux feuilles ; la conversion entre slicers
+reste à établir (#43).
+
+Une fiche CAO peut déclarer une poche borgne ou une ouverture traversante
+oblongue à partir de deux cotes distinctes. Huit STEP témoins sont relus
+pour les deux orientations et les deux types d’ouverture. Ces contrôles
+ne qualifient pas l’ajustement physique (#32).
+
+## Prochaine version : 1.28.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
