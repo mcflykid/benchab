@@ -69,8 +69,29 @@ benchab visualisation retour-photo confirmer DOSSIER/suggestion.json \
 Cette confirmation neuve garde le SHA de la fiche et la déclaration écrite ; elle
 ne modifie ni la fiche candidate, ni le projet, ni SQLite. Elle n’identifie pas
 un défaut, le modèle ou l’impression et ne constitue pas une mesure physique.
-La comparaison entre modèles de même origine ou entre machine et matière n’est
-pas réalisée par ce premier sous-lot.
+La commande affiche également `confirmation_sha256`, l’empreinte du fichier
+de confirmation qu’elle a relu.
+
+### Vérifier la portée d’une comparaison
+
+Préparer une paire JSON privée au schéma 1. Sa liste `sources` contient deux
+objets, chacun avec `suggestion` (chemin de `suggestion.json`),
+`confirmation` (chemin de la déclaration humaine), `confirmation_sha256`
+(empreinte affichée à la confirmation) et `archive` (chemin du 3MF tranché).
+Les chemins dans cette paire sont relatifs à l’atelier privé.
+
+```text
+benchab visualisation retour-photo comparer prive/paire.json --sortie prive/comparaison.json
+```
+
+La commande revérifie les fichiers et leurs empreintes. Deux retours
+déclarés sur la même archive, plaque, région et plage Z partagent le
+même contexte déclaré. Avec des sources différentes, elle peut seulement
+qualifier la correspondance des réglages si le modèle de machine et la
+matière unique embarqués concordent. En dehors de ces cas, la portée reste
+NON VÉRIFIÉE. Même source ne signifie pas même impression ; aucune
+géométrie physique, cause de défaut ou identité de bobine n’est déduite.
+Les images et les observations ne sont pas reproduites dans le rapport (#28).
 
 ## Distinguer fait, hypothèse et validation
 

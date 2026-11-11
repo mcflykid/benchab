@@ -18,7 +18,7 @@ from benchab import processus
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.gcode.lecture import plaques_gcode_archive
-from benchab.qualite.ecritures import PublicationNeuve, renommer_exclusif, sortie_durable
+from benchab.qualite.ecritures import PublicationNeuve, ecrire_json_neuf, renommer_exclusif, sortie_durable
 from benchab.qualite.empreintes import sha256_fichier
 
 _MAX_PHOTO_OCTETS = 50 * 1024 * 1024
@@ -400,10 +400,9 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
             "impression ni cause physique."
         ),
     }
+    octets_confirmation = (json.dumps(capture, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
     with PublicationNeuve([chemin, *fichiers_references], [destination]) as publication:
-        publication.temporaire(destination).write_text(
-            json.dumps(capture, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-        )
+        publication.temporaire(destination).write_bytes(octets_confirmation)
         # Revérifier la preuve depuis un seul dossier épinglé. Les chemins
         # de la fiche et des deux images ne sont jamais lus sans plafond.
         repertoire_fd = os.open(chemin.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -420,7 +419,10 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         finally:
             os.close(repertoire_fd)
         publication.publier()
-    return capture
+    relus, sha_confirmation = _lire_fiche_epinglee(destination)
+    if relus != octets_confirmation:
+        raise ValueError("La confirmation publiée diffère des octets attendus ; elle reste en place.")
+    return {**capture, "confirmation_sha256": sha_confirmation}
 
 
 def _json_sans_doublons(paires):
@@ -532,7 +534,7 @@ def _signature(info):
 
 
 def main(argv=None, *, prive=None):
-    """Expose l’import candidat et la confirmation séparée, codes 0/2 sans mesure SQLite."""
+    """Expose le candidat, la confirmation et leur comparaison ; codes 0/2, sans SQLite."""
     commande = argparse.ArgumentParser(prog="benchab visualisation retour-photo")
     sous = commande.add_subparsers(dest="action", required=True)
     proposer = sous.add_parser("proposer", help="Copie une photo et prépare un candidat privé")
@@ -547,9 +549,19 @@ def main(argv=None, *, prive=None):
     confirmer.add_argument("--sha256", required=True, dest="empreinte")
     confirmer.add_argument("--observation", required=True)
     confirmer.add_argument("--sortie", type=Path, required=True)
+    comparer_retours = sous.add_parser("comparer", help="Vérifie la portée commune de deux retours confirmés")
+    comparer_retours.add_argument("paire", type=Path, help="Déclaration privée de deux retours et archives")
+    comparer_retours.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
     args = commande.parse_args(argv)
     try:
-        if args.action == "proposer":
+        if args.action == "comparer":
+            from benchab.projets.retour_photo_comparaison import comparer
+
+            racine = atelier_prive(prive)
+            rapport = comparer(_lire_declaration_privee(args.paire, racine), prive=racine)
+            if args.sortie:
+                ecrire_json_neuf(sortie_durable(args.sortie, prive=racine), rapport, entrees=[args.paire])
+        elif args.action == "proposer":
             declaration = None
             if args.declaration is not None:
                 declaration = _lire_declaration_privee(args.declaration, atelier_prive(prive))
@@ -572,7 +584,7 @@ def main(argv=None, *, prive=None):
                 prive=prive,
             )
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
-        return 0
+        return 2 if args.action == "comparer" and rapport["statut"] != "PASS" else 0
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as erreur:
         print(f"BENCHAB : {erreur}")
         return 2
