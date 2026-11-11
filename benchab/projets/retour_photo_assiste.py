@@ -149,6 +149,9 @@ def _apercu(photo, destination):
                 raise ValueError("dimensions photo invalides ou supérieures à 40 mégapixels")
             image = ImageOps.exif_transpose(image).convert("RGB")
             image.thumbnail((2048, 2048))
+            # L’orientation est appliquée aux pixels ; seules les données de
+            # l’original privé conservent les métadonnées de la prise de vue.
+            image.info.clear()
             image.save(destination, format="JPEG", quality=88, optimize=True)
         with Image.open(destination) as controle:
             controle.verify()
@@ -304,6 +307,9 @@ def creer_suggestion(
             raise ValueError("dossier de publication remplacé avant renommage")
         renommer_exclusif(nom_stage, cible.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
         _verifier_sortie_publiee(parent_fd, cible.name, identite_stage, membres_attendus)
+        finale = sans_lien(cible, racine=racine, strict=True).lstat()
+        if (finale.st_dev, finale.st_ino) != identite_stage:
+            raise ValueError("le chemin privé ne désigne plus le dossier publié")
     finally:
         os.close(parent_fd)
     return {
@@ -353,8 +359,11 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         raise ValueError("les fichiers source et aperçu doivent être distincts")
     fichiers_references = []
     identites_references = []
-    empreintes_references = {}
-    for cle, sha_cle in (("source_fichier", "source_sha256"), ("apercu_fichier", "apercu_sha256")):
+    membres_attendus = {chemin.name: (sha_fiche, len(brut), _MAX_FICHE_OCTETS)}
+    for cle, sha_cle, limite in (
+        ("source_fichier", "source_sha256", _MAX_PHOTO_OCTETS),
+        ("apercu_fichier", "apercu_sha256", _MAX_APERCU_OCTETS),
+    ):
         nom = suggestion["photo"].get(cle)
         sha = suggestion["photo"].get(sha_cle)
         if (
@@ -365,12 +374,12 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         ):
             raise ValueError("référence photo incomplète dans la suggestion")
         fichier = sans_lien(chemin.parent / nom, racine=racine, strict=True)
-        if not fichier.is_file() or sha256_fichier(fichier) != sha:
-            raise ValueError("fichier photo différent de la suggestion")
-        fichiers_references.append(fichier)
         info = fichier.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limite:
+            raise ValueError("fichier photo irrégulier ou hors budget : " + nom)
+        fichiers_references.append(fichier)
         identites_references.append((info.st_dev, info.st_ino))
-        empreintes_references[fichier] = sha
+        membres_attendus[nom] = (sha, info.st_size, limite)
     if fichiers_references[0] == fichiers_references[1] or identites_references[0] == identites_references[1]:
         raise ValueError("les fichiers source et aperçu doivent être distincts")
     capture = {
@@ -387,17 +396,24 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         ),
     }
     with PublicationNeuve([chemin, *fichiers_references], [destination]) as publication:
-        if sha256_fichier(chemin) != sha_fiche or any(
-            sha256_fichier(fichier) != attendu for fichier, attendu in empreintes_references.items()
-        ):
-            raise ValueError("fiche ou fichiers référencés modifiés avant confirmation")
         publication.temporaire(destination).write_text(
             json.dumps(capture, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8"
         )
-        if sha256_fichier(chemin) != sha_fiche or any(
-            sha256_fichier(fichier) != attendu for fichier, attendu in empreintes_references.items()
-        ):
-            raise ValueError("fiche ou fichiers référencés modifiés pendant la confirmation")
+        # Revérifier la preuve depuis un seul dossier épinglé. Les chemins
+        # de la fiche et des deux images ne sont jamais lus sans plafond.
+        repertoire_fd = os.open(chemin.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            try:
+                for nom, attendu in membres_attendus.items():
+                    _lire_membre_publie(repertoire_fd, nom, attendu)
+            except (OSError, ValueError) as erreur:
+                raise ValueError("fiche ou fichier photo différent de la suggestion") from erreur
+            info_dossier = os.fstat(repertoire_fd)
+            courant = chemin.parent.lstat()
+            if (info_dossier.st_dev, info_dossier.st_ino) != (courant.st_dev, courant.st_ino):
+                raise ValueError("dossier de suggestion remplacé pendant la confirmation")
+        finally:
+            os.close(repertoire_fd)
         publication.publier()
     return capture
 

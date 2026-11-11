@@ -13,6 +13,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
   déclaré et leur localisation dans la visionneuse (suite de #93).
 - Remplissage : qualifie le motif `supportcubic` pour le binaire et le
   témoin observés, sans appliquer un réglage (suite de #80 et #81).
+- Retour photo : conserve en privé un original et un aperçu vérifiés ;
+  une confirmation déclarée reste séparée du projet (suite de #28).
 
 ## 1.11.0 — 2026-11-11
 

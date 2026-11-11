@@ -123,6 +123,41 @@ def test_confirmation_refuse_photo_alteree_apres_suggestion(tmp_path):
     assert not (prive / "confirmation.json").exists()
 
 
+def test_confirmation_ne_relit_pas_un_apercu_hors_budget(tmp_path, monkeypatch):
+    """Une référence d’image hors budget n’est pas hachée ni confirmée."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    dossier = prive / "candidat"
+    rapport = retour_photo.creer_suggestion(photo, dossier, prive=prive)
+    monkeypatch.setattr(retour_photo, "_MAX_APERCU_OCTETS", 32)
+    with pytest.raises(ValueError, match="hors budget"):
+        retour_photo.confirmer_suggestion(
+            dossier / "suggestion.json", rapport["suggestion_sha256"], "observation",
+            prive / "confirmation.json", prive=prive,
+        )
+    assert not (prive / "confirmation.json").exists()
+
+
+def test_apercu_ne_diffuse_pas_les_metadonnees_de_la_photo_originale(tmp_path):
+    """L’orientation est appliquée, les métadonnées restent dans l’original privé."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    photo = tmp_path / "photo.jpg"
+    image = Image.new("RGB", (20, 12), "white")
+    exif = image.getexif()
+    exif[274] = 6
+    exif[270] = "Texte privé de la fixture"
+    image.save(photo, exif=exif)
+    dossier = prive / "candidat"
+    retour_photo.creer_suggestion(photo, dossier, prive=prive)
+    assert (dossier / "photo-source.jpg").read_bytes() == photo.read_bytes()
+    with Image.open(dossier / "apercu.jpg") as apercu:
+        assert apercu.size == (12, 20)
+        assert not apercu.getexif()
+
+
 def test_route_cli_ne_cree_ni_base_sqlite_ni_mesure(tmp_path, capsys):
     from benchab.cli import main
 
@@ -413,4 +448,3 @@ def test_heic_synthetic_converti_localement_si_sips_disponible(tmp_path):
     rapport = retour_photo.creer_suggestion(heic, prive / "candidate", prive=prive)
     assert rapport["photo"]["format_apercu"] == "JPEG"
     assert (prive / "candidate" / "photo-source.heic").read_bytes() == heic.read_bytes()
-
