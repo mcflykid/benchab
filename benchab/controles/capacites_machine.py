@@ -12,6 +12,7 @@ transformées en preuve de vitesse atteinte ou de durée physique.
 import collections
 import json
 import math
+import re
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -20,7 +21,7 @@ from benchab.archives_3mf import Archive3MF
 from benchab.controles.capacites_entrees import _limites, _metadonnees_archive, _positif, _reglages_filaments, _sha
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode import debit, geometrie_arc
-from benchab.gcode.lecture import lire_membre_3mf
+from benchab.gcode.lecture import plaques_gcode_archive
 
 RACINE = Path(__file__).resolve().parents[2]
 MAX_EXEMPLES = 20
@@ -126,18 +127,14 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
         rapport["entrees"]["settings_sha256"] = _sha(archive.lire("Metadata/project_settings.config"))
         filaments = _reglages_filaments(settings, machine, limites_filaments, rapport, note)
         painting, allowed_objects, plate_objects, slice_filaments = _metadonnees_archive(archive)
-        import re
-
-        members = sorted(
-            (int(m.group(1)), n) for n in archive.noms() if (m := re.fullmatch(r"Metadata/plate_(\d+)\.gcode", n))
-        )
+        members = plaques_gcode_archive(archive)
         root_v = dict.fromkeys("XYZE", 0.0)
         root_acc = {"axes": {}, "M204": {}, "M205": {}, "SET_VELOCITY_LIMIT": {}}
         total_time = total_volume = support_volume = purge_volume = 0.0
         changes = 0
         all_groups = []
         for number, member in members:
-            raw = lire_membre_3mf(path, member)
+            raw = archive.lire(member)
             text = raw.decode("utf-8", errors="replace")
             rapport["entrees"]["membres"][member] = _sha(raw)
             implicit = (

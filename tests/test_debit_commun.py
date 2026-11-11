@@ -146,3 +146,52 @@ def test_u25_lie_le_membre_exact_et_refuse_les_alias(tmp_path, alias_unique):
         with pytest.raises(ValueError, match="[Aa]mbigu|[Dd]upliqu"):
             debit_gcode.analyser(modifie)
     assert modifie.read_bytes() == avant
+
+
+def _reecrire_alias(source, destination, alias, *, garder_canonique=False):
+    """Crée une copie synthétique avec une graphie rembourrée du membre G-code."""
+    with ZipFile(source) as archive:
+        membres = [(nom, archive.read(nom)) for nom in archive.namelist()]
+    canonique = "Metadata/plate_1.gcode"
+    contenu = next(data for nom, data in membres if nom == canonique)
+    with ZipFile(destination, "w") as archive:
+        for nom, data in membres:
+            if nom != canonique:
+                archive.writestr(nom, data)
+        if garder_canonique:
+            archive.writestr(canonique, contenu)
+        archive.writestr(alias, contenu)
+    return destination
+
+
+def test_controle_envoi_et_capacites_resolvent_alias_unique(tmp_path):
+    """Les deux contrôles U25 lisent plate_01 réel et conservent le verdict canonique."""
+    canonique, declaration = _archive(tmp_path, "G1 X1 E1", plafond=25)
+    alias = _reecrire_alias(canonique, tmp_path / "alias.3mf", "Metadata/plate_01.gcode")
+    rapport_canonique = controle_envoi.controler(canonique, declaration)
+    rapport_alias = controle_envoi.controler(alias, declaration)
+    debit_canonique = next(x for x in rapport_canonique["resultats"] if x["controle"] == "débit commandé (filament 1)")
+    debit_alias = next(x for x in rapport_alias["resultats"] if x["controle"] == "débit commandé (filament 1)")
+    assert debit_alias["statut"] == debit_canonique["statut"] == "PASS"
+    capacites_canonique = capacites_machine.analyser(canonique, maitre={"vitesse_xy_mm_s": 600, "buse_mm": 0.4})
+    capacites_alias = capacites_machine.analyser(alias, maitre={"vitesse_xy_mm_s": 600, "buse_mm": 0.4})
+    assert capacites_alias["statut"] == capacites_canonique["statut"]
+    reference_canonique = controle_envoi.controler(canonique, declaration, reference=canonique)
+    reference_alias = controle_envoi.controler(canonique, declaration, reference=alias)
+    libelle = "commandes utiles du démarrage"
+    note_canonique = next(x for x in reference_canonique["resultats"] if x["controle"] == libelle)
+    note_alias = next(x for x in reference_alias["resultats"] if x["controle"] == libelle)
+    assert (note_alias["statut"], note_alias["detail"]) == (note_canonique["statut"], note_canonique["detail"])
+
+
+def test_controle_envoi_et_capacites_refusent_double_alias(tmp_path):
+    """Deux graphies du même numéro ne peuvent choisir silencieusement le G-code mesuré."""
+    canonique, declaration = _archive(tmp_path, "G1 X1 E1", plafond=25)
+    ambigu = _reecrire_alias(
+        canonique, tmp_path / "ambigu.3mf", "Metadata/plate_01.gcode", garder_canonique=True
+    )
+    with pytest.raises(ValueError, match="numéro de plaque dupliqué"):
+        controle_envoi.controler(ambigu, declaration)
+    rapport = capacites_machine.analyser(ambigu, maitre={"vitesse_xy_mm_s": 600, "buse_mm": 0.4})
+    assert rapport["statut"] == "FAIL"
+    assert rapport["contraintes"][0]["controle"] == "lecture/analyse"
