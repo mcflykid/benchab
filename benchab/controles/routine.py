@@ -86,7 +86,9 @@ def controler(plaques, tranche, placement, sortie):
                         continue
                     cible = _sans_lien(dossier / f"{nom}.{extension}")
                     empreinte_nouvelle = _empreinte_regulier(source_temp)
-                    existant = _empreinte_regulier(cible, absent_ok=True)
+                    existant = _empreinte_regulier(
+                        cible, absent_ok=True, taille_attendue=empreinte_nouvelle[0]
+                    )
                     if existant is not None and existant == empreinte_nouvelle:
                         chemins_final[(nom, extension)] = cible
                     elif existant is not None:
@@ -109,7 +111,7 @@ def controler(plaques, tranche, placement, sortie):
                     cible = _sans_lien(dossier_rejeu / f"{nom}.{extension}")
                     publications.append((source_temp, cible, nom, extension))
             if publications:
-                sources = [source for source, _cible, _nom, _extension in publications]
+                sources = [*entrees, *(source for source, _cible, _nom, _extension in publications)]
                 cibles = [cible for _source, cible, _nom, _extension in publications]
                 with PublicationNeuve(sources, cibles) as publication:
                     for source, cible, _nom, _extension in publications:
@@ -134,10 +136,11 @@ def controler(plaques, tranche, placement, sortie):
     }
 
 
-def _empreinte_regulier(chemin, *, absent_ok=False):
+def _empreinte_regulier(chemin, *, absent_ok=False, taille_attendue=None):
     """Compare taille et SHA-256 d'un fichier régulier en flux, sans suivre de lien.
 
-    Entrée : chemin sans unité. Sortie : (octets, SHA-256), None si absent autorisé.
+    Entrée : chemin et taille attendue facultative en octets.
+    Sortie : (octets, SHA-256), SHA omis si la taille diffère, None si absent autorisé.
     Refuse les objets non réguliers et une identité modifiée pendant la lecture.
     """
     chemin = Path(chemin)
@@ -152,10 +155,18 @@ def _empreinte_regulier(chemin, *, absent_ok=False):
         avant = os.fstat(fichier.fileno())
         if not stat.S_ISREG(avant.st_mode):
             raise ValueError("Rapport ou journal non régulier ; aucune publication faite.")
+        courant = chemin.lstat()
+        identite_avant = (avant.st_dev, avant.st_ino, avant.st_size, avant.st_mtime_ns, avant.st_ctime_ns)
+        identite_courante = (
+            courant.st_dev, courant.st_ino, courant.st_size, courant.st_mtime_ns, courant.st_ctime_ns,
+        )
+        if identite_avant != identite_courante:
+            raise ValueError("Rapport ou journal remplacé pendant la comparaison.")
+        if taille_attendue is not None and avant.st_size != taille_attendue:
+            return avant.st_size, None
         empreinte = hashlib.file_digest(fichier, "sha256").hexdigest()
         apres = os.fstat(fichier.fileno())
         courant = chemin.lstat()
-        identite_avant = (avant.st_dev, avant.st_ino, avant.st_size, avant.st_mtime_ns, avant.st_ctime_ns)
         identite_apres = (apres.st_dev, apres.st_ino, apres.st_size, apres.st_mtime_ns, apres.st_ctime_ns)
         identite_courante = (
             courant.st_dev, courant.st_ino, courant.st_size, courant.st_mtime_ns, courant.st_ctime_ns,
