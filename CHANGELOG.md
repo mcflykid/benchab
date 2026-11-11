@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## Non publié
+## 1.16.0 — 2026-11-11
 
 - Origine 3MF : lit les modèles du plan dans le contexte commun, avec
   plafonds et XML protégé. Un contenu hors contrat reste NON VÉRIFIÉ
@@ -11,6 +11,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
   déclaré, sans modifier le lecteur exact ni U25 (suite de #134).
 - Rapports : résume la comparaison de projets 3MF tout en conservant le
   détail privé dans une sortie neuve (suite de #35).
+- Supports : reproduit l’effet d’une variation de l’écart Z supérieur
+  sur le coupon natif, sans conclure au retrait (suite de #89).
 
 ## 1.15.0 — 2026-11-11
 
