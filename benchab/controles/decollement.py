@@ -167,8 +167,11 @@ def main(argv=None):
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     try:
-        entrees = _entrees_controle(args.fichiers, placement=args.placement, candidats=args.candidats)
         sortie = destination_neuve(args.json) if args.json else None
+        entrees = (
+            _entrees_controle(args.fichiers, placement=args.placement, candidats=args.candidats)
+            if sortie is not None else []
+        )
         resultats, code = controler(args.fichiers, placement=args.placement, candidats=args.candidats)
         if sortie is not None:
             ecrire_json_neuf(sortie, resultats, entrees=entrees)
