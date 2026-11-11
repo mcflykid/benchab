@@ -39,7 +39,14 @@ Les parcours mémoire spécialisés déjà bornés sont conservés ; les autres
 familles de lecteurs seront migrées dans un lot distinct. Les projets et leurs
 preuves restent privés et ne sont pas réécrits par cette version.
 
-## Version 1.3.0 et suite de la feuille de route
+## Version 1.3.0 — preuves et archives 3MF
+
+La [version publiée](https://github.com/mcflykid/benchab/releases/tag/v1.3.0)
+regroupe le lecteur 3MF borné, les rapports d’envoi et d’attribution, la
+première qualification des énumérations ASN et le témoin natif multi-volumes.
+Les travaux sans preuve suffisante restent ouverts dans la milestone suivante.
+
+## Prochaine version : 1.4.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -50,6 +57,9 @@ Traiter les prérequis avant les nouveaux réglages :
   des portées anciennes par lots.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
+  La mesure dans une boîte peut utiliser la courbe ; la couverture des autres
+  contrôles demeure NON VÉRIFIÉE tant qu’elle n’est pas qualifiée. #133 garde
+  le débit mesurable de l’arc dans la finition des parois.
 - **Fichiers et archives** : #122 poursuit la migration des familles hors contrôles ;
   #42 suit la traçabilité 3MF.
 - **Contrôle avant envoi** : #71 pour ACE/buse/démarrage, #109 pour les
