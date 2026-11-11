@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -9,6 +10,9 @@ import stat
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path, PurePosixPath
 from xml.etree.ElementTree import ParseError
 
@@ -27,6 +31,215 @@ _MAX_PREUVE = 64 * 1024 * 1024
 _MAX_TESTS = 8
 _MAX_JUNIT = 8 * 1024 * 1024
 _MAX_CAS_JUNIT = 32
+_MAX_CI_JSON = 256 * 1024
+_DELAI_CI = 5
+_API_GITHUB = "https://api.github.com"
+_WORKFLOW_CI = ".github/workflows/tests.yml"
+_ETAPE_CI = "Run uv run pytest -q"
+
+
+class _SansRedirection(urllib.request.HTTPRedirectHandler):
+    """Refuse toute redirection hors de l’API GitHub explicitement prévue."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Ne construit aucune nouvelle requête à partir d’une réponse HTTP."""
+        return None
+
+
+def _get_github_public(url):
+    """Lit un endpoint public GitHub fixe : GET sans identifiants, 5 s et 256 Kio."""
+    partie = urllib.parse.urlsplit(url)
+    chemin_autorise = re.fullmatch(
+        r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[1-9][0-9]*/attempts/[1-9][0-9]*(?:/jobs)?",
+        partie.path,
+    )
+    if (
+        partie.scheme != "https" or partie.hostname != "api.github.com" or partie.port is not None
+        or partie.username is not None or partie.password is not None
+        or chemin_autorise is None
+        or (partie.path.endswith("/jobs") and partie.query != "per_page=20")
+        or (not partie.path.endswith("/jobs") and partie.query)
+    ):
+        raise ValueError("Endpoint GitHub hors périmètre.")
+    requete = urllib.request.Request(
+        url,
+        method="GET",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "BENCHAB-incident-readonly",
+        },
+    )
+    ouvreur = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SansRedirection)
+    with ouvreur.open(requete, timeout=_DELAI_CI) as reponse:
+        if getattr(reponse, "status", 200) != 200:
+            raise ValueError("Réponse HTTP GitHub inattendue.")
+        donnees = reponse.read(_MAX_CI_JSON + 1)
+    if len(donnees) > _MAX_CI_JSON:
+        raise ValueError("Réponse GitHub au-delà du budget.")
+    resultat = json.loads(donnees, object_pairs_hook=_cles_uniques)
+    if not isinstance(resultat, dict):
+        raise ValueError("Réponse GitHub JSON objet requise.")
+    return resultat
+
+
+def _depot_github(depot):
+    """Dérive un dépôt public uniquement depuis un origin GitHub sans identifiants."""
+    try:
+        lecture = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=depot,
+            env=_env_git(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as erreur:
+        raise ValueError("origin GitHub indisponible") from erreur
+    if lecture.returncode != 0 or len(lecture.stdout) > 2048:
+        raise ValueError("origin absent ou invalide")
+    try:
+        origin = lecture.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError as erreur:
+        raise ValueError("origin non UTF-8") from erreur
+    if not origin or len(origin) > 2048:
+        raise ValueError("origin absent ou invalide")
+    def identifier_depuis_chemin(chemin):
+        """Valide les deux composants d’un chemin de dépôt GitHub."""
+        morceaux = chemin.split("/")
+        if len(morceaux) != 3 or morceaux[0] != "":
+            return None
+        proprietaire, depot_nom = morceaux[1:]
+        if depot_nom.endswith(".git"):
+            depot_nom = depot_nom[:-4]
+        if proprietaire in {".", ".."} or depot_nom in {".", ".."} or not re.fullmatch(
+            r"[A-Za-z0-9_.-]+", proprietaire
+        ) or not re.fullmatch(
+            r"[A-Za-z0-9_.-]+", depot_nom
+        ):
+            return None
+        return proprietaire + "/" + depot_nom
+
+    if origin.startswith("https://"):
+        url = urllib.parse.urlsplit(origin)
+        if (
+            url.scheme != "https" or url.hostname != "github.com" or url.port is not None
+            or url.username is not None or url.password is not None or url.query or url.fragment
+        ):
+            raise ValueError("origin HTTPS hors périmètre")
+        resultat = identifier_depuis_chemin(url.path)
+    elif origin.startswith("ssh://"):
+        url = urllib.parse.urlsplit(origin)
+        if (
+            url.scheme != "ssh" or url.hostname != "github.com" or url.username != "git"
+            or url.password is not None or url.port is not None or url.query or url.fragment
+        ):
+            raise ValueError("origin SSH hors périmètre")
+        resultat = identifier_depuis_chemin(url.path)
+    else:
+        correspondance = re.fullmatch(r"git@github\.com:([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)", origin)
+        resultat = None if correspondance is None else "/".join(correspondance.groups())
+        if resultat is not None and resultat.split("/")[0] in {".", ".."}:
+            resultat = None
+        if resultat is not None and resultat.rsplit("/", 1)[-1] in {".", ".."}:
+            resultat = None
+        if resultat is not None and resultat.endswith(".git"):
+            resultat = resultat[:-4]
+    if resultat is None:
+        raise ValueError("origin hors périmètre GitHub")
+    return resultat
+
+
+def _ci_non_verifiee(run_id, tentative, raison):
+    """Construit un statut public neutre sans inclure la réponse ou une erreur brute."""
+    return {
+        "statut": "NON VÉRIFIÉ",
+        "motif": raison,
+        "run_id": run_id,
+        "tentative": tentative,
+    }
+
+
+def _observer_ci_github(reference, revision, depot_local):
+    """Vérifie une tentative publique précise sans authentifier la fiche ni son exécution."""
+    if not isinstance(reference, str) or not (
+        match := re.fullmatch(r"([1-9][0-9]{0,19})/([1-9][0-9]{0,3})", reference)
+    ):
+        return _ci_non_verifiee(None, None, "identifiant de run/tentative invalide")
+    run_id, tentative = map(int, match.groups())
+    try:
+        depot_github = _depot_github(depot_local)
+        base = f"{_API_GITHUB}/repos/{depot_github}/actions/runs/{run_id}/attempts/{tentative}"
+        run = _get_github_public(base)
+        travaux = _get_github_public(base + "/jobs?per_page=20")
+    except (OSError, TimeoutError, http.client.HTTPException, urllib.error.URLError, ValueError, TypeError,
+            json.JSONDecodeError,
+            subprocess.SubprocessError):
+        return _ci_non_verifiee(run_id, tentative, "lecture publique indisponible ou invalide")
+
+    depot = run.get("repository")
+    depot_tete = run.get("head_repository")
+    chemin = run.get("path")
+    nom_depot = depot.get("full_name") if isinstance(depot, dict) else None
+    nom_tete = depot_tete.get("full_name") if isinstance(depot_tete, dict) else None
+    if not isinstance(nom_depot, str) or nom_depot.casefold() != depot_github.casefold():
+        return _ci_non_verifiee(run_id, tentative, "dépôt du run non concordant")
+    if not isinstance(nom_tete, str) or nom_tete.casefold() != depot_github.casefold():
+        return _ci_non_verifiee(run_id, tentative, "dépôt source non concordant")
+    if run.get("head_sha") != revision:
+        return _ci_non_verifiee(run_id, tentative, "SHA de tête différent de la fiche")
+    if (
+        type(run.get("id")) is not int or run.get("id") != run_id
+        or type(run.get("run_attempt")) is not int or run.get("run_attempt") != tentative
+    ):
+        return _ci_non_verifiee(run_id, tentative, "run ou tentative différent de la demande")
+    if run.get("event") != "push" or run.get("head_branch") != "main":
+        return _ci_non_verifiee(run_id, tentative, "événement ou branche différent de push main")
+    if not isinstance(chemin, str) or chemin not in {_WORKFLOW_CI, _WORKFLOW_CI + "@refs/heads/main"}:
+        return _ci_non_verifiee(run_id, tentative, "workflow différent du workflow de tests attendu")
+    if run.get("status") != "completed" or run.get("conclusion") != "success":
+        return _ci_non_verifiee(run_id, tentative, "run non terminé avec succès")
+    if not isinstance(travaux, dict) or type(travaux.get("total_count")) is not int or travaux.get("total_count") != 1:
+        return _ci_non_verifiee(run_id, tentative, "nombre de jobs différent du job unique attendu")
+    jobs = travaux.get("jobs")
+    if not isinstance(jobs, list) or len(jobs) != 1 or not isinstance(jobs[0], dict):
+        return _ci_non_verifiee(run_id, tentative, "liste de jobs non unique ou invalide")
+    job = jobs[0]
+    if type(job.get("run_id")) is not int or job.get("run_id") != run_id:
+        return _ci_non_verifiee(run_id, tentative, "job rattaché à un autre run")
+    if type(job.get("run_attempt")) is not int or job.get("run_attempt") != tentative:
+        return _ci_non_verifiee(run_id, tentative, "job rattaché à une autre tentative")
+    if job.get("name") != "tests" or job.get("status") != "completed" or job.get("conclusion") != "success":
+        return _ci_non_verifiee(run_id, tentative, "job tests non terminé avec succès")
+    etapes = job.get("steps")
+    if not isinstance(etapes, list):
+        return _ci_non_verifiee(run_id, tentative, "étapes du job absentes")
+    etapes_cible = [etape for etape in etapes if isinstance(etape, dict) and etape.get("name") == _ETAPE_CI]
+    if (
+        len(etapes_cible) != 1 or etapes_cible[0].get("status") != "completed"
+        or etapes_cible[0].get("conclusion") != "success"
+    ):
+        return _ci_non_verifiee(run_id, tentative, "étape pytest unique absente ou non réussie")
+    return {
+        "statut": "OBSERVATION CI PUBLIQUEMENT VÉRIFIÉE",
+        "source": "API publique GitHub, réponse sans authentification",
+        "depot": depot_github,
+        "revision": revision,
+        "evenement": "push",
+        "branche": "main",
+        "workflow": _WORKFLOW_CI,
+        "run_id": run_id,
+        "tentative": tentative,
+        "job": "tests",
+        "etape": _ETAPE_CI,
+        "conclusion": "success",
+        "portee": (
+            "Observation publique du run ; ne prouve ni l’identité de l’exécuteur "
+            "ni l’authenticité d’un rapport JUnit."
+        ),
+    }
 
 
 def _chemin_relatif(chemin):
@@ -169,14 +382,15 @@ def _git_court(depot, arguments, env, diagnostics):
     return resultat.stdout if resultat.returncode == 0 else ""
 
 
-def fiche(declaration, *, depot, prive):
+def fiche(declaration, *, depot, prive, ci_github=None):
     """Vérifie les liens privés vers un commit, ses tests et un rapport optionnel.
 
     Le PASS porte sur les octets Git et, si elle est fournie, l’empreinte du
     rapport local. Le format JUnit optionnel compare jusqu’à 32 cas exacts issus
     des fichiers `tests/` déclarés et rapporte leur contenu ; l’exécution reste
     NON VÉRIFIÉE. Aucun code, projet, réglage ou unité n’est écrit. Une révision
-    ou un rapport non démontré lève ValueError.
+    ou un rapport non démontré lève ValueError. L’observation CI publique est
+    ajoutée seulement si `ci_github` contient explicitement `ID/TENTATIVE`.
     """
     if (
         not isinstance(declaration, dict)
@@ -268,11 +482,14 @@ def fiche(declaration, *, depot, prive):
         if format_junit:
             execution["rapport_junit"] = _rapport_junit(donnees_junit, cas_attendus)
 
-    return {
+    resultat = {
         "schema": 1, "statut_lien": "PASS", "issue": issue, "revision": revision,
         "symptome": symptome, "conditions": conditions, "limites": limites, "tests": empreintes,
         "execution": execution, "validation_physique": False,
     }
+    if ci_github is not None:
+        resultat["ci_github"] = _observer_ci_github(ci_github, revision, depot)
+    return resultat
 
 
 def _cles_uniques(paires):
@@ -295,6 +512,9 @@ def main(argv=None, *, racine=None):
     parser.add_argument("declaration", type=Path)
     parser.add_argument("--depot", type=Path, required=True)
     parser.add_argument("--sortie", type=Path)
+    parser.add_argument(
+        "--ci-github", metavar="ID/TENTATIVE", help="Observe explicitement une tentative CI publique GitHub"
+    )
     args = parser.parse_args(argv)
     try:
         prive = atelier_prive(racine)
@@ -306,7 +526,7 @@ def main(argv=None, *, racine=None):
         if len(contenu) > _MAX_DECLARATION:
             raise ValueError("Déclaration au-delà de 64 Kio.")
         donnees = json.loads(contenu, object_pairs_hook=_cles_uniques)
-        rapport = fiche(donnees, depot=args.depot, prive=prive)
+        rapport = fiche(donnees, depot=args.depot, prive=prive, ci_github=args.ci_github)
         digest = hashlib.sha256(contenu).hexdigest()
         if sha256_fichier(source) != digest:
             raise ValueError("La déclaration a changé pendant la vérification.")
