@@ -349,6 +349,7 @@ class Reglages(dict):
         return self
 
     def __deepcopy__(self, memo):
+        """Copie réglages, contexte typé et valeurs d’origine sans les normaliser ni les modifier."""
         resultat = Reglages(copy.deepcopy(dict(self), memo), contexte=copy.deepcopy(self.contexte, memo))
         resultat.original = copy.deepcopy(self.original, memo)
         memo[id(self)] = resultat

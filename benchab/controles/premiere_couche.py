@@ -17,15 +17,16 @@ réelle.
 """
 
 import math
-import re
 import sys
 from pathlib import Path
+from zipfile import BadZipFile
 
 import numpy as np
 from scipy import ndimage
 
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
-from benchab.gcode.lecture import lire_texte_gcode_3mf, membres_gcode_3mf
+from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
 from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 # Budget conservateur des tableaux NumPy/SciPy : 64 octets/cellule, 256 Mio.
@@ -50,13 +51,21 @@ PIECE = (
 
 
 def gcodes(f):
+    """Itère sur (numéro de plaque sans unité, texte G-code), sans modifier la source.
+
+    Un seul contexte 3MF, avec vérification des numéros et du CRC de chaque G-code lu.
+    Le G-code autonome conserve le numéro 1 et son mode de lecture historique.
+    """
     f = Path(f)
     if f.suffix == ".gcode":
-        return [(1, f.read_text(errors="replace"))]
-    return [
-        (int(re.search(r"plate_(\d+)", member).group(1)), lire_texte_gcode_3mf(f, member))
-        for member in membres_gcode_3mf(f)
-    ]
+        yield 1, f.read_text(errors="replace")
+        return
+    with Archive3MF(f) as archive:
+        # Conserver l’ordre par nom du rapport historique sans accepter les alias (#162).
+        plaques = sorted(plaques_gcode_archive(archive), key=lambda plaque: plaque[1])
+        for numero, membre in plaques:
+            yield numero, lire_texte_gcode_3mf(f, membre, archive=archive)
+        archive.verifier_source(f)
 
 
 def deux_couches(g):
@@ -226,10 +235,14 @@ def main(argv=None):
             print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
             return 2
 
-    res = {
-        f"plaque {k}": controler(g, opt("--ilot-max", 3.0), opt("--creux-max", 150.0), opt("--pas", 0.1))
-        for k, g in gcodes(a[0])
-    }
+    try:
+        res = {
+            f"plaque {k}": controler(g, opt("--ilot-max", 3.0), opt("--creux-max", 150.0), opt("--pas", 0.1))
+            for k, g in gcodes(a[0])
+        }
+    except (OSError, ValueError, BadZipFile) as erreur:
+        print(f"NON VÉRIFIÉ {a[0]} : {erreur}", file=sys.stderr)
+        return 2
     for k, r in res.items():
         print(
             f"{r['statut']:5s} {k} : {len(r.get('defauts', []))} défaut(s) de 1re couche"

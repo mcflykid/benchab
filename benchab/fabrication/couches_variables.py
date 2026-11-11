@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.fabrication import anycubic
 from benchab.gcode.lecture import iter_lignes_gcode_3mf, membres_gcode_3mf
 from benchab.projets.protections import protections
@@ -22,6 +22,19 @@ from benchab.qualite.ecritures import acquerir_verrou, ouvrir_verrou
 from benchab.qualite.empreintes import sha256_fichier
 
 MODES = {"qualite": (0.12, 0.28, 0.1), "vitesse": (0.16, 0.28, 0.2)}
+
+
+def _lire_reglages_source(chemin: str | Path) -> dict:
+    """Lit les réglages typés et vérifie les CRC du 3MF, sans modifier la source."""
+    with Archive3MF(chemin) as archive:
+        membre = "Metadata/project_settings.config"
+        noms = archive.noms()
+        if membre not in noms:
+            raise ValueError("Configuration de projet absente du 3MF source.")
+        reglages = archive.reglages()
+        archive.verifier(membres=[nom for nom in noms if nom != membre])
+        archive.verifier_source(chemin)
+        return reglages
 
 
 def profil(maillage, base=0.2, hmin=0.12, hmax=0.28, marche=0.1, pas=0.5):
@@ -303,12 +316,7 @@ def main(
     if not all(math.isfinite(float(valeur)) for bornes in modes.values() for valeur in bornes):
         raise ValueError("Paramètres de modes finis requis.")
 
-    with zipfile.ZipFile(archive_source) as archive:
-        noms = archive.namelist()
-        membre = "Metadata/project_settings.config"
-        if noms.count(membre) != 1 or len(noms) != len(set(noms)) or archive.testzip():
-            raise ValueError("Archive source dupliquée, invalide ou corrompue.")
-        reglages = schema_reglages.decoder(archive.read(membre))
+    reglages = _lire_reglages_source(archive_source)
     hauteur_base = reglages.get("layer_height", ".2")
     base = float(hauteur_base[0] if isinstance(hauteur_base, list) else hauteur_base)
     donnees_placement = json.loads(placement_path.read_text(encoding="utf-8"))

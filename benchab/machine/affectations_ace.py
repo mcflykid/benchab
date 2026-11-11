@@ -80,122 +80,257 @@ def _attestation(att, contexte):
     }
 
 
-def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
-    """Audite les déclarations et un 3MF local (mm, °C, mm³/s) ; rapport DECLARATIONS_ATTESTEES, FAIL ou NON VÉRIFIÉ.
-
-    Les cases ACE sont exactes ; aucune confirmation physique ni commande machine n'est produite.
-    """
+def _charger_contexte(source3mf, declarations, maitre, registre):
+    """Charge et qualifie les sources 3MF, maître et registre sans les modifier."""
     source = _path(source3mf)
     if source.suffix.lower() != ".3mf":
         raise ValueError("Projet3MF requis.")
-    sha = _sha(source)
-    with zipfile.ZipFile(source) as z:
-        infos = z.infolist()
-        names = [i.filename for i in infos]
-        if len(set(names)) != len(names) or any(
-            n.startswith("/") or ".." in PurePosixPath(n).parts or "\\" in n for n in names
+    sha_source = _sha(source)
+    with zipfile.ZipFile(source) as archive:
+        infos = archive.infolist()
+        noms = [info.filename for info in infos]
+        if len(set(noms)) != len(noms) or any(
+            nom.startswith("/") or ".." in PurePosixPath(nom).parts or "\\" in nom for nom in noms
         ):
             raise ValueError("Archive ambiguë ou chemins non confinés.")
-        raw = reglages.lire_membre_projet(z)
-    settings = reglages.decoder(raw)
+        brut = reglages.lire_membre_projet(archive)
+    settings = reglages.decoder(brut)
     declaration_path = _path(declarations) if isinstance(declarations, (str, Path)) else None
-    decl_sha = _sha(declaration_path) if declaration_path else None
-    dec = _json(declaration_path) if declaration_path else copy.deepcopy(declarations)
+    sha_declarations = _sha(declaration_path) if declaration_path else None
+    donnees = _json(declaration_path) if declaration_path else copy.deepcopy(declarations)
     if (
-        not isinstance(dec, dict)
-        or set(dec) - {"schema", "outils"}
-        or dec.get("schema") != 1
-        or isinstance(dec.get("schema"), bool)
-        or not isinstance(dec.get("outils"), list)
+        not isinstance(donnees, dict)
+        or set(donnees) - {"schema", "outils"}
+        or donnees.get("schema") != 1
+        or isinstance(donnees.get("schema"), bool)
+        or not isinstance(donnees.get("outils"), list)
     ):
         raise ValueError("Déclarations schema1/outils requises.")
-    master = PM.charger_machine(maitre)
-    regpath = _path(registre) if isinstance(registre, (str, Path)) else None
-    reg = _json(regpath) if regpath else copy.deepcopy(registre) if registre is not None else None
-    if not isinstance(reg, dict) or not isinstance(reg.get("filaments"), list):
+    maitre_charge = PM.charger_machine(maitre)
+    registre_path = _path(registre) if isinstance(registre, (str, Path)) else None
+    registre_charge = (
+        _json(registre_path)
+        if registre_path
+        else copy.deepcopy(registre) if registre is not None else None
+    )
+    if not isinstance(registre_charge, dict) or not isinstance(registre_charge.get("filaments"), list):
         raise ValueError("Registre filaments invalide.")
-    ids = [f.get("id") for f in reg["filaments"]]
+    ids = [filament.get("id") for filament in registre_charge["filaments"]]
     if len(set(ids)) != len(ids):
         raise ValueError("Identifiants filaments dupliqués.")
-    entries = {f["id"]: f for f in reg["filaments"]}
-    profiles = _liste(settings, "filament_settings_id")
-    if not 1 <= len(profiles) <= 4 or any(not isinstance(x, str) or not x.strip() for x in profiles):
-        raise ValueError("Un à quatre profils embarqués explicites requis.")
-    n = len(profiles)
-    errors, nv = [], []
+    entrees = {filament["id"]: filament for filament in registre_charge["filaments"]}
+    return (
+        source, sha_source, brut, settings, declaration_path, sha_declarations, donnees,
+        maitre_charge, registre_path, registre_charge, entrees,
+    )
 
-    def depasse_constructeur(valeur, cle):
-        limite = master.get("constructeur", {}).get(cle, {}).get("value")
-        if limite is None:
-            raison = "Limite constructeur non vérifiée : " + cle
-            if raison not in nv:
-                nv.append(raison)
-            return False
-        return valeur > _nombre(limite)
 
-    model = settings.get("printer_model")
-    if model not in charger()["machine"]["modeles_slicer"]:
-        errors.append("Modèle projet absent ou différent de la S1 du maître.")
-    nozzle = _liste(settings, "nozzle_diameter")
-    if not nozzle or any(_nombre(x) != master["machine"]["buse_mm"]["value"] for x in nozzle):
-        errors.append("Diamètre de buse absent ou contradictoire au maître.")
-    if settings.get("nozzle_type") != master["machine"]["buse_matiere"]["value"]:
-        errors.append("Matière de buse absente ou contradictoire au maître.")
-    seen, slots, bytool = set(), set(), {}
-    for d in dec["outils"]:
-        if not isinstance(d, dict) or set(d) - {
-            "outil",
-            "filament_id",
-            "slot_declare",
-            "confirmation_physique",
-            "source_declaration",
-            "date_declaration",
-            "changements_attendus",
+def _valider_declarations(outils, nombre_profils, entrees):
+    """Valide les associations explicites outil/slot/filament et refuse les doublons."""
+    vus, slots, par_outil = set(), set(), {}
+    for declaration in outils:
+        if not isinstance(declaration, dict) or set(declaration) - {
+            "outil", "filament_id", "slot_declare", "confirmation_physique",
+            "source_declaration", "date_declaration", "changements_attendus",
         }:
             raise ValueError("Champs déclaration inconnus ou invalides.")
-        tool = d.get("outil")
-        if not isinstance(tool, str) or re.fullmatch(r"T[0-3]", tool) is None or int(tool[1]) >= n or tool in seen:
+        outil = declaration.get("outil")
+        if (
+            not isinstance(outil, str)
+            or re.fullmatch(r"T[0-3]", outil) is None
+            or int(outil[1]) >= nombre_profils
+            or outil in vus
+        ):
             raise ValueError("OutilT0..T3 absent du projet ou dupliqué.")
-        seen.add(tool)
-        slot = d.get("slot_declare")
+        vus.add(outil)
+        slot = declaration.get("slot_declare")
         if type(slot) is not int or not 1 <= slot <= 4 or slot in slots:
             raise ValueError("Slot déclaré1..4 entier unique requis.")
         slots.add(slot)
-        if d.get("filament_id") not in entries:
+        if declaration.get("filament_id") not in entrees:
             raise ValueError("Identifiant filament absent du registre unique.")
-        bytool[tool] = d
-    suffix = "_BRASS" if settings.get("nozzle_type") == "brass" else "_HS"
+        par_outil[outil] = declaration
+    return par_outil
+
+
+def _depasse_constructeur(master, cle, valeur, non_verifie):
+    """Compare à une limite constructeur déclarée ; une limite absente reste inconnue."""
+    limite = master.get("constructeur", {}).get(cle, {}).get("value")
+    if limite is None:
+        raison = "Limite constructeur non vérifiée : " + cle
+        if raison not in non_verifie:
+            non_verifie.append(raison)
+        return False
+    return valeur > _nombre(limite)
+
+
+def _valider_machine(settings, master, erreurs):
+    """Contrôle d'abord modèle et buse, avant les déclarations outil/slot."""
+    if settings.get("printer_model") not in charger()["machine"]["modeles_slicer"]:
+        erreurs.append("Modèle projet absent ou différent de la S1 du maître.")
+    buses = _liste(settings, "nozzle_diameter")
+    if not buses or any(_nombre(x) != master["machine"]["buse_mm"]["value"] for x in buses):
+        erreurs.append("Diamètre de buse absent ou contradictoire au maître.")
+    if settings.get("nozzle_type") != master["machine"]["buse_matiere"]["value"]:
+        erreurs.append("Matière de buse absente ou contradictoire au maître.")
+
+
+def _valider_listes_reglages(settings, nombre_profils, suffixe):
+    """Valide longueurs et types des listes projet après les déclarations explicites."""
     numeric_keys = ("nozzle_temperature", "nozzle_temperature_initial_layer", "filament_max_volumetric_speed")
     for key in (
-        "filament_type",
-        "filament_colour",
-        *numeric_keys,
-        *(k + suffix for k in numeric_keys),
-        "textured_plate_temp",
-        "textured_plate_temp_initial_layer",
+        "filament_type", "filament_colour", *numeric_keys,
+        *(cle + suffixe for cle in numeric_keys),
+        "textured_plate_temp", "textured_plate_temp_initial_layer",
     ):
-        arr = _liste(settings, key)
-        if arr and len(arr) != n:
+        valeurs = _liste(settings, key)
+        if valeurs and len(valeurs) != nombre_profils:
             raise ValueError("Longueur ambiguë des valeurs " + key)
         if key not in ("filament_type", "filament_colour"):
-            for value in arr:
-                _nombre(value)
-        elif any(not isinstance(value, str) for value in arr):
+            for valeur in valeurs:
+                _nombre(valeur)
+        elif any(not isinstance(valeur, str) for valeur in valeurs):
             raise ValueError(key + " : valeurs texte requises.")
-    # La validité des réglages projet ne dépend pas de l'existence d'une déclaration ACE.
+
+
+def _valider_limites_globales(settings, master, suffixe, erreurs, non_verifie):
+    """Compare les températures projet globales aux limites constructeur disponibles."""
     for key, limit in [
         ("nozzle_temperature", "temperature_buse_max_C"),
         ("nozzle_temperature_initial_layer", "temperature_buse_max_C"),
         ("textured_plate_temp", "temperature_plateau_max_C"),
         ("textured_plate_temp_initial_layer", "temperature_plateau_max_C"),
     ]:
-        selected_key = key + suffix if key + suffix in settings else key
-        if any(depasse_constructeur(_nombre(value), limit) for value in _liste(settings, selected_key)):
-            errors.append(selected_key + " dépasse le constructeur.")
-    # Le contexte exclut uniquement les attestations pour permettre la signature humaine en deux temps.
+        choisi = key + suffixe if key + suffixe in settings else key
+        for valeur in _liste(settings, choisi):
+            if _depasse_constructeur(master, limit, _nombre(valeur), non_verifie):
+                erreurs.append(choisi + " dépasse le constructeur.")
+
+
+def _empreinte_profil(settings, index, nombre_profils):
+    """Calcule la signature des réglages embarqués pour un outil sans déduire d'affectation."""
+    valeurs = {}
+    for cle, valeur in settings.items():
+        if cle.startswith(("filament_", "nozzle_temperature")):
+            if (
+                reglages.definition(cle)["type"] == "liste_filament"
+                and isinstance(valeur, list)
+                and len(valeur) == nombre_profils
+            ):
+                valeurs[cle] = reglages.valeur_brute_indice(settings, cle, index, lecteur="index_exact")
+            else:
+                valeurs[cle] = valeur
+    return PM.empreinte_contexte(valeurs)
+
+
+def _auditer_parametres_outil(item, settings, filament, index, suffixe, master, non_verifie):
+    """Ajoute les limites de température et de débit du filament pour un outil déclaré."""
+    for key, maxkey in [
+        ("nozzle_temperature", "temperature_buse_max_C"),
+        ("nozzle_temperature_initial_layer", "temperature_buse_max_C"),
+        ("filament_max_volumetric_speed", None),
+    ]:
+        choisi = key + suffixe if key + suffixe in settings else key
+        if not _liste(settings, choisi):
+            item["non_verifie"].append(key + " absent ; aucun défaut inventé.")
+            continue
+        value = _nombre(reglages.valeur_indice(settings, choisi, index, lecteur="index_exact"))
+        item[key] = value
+        item[key + "_source"] = choisi
+        if maxkey and _depasse_constructeur(master, maxkey, value, non_verifie):
+            item["erreurs"].append(key + " dépasse le constructeur.")
+        ref = filament.get("profil", {}).get(key + suffixe, filament.get("profil", {}).get(key))
+        if isinstance(ref, list) and len(ref) == 1:
+            if value > _nombre(ref[0]):
+                item["erreurs"].append(key + " dépasse la référence configurée du filament ; pas un maximum physique.")
+        else:
+            item["non_verifie"].append("Limite configurée registre absente pour " + key)
+    for key in ("textured_plate_temp", "textured_plate_temp_initial_layer"):
+        if _liste(settings, key):
+            temperature = _nombre(reglages.valeur_indice(settings, key, index, lecteur="index_exact"))
+            if _depasse_constructeur(master, "temperature_plateau_max_C", temperature, non_verifie):
+                item["erreurs"].append(key + " dépasse le constructeur.")
+
+
+def _auditer_outil(index, profiles, bytool, settings, entrees, master, registre, suffixe, contexte, non_verifie):
+    """Construit le rapport d'un outil déclaré, en conservant l'inconnu sans inventer de valeur."""
+    outil = "T" + str(index)
+    declaration = bytool.get(outil)
+    item = {
+        "outil": outil,
+        "profil_nom": profiles[index],
+        "profil_embarque_sha256": _empreinte_profil(settings, index, len(profiles)),
+        "matiere_projet": reglages.valeur_brute_indice(settings, "filament_type", index, lecteur="index_exact"),
+        "couleur_projet": reglages.valeur_brute_indice(settings, "filament_colour", index, lecteur="index_exact"),
+        "declaration": copy.deepcopy(declaration),
+        "confirmation_physique": {"statut": "NON VERIFIE"},
+        "erreurs": [],
+        "non_verifie": [],
+    }
+    if not declaration:
+        item["non_verifie"].append("Affectation absente ; aucun slot inféré.")
+    else:
+        _auditer_declaration_outil(
+            item, declaration, settings, entrees, master, registre, suffixe, index, contexte=contexte,
+            non_verifie=non_verifie,
+        )
+    if not item["matiere_projet"]:
+        item["non_verifie"].append("Matière projet absente.")
+    if not item["couleur_projet"]:
+        item["non_verifie"].append("Couleur projet absente ; aucune identité déduite.")
+    return item
+
+
+def _auditer_declaration_outil(
+    item, declaration, settings, entrees, master, registre, suffixe, index, *, contexte, non_verifie,
+):
+    """Contrôle compatibilité, provenance et réglages du filament explicitement relié."""
+    filament = entrees[declaration["filament_id"]]
+    item["compatibilite"] = PM.compatibilite_filament(
+        master, declaration["filament_id"], registre, declaration["slot_declare"]
+    )
+    if item["compatibilite"]["statut"] == "FAIL":
+        item["erreurs"].extend(item["compatibilite"]["alertes"])
+    elif item["compatibilite"]["alertes"]:
+        item["non_verifie"].extend(item["compatibilite"]["alertes"])
+    if not declaration.get("source_declaration") or not declaration.get("date_declaration"):
+        item["non_verifie"].append("Source/date déclaration manquante.")
+    expected_type = filament.get("profil", {}).get("filament_type")
+    if (
+        item["matiere_projet"]
+        and isinstance(expected_type, list)
+        and len(expected_type) == 1
+        and item["matiere_projet"] != expected_type[0]
+    ):
+        item["erreurs"].append("Matière embarquée différente du registre.")
+    elif not expected_type:
+        item["non_verifie"].append("Matière du registre non structurée ; aucune déduction depuis le nom.")
+    _auditer_parametres_outil(item, settings, filament, index, suffixe, master, non_verifie)
+    item["confirmation_physique"] = _attestation(declaration.get("confirmation_physique"), contexte)
+
+
+def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
+    """Audite les déclarations et un 3MF local (mm, °C, mm³/s) ; statut DECLARATIONS_ATTESTEES, FAIL ou NON VERIFIE.
+
+    Les cases ACE sont exactes ; aucune confirmation physique ni commande machine n'est produite.
+    """
+    (
+        source, sha_source, brut, settings, declaration_path, sha_declarations, dec,
+        master, registre_path, reg, entries,
+    ) = _charger_contexte(source3mf, declarations, maitre, registre)
+    profiles = _liste(settings, "filament_settings_id")
+    if not 1 <= len(profiles) <= 4 or any(not isinstance(x, str) or not x.strip() for x in profiles):
+        raise ValueError("Un à quatre profils embarqués explicites requis.")
+    nombre_profils = len(profiles)
+    suffixe = "_BRASS" if settings.get("nozzle_type") == "brass" else "_HS"
+    erreurs, non_verifie = [], []
+    _valider_machine(settings, master, erreurs)
+    bytool = _valider_declarations(dec["outils"], nombre_profils, entries)
+    _valider_listes_reglages(settings, nombre_profils, suffixe)
+    _valider_limites_globales(settings, master, suffixe, erreurs, non_verifie)
     declared = [{k: v for k, v in d.items() if k != "confirmation_physique"} for d in dec["outils"]]
     contexte = PM.empreinte_contexte(
-        projet_sha256=sha,
+        projet_sha256=sha_source,
         profils=settings,
         declarations=declared,
         maitre=master,
@@ -203,106 +338,30 @@ def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
         code_sha256=_sha(__file__),
     )
     results = []
-    for i, profile in enumerate(profiles):
-        tool = "T" + str(i)
-        d = bytool.get(tool)
-        item = {
-            "outil": tool,
-            "profil_nom": profile,
-            "profil_embarque_sha256": PM.empreinte_contexte(
-                {
-                    k: (
-                        reglages.valeur_brute_indice(settings, k, i, lecteur="index_exact")
-                        if reglages.definition(k)["type"] == "liste_filament" and isinstance(v, list) and len(v) == n
-                        else v
-                    )
-                    for k, v in settings.items()
-                    if k.startswith(("filament_", "nozzle_temperature"))
-                }
-            ),
-            "matiere_projet": reglages.valeur_brute_indice(settings, "filament_type", i, lecteur="index_exact"),
-            "couleur_projet": reglages.valeur_brute_indice(settings, "filament_colour", i, lecteur="index_exact"),
-            "declaration": copy.deepcopy(d),
-            "confirmation_physique": {"statut": "NON VERIFIE"},
-            "erreurs": [],
-            "non_verifie": [],
-        }
-        if not d:
-            item["non_verifie"].append("Affectation absente ; aucun slot inféré.")
-        else:
-            f = entries[d["filament_id"]]
-            item["compatibilite"] = PM.compatibilite_filament(master, d["filament_id"], reg, d["slot_declare"])
-            if item["compatibilite"]["statut"] == "FAIL":
-                item["erreurs"].extend(item["compatibilite"]["alertes"])
-            elif item["compatibilite"]["alertes"]:
-                item["non_verifie"].extend(item["compatibilite"]["alertes"])
-            if not d.get("source_declaration") or not d.get("date_declaration"):
-                item["non_verifie"].append("Source/date déclaration manquante.")
-            expected_type = f.get("profil", {}).get("filament_type")
-            if (
-                item["matiere_projet"]
-                and isinstance(expected_type, list)
-                and len(expected_type) == 1
-                and item["matiere_projet"] != expected_type[0]
-            ):
-                item["erreurs"].append("Matière embarquée différente du registre.")
-            elif not expected_type:
-                item["non_verifie"].append("Matière du registre non structurée ; aucune déduction depuis le nom.")
-            for key, maxkey in [
-                ("nozzle_temperature", "temperature_buse_max_C"),
-                ("nozzle_temperature_initial_layer", "temperature_buse_max_C"),
-                ("filament_max_volumetric_speed", None),
-            ]:
-                selected_key = key + suffix if key + suffix in settings else key
-                arr = _liste(settings, selected_key)
-                if not arr:
-                    item["non_verifie"].append(key + " absent ; aucun défaut inventé.")
-                    continue
-                value = _nombre(reglages.valeur_indice(settings, selected_key, i, lecteur="index_exact"))
-                item[key] = value
-                item[key + "_source"] = selected_key
-                if maxkey and depasse_constructeur(value, maxkey):
-                    item["erreurs"].append(key + " dépasse le constructeur.")
-                ref = f.get("profil", {}).get(key + suffix, f.get("profil", {}).get(key))
-                if isinstance(ref, list) and len(ref) == 1:
-                    refval = _nombre(ref[0])
-                    if value > refval:
-                        item["erreurs"].append(
-                            key + " dépasse la référence configurée du filament ; pas un maximum physique."
-                        )
-                else:
-                    item["non_verifie"].append("Limite configurée registre absente pour " + key)
-            for key in ("textured_plate_temp", "textured_plate_temp_initial_layer"):
-                arr = _liste(settings, key)
-                if arr:
-                    temperature = _nombre(reglages.valeur_indice(settings, key, i, lecteur="index_exact"))
-                    if depasse_constructeur(temperature, "temperature_plateau_max_C"):
-                        item["erreurs"].append(key + " dépasse le constructeur.")
-            item["confirmation_physique"] = _attestation(d.get("confirmation_physique"), contexte)
-        if not item["matiere_projet"]:
-            item["non_verifie"].append("Matière projet absente.")
-        if not item["couleur_projet"]:
-            item["non_verifie"].append("Couleur projet absente ; aucune identité déduite.")
-        errors.extend(tool + ": " + x for x in item["erreurs"])
-        nv.extend(tool + ": " + x for x in item["non_verifie"])
+    for index in range(nombre_profils):
+        item = _auditer_outil(
+            index, profiles, bytool, settings, entries, master, reg, suffixe, contexte, non_verifie,
+        )
+        erreurs.extend(item["outil"] + ": " + erreur for erreur in item["erreurs"])
+        non_verifie.extend(item["outil"] + ": " + detail for detail in item["non_verifie"])
         results.append(item)
-    if _sha(source) != sha or (declaration_path and _sha(declaration_path) != decl_sha):
+    if _sha(source) != sha_source or (declaration_path and _sha(declaration_path) != sha_declarations):
         raise ValueError("Source ou déclarations modifiées pendant audit.")
-    physical = all(r["confirmation_physique"]["statut"] == "ATTESTATION_HUMAINE_DATEE" for r in results)
+    physique = all(r["confirmation_physique"]["statut"] == "ATTESTATION_HUMAINE_DATEE" for r in results)
     return {
         "schema": 1,
         "type": "affectations-ace-declarees",
         "source": str(source),
-        "source_sha256": sha,
-        "configuration_sha256": hashlib.sha256(raw).hexdigest(),
+        "source_sha256": sha_source,
+        "configuration_sha256": hashlib.sha256(brut).hexdigest(),
         "contexte_sha256": contexte,
         "maitre_sha256": PM.empreinte_contexte(master),
         "registre_sha256": PM.empreinte_contexte(reg),
         "outils": results,
-        "erreurs": errors,
-        "non_verifie": nv,
-        "statut": "FAIL" if errors else "NON VERIFIE" if nv or not physical else "DECLARATIONS_ATTESTEES",
-        "physique": "ATTESTATION_HUMAINE_DATEE" if physical else "NON VERIFIE",
+        "erreurs": erreurs,
+        "non_verifie": non_verifie,
+        "statut": "FAIL" if erreurs else "NON VERIFIE" if non_verifie or not physique else "DECLARATIONS_ATTESTEES",
+        "physique": "ATTESTATION_HUMAINE_DATEE" if physique else "NON VERIFIE",
         "compatibilite_lan_s1": "NON VERIFIE",
         "portee": (
             "Outils configurés du projet ; usage réel par plaque non déduit. "
@@ -314,7 +373,6 @@ def auditer_affectations(source3mf, declarations, maitre=None, registre=None):
             "Aucune commande ni synchronisation machine.",
         ],
     }
-
 
 def main(argv=None):
     """Rapporte les affectations déclarées, sans modifier les positions ACE."""

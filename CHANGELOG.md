@@ -10,7 +10,23 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
   dossier si le rejeu produit des résultats différents (#160).
 - Archives : partage le lecteur borné des fichiers de qualité et refuse les
   identités de plaque et d’objet ambiguës (suite de #122).
+- Variantes : borne la lecture des résumés et refuse les preuves liées, les
+  plaques ambiguës et les totaux non finis (#165, suite de #122).
+- G-code : calcule les bornes de dépôt des arcs G17 dans les ponts et surplombs
+  attribués, sans en déduire la portée libre ou l’appui (suite de #123).
+- Annotations : documente les primitives de publication, de reprise et de
+  copie typée des réglages (suite de #127).
+- Surplombs : fournit un résumé des cinq principales zones et un rapport
+  complet sur demande (suite de #35).
+- Première couche : refuse les numéros de plaque ambigus et réutilise le même
+  membre 3MF en optimisation (#162, suite de #122).
+- ACE : sépare les contrôles d’affectation sans changer leurs règles ni leurs
+  verdicts. Le contexte des attestations inclut la version du code (#68).
 - CI : stabilise le test du délai sans imposer un temps de démarrage à Python (#161).
+- Entretien : calcule un bilan conditionnel depuis des événements privés
+  déclarés, sans inférer des heures physiques du trancheur (suite de #73).
+- Études : utilisent le lecteur 3MF commun pour les réglages et le G-code
+  de couches variables et de remplissage localisé (suite de #122).
 - Apprentissage : relie une fiche privée d’incident à un commit et à ses
   fichiers de test exacts ; l’exécution reste déclarative (suite de #119).
 - Archives : bornes et CRC communs pour les références fixes et la comparaison

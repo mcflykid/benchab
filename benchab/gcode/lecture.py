@@ -94,22 +94,32 @@ def empreinte_3mf(chemin: str | Path) -> str:
     return empreinte
 
 
-def lire_membre_3mf(chemin: str | Path, membre: str) -> bytes:
-    """
-    Lit un membre d’archive ; octets rendus, cache LRU concurrent indexé par SHA, aucune source modifiée.
+def lire_membre_3mf(chemin: str | Path, membre: str, *, archive: Archive3MF | None = None) -> bytes:
+    """Lit un membre en octets, avec cache par SHA et contexte 3MF facultatif.
+
+    Le contexte doit désigner la source exacte, même si le membre est en cache.
+    La lecture complète vérifie le CRC et ne modifie aucune source.
     """
     chemin = Path(chemin)
+    if archive is not None:
+        archive.verifier_source(chemin)
     cle = (empreinte_3mf(chemin), membre)
-    valeur = _recuperer(_CACHE, cle)
-    if valeur is not None:
+    def verifier():
+        # Le descripteur et le SHA du chemin doivent encore désigner la même archive,
+        # même sur cache chaud : le fichier peut être remplacé pendant le calcul (#162).
         if empreinte_3mf(chemin) != cle[0]:
             raise ValueError("3MF modifié pendant la lecture du membre")
+        if archive is not None:
+            archive.verifier_source(chemin)
+
+    valeur = _recuperer(_CACHE, cle)
+    if valeur is not None:
+        verifier()
         return valeur
 
-    with Archive3MF(chemin) as archive:
-        valeur = archive.lire(membre)
-    if empreinte_3mf(chemin) != cle[0]:
-        raise ValueError("3MF modifié pendant la lecture du membre")
+    with (Archive3MF(chemin) if archive is None else nullcontext(archive)) as contexte:
+        valeur = contexte.lire(membre)
+        verifier()
 
     _memoriser(cle, valeur)
     return valeur
@@ -142,11 +152,11 @@ def lire_texte_gcode_3mf(
     membre: str,
     encodage: str = "utf-8",
     erreurs: str = "replace",
+    *,
+    archive: Archive3MF | None = None,
 ) -> str:
-    """
-    Décode un membre G-code sans altérer ses fins de ligne.
-    """
-    return lire_membre_3mf(chemin, membre).decode(encodage, errors=erreurs)
+    """Décode le G-code d’un membre exact sans modifier les fins de ligne ni la source."""
+    return lire_membre_3mf(chemin, membre, archive=archive).decode(encodage, errors=erreurs)
 
 
 @contextmanager

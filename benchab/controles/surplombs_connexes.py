@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import heapq
 import io
 import json
 import math
@@ -238,11 +239,29 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
     }
 
 
+def _resume(rapport, sortie):
+    """Garde les cinq groupes d’aire la plus grande en mm² et indique les omissions."""
+    groupes = rapport["groupes"]
+    grands = heapq.nlargest(5, groupes, key=lambda groupe: groupe["aire_mm2"])
+    return {
+        "statut": rapport["statut"], "total_groupes": len(groupes),
+        "groupes_omis": len(groupes) - len(grands),
+        "topologie": rapport["topologie_maillage"]["statut"],
+        "appuis_et_ponts": "NON VÉRIFIÉS",
+        "points_importants": [
+            {cle: groupe[cle] for cle in ("id", "aire_mm2", "altitude_mm", "nb_faces")}
+            for groupe in grands
+        ],
+        "rapport": str(sortie),
+    }
+
+
 def main(argv=None, *, prive=None):
     """Produit un JSON privé neuf depuis un STL ; unités mm déclarées par option, code 0 si mesuré.
 
     Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés et --sortie facultative.
-    Sortie : rapport JSON écrit sans écrasement, ou JSON sur stdout ; erreurs d'entrée et de sortie code 2.
+    Sortie : rapport JSON neuf, résumé ou détail sur demande explicite, ou JSON sur stdout ;
+    erreurs d'entrée et de sortie code 2.
     L'entrée est empreintée avant et après lecture ; une sortie reste dans l'atelier privé choisi et est neuve.
     Aucun appel de slicer, aucun réglage modifié, aucune validation physique.
     """
@@ -254,8 +273,13 @@ def main(argv=None, *, prive=None):
         help="Seuil géométrique en degrés, sans verdict physique",
     )
     parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; sans option, écrit sur stdout")
+    affichage = parser.add_mutually_exclusive_group()
+    affichage.add_argument("--resume", action="store_true", help="Affiche cinq groupes au plus et le chemin du rapport")
+    affichage.add_argument("--detail", action="store_true", help="Affiche aussi le rapport complet et son chemin")
     args = parser.parse_args(argv)
     try:
+        if (args.resume or args.detail) and args.sortie is None:
+            raise ValueError("--resume ou --detail exige --sortie.")
         if not args.unite_mm:
             raise ValueError("--unite-mm est requis : STL ne porte pas d'unité déclarée.")
         if args.source.suffix.lower() != ".stl" or not args.source.is_file():
@@ -275,8 +299,12 @@ def main(argv=None, *, prive=None):
         if args.sortie:
             sortie = sortie_privee(args.sortie, prive=prive)
             ecrire_json_neuf(sortie, rapport, entrees=[args.source])
+            if args.resume:
+                print(json.dumps(_resume(rapport, sortie), ensure_ascii=False, allow_nan=False))
+            elif args.detail:
+                print(json.dumps({**rapport, "rapport": str(sortie)}, ensure_ascii=False, indent=2, allow_nan=False))
         else:
-            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
     except (OSError, ValueError, TypeError, ImportError, RuntimeError) as erreur:
         print(f"BENCHAB : {erreur}", file=sys.stderr)

@@ -4,6 +4,7 @@ import argparse
 import copy
 import datetime
 import hashlib
+import io
 import json
 import math
 import re
@@ -786,7 +787,6 @@ def controles_candidat(projet: Path, plaques: Path, tranche: Path, dossier: Path
     """Exécute les contrôles BENCHAB sur les copies de la candidate."""
     from benchab.controles import premiere_couche, routine, zones_locales
     from benchab.fabrication.resistance import auditer_projet
-    from benchab.gcode.lecture import iter_lignes_gcode_3mf
 
     _settings, xml, _hashes = lire_3mf(plaques)
     objets = {
@@ -814,8 +814,9 @@ def controles_candidat(projet: Path, plaques: Path, tranche: Path, dossier: Path
     _publier_json(placement_path, placement)
     resultat_routine = routine.controler(plaques, tranche, placement_path, dossier / "controles")
     premieres, zones = {}, {}
-    for plaque, lignes in premiere_couche.gcodes(tranche):
-        texte = "\n".join(iter_lignes_gcode_3mf(tranche, f"Metadata/plate_{plaque}.gcode"))
+    for plaque, gcode in premiere_couche.gcodes(tranche):
+        # Conserver les fins de ligne historiques des analyses sans reconstruire le membre (#162).
+        texte = "\n".join(io.StringIO(gcode, newline=None))
         premieres[str(plaque)] = premiere_couche.controler(texte)
         bilan_zones = zones_locales.analyser_gcode(texte, plaque)
         zones[str(plaque)] = {

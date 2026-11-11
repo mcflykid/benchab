@@ -9,7 +9,10 @@ import json
 import math
 from pathlib import Path
 from xml.etree import ElementTree
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile
+
+from benchab.archives_3mf import Archive3MF
+from benchab.chemins import sans_lien
 
 NON_VERIFIE = "NON VÉRIFIÉ"
 
@@ -30,7 +33,10 @@ def nombre(value):
 
 
 def fabrication(declaration, base, empreinte):
-    """Une valeur déclarée seule n’est jamais une mesure vérifiée."""
+    """Lit un résumé 3MF en secondes et grammes via Archive3MF ; toute ambiguïté reste FAIL ou NON VÉRIFIÉ.
+
+    Une valeur déclarée seule n’est jamais une mesure vérifiée ; aucune source n'est modifiée.
+    """
     if not declaration:
         return {"statut": NON_VERIFIE, "raison": "Aucune preuve de tranchage fournie."}
     if not isinstance(declaration, dict) or not declaration.get("source") or not declaration.get("sha256"):
@@ -38,17 +44,30 @@ def fabrication(declaration, base, empreinte):
             "statut": NON_VERIFIE,
             "raison": "Source et empreinte du 3MF tranché requises ; valeurs seules ignorées.",
         }
-    path = chemin(base, declaration["source"])
-    if not path.is_file() or empreinte(path) != declaration["sha256"]:
-        return {"statut": "FAIL", "raison": "Preuve de fabrication absente ou empreinte périmée."}
-    if path.suffix.lower() != ".3mf":
-        return {"statut": NON_VERIFIE, "raison": "Seul un résumé 3MF tranché est interprété."}
+    preuve_absente = {"statut": "FAIL", "raison": "Preuve de fabrication absente ou empreinte périmée."}
     try:
-        with ZipFile(path) as archive:
-            root = ElementTree.fromstring(archive.read("Metadata/slice_info.config"))
+        # Contrôler le chemin désigné, avant toute résolution ou empreinte (#165).
+        path = sans_lien(Path(base) / declaration["source"], strict=True)
+        if not path.is_file() or empreinte(path) != declaration["sha256"]:
+            return preuve_absente
+        if path.suffix.lower() != ".3mf":
+            return {"statut": NON_VERIFIE, "raison": "Seul un résumé 3MF tranché est interprété."}
+        with Archive3MF(path) as archive:
+            root = archive.xml("Metadata/slice_info.config")
             plates = []
+            indices = []
             for plate in root.findall("plate"):
-                meta = {item.get("key"): item.get("value") for item in plate.findall("metadata")}
+                meta = {}
+                for item in plate.findall("metadata"):
+                    key = item.get("key")
+                    if key in meta:
+                        raise ValueError("métadonnées ou indices de plaque ambigus")
+                    meta[key] = item.get("value")
+                if "index" in meta:
+                    index = meta["index"]
+                    if not isinstance(index, str) or not index.isascii() or not index.isdecimal() or int(index) < 1:
+                        raise ValueError("indice de plaque invalide ou ambigu")
+                    indices.append(int(index))
                 if "prediction" not in meta or "weight" not in meta:
                     return {"statut": NON_VERIFIE, "raison": "Temps ou masse absent du résumé de tranchage."}
                 seconds, grams = float(meta["prediction"]), float(meta["weight"])
@@ -57,14 +76,28 @@ def fabrication(declaration, base, empreinte):
                 plates.append({"temps_s": seconds, "masse_g": grams})
             if not plates:
                 return {"statut": NON_VERIFIE, "raison": "Aucune plaque dans le résumé de tranchage."}
-    except (BadZipFile, KeyError, ValueError, ElementTree.ParseError) as error:
+            if indices and (
+                len(indices) != len(plates) or len(set(indices)) != len(indices)
+            ):
+                raise ValueError("indices de plaque absents ou dupliqués, ordre ambigu")
+            temps = sum(p["temps_s"] for p in plates)
+            masse = sum(p["masse_g"] for p in plates)
+            if not nombre(temps) or not nombre(masse):
+                raise ValueError("cumul des mesures non fini")
+            archive.verifier_source(path)
+            if empreinte(path) != declaration["sha256"]:
+                return {"statut": "FAIL", "raison": "La preuve de tranchage a changé pendant sa lecture."}
+            archive.verifier_source(path)
+    except FileNotFoundError:
+        return preuve_absente
+    except (BadZipFile, KeyError, ValueError, TypeError, OSError, ElementTree.ParseError) as error:
         return {"statut": "FAIL", "raison": "Résumé de tranchage illisible : " + str(error)}
     result = {
         "statut": "PASS",
         "source": str(path),
         "sha256": declaration["sha256"],
-        "temps_s": sum(p["temps_s"] for p in plates),
-        "masse_g": sum(p["masse_g"] for p in plates),
+        "temps_s": temps,
+        "masse_g": masse,
         "plaques": plates,
         "portee": "Estimations du résumé du slicer ; association géométrie/3MF non démontrée par ce seul résumé.",
     }
@@ -73,8 +106,6 @@ def fabrication(declaration, base, empreinte):
             not nombre(declaration[key]) or not math.isclose(declaration[key], result[key], rel_tol=1e-6, abs_tol=0.01)
         ):
             return {"statut": "FAIL", "raison": key + " déclaré différent du résumé du slicer."}
-    if empreinte(path) != declaration["sha256"]:
-        return {"statut": "FAIL", "raison": "La preuve de tranchage a changé pendant sa lecture."}
     return result
 
 

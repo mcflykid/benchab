@@ -148,5 +148,60 @@ class ZonesLocales(unittest.TestCase):
                 self.assertEqual(evaluer([], [], g, geo)["statut"], "FAIL")
 
 
+class ZonesArcs(unittest.TestCase):
+    """Vérifie les enveloppes de trajets courbes sans déduire leur appui physique."""
+
+    def test_arcs_majeurs_et_cercle_complet_apres_g92(self):
+        """Les extrema suivent le balayage physique, même après changement de repère."""
+        prefixe = BASE + ";TYPE:Bridge\nEXCLUDE_OBJECT_START NAME=piece\n"
+        cas = (
+            "G2 X15 Y5 I-5 J0 E1",
+            "G3 X15 Y-5 I-5 J0 E1",
+            "G92 X100 Y100\nG3 I-5 J0 E1",
+        )
+        for trajet in cas:
+            with self.subTest(trajet=trajet):
+                rapport = analyser_gcode(prefixe + trajet)
+                self.assertFalse(rapport["erreurs"])
+                zone, = rapport["zones"]
+                self.assertEqual(zone["bbox_xy_mm"], [10, -5, 20, 5])
+                self.assertEqual(zone["objet"], "piece")
+                self.assertEqual(zone["segments"], 1)
+
+    def test_helice_et_reamorcage_excluent_le_debut_du_depot(self):
+        """La portion qui compense la rétraction n’élargit ni XY ni Z de la zone."""
+        rapport = analyser_gcode(
+            BASE + ";TYPE:Overhang wall\nEXCLUDE_OBJECT_START NAME=piece\nG1 E-.5\n"
+            "G3 X10 Y0 Z1 I-5 J0 E1"
+        )
+        self.assertFalse(rapport["erreurs"])
+        zone, = rapport["zones"]
+        self.assertEqual(zone["bbox_xy_mm"], [10, 0, 15, 5])
+        self.assertAlmostEqual(zone["z_min_mm"], .6)
+        self.assertEqual(zone["z_max_mm"], 1)
+
+    def test_arcs_non_attribues_ou_hors_dialecte_restent_bloquants(self):
+        """Ni un rôle absent ni un plan non pris en charge ne produit une couverture PASS."""
+        for suffixe in (";TYPE:Bridge\nG3 X10 I-5 E1", "G18\nG3 X10 I-5 E1"):
+            with self.subTest(suffixe=suffixe), tempfile.TemporaryDirectory() as tmp:
+                rapport = analyser_gcode(BASE + suffixe)
+                self.assertTrue(rapport["erreurs"])
+                tranche = Path(tmp) / "tranche.3mf"
+                tranche.write_bytes(b"temoin de test")
+                self.assertEqual(evaluer(rapport["zones"], rapport["erreurs"], tranche)["statut"], "FAIL")
+
+
+    def test_zone_courbe_melangeant_des_objets_reste_bloquante(self):
+        """Un arc identifié ne qualifie pas une zone agrégée sur deux objets."""
+        gcode = BASE + (
+            ";TYPE:Bridge\nEXCLUDE_OBJECT_START NAME=a\nG3 X10 I-5 E1\nEXCLUDE_OBJECT_END NAME=a\n"
+            "EXCLUDE_OBJECT_START NAME=b\nG1 X8 E1"
+        )
+        rapport = analyser_gcode(gcode)
+        zone, = rapport["zones"]
+        self.assertTrue(zone["objet_ambigu"])
+        self.assertIn("attribution objet non vérifiée sur une zone avec arc G17", rapport["erreurs"])
+
+
 if __name__ == "__main__":
     unittest.main()

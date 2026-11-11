@@ -199,6 +199,9 @@ def parser():
         "--candidat-lien", action="append", default=[], metavar="CHEMIN",
         help="Candidat privé relatif ; propose un lien uniquement si un SHA unique correspond au rendu SQLite",
     )
+    entretien = controle.add_parser("entretien", help="Bilan conditionnel depuis un historique privé explicite")
+    entretien.add_argument("--historique", type=Path, required=True, help="Historique JSON privé à relire")
+    entretien.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; une sortie existante est refusée")
     appliquer_vue = controle.add_parser(
         "appliquer-reparation-vue", help="Applique une seule vue privée depuis un plan explicite"
     )
@@ -944,6 +947,7 @@ def main(argv=None):
             "installation",
             "plan-reparation",
             "appliquer-reparation-vue",
+            "entretien",
         }
         for i in range(len(argv) - 1)
     )
@@ -972,6 +976,20 @@ def main(argv=None):
         rapport = planifier(atelier_prive(arguments.prive), candidats=arguments.candidat_lien)
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
         return rapport["code"]
+    if arguments.commande == "controle" and arguments.controle == "entretien":
+        try:
+            from benchab.entretien.bilan import bilan_fichier, code
+            from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
+
+            rapport = bilan_fichier(arguments.historique, atelier_prive(arguments.prive))
+            if arguments.sortie:
+                sortie = destination_neuve(arguments.sortie, prive=atelier_prive(arguments.prive), temporaire=False)
+                ecrire_json_neuf(sortie, rapport, entrees=[arguments.historique])
+            print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+            return code(rapport)
+        except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as erreur:
+            print(f"BENCHAB : bilan d'entretien refusé : {erreur}", file=sys.stderr)
+            return 2
     if arguments.commande == "controle" and arguments.controle == "appliquer-reparation-vue":
         try:
             fd = os.open(arguments.plan, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)

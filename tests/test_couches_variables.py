@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+import warnings
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -142,6 +143,53 @@ class PublicationProfilsTests(unittest.TestCase):
             paquet.writestr("Metadata/plate_1.gcode", ";HEIGHT:0.20\n;HEIGHT:0.24\n")
         resultat = couches.hauteurs_gcode(archive)
         self.assertEqual(resultat, {"couches": 2, "min": 0.2, "max": 0.24, "distinctes": 2})
+
+    def test_lecture_reglages_archive_refuse_un_membre_duplique(self):
+        """L'étude de couches refuse une configuration source ambiguë avant tout tranchage."""
+        prive = self.racine / "prive"
+        projet = prive / "projets" / "essai"
+        preuves, candidats = projet / "preuves", projet / "candidats"
+        preuves.mkdir(parents=True)
+        candidats.mkdir()
+        source = candidats / "plaques.3mf"
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with zipfile.ZipFile(source, "w") as archive:
+                archive.writestr("Metadata/project_settings.config", '{"layer_height":"0.2"}')
+                archive.writestr("Metadata/project_settings.config", '{"layer_height":"0.3"}')
+        placement = preuves / "placement.json"
+        placement.write_text('{"objects":[{"name":"Piece"}]}', encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "dupliqué"):
+            couches.main(
+                source,
+                prive=prive,
+                placement=placement,
+                candidats=candidats,
+                sortie=preuves / "sortie",
+                mode="qualite",
+            )
+
+    def test_lecture_reglages_source_garde_le_dictionnaire_type(self):
+        """La lecture commune conserve les valeurs typées du profil embarqué."""
+        with zipfile.ZipFile(self.source, "w") as archive:
+            archive.writestr(
+                "Metadata/project_settings.config",
+                '{"layer_height":"0.2","filament_type":["PLA"]}',
+            )
+        self.assertEqual(
+            couches._lire_reglages_source(self.source),
+            {"layer_height": "0.2", "filament_type": ["PLA"]},
+        )
+
+    def test_lecture_reglages_source_verifie_crc_des_autres_membres(self):
+        """La migration continue à refuser la corruption d’un membre non consommé."""
+        with zipfile.ZipFile(self.source, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("Metadata/project_settings.config", '{"layer_height":"0.2"}')
+            archive.writestr("Metadata/autre.bin", b"temoin CRC")
+        self.source.write_bytes(self.source.read_bytes().replace(b"temoin CRC", b"temoin CRD"))
+        with self.assertRaisesRegex(zipfile.BadZipFile, "CRC"):
+            couches._lire_reglages_source(self.source)
 
     def test_etude_privee_tranche_par_api_commune_et_applique_seulement_sur_demande(self):
         prive = self.racine / "prive"

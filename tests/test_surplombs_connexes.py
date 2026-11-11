@@ -220,3 +220,43 @@ def test_cli_refuse_source_lien_symbolique(tmp_path, monkeypatch, capsys):
 
     assert sc.main([str(source), "--unite-mm"]) == 2
     assert "ne peut pas être un lien symbolique" in capsys.readouterr().err
+
+
+def test_resume_opt_in_surplombs_garde_le_rapport_et_borne_les_groupes(tmp_path, capsys):
+    """Le résumé ne tronque pas le rapport neuf et sélectionne les plus grandes aires."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "temoin.stl"
+    formes = []
+    for taille in range(1, 7):
+        boite = trimesh.creation.box(extents=[taille, taille, 1])
+        boite.apply_translation([20 * taille, 0, 1])
+        formes.append(boite)
+    trimesh.util.concatenate(formes).export(source)
+    sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    destination = prive / "resume.json"
+    assert sc.main([str(source), "--unite-mm", "--sortie", str(destination), "--resume"], prive=prive) == 0
+    resume = json.loads(capsys.readouterr().out)
+    rapport = json.loads(destination.read_bytes())
+    assert resume["rapport"] == str(destination)
+    assert resume["statut"] == rapport["statut"]
+    assert resume["total_groupes"] == len(rapport["groupes"]) == 6
+    assert resume["groupes_omis"] == 1
+    assert [g["aire_mm2"] for g in resume["points_importants"]] == [36, 25, 16, 9, 4]
+    assert resume["appuis_et_ponts"] == "NON VÉRIFIÉS"
+    assert rapport["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest() == sha
+
+
+def test_detail_opt_in_surplombs_exige_une_preuve_neuve(tmp_path, capsys):
+    """Le mode détaillé fournit le rapport complet ; aucun mode de preuve sans destination."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "temoin.stl"
+    trimesh.creation.box().export(source)
+    assert sc.main([str(source), "--unite-mm", "--resume"], prive=prive) == 2
+    assert "exige" in capsys.readouterr().err
+    destination = prive / "detail.json"
+    assert sc.main([str(source), "--unite-mm", "--sortie", str(destination), "--detail"], prive=prive) == 0
+    imprime = json.loads(capsys.readouterr().out)
+    assert imprime.pop("rapport") == str(destination)
+    assert imprime == json.loads(destination.read_bytes())
