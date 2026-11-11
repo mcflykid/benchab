@@ -2,6 +2,22 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## Non publié
+
+- Appuis G-code : refuse les numéros de plaque homonymes avant sélection,
+  conserve le cache et lie le SHA du rapport au descripteur relu (#194).
+- Découpe : propose un passage de vis, un lamage et un logement d’écrou
+  à cotes déclarées sur une coupe plane (suite de #27).
+- CAO : ajoute une base cylindrique aux fiches cotées, sans changer les
+  anciens plans rectangulaires (suite de #32).
+- Échanges 3MF : compare les réglages, l’ordre déclaré de la palette et,
+  sur un maillage direct identique, la peinture littérale. Ne convertit
+  pas les formats et ne conclut pas à leur compatibilité (suite de #43).
+- Surplombs : recoupe la carte d’un coupon et les axes de pont de deux
+  3MF tranchés, avec altitude et limites de comparaison (suite de #93).
+- Annotations : complète treize docstrings de contrôles de géométrie,
+  d’orientation et de trajectoires (suite de #127).
+
 ## 1.14.0 — 2026-11-11
 
 - Retour photo : un format privé commun à une photo importée ou déjà
