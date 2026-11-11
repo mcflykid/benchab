@@ -15,6 +15,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
   témoin observés, sans appliquer un réglage (suite de #80 et #81).
 - Retour photo : conserve en privé un original et un aperçu vérifiés ;
   une confirmation déclarée reste séparée du projet (suite de #28).
+- CAO : ajoute le lamage supérieur à la fiche cotée, contrôle les
+  interférences et vérifie les volumes sur cinq pièces (suite de #27 et #32).
 
 ## 1.11.0 — 2026-11-11
 
