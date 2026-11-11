@@ -2,6 +2,15 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir — 1.8.0
+
+- Archives : vérifie les paquets de plaques mixtes et la provenance des réglages
+  de l’éprouvette de jeux avec le lecteur commun (suite de #122).
+- Rapports : affiche les plaques et défauts prioritaires de première couche ;
+  les diagnostics complets restent dans un rapport neuf (suite de #35).
+- Annotations : précise les limites des contrôles de dépôt et les états du
+  lanceur local (suite de #127).
+
 ## 1.7.0 — 2026-11-11
 
 - Tests : la recette CLI de sauvegarde simule l’espace libre sans changer la
