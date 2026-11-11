@@ -18,10 +18,11 @@ import sys
 import uuid
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree as E
 
-from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF, decoder_xml
 from benchab.controles.rapports import _protege
-from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.gcode.lecture import iter_lignes_gcode_3mf, plaques_gcode_archive
 from benchab.machine.configuration import charger as configuration_machine
 from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, valider_chemins
 from benchab.qualite.statuts import code_statut
@@ -174,13 +175,36 @@ def charger(cfg_path):
 
 def objets_3mf(path):
     """Plaques -> noms d'objets d'un 3MF Anycubic/Orca (model_settings.config)."""
-    cfg = zipfile.ZipFile(path).read("Metadata/model_settings.config").decode()
-    noms = dict(re.findall(r'<object id="(\d+)">\s*<metadata key="name" value="([^"]+)"', cfg))
+    with Archive3MF(path) as archive:
+        return _objets_3mf_archive(archive)
+
+
+def _objets_3mf_archive(archive):
+    """Extrait les plaques dans l'ordre du XML depuis un contexte 3MF déjà ouvert."""
+    cfg = archive.xml("Metadata/model_settings.config")
+    noms = {}
+    for objet in cfg.iter():
+        if objet.tag.rsplit("}", 1)[-1] != "object":
+            continue
+        identifiant = objet.get("id", "")
+        nom = next(
+            (
+                metadata.get("value")
+                for metadata in objet
+                if metadata.tag.rsplit("}", 1)[-1] == "metadata" and metadata.get("key") == "name"
+            ),
+            None,
+        )
+        if re.fullmatch(r"\d+", identifiant) and nom:
+            noms[identifiant] = nom
     plaques = []
-    for pl in re.findall(r"<plate>(.*?)</plate>", cfg, re.S):
-        nom = re.search(r'key="plater_name" value="([^"]*)"', pl)
-        ids = re.findall(r'key="object_id" value="(\d+)"', pl)
-        plaques.append({"nom": nom.group(1) if nom else "", "objets": [noms.get(i, "?" + i) for i in ids]})
+    for plaque in cfg.iter():
+        if plaque.tag.rsplit("}", 1)[-1] != "plate":
+            continue
+        metadata = [element for element in plaque.iter() if element.tag.rsplit("}", 1)[-1] == "metadata"]
+        nom = next((m.get("value") for m in metadata if m.get("key") == "plater_name"), None)
+        ids = [m.get("value", "") for m in metadata if m.get("key") == "object_id"]
+        plaques.append({"nom": nom or "", "objets": [noms.get(i, "?" + i) for i in ids if re.fullmatch(r"\d+", i)]})
     return plaques
 
 
@@ -350,24 +374,36 @@ def niveau3(cfg_path):
     if not t3.exists():
         R.add("3MF tranché présent", KO, str(t3))
         return R.ecrire()
-    z = zipfile.ZipFile(t3)
-    if "Metadata/slice_info.config" not in z.namelist():
-        R.add("3MF tranché", KO, "pas de slice_info : non tranché")
-        return R.ecrire()
-    from xml.etree import ElementTree as E
-
-    info = E.fromstring(z.read("Metadata/slice_info.config"))
-    from benchab.fabrication.anycubic import resultats
-
     try:
-        mesures = resultats(t3)
-        for mesure in mesures:
-            if not lire_texte_gcode_3mf(t3, f"Metadata/plate_{mesure['index']}.gcode").strip():
-                raise ValueError("G-code vide")
+        with Archive3MF(t3) as archive:
+            noms_archive = archive.noms()
+            if "Metadata/slice_info.config" not in noms_archive:
+                R.add("3MF tranché", KO, "pas de slice_info : non tranché")
+                return R.ecrire()
+            octets_info = archive.lire(
+                "Metadata/slice_info.config", limite_octets=Archive3MF.MAX_XML_OCTETS,
+            )
+            info = decoder_xml(octets_info, limite_octets=Archive3MF.MAX_XML_OCTETS)
+            from benchab.fabrication.anycubic import resultats_xml
+
+            mesures = resultats_xml(octets_info)
+            membres_gcode = dict(plaques_gcode_archive(archive))
+            for mesure in mesures:
+                index = mesure["index"]
+                membre = membres_gcode.get(index)
+                if membre is None:
+                    raise ValueError(f"G-code absent pour la plaque {index}")
+                non_vide = False
+                for ligne in iter_lignes_gcode_3mf(t3, membre, archive=archive):
+                    non_vide = non_vide or bool(ligne.strip())
+                if not non_vide:
+                    raise ValueError(f"G-code vide pour la plaque {index}")
+            noms = [p["nom"] for p in _objets_3mf_archive(archive)]
+            st = archive.reglages()
+            archive.verifier_source(t3)
     except (ValueError, KeyError, E.ParseError, zipfile.BadZipFile) as exc:
         R.add("résultats du tranchage", KO, str(exc))
         return R.ecrire()
-    noms = [p["nom"] for p in objets_3mf(t3)]
     obj = json.loads(pl.read_text())["objects"] if pl.exists() else []
     R.ajouter_entrees(*(P("stl_impression") / (o["model"] + ".stl") for o in obj if "model" in o))
     od = cfg.get("objectifs_duree_h", {})
@@ -422,7 +458,7 @@ def niveau3(cfg_path):
     from benchab.controles import couches_courtes as mod
 
     if obj:
-        st_cool = schema_reglages.decoder(z.read("Metadata/project_settings.config"))
+        st_cool = st
         for o in obj:
             file = P("stl_impression") / (o["model"] + ".stl")
             if not file.exists():
@@ -443,7 +479,6 @@ def niveau3(cfg_path):
                     mitigation=mitigation,
                 )
     # Réglages globaux de première couche et de trajectoire (lecture des réglages réellement embarqués).
-    st = schema_reglages.decoder(z.read("Metadata/project_settings.config"))
     rc = st.get("reduce_crossing_wall")
     R.add("évitement des parois en déplacement (reduce_crossing_wall)", OK if str(rc) == "1" else AV, f"valeur {rc}")
     R.add(
