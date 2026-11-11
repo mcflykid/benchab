@@ -141,3 +141,19 @@ def test_refus_cli_reste_sans_mesure(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "Mesure", interdit)
     code = cli.main(["--prive", str(prive), "controle", "plan-reparation", "--inconnu"])
     assert code == 2
+
+
+def test_base_etrangere_ne_peut_pas_servir_de_source(tmp_path):
+    """Une table homonyme dans une base étrangère n'autorise aucun plan."""
+    import sqlite3
+    from contextlib import closing
+
+    prive = _atelier(tmp_path)
+    (prive / "vues/INDEX.md").unlink()
+    with closing(sqlite3.connect(prive / "benchab.sqlite")) as db, db:
+        db.execute("PRAGMA application_id = 0")
+    avant = _empreintes(prive)
+    rapport = plan_reparation.planifier(prive)
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["actions"] == []
+    assert _empreintes(prive) == avant

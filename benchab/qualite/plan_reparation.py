@@ -7,11 +7,13 @@ import json
 import os
 import sqlite3
 import stat
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.donnees import vues
+from benchab.donnees.base import APPLICATION_ID
 from benchab.qualite.statuts import code_statut
 
 MANIFESTE = "vues/manifest.json"
@@ -57,7 +59,11 @@ def _empreinte_fichier(racine: Path, relatif: str, *, lecture=False):
                     return {"statut": "A_VERIFIER", "chemin": chemin}
             apres = os.fstat(flux.fileno())
             identite_apres = (apres.st_dev, apres.st_ino, apres.st_size, apres.st_mtime_ns, apres.st_ctime_ns)
-            if identite_avant != identite_apres:
+            courant = chemin.lstat()
+            identite_courante = (
+                courant.st_dev, courant.st_ino, courant.st_size, courant.st_mtime_ns, courant.st_ctime_ns,
+            )
+            if not identite_avant == identite_apres == identite_courante:
                 return {"statut": "A_VERIFIER", "chemin": chemin}
     except OSError:
         return {"statut": "A_VERIFIER", "chemin": chemin}
@@ -122,9 +128,15 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
         base = sans_lien(racine / "benchab.sqlite", racine=racine, strict=True)
         if not base.is_file():
             return _rapport_indisponible("Base privée absente ou non régulière.")
-        with sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1) as connexion:
+        with closing(sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1)) as connexion:
             connexion.row_factory = sqlite3.Row
             connexion.execute("PRAGMA query_only = ON")
+            # Toutes les vues doivent venir du même instantané et d'une base BENCHAB identifiée (#119).
+            connexion.execute("BEGIN")
+            identite = connexion.execute("PRAGMA application_id").fetchone()[0]
+            version = connexion.execute("PRAGMA user_version").fetchone()[0]
+            if identite != APPLICATION_ID or version != 1:
+                return _rapport_indisponible("Identité ou schéma de la base BENCHAB non établi.")
             rendu = vues._rendre(connexion)
             fiches = vues._fiches_filaments(connexion)
     except (OSError, ValueError, sqlite3.Error, KeyError, TypeError, json.JSONDecodeError) as erreur:
@@ -147,7 +159,7 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
     incertitudes = False
 
     # SQLite fait foi pour les octets attendus ; le manifeste existant ne les autorise pas (#119).
-    for relatif, contenu in sorted(attendus.items()):
+    for relatif in sorted(attendus):
         attendu = empreintes_attendues[relatif]
         actuel = _empreinte_fichier(racine, relatif)
         statut = actuel["statut"]
