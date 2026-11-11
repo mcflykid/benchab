@@ -177,6 +177,12 @@ def parser():
     commandes.add_parser("init", help="Initialise l'atelier privé sans écraser ses données")
     commandes.add_parser("etat", help="Compte les projets et préparations de l'atelier privé")
     donnees = commandes.add_parser("donnees").add_subparsers(dest="action", required=True)
+    imputation = donnees.add_parser("imputer-bobine", help="Débite le stock depuis une pesée confirmée")
+    imputation.add_argument("--retour", required=True)
+    imputation.add_argument("--preuve-pesee", required=True, type=Path)
+    imputation.add_argument("--sha256-preuve", required=True)
+    imputation.add_argument("--confirmation", required=True, type=Path)
+    imputation.add_argument("--sha256-confirmation", required=True)
     requete = donnees.add_parser("impressions")
     requete.add_argument("--resultat", choices=["reussie", "echec", "interrompue", "inconnu"])
     requete.add_argument("--matiere")
@@ -515,7 +521,22 @@ def executer(arguments, base):
     elif arguments.commande == "configuration":
         print(json.dumps(charger(), ensure_ascii=False, indent=2))
     elif arguments.commande == "donnees":
-        if arguments.action == "sauvegarder":
+        if arguments.action == "imputer-bobine":
+            from benchab.projets.imputation_bobine import imputer
+
+            try:
+                resultat = imputer(
+                    base, arguments.retour, arguments.preuve_pesee, arguments.sha256_preuve,
+                    arguments.confirmation, arguments.sha256_confirmation,
+                )
+            except (OSError, ValueError, sqlite3.Error) as erreur:
+                print(f"BENCHAB : imputation refusée : {erreur}", file=sys.stderr)
+                return 2
+            resultat = {cle: resultat[cle] for cle in (
+                "statut", "decision_id", "bobine_id", "deja_imputee", "consommation_declaree_g",
+                "stock_apres_g", "validation_physique",
+            )}
+        elif arguments.action == "sauvegarder":
             from benchab.donnees.sauvegarde import creer
 
             resultat = creer(base, arguments.source, arguments.sortie, jetable=arguments.jetable)

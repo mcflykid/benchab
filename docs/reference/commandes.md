@@ -49,6 +49,7 @@ options de résumé et de détail déjà couvertes.
 | `connaissances memoire`, `etudes`, `bobine`, `pdf` | Savoir, mesures et lecture PDF textuelle optionnelle |
 | `connaissances incidents` | Lie une [fiche privée](fiche-incident.md) aux fichiers de tests d’un commit ; observation CI GitHub opt-in |
 | `donnees impressions`, `vues`, `reconstruire`, `sauvegarder`, `restaurer` | Requêtes et reconstruction |
+| `donnees imputer-bobine` | [Imputation privée d’une pesée confirmée](plan-numerique-filament.md#appliquer-une-pesée-confirmée-au-stock) |
 | `machine profils-cibles`, `affectations-ace` | Profils de travail et correspondance des filaments |
 | `machine cloud-lecture`, `telemetrie`, `session-compte` | Lecture Cloud ; tests simulés, autorisation réseau distincte |
 | `vote --preparer`, `vote DOSSIER`, `vote --etat` | [Conseil et relecture](vote.md) |

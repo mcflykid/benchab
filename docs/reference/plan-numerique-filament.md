@@ -17,7 +17,7 @@ lance aucune mesure d’usage.
 
 Le résultat n’établit pas que le 3MF envoyé est celui exécuté, ne relie pas un index G-code à un outil physique, à un emplacement ACE ou à une bobine, et ne transforme pas les grammes estimés en consommation réelle. Le suivi de ces preuves reste ouvert dans #77.
 
-Une imputation ultérieure devra exiger une affectation confirmée et une mesure physique de la bobine. Toute future imputation devra être idempotente et enregistrer sa preuve dans la même transaction que la mise à jour du stock.
+L’imputation au stock est une commande distincte, décrite ci-dessous.
 
 ## Rapprocher une déclaration de pesée
 
@@ -42,6 +42,36 @@ l’estimation du slicer. Aucune pesée, affectation physique ou exécution
 n’est authentifiée, et le stock ne change pas. Le statut global et le code
 restent NON VÉRIFIÉ et 2. Sans les deux options, le rapport historique est
 conservé (#77).
+
+## Appliquer une pesée confirmée au stock
+
+```sh
+benchab donnees imputer-bobine --retour ID_RETOUR \
+  --preuve-pesee prive/rapports/pesee.json --sha256-preuve SHA_PESEE \
+  --confirmation prive/rapports/confirmation.json --sha256-confirmation SHA_CONFIRMATION
+```
+
+La confirmation privée contient exactement `schema` égal à 1,
+`pesee_sha256`, `confirmee` égal à `true`, `date` au format ISO avec
+fuseau, `auteur` et `observation`. L’observation décrit l’identification
+de la bobine et de son emplacement, ainsi que la pesée avant et après
+sur le retour complet. La déclaration et la confirmation sont relues
+avec leurs empreintes. La commande vérifie aussi un dépôt G-code pour
+l’outil choisi, après sa sélection explicite et dans un mode d’extrusion
+établi.
+
+La différence de pesée en grammes est déduite du stock connu. La
+décision privée garde les deux empreintes, la référence du retour, le
+membre G-code, les masses et le stock avant et après. SQLite enregistre
+la décision et le débit dans la même transaction. Le même appel retrouve
+la décision et rétablit l’export si nécessaire. Une pesée contradictoire
+pour la même impression, plaque et outil, une pesée chevauchante pour
+la même bobine ou un stock inconnu ou insuffisant provoque un refus.
+
+Le code 0 signifie que l’imputation est enregistrée ou déjà présente.
+Un refus donne le code 2 avec son motif. Le champ `validation_physique`
+reste faux dans le rapport numérique. La recette sur une pesée réelle
+reste suivie dans #77.
 
 
 Pour un affichage court, ajouter `--resume --sortie prive/rapports/consommation.json`
