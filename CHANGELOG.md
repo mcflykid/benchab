@@ -2,6 +2,14 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.24.0 — 2026-11-11
+
+- CAO : accepte une ouverture traversante explicitement cotée, droite
+  ou arrondie. Les fonds borgnes et marges restent vérifiés (suite de #32).
+- Réglages : peut vérifier les conditions embarquées des observations
+  sur les styles grille et ajusté, sans changer le parcours historique
+  ni déduire une tenue ou un retrait (suites de #80 et #89).
+
 ## 1.23.0 — 2026-11-11
 
 - Inventaire : calcule le SHA de l’envoi une seule fois et mesure la taille

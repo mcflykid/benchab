@@ -397,7 +397,16 @@ Pour les supports normaux, la grille et le style ajusté donnent des trajets
 différents sur le même coupon, avec un écart Z médian nominal identique et
 deux rejeux ajustés concordants. Le retrait reste à mesurer (#80, #89).
 
-## Prochaine version : 1.24.0
+## Version 1.24.0 — ouvertures cotées et portée des réglages
+
+Une fiche CAO peut déclarer une ouverture traversante interne droite
+ou arrondie sans détourner la profondeur d’une poche borgne. Dix STEP
+sont relus et les anciens plans gardent leurs octets (#32). Le catalogue
+peut vérifier, sur demande, les conditions littérales observées pour
+les styles de support normal. Les cas hors de ce contexte ne sont pas
+qualifiés et le résultat ne prédit pas le retrait (#80, #89).
+
+## Prochaine version : 1.25.0
 
 ### 1. Fiabiliser les fondations et les preuves
 

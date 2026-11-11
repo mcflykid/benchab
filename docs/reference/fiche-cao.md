@@ -142,3 +142,15 @@ aux dimensions et au volume attendus. Plans et scripts se reproduisent
 octet pour octet. Cinq fiches antérieures sans arrondi gardent les mêmes
 plans et scripts. Sur cette exécution locale, la préparation a pris
 2,0 ms en médiane et la construction 42,6 ms.
+
+### Recette des ouvertures traversantes
+
+Cinq fiches ont été construites deux fois : rectangle, coins arrondis,
+base ronde, ouverture avec poche borgne et ouverture avec perçage.
+Les dix STEP relus contiennent chacun un solide valide aux cotes et au
+volume attendus. Des points de contrôle au centre de l’ouverture, près
+des deux faces et à mi-hauteur, confirment l’absence de matière. Dans le
+cas mixte, la poche borgne garde son fond. Huit anciennes fiches gardent
+leurs plans et scripts à l’octet près. Préparation médiane : 2,1 ms ;
+construction médiane : 35,9 ms sur le poste de recette. Aucun ajustement
+ni comportement de la pièce imprimée n’est vérifié (#32).
