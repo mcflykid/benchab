@@ -40,6 +40,12 @@ from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 
 def empreinte(m):
+    """Projette le contact nominal du maillage près du plateau en polygone XY.
+
+    Entrée : maillage orienté, en mm. Sortie : empreinte plane en mm² estimés,
+    issue des faces basses orientées vers le plateau à 0,05 mm près ; ce n’est
+    pas une mesure d’adhérence réelle.
+    """
     n, c = m.face_normals, m.triangles_center
     z0 = m.bounds[0, 2]
     tri = m.triangles[(n[:, 2] < -0.9) & (c[:, 2] < z0 + 0.05)][:, :, :2]
@@ -48,6 +54,12 @@ def empreinte(m):
 
 
 def coins_vifs(poly, angle_max=100.0):
+    """Compte les coins convexes de l’empreinte après simplification en mm.
+
+    Entrées : polygone XY et angle intérieur maximal en degrés. Sortie : nombre
+    entier de coins dont les deux côtés mesurent au moins 3 mm. Cette heuristique
+    ne prédit ni retrait ni décollement physique.
+    """
     n = 0
     for p in getattr(poly, "geoms", [poly]):
         if p.is_empty:
@@ -69,6 +81,12 @@ def coins_vifs(poly, angle_max=100.0):
 
 
 def evaluer(m):
+    """Rend les dimensions et une recommandation nominale d’accroche pour un maillage.
+
+    Entrée : maillage posé, en mm. Sortie : aire d’appui en mm², dimensions en mm,
+    élancement sans unité, nombre de coins et conseil ; aucune valeur ne prouve
+    l’adhérence ni la tenue physique.
+    """
     e = empreinte(m)
     A = e.area
     H = float(m.extents[2])

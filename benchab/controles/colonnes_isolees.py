@@ -48,6 +48,12 @@ NUM = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 
 
 def gcodes(f):
+    """Lit un G-code seul ou les plaques G-code d’un 3MF.
+
+    Entrée : chemin vers un fichier `.gcode` ou une archive `.3mf`. Sortie : liste
+    de paires (numéro de plaque sans unité, texte G-code). La lecture ne lance pas
+    le trancheur et ne commande aucune machine.
+    """
     f = Path(f)
     if f.suffix == ".gcode":
         return [(1, f.read_text(errors="replace"))]
@@ -149,6 +155,13 @@ def cases(segs, o, forme, pas, paquet=1_000_000):
 def controler(
     g, colonne_max=30.0, trajet_min=40.0, relevage_min=1.0, support_haut=20.0, hauteur_min=5.0, elancement=2.0, pas=1.0
 ):
+    """Signale les longs déplacements près de supports ou d’îlots hauts isolés.
+
+    Entrées : texte G-code, seuils de longueur, hauteur et grille en mm. Sortie :
+    rapport PASS/WARN/NON VÉRIFIÉ et couches concernées. Les arcs non pris en
+    charge et erreurs restent des inconnues ; aucune collision physique n’est
+    affirmée et le G-code n’est jamais modifié.
+    """
     C = couches(g)
     if C and C[0]["erreurs"]:
         return {"statut": "NON VÉRIFIÉ", "detail": "; ".join(C[0]["erreurs"])}
