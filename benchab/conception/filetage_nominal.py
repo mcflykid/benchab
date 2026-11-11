@@ -138,7 +138,7 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--sortie", required=True, type=Path, help="Dossier privé neuf")
     args = vars(parser.parse_args(argv))
     try:
-        cible = destination_neuve(args.pop("sortie"), prive=prive)
+        cible = destination_neuve(args.pop("sortie"), prive=prive, temporaire=False)
         maillage, rapport = generer(**args)
         stl = maillage.export(file_type="stl")
         relu = trimesh.load_mesh(io.BytesIO(stl), file_type="stl")

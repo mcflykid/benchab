@@ -102,11 +102,32 @@ def test_publication_stl_rejouable_et_refuse_remplacement(tmp_path, capsys):
         "fixture de test",
     ]
     for i in (1, 2):
-        assert main([*options, "--sortie", str(tmp_path / f"p{i}")]) == 0
+        assert main([*options, "--sortie", str(tmp_path / f"p{i}")], prive=tmp_path) == 0
         rapport = json.loads((tmp_path / f"p{i}/rapport.json").read_bytes())
         stl = tmp_path / f"p{i}/filetage.stl"
         assert rapport["stl_sha256"] == hashlib.sha256(stl.read_bytes()).hexdigest()
         assert trimesh.load_mesh(stl).is_volume
     assert (tmp_path / "p1/filetage.stl").read_bytes() == (tmp_path / "p2/filetage.stl").read_bytes()
-    assert main([*options, "--sortie", str(tmp_path / "p1")]) == 2
+    assert main([*options, "--sortie", str(tmp_path / "p1")], prive=tmp_path) == 2
     assert capsys.readouterr().err
+
+
+def test_route_cli_transmet_l_atelier_prive_explicite(tmp_path, monkeypatch, capsys):
+    """Le chemin choisi prime sur l’atelier par défaut, même dans un autre environnement."""
+    from benchab import cli
+    from benchab.conception import filetage_nominal
+
+    explicite, autre = tmp_path / "atelier-explicite", tmp_path / "autre"
+    monkeypatch.setenv("BENCHAB_PRIVE", str(autre))
+    assert cli.main(["--prive", str(explicite), "init"]) == 0
+    recu = []
+
+    def main(arguments, *, prive=None):
+        recu.append(prive)
+        return 0
+
+    monkeypatch.setattr(filetage_nominal, "main", main)
+    assert cli.main(["--prive", str(explicite), "conception", "filetage-nominal", "--", "--sortie", "dossier"]) == 0
+    assert recu == [explicite]
+    assert not autre.exists()
+    capsys.readouterr()
