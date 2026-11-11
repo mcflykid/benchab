@@ -4,9 +4,10 @@ import argparse
 import json
 import math
 import re
-import zipfile
 from pathlib import Path
+from zipfile import BadZipFile
 
+from benchab.archives_3mf import Archive3MF
 from benchab.donnees.base import Base
 from benchab.fabrication.anycubic import resultats
 from benchab.projets.envois import lire_fiche
@@ -51,8 +52,9 @@ def _preparation_courante(projet: Path) -> Path | None:
 
 
 def _noms_plaques(archive: Path) -> dict[str, str]:
-    with zipfile.ZipFile(archive) as paquet:
-        contenu = paquet.read("Metadata/model_settings.config").decode("utf-8")
+    """Lit les noms de plaque depuis un membre indexé, sans modifier le 3MF."""
+    with Archive3MF(archive) as paquet:
+        contenu = paquet.lire("Metadata/model_settings.config").decode("utf-8")
     return dict(_NOMS_PLATE.findall(contenu))
 
 
@@ -213,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         rapport = rendre(plaques_pretes(projets, base), args.creneau)
         with sortie.open("x", encoding="utf-8") as flux:
             flux.write(rapport)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError, zipfile.BadZipFile) as erreur:
+    except (OSError, ValueError, KeyError, json.JSONDecodeError, BadZipFile) as erreur:
         parser.error(str(erreur))
     finally:
         base.fermer()

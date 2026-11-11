@@ -49,6 +49,19 @@ class PlanningFabricationTests(unittest.TestCase):
             json.dumps({"filaments": {"1": {"matiere": "PLA"}}}), encoding="utf-8"
         )
 
+    def test_noms_plaques_refuse_les_entrees_ambiguës_sans_modifier_source(self):
+        """Le lecteur commun refuse un index ZIP dupliqué et ne réécrit pas le tranchage."""
+        archive = self.projet / "preparations/P02/tranche.3mf"
+        with zipfile.ZipFile(archive, "w") as paquet:
+            paquet.writestr("Metadata/model_settings.config", "<metadata key=\"plater_id\" value=\"1\" />")
+            paquet.writestr("Metadata/plate_1.gcode", "G1 X1 Y1 E1\n")
+            with self.assertWarns(UserWarning):
+                paquet.writestr("Metadata/plate_1.gcode", "G1 X2 Y2 E1\n")
+        avant = archive.read_bytes()
+        with self.assertRaises(ValueError):
+            planning._noms_plaques(archive)
+        self.assertEqual(archive.read_bytes(), avant)
+
     def test_collecte_estimations_et_chemin_relatif_sans_envoi(self):
         lectures = [{"index": 1, "secondes": 7200, "grammes": 15.26}]
         with patch.object(planning, "resultats", return_value=lectures):

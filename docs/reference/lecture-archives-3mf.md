@@ -36,9 +36,13 @@ Le contrôle d’intégrité avant/après lit les réglages du projet, les méta
 des objets et les plages de couches avec un plafond de 8 Mio par configuration.
 Le profil de hauteurs de couches reste opaque : seul son SHA-256 est calculé par
 blocs. Le même garde XML s’applique aux configurations en mémoire préparées par
-les écrivains. Les lecteurs d’optimisation, de noms de plaques et de résultats
-du slicer utilisent aussi l’index et le décodage communs ; l’optimisation
-conserve la vérification du CRC de tous les membres.
+les écrivains. Les lecteurs d’optimisation, de noms de plaques, de résultats du
+slicer, de préparation et de planning utilisent aussi l’index commun. La
+préparation contrôle le CRC de tous les membres dans le même contexte que les
+empreintes G-code ; le planning lit ses métadonnées de plaque avec ce lecteur.
+Les doublons de chemin et les graphies qui donnent le même numéro de plaque
+sont refusés. L’optimisation conserve également la vérification du CRC de tous
+les membres.
 
 Le XML se lit avec `xml()` : DTD et entités sont refusées en UTF-8, UTF-16 et
 UTF-32 avant ElementTree. Les réglages se lisent avec `reglages()`, qui délègue
