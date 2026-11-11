@@ -420,6 +420,32 @@ def test_appliquer_verifie_la_cible_en_dernier(tmp_path, atelier, monkeypatch):
     assert cible.read_bytes() == b"changement apres verification source\n"
 
 
+def test_appliquer_refuse_dossier_export_remplace_pendant_derniere_relecture(tmp_path, atelier, monkeypatch):
+    """Les octets exacts d’un ancien dirfd ne valident pas un chemin canonique remplacé."""
+    import os
+
+    import benchab.qualite.reprise_export as reprise
+
+    prive, cible, attendu = atelier
+    _, preuve, sha = _candidat(prive, tmp_path)
+    hacher = reprise._hachage_fd_borne
+    ancien = prive / "export-ancien"
+
+    def deplacer_apres_relecture(fd, budget):
+        resultat = hacher(fd, budget)
+        if cible.exists() and not ancien.exists() and os.path.samestat(cible.lstat(), os.fstat(fd)):
+            cible.parent.rename(ancien)
+            cible.parent.mkdir()
+            cible.write_bytes(b"tiers")
+        return resultat
+
+    monkeypatch.setattr(reprise, "_hachage_fd_borne", deplacer_apres_relecture)
+    with pytest.raises(ValueError, match="(?i)cible.*créée.*laissée"):
+        reprise.appliquer(prive, preuve, sha)
+    assert (ancien / cible.name).read_bytes() == attendu
+    assert cible.read_bytes() == b"tiers"
+
+
 def test_cli_appliquer_est_diagnostic_sans_base_ni_mesure(tmp_path, atelier, capsys, monkeypatch):
     """La commande explicite n’ouvre pas Base() et ne journalise pas une mesure."""
     from benchab import cli

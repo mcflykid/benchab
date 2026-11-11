@@ -465,6 +465,9 @@ def appliquer(prive, preuve, sha256_preuve):
                         verifier_export()
                         verifier_verrou()
                         _verifier_cible_finale(fd_export, nom_canonique, fd_stage, sha_table, octets)
+                        # Le dirfd peut encore lire l'ancien dossier après un
+                        # remplacement ; l'entrée canonique doit lui correspondre.
+                        verifier_export()
                     except (OSError, ValueError, sqlite3.Error) as erreur:
                         raise ValueError(
                             f"La cible export/{nom_canonique} a été créée et est laissée en place ; "
