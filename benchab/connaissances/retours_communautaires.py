@@ -28,7 +28,8 @@ def _date_valide(texte):
 
 def _valider(registre):
     """Refuse les entrées publiques incomplètes, non datées ou hors des deux issues autorisées."""
-    if type(registre) is not dict or set(registre) != {"schema", "retours"} or registre["schema"] != 1:
+    if (type(registre) is not dict or set(registre) != {"schema", "retours"}
+            or type(registre["schema"]) is not int or registre["schema"] != 1):
         raise ValueError("Schéma du registre communautaire absent ou inconnu.")
     retours = registre["retours"]
     if type(retours) is not list or len(retours) != 2:
@@ -38,7 +39,8 @@ def _valider(registre):
         if type(retour) is not dict or set(retour) != _CLES_ENTREE:
             raise ValueError("Entrée de retour communautaire incomplète ou non prévue.")
         identifiant = retour["id"]
-        if identifiant not in {"asnext-issue-9", "asnext-issue-4"} or identifiant in ids:
+        if (not isinstance(identifiant, str) or identifiant in ids
+                or identifiant not in {"asnext-issue-9", "asnext-issue-4"}):
             raise ValueError("Identifiant de retour communautaire absent, dupliqué ou inconnu.")
         ids.add(identifiant)
         date_retour, date_relecture = retour["date_retour"], retour["date_relecture"]
@@ -62,8 +64,8 @@ def _valider(registre):
 
 
 def lire_registre():
-    """Renvoie PASS par validation de deux hypothèses publiques, sans écrire ni adopter de réglage."""
-    donnees = json.loads(files("benchab").joinpath("reference/retours-communautaires.json").read_text())
+    """Renvoie les deux hypothèses publiques validées, sans écrire ni adopter de réglage."""
+    donnees = json.loads(files("benchab").joinpath("reference/retours-communautaires.json").read_text(encoding="utf-8"))
     return tuple(copy.deepcopy(retour) for retour in _valider(donnees)["retours"])
 
 

@@ -58,6 +58,14 @@ def test_validation_refuse_source_et_champ_non_documentaires():
     from importlib.resources import files
 
     registre = json.loads(files("benchab").joinpath("reference/retours-communautaires.json").read_text())
+    with pytest.raises(ValueError, match="Schéma"):
+        retours_communautaires._valider({**registre, "schema": True})
+
+    identifiant_non_textuel = copy.deepcopy(registre)
+    identifiant_non_textuel["retours"][0]["id"] = []
+    with pytest.raises(ValueError, match="Identifiant"):
+        retours_communautaires._valider(identifiant_non_textuel)
+
     mauvais_lien = copy.deepcopy(registre)
     mauvais_lien["retours"][0]["source"] = "https://example.org/issue/9"
     with pytest.raises(ValueError, match="Source primaire"):
