@@ -160,9 +160,6 @@ def test_niveau3_preserve_le_tableau_plaques_au_rejeu(tmp_path, monkeypatch):
         "plaques_3mf": plaques.name,
         "placement": placement.name,
     }))
-    monkeypatch.setattr(Q, "lire_texte_gcode_3mf", lambda *_: "G1 X1")
-    monkeypatch.setattr("benchab.fabrication.anycubic.resultats", lambda *_: [{"index": 1}])
-    monkeypatch.setattr(Q.schema_reglages, "decoder", lambda *_: {})
     monkeypatch.setattr("benchab.controles.routine.controler", lambda *_: {"conforme": True, "statut": "PASS"})
 
     assert Q.niveau3(config) == Q.NV

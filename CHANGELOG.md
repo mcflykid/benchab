@@ -4,6 +4,10 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.7.0
 
+- Preuves : conserve les rapports de qualité historiques et publie un nouveau
+  dossier si le rejeu produit des résultats différents (#160).
+- Archives : partage le lecteur borné des fichiers de qualité et refuse les
+  identités de plaque et d’objet ambiguës (suite de #122).
 - CI : stabilise le test du délai sans imposer un temps de démarrage à Python (#161).
 - Apprentissage : relie une fiche privée d’incident à un commit et à ses
   fichiers de test exacts ; l’exécution reste déclarative (suite de #119).
