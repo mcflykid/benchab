@@ -1,11 +1,14 @@
 """Capacités de commandes : archives synthétiques et profil flat déclaré, aucun slicer."""
 
+import hashlib
 import json
 import math
 import tempfile
 import unittest
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
+from unittest.mock import patch
 
 from benchab.controles import capacites_machine as C
 
@@ -32,7 +35,9 @@ BASE = (
 
 
 class Capacites(unittest.TestCase):
-    def analyser(self, g=BASE, settings=None, tools=(0,), limits=None, machine=None, save=None):
+    def analyser(self, g=BASE, settings=None, tools=(0,), limits=None, machine=None, save=None, *,
+                 lecture_directe_interdite=False):
+        """Analyse un 3MF synthétique privé et vérifie que ses octets ne changent pas."""
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "tranche.3mf"
             st = {
@@ -64,7 +69,14 @@ class Capacites(unittest.TestCase):
                 )
                 z.writestr("Metadata/plate_1.gcode", g)
             before = path.read_bytes()
-            r = C.analyser(path, maitre=MACHINE if machine is None else machine, limites_filaments=limits)
+            garde = (
+                patch.object(Path, "read_bytes", side_effect=AssertionError("Lecture intégrale du chemin"))
+                if lecture_directe_interdite else nullcontext()
+            )
+            with garde:
+                r = C.analyser(path, maitre=MACHINE if machine is None else machine, limites_filaments=limits)
+            if lecture_directe_interdite:
+                self.assertEqual(r["entrees"]["tranche_sha256"], hashlib.sha256(before).hexdigest())
             self.assertEqual(path.read_bytes(), before)
             json.dumps(r, allow_nan=False)
             if save:
@@ -83,6 +95,10 @@ class Capacites(unittest.TestCase):
         self.assertEqual(group["vitesse_max_mm_s"], 10)
         volume = next(c for c in r["contraintes"] if c["controle"] == "volume XYZ déposé")
         self.assertEqual(set(volume["detail"]), {"bornes_mm", "debut", "fin"})
+
+    def test_empreinte_capacites_depuis_le_lecteur_3mf_epingle(self):
+        """Le 3MF analysé est haché sans relire intégralement le chemin avant les gardes."""
+        self.assertEqual(self.analyser(lecture_directe_interdite=True)["statut"], "PASS")
 
     def test_strict_minoritaire_meme_objet(self):
         g = BASE.replace("G1 X10 E1", "G1 X990 E10") + "T1\nM104 S210\nG1 X990.1 E.1\n"

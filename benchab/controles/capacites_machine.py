@@ -65,12 +65,11 @@ def _quantile(counter, fraction):
 
 def _analyser(p3mf, maitre=None, limites_filaments=None):
     path = Path(p3mf)
-    data = path.read_bytes()
     rapport = {
         "schema": 1,
         "statut": "NON VÉRIFIÉ",
         "decision": "À revoir",
-        "entrees": {"tranche": str(path), "tranche_sha256": _sha(data), "membres": {}},
+        "entrees": {"tranche": str(path), "membres": {}},
         "plaques": [],
         "contraintes": [],
         "metriques": {},
@@ -120,6 +119,9 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
         machine = {}
         note("profil maître", "FAIL", str(exc))
     with Archive3MF(path) as archive:
+        # Empreinte et mesures portent sur la même source régulière épinglée ;
+        # ne jamais lire tout le chemin avant les gardes du ZIP (#210).
+        rapport["entrees"]["tranche_sha256"] = archive.sha256()
         archive.verifier()
         settings = archive.reglages()
         if not isinstance(settings, dict):
@@ -744,8 +746,6 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
             "accelerations_mm_s2": root_acc,
             "groupes": all_groups,
         }
-    if _sha(path.read_bytes()) != rapport["entrees"]["tranche_sha256"]:
-        raise ValueError("source modifiée pendant lecture")
     statuses = {c["statut"] for c in contraintes if c["obligatoire"]}
     rapport["statut"] = (
         "FAIL"
@@ -765,7 +765,10 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
 
 def analyser(p3mf, maitre=None, limites_filaments=None):
     """
-    Façade JSON totale : une entrée illisible est NO GO, jamais un rapport vide PASS.
+    Contrôle un 3MF en lecture seule ; distances en mm, débits en mm³/s et
+    durées nominales en s. Rapporte PASS/WARN/FAIL/NON VÉRIFIÉ ; source
+    illisible ou modifiée : FAIL/NO GO. Ne change aucun réglage, et le
+    SHA-256 vient du lecteur qui analyse les membres du même fichier.
     """
     try:
         return _analyser(p3mf, maitre, limites_filaments)

@@ -183,7 +183,9 @@ optimisation, visualisation, synthèses d’atelier et preuves de préparation
 (#122). Les synthèses ouvrent le fichier régulier, le hachent, puis lisent
 le ZIP depuis un duplicata de ce même descripteur. Elles gardent leurs
 plafonds par type de membre ; un XML hors contrat ne fournit pas de mesures
-au bilan (#203).
+au bilan (#203). Le contrôle de capacités machine calcule le SHA du
+3MF sur le descripteur déjà ouvert, sans lecture intégrale préalable ou
+finale du chemin ; les mesures et le verdict de débit ne changent pas (#210).
 
 Les écritures ZIP restent propres à chaque transformation. Le clone
 d’optimisation lit sa source sur un descripteur épinglé ; la relecture
