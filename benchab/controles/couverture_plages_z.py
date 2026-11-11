@@ -291,7 +291,7 @@ def _lire_plages(racine, identifiant):
     return resultat
 
 
-def _couvre(intervalles, debut, fin, tolerance):
+def _couvre(intervalles, debut, fin):
     """Vérifie une couverture contiguë de l’intervalle en mm, sans combler les trous."""
     curseur = debut
     # Une frontière seule n'apporte ni couverture ni hauteur dans la zone (docs/reference/plages-z.md).
@@ -301,10 +301,10 @@ def _couvre(intervalles, debut, fin, tolerance):
         if droite > debut and gauche < fin
     ]
     for gauche, droite, _ in morceaux:
-        if gauche > curseur + tolerance:
+        if gauche > curseur:
             return False, morceaux
         curseur = max(curseur, droite)
-    return bool(morceaux) and curseur >= fin - tolerance, morceaux
+    return bool(morceaux) and curseur >= fin, morceaux
 
 
 def _evaluer_intention(item, geometrie, intervalles, tolerance):
@@ -342,7 +342,7 @@ def _evaluer_intention(item, geometrie, intervalles, tolerance):
         if seuil is not None and seuil <= 0:
             raise ValueError("hauteur_max_mm doit être strictement positive.")
 
-    couverte, morceaux = _couvre(intervalles, debut, fin, tolerance)
+    couverte, morceaux = _couvre(intervalles, debut, fin)
     if not couverte:
         statut = "FAIL"
         erreur = "couverture explicite incomplète de l’intervalle demandé"

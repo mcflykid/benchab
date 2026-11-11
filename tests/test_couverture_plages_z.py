@@ -149,11 +149,30 @@ def test_zone_fine_sans_couverture_reste_fail_et_transformation_z_inconnue_nv(tm
     assert rapport_z["statut"] == "NON VÉRIFIÉ"
 
 
-def test_zone_fine_plus_courte_que_tolerance_exige_une_plage_explicite(tmp_path):
+def test_zone_fine_plus_courte_que_tolerance_exige_une_couverture_complete(tmp_path):
     """La tolérance de jointure ne remplace aucune preuve de couverture."""
     source = _cube_3mf(tmp_path / "zone-mince.3mf", ranges="<objects/>")
     rapport = analyser(source, {"schema": 1, "intentions": [{
         "objet_id": "1", "type": "zone_fine", "min_z_mm": 4, "max_z_mm": 4.0005, "hauteur_max_mm": 0.12,
+    }]})
+    assert rapport["statut"] == "FAIL"
+    xml = ('<objects><object id="1"><range min_z="4" max_z="4.0002">'
+           '<option opt_key="layer_height">0.1</option></range></object></objects>')
+    partielle = _cube_3mf(tmp_path / "zone-mince-partielle.3mf", ranges=xml)
+    rapport = analyser(partielle, {"schema": 1, "intentions": [{
+        "objet_id": "1", "type": "zone_fine", "min_z_mm": 4, "max_z_mm": 4.0005, "hauteur_max_mm": 0.12,
+    }]})
+    assert rapport["statut"] == "FAIL"
+
+
+def test_lacune_interne_meme_inferieure_a_la_tolerance_est_refusee(tmp_path):
+    """Une petite lacune entre plages reste une absence de couverture en mm."""
+    xml = ('<objects><object id="1"><range min_z="4" max_z="4.5">'
+           '<option opt_key="layer_height">0.1</option></range><range min_z="4.5005" max_z="6">'
+           '<option opt_key="layer_height">0.1</option></range></object></objects>')
+    source = _cube_3mf(tmp_path / "lacune.3mf", ranges=xml)
+    rapport = analyser(source, {"schema": 1, "intentions": [{
+        "objet_id": "1", "type": "zone_fine", "min_z_mm": 4, "max_z_mm": 6, "hauteur_max_mm": 0.12,
     }]})
     assert rapport["statut"] == "FAIL"
 
