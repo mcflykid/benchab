@@ -6,6 +6,7 @@ from zipfile import ZipFile
 
 from benchab.cli import main as main_benchab
 from benchab.controles.placement import valider as valider_placement
+from benchab.imports3d.lecture_3mf import lire as lire_3mf
 from benchab.imports3d.placement import generer
 from benchab.qualite.empreintes import sha256_fichier
 
@@ -88,6 +89,16 @@ def test_placement_3mf_est_valide_et_trace_la_transformation_xy(tmp_path):
     assert source.read_bytes() == avant
 
 
+def test_identites_et_traces_sont_optionnelles_pour_les_lecteurs_generiques(tmp_path):
+    source = _source(tmp_path / "scene.3mf")
+
+    scene_generique = lire_3mf(source)
+    scene_tracee = lire_3mf(source, identites=True)
+
+    assert "identites_import" not in scene_generique.metadata
+    assert len(scene_tracee.metadata["identites_import"]) == 1
+
+
 def test_composant_interne_transforme_est_trace_sans_a_platir_la_source(tmp_path):
     source = _source(
         tmp_path / "assemblage.3mf",
@@ -142,6 +153,160 @@ def test_liaison_absente_donne_un_placement_indetermine_sans_origine_inventee(tm
     assert "indisponible" in rapport["raisons"][0]
 
 
+def test_placement_refuse_plusieurs_relations_de_modele_principal(tmp_path):
+    source = _source(tmp_path / "ambigu.3mf")
+    # Deux cibles internes candidates : l’ordre du ZIP ne peut choisir le repère.
+    with ZipFile(source, "a") as archive:
+        archive.writestr(
+            "_rels/.rels",
+            b'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            b'<Relationship Id="r1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" '
+            b'Target="/3D/3dmodel.model"/>'
+            b'<Relationship Id="r2" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" '
+            b'Target="/Autre.model"/>'
+            b'</Relationships>',
+        )
+        archive.writestr("Autre.model", _modele(source, [{"objectid": "1"}]))
+    declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Objet"}])
+
+    rapport = generer(source, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "relation" in rapport["raisons"][0].lower()
+
+
+def test_placement_refuse_p_path_inconnu_ou_multiple(tmp_path):
+    for suffix, attributs in (
+        ("inconnu", {"path": "/3D/Objects/piece.model"}),
+        ("multiple", {f"{{{PROD}}}path": "/3D/Objects/piece.model",
+                      "{urn:extension-test}path": "/3D/Objects/autre.model"}),
+    ):
+        source = _source(
+            tmp_path / f"{suffix}.3mf",
+            items=[{"objectid": "20", "transform": "1 0 0 0 1 0 0 0 1 1 2 0"}],
+            composant=True,
+        )
+        temporaire = tmp_path / f"{suffix}-reconstruit.3mf"
+        with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+            for info in entree.infolist():
+                contenu = entree.read(info.filename)
+                if info.filename == "3D/3dmodel.model":
+                    racine = ET.fromstring(contenu)
+                    composant = racine.find(f".//{{{NS}}}component")
+                    for cle, valeur in attributs.items():
+                        composant.set(cle, valeur)
+                    contenu = ET.tostring(racine, encoding="utf-8")
+                sortie.writestr(info, contenu)
+        declaration = _declaration(temporaire, [{"build_item": 1, "plate": 1, "name": "Assemblage"}])
+
+        rapport = generer(temporaire, declaration)
+
+        assert rapport["statut"] == "NON VÉRIFIÉ"
+        assert rapport["placement"] is None
+        assert "p:path" in rapport["raisons"][0]
+
+
+def test_placement_refuse_unite_differente_sur_cible_p_path(tmp_path):
+    source = _source(
+        tmp_path / "unite-mixte.3mf",
+        items=[{"objectid": "20", "transform": "1 0 0 0 1 0 0 0 1 1 2 0"}],
+        composant=True,
+    )
+    temporaire = tmp_path / "unite-mixte-reconstruit.3mf"
+    with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+        for info in entree.infolist():
+            contenu = entree.read(info.filename)
+            if info.filename == "3D/Objects/piece.model":
+                racine = ET.fromstring(contenu)
+                racine.set("unit", "inch")
+                contenu = ET.tostring(racine, encoding="utf-8")
+            sortie.writestr(info, contenu)
+    declaration = _declaration(temporaire, [{"build_item": 1, "plate": 1, "name": "Assemblage"}])
+
+    rapport = generer(temporaire, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "Unités mixtes" in rapport["raisons"][0]
+
+
+def test_placement_refuse_indicateur_printable_malforme(tmp_path):
+    source = _source(tmp_path / "printable.3mf")
+    temporaire = tmp_path / "printable-reconstruit.3mf"
+    with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+        for info in entree.infolist():
+            contenu = entree.read(info.filename)
+            if info.filename == "3D/3dmodel.model":
+                racine = ET.fromstring(contenu)
+                racine.find(f"{{{NS}}}build/{{{NS}}}item").set("printable", "yes")
+                contenu = ET.tostring(racine, encoding="utf-8")
+            sortie.writestr(info, contenu)
+    declaration = _declaration(temporaire, [{"build_item": 1, "plate": 1, "name": "Objet"}])
+
+    rapport = generer(temporaire, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "printable" in rapport["raisons"][0]
+
+
+def test_placement_refuse_path_non_qualifie_sur_build_item(tmp_path):
+    source = _source(tmp_path / "item-path.3mf")
+    temporaire = tmp_path / "item-path-reconstruit.3mf"
+    with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+        for info in entree.infolist():
+            contenu = entree.read(info.filename)
+            if info.filename == "3D/3dmodel.model":
+                racine = ET.fromstring(contenu)
+                racine.find(f"{{{NS}}}build/{{{NS}}}item").set("path", "/3D/3dmodel.model")
+                contenu = ET.tostring(racine, encoding="utf-8")
+            sortie.writestr(info, contenu)
+    declaration = _declaration(temporaire, [{"build_item": 1, "plate": 1, "name": "Objet"}])
+
+    rapport = generer(temporaire, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "p:path" in rapport["raisons"][0]
+
+
+def test_cli_publie_le_contrat_placement_sur_pass_et_aucun_faux_contrat_sur_nv(
+    atelier_initialise, tmp_path, capsys
+):
+    source = _source(tmp_path / "piece.3mf")
+    declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Pièce"}])
+    fichier_declaration = tmp_path / "declaration.json"
+    fichier_declaration.write_text(json.dumps(declaration), encoding="utf-8")
+    sortie = atelier_initialise / "preuves" / "placement.json"
+    sortie.parent.mkdir(parents=True)
+
+    code = main_benchab([
+        "--prive", str(atelier_initialise), "imports", "placement",
+        str(source), str(fichier_declaration), "--sortie", str(sortie),
+    ])
+
+    stdout = json.loads(capsys.readouterr().out)
+    placement = json.loads(sortie.read_text(encoding="utf-8"))
+    assert code == stdout["code"] == 0
+    assert placement["schema"] == 1
+    assert placement["objects"][0]["name"] == "Pièce"
+    assert stdout["placement"] == placement
+    assert stdout["reglages_consultes"] is False
+
+    invalide = _declaration(source, [{"build_item": 9, "plate": 1, "name": "Inconnue"}])
+    fichier_declaration.write_text(json.dumps(invalide), encoding="utf-8")
+    sortie_nv = atelier_initialise / "preuves" / "placement-nv.json"
+    code_nv = main_benchab([
+        "--prive", str(atelier_initialise), "imports", "placement",
+        str(source), str(fichier_declaration), "--sortie", str(sortie_nv),
+    ])
+    stdout_nv = json.loads(capsys.readouterr().out)
+    assert code_nv == stdout_nv["code"] == 2
+    assert stdout_nv["placement"] is None
+    assert not sortie_nv.exists()
+
+
 def test_declaration_perimee_est_non_verifiee_sans_placer(tmp_path):
     source = _source(tmp_path / "modifiee.3mf")
     declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Pièce"}])
@@ -168,8 +333,9 @@ def test_cli_ecrit_le_rapport_neuf_dans_le_prive(atelier_initialise, tmp_path, c
     ])
 
     console = json.loads(capsys.readouterr().out)
-    rapport = json.loads(sortie.read_text(encoding="utf-8"))
-    assert code == console["code"] == rapport["code"] == 0
-    assert rapport["placement"]["objects"][0]["source_instance"]["build_item"] == 1
+    placement = json.loads(sortie.read_text(encoding="utf-8"))
+    assert code == console["code"] == 0
+    assert placement["objects"][0]["source_instance"]["build_item"] == 1
+    assert console["placement"] == placement
 
 

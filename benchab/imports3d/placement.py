@@ -34,7 +34,8 @@ def _declaration(source):
         chemin = sans_lien(Path(source), strict=True)
         if not chemin.is_file() or chemin.stat().st_size > _MAX_DECLARATION_OCTETS:
             raise ValueError("Déclaration absente ou supérieure à 1 Mio.")
-        donnees = chemin.read_bytes()
+        with chemin.open("rb") as fichier:
+            donnees = fichier.read(_MAX_DECLARATION_OCTETS + 1)
         if len(donnees) > _MAX_DECLARATION_OCTETS:
             raise ValueError("Déclaration supérieure à 1 Mio.")
         valeur = json.loads(donnees, object_pairs_hook=_paires_uniques)
@@ -105,6 +106,7 @@ def _rapport_nv(raison, empreinte=None, sha_declaration=None):
         "validation_physique": False,
         "modifie_source": False,
         "gcode_consulte": False,
+        "reglages_consultes": False,
     }
 
 
@@ -125,7 +127,7 @@ def generer(source, declaration):
         empreinte = sha256_fichier(chemin)
         donnees, sha_declaration, chemin_declaration = _declaration(declaration)
         _valider_declaration(donnees, empreinte)
-        scene = lire_3mf(chemin)
+        scene = lire_3mf(chemin, identites=True)
         if scene.metadata.get("modificateurs_non_geometriques"):
             raise ValueError("Des modificateurs 3MF exclus de la géométrie rendent le placement NON VÉRIFIÉ.")
         identites = scene.metadata.get("identites_import")
@@ -207,13 +209,14 @@ def generer(source, declaration):
             "validation_physique": False,
             "modifie_source": False,
             "gcode_consulte": False,
+            "reglages_consultes": False,
         }
     except (OSError, ValueError, KeyError, TypeError) as erreur:
         return _rapport_nv(erreur, empreinte, sha_declaration)
 
 
 def main(argv=None, *, prive=None):
-    """Commande placement importé ; écrit un rapport neuf privé, code 0 PASS ou 2 NON VÉRIFIÉ."""
+    """Commande placement importé ; écrit le contrat neuf seulement sur PASS, stdout porte le rapport complet."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Archive 3MF importée, préservée")
     parser.add_argument("declaration", type=Path, help="JSON explicitant plaques, noms, instances et repère")
@@ -224,11 +227,13 @@ def main(argv=None, *, prive=None):
     try:
         sortie = destination_neuve(arguments.sortie, prive=prive)
         rapport = generer(arguments.source, arguments.declaration)
-        with PublicationNeuve([arguments.source, arguments.declaration], [sortie]) as publication:
-            publication.temporaire(sortie).write_text(
-                json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-            )
-            publication.publier()
+        if rapport["statut"] == "PASS":
+            with PublicationNeuve([arguments.source, arguments.declaration], [sortie]) as publication:
+                publication.temporaire(sortie).write_text(
+                    json.dumps(rapport["placement"], ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+                    encoding="utf-8",
+                )
+                publication.publier()
     except (OSError, ValueError) as erreur:
         rapport = _rapport_nv(erreur)
         print(json.dumps(rapport, ensure_ascii=False, indent=2))

@@ -17,22 +17,25 @@ import trimesh
 from benchab.archives_3mf import Archive3MF
 
 NS = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
+PROD = "{http://schemas.microsoft.com/3dmanufacturing/production/2015/06}"
+REL_MODELE = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
 UNITES = {"micron": 0.001, "millimeter": 1.0, "centimeter": 10.0, "inch": 25.4, "foot": 304.8, "meter": 1000.0}
 _MAX_XML = 512 * 1024 * 1024
 
 
-def lire(source, max_faces=3_000_000):
-    """Lit une scène 3MF en mm, bornée en faces ; conserve les noms et identités/transforms source dans metadata.
+def lire(source, max_faces=3_000_000, *, identites=False):
+    """Lit une scène 3MF en mm, bornée en faces ; optionnellement conserve identifiants et transforms source.
 
-    Refuse archive incomplète ; aucun membre n’est extrait sur disque et aucun réglage n’est modifié.
+    `identites=True` refuse les liens OPC/Production ambigus. Aucune donnée de réglage
+    n’est lue ni modifiée et aucun membre n’est extrait sur disque.
     """
     try:
-        return _lire(source, max_faces)
+        return _lire(source, max_faces, identites=identites)
     except (E.ParseError, BadZipFile, KeyError, UnicodeError) as exc:
         raise ValueError("Archive 3MF illisible ou incomplète") from exc
 
 
-def _lire(source, max_faces):
+def _lire(source, max_faces, *, identites=False):
     modeles, resultats = {}, []
     total_faces = 0
     # Les modèles géométriques gardent leur budget XML propre, sans assouplir l'index commun (#122).
@@ -88,6 +91,27 @@ def _lire(source, max_faces):
             m[:3, 3] *= facteur
             return m
 
+        def chemin_element(element):
+            """Renvoie l’unique p:path production ; refuse les extensions ambiguës pour une preuve d’identité."""
+            attributs = [(cle, valeur) for cle, valeur in element.attrib.items() if cle.rsplit("}", 1)[-1] == "path"]
+            if not identites:
+                return next((v for _, v in attributs), None)
+            if len(attributs) > 1 or any(cle != PROD + "path" for cle, _ in attributs):
+                raise ValueError("Attribut p:path absent du namespace attendu ou ambigu")
+            if attributs and not attributs[0][1].strip():
+                raise ValueError("Attribut p:path vide")
+            return attributs[0][1] if attributs else None
+
+        def printable_element(item):
+            """Refuse les indicateurs imprimables mal formés avant d’ignorer une instance."""
+            attributs = [(cle, valeur) for cle, valeur in item.attrib.items() if cle.rsplit("}", 1)[-1] == "printable"]
+            if identites and (len(attributs) > 1 or any(cle != "printable" for cle, _ in attributs)):
+                raise ValueError("Attribut printable non qualifié ou ambigu")
+            valeur = item.get("printable", "1")
+            if identites and valeur not in {"0", "1"}:
+                raise ValueError("Valeur printable non qualifiée")
+            return valeur
+
         def parcourir(nom, ident, transform, pile=(), racine=None, trace=(), build_item=None):
             nonlocal total_faces
             cle = nom, ident
@@ -133,9 +157,9 @@ def _lire(source, max_faces):
                     "unite_source": modele(nom)[0].get("unit", "millimeter"),
                     "transformations": list(trace),
                 }
-                resultats.append((obj.get("name", f"Objet{len(resultats) + 1}"), m, identite))
+                resultats.append((obj.get("name", f"Objet{len(resultats) + 1}"), m, identite if identites else None))
             for component in obj.findall(NS + "components/" + NS + "component"):
-                path = next((v for k, v in component.attrib.items() if k.endswith("}path") or k == "path"), None)
+                path = chemin_element(component)
                 enfant = chemin(nom, path) if path else nom
                 if modele(enfant)[2] != facteur:
                     raise ValueError("Unités mixtes entre modèles 3MF : conversion explicite requise")
@@ -159,8 +183,14 @@ def _lire(source, max_faces):
         principal = None
         if "_rels/.rels" in noms:
             rels = archive.xml("_rels/.rels")
-            for rel in rels:
-                if rel.get("Type", "").endswith("/3dmodel") and rel.get("TargetMode") != "External":
+            candidats = [rel for rel in rels if rel.get("Type", "").endswith("/3dmodel")]
+            internes = [rel for rel in candidats if rel.get("TargetMode") != "External"]
+            if identites and candidats and (
+                len(candidats) != 1 or len(internes) != 1 or candidats[0].get("Type") != REL_MODELE
+            ):
+                raise ValueError("Relations OPC du modèle principal ambiguës")
+            for rel in internes:
+                if rel.get("Type", "").endswith("/3dmodel"):
                     principal = chemin("racine", rel.attrib["Target"])
                     break
         if principal is None:
@@ -170,9 +200,9 @@ def _lire(source, max_faces):
         racine_modele = principal
         root, _, facteur = modele(principal)
         for build_item, item in enumerate(root.findall(NS + "build/" + NS + "item"), 1):
-            if item.get("printable", "1") == "0":
+            if printable_element(item) == "0":
                 continue
-            path = next((v for k, v in item.attrib.items() if k.endswith("}path")), None)
+            path = chemin_element(item)
             modele_item = chemin(principal, path) if path else principal
             matrice_item = matrice(item, facteur)
             trace_item = {
@@ -201,11 +231,12 @@ def _lire(source, max_faces):
             mesh,
             node_name=f"Objet{i + 1}",
             geom_name=f"Objet{i + 1}",
-            metadata={"nom_source": nom, "identite_import": identite},
+            metadata={"nom_source": nom, **({"identite_import": identite} if identites else {})},
         )
     scene.metadata["units"] = "mm"
     scene.metadata["unites_fichier"] = root.get("unit", "millimeter")
     scene.metadata["modificateurs_non_geometriques"] = ignores
     # Les rapports de placement doivent relier les bornes déjà transformées aux IDs et matrices de la source (#105).
-    scene.metadata["identites_import"] = [identite for _, _, identite in resultats]
+    if identites:
+        scene.metadata["identites_import"] = [identite for _, _, identite in resultats]
     return scene
