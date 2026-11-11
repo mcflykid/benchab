@@ -182,17 +182,30 @@ class Base:
     def exporter(self):
         """Un export cohérent, sérialisé et vérifiable après chaque transaction réussie."""
         from benchab.chemins import sans_lien
+        from benchab.qualite.ecritures import ouvrir_verrou
 
         if self.connexion.in_transaction:
             raise ValueError("Terminer la transaction avant l'export")
-        chemin_verrou = sans_lien(self.prive / "cache/export.lock", racine=self.prive)
-        with chemin_verrou.open("a") as verrou:
-            fcntl.flock(verrou, fcntl.LOCK_EX)
-            self.connexion.execute("BEGIN")
+        cache = sans_lien(self.prive / "cache", racine=self.prive)
+        dossier = os.open(cache, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            # Le chemin peut changer après la garde : ouvrir le verrou sans suivre de lien (#138).
+            verrou = ouvrir_verrou("export.lock", dossier)
             try:
-                self._exporter_tables()
+                fcntl.flock(verrou, fcntl.LOCK_EX)
+                if not os.path.samestat(os.fstat(dossier), cache.lstat()) or not os.path.samestat(
+                    os.fstat(verrou), os.stat("export.lock", dir_fd=dossier, follow_symlinks=False)
+                ):
+                    raise ValueError("Verrou d'export remplacé pendant son ouverture")
+                self.connexion.execute("BEGIN")
+                try:
+                    self._exporter_tables()
+                finally:
+                    self.connexion.rollback()
             finally:
-                self.connexion.rollback()
+                os.close(verrou)
+        finally:
+            os.close(dossier)
 
     def _lignes_canoniques(self, table):
         """Rend les lignes JSONL dans les mêmes octets pour comparaison et publication."""

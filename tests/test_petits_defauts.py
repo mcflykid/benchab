@@ -214,3 +214,30 @@ def test_export_refuse_dossier_remplace_par_un_lien(atelier_initialise, tmp_path
         dossier.unlink()
         avant.rename(dossier)
         base.fermer()
+
+
+def test_export_ne_suit_pas_un_verrou_remplace_apres_validation(atelier_initialise, tmp_path, monkeypatch):
+    """Un verrou devenu lien après la validation ne crée pas sa cible et ne lance aucun export."""
+    from benchab import chemins
+
+    base = Base(atelier_initialise, creer=False)
+    verrou = base.prive / "cache/export.lock"
+    cible = tmp_path / "cible-a-preserver"
+    original = chemins.sans_lien
+
+    def remplacer(chemin, **options):
+        """Simule un changement local entre la garde et l'ouverture, sans modifier la cible."""
+        resultat = original(chemin, **options)
+        if resultat in (verrou, verrou.parent):
+            verrou.unlink(missing_ok=True)
+            verrou.symlink_to(cible)
+        return resultat
+
+    monkeypatch.setattr(chemins, "sans_lien", remplacer)
+    try:
+        with pytest.raises((OSError, ValueError)):
+            base.exporter()
+        assert verrou.is_symlink()
+        assert not cible.exists()
+    finally:
+        base.fermer()
