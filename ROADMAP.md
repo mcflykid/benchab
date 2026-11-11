@@ -119,7 +119,21 @@ des cotes et marges géométriques explicites, sans ajustement physique déduit
 l’éprouvette de jeux, et les annotations communes complètent le lot
 (#35, #122 et #127).
 
-## Prochaine version : 1.9.0
+## Version 1.9.0 — plaques sans ambiguïté et fiches CAO
+
+La validation du tranchage, l’ouverture de la visualisation et les trois
+parcours U25 refusent les alias de plaque et lisent le membre G-code exact
+(#171, #173, #174). Les mesures restent nominales et les plafonds déclarés
+gardent le même verdict. Le débit fournit aussi un affichage court avec le
+rapport complet préservé (#35).
+
+L’inscription de projet et la lecture des affectations ACE renforcent leurs
+contrôles 3MF (#122). Une fiche d’incident peut lire les cas rapportés dans
+un JUnit sans certifier leur exécution (#119). Une fiche de cotes génère un
+plan et un script déterministes pour des blocs percés (#32). Les références
+de construction et les géométries obtenues restent des preuves numériques.
+
+## Prochaine version : 1.10.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -154,7 +168,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages, fraisage et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
+| Concevoir et assembler | #32 : élargir les fiches au-delà des blocs percés ; #27 : filetages, fraisage et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
 | Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
@@ -185,9 +199,9 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 - #127 : rattraper les annotations des contrôles et lanceurs après les
   primitives communes de lecture, de copie et de publication.
 - #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
-  de surplombs et de première couche.
-- #119 : relier la fiche d’incident à sa preuve de non-régression et qualifier
-  les autres familles de reprise. Une vue canonique peut être régénérée après
+  de surplombs, de première couche et de débit.
+- #119 : qualifier les autres familles de reprise et la preuve d’exécution
+  au-delà du contenu déclaré d’un rapport JUnit. Une vue canonique peut être régénérée après
   contrôle du plan et copie vérifiée de l’ancienne vue. La cible d’un lien cassé
   peut être recréée par copie prouvée ; un original introuvable reste NON VÉRIFIÉ.
 
