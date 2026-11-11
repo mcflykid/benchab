@@ -18,6 +18,8 @@ Revoir appuis, parcours réels, débit et refroidissement dans le tranchage,
 jusqu'aux dernières couches. L'absence d'alerte ne dispense pas de cette revue.
 qualification_sections décrit uniquement les recouvrements entre coupes XY
 échantillonnées ; son statut reste NON VÉRIFIÉ pour tout appui réel après tranchage.
+L’option --qualifier-position-enveloppes classe en supplément la section par rapport
+aux autres enveloppes de la même coupe ; les changements de classe restent ambigus.
 Voir docs/reference/couches-courtes.md.
 
 
@@ -99,7 +101,39 @@ def _relations_projection_xy(polygones_precedents, polygones_courants):
     return parents_par_courant, branches
 
 
-def _rapport(track, terminal, lh, amax, hmin):
+def _position_enveloppes_xy(polygon, enveloppes):
+    """Classe strictement une section face aux enveloppes XY de sa même couche.
+
+    Entrées : polygones Shapely en mm ; sortie `RENSEIGNÉE` pour inclusion stricte
+    dans un trou ou extériorité stricte, sinon `NON VÉRIFIÉ`. Aucune inférence 3D.
+    """
+    if polygon is None or polygon.geom_type != "Polygon" or not polygon.is_valid or polygon.area <= 0:
+        return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "geometrie_invalide"}
+    trous = []
+    try:
+        for enveloppe in enveloppes:
+            if enveloppe is None or enveloppe.geom_type != "Polygon" or not enveloppe.is_valid:
+                return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "geometrie_invalide"}
+            for anneau in enveloppe.interiors:
+                trou = type(enveloppe)(anneau)
+                if polygon.boundary.intersects(trou.boundary):
+                    return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "frontiere_touchee"}
+                if trou.contains(polygon):
+                    trous.append(trou)
+            if polygon.boundary.intersects(enveloppe.boundary):
+                return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "frontiere_touchee"}
+            if polygon.intersection(enveloppe).area > 0:
+                return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "chevauchement_enveloppe"}
+    except (AttributeError, TypeError, ValueError):
+        return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "geometrie_invalide"}
+    if len(trous) > 1:
+        return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "trous_multiples"}
+    if trous:
+        return {"statut": "RENSEIGNÉE", "classe": "interieur_d_un_trou", "cause": None}
+    return {"statut": "RENSEIGNÉE", "classe": "exterieur_aux_enveloppes", "cause": None}
+
+
+def _rapport(track, terminal, lh, amax, hmin, qualifier_positions=False):
     """Construit le rapport historique et ses observations de coupes échantillonnées.
 
     ``lh``, ``amax`` et ``hmin`` sont en mm et mm² selon leur nom. Le champ de
@@ -167,6 +201,33 @@ def _rapport(track, terminal, lh, amax, hmin):
             "Ne prouve ni contact plateau, ni appui réel après tranchage, ni cause physique."
         ),
     }
+    if qualifier_positions:
+        positions = [sample["qualification_xy"]["position_enveloppe_xy"] for sample in samples]
+        classes = {position["classe"] for position in positions}
+        causes = [position["cause"] for position in positions if position["cause"]]
+        if any(position["statut"] != "RENSEIGNÉE" for position in positions):
+            resume_position = {
+                "statut": "NON VÉRIFIÉ", "classe": "ambigue",
+                "cause": causes[0] if causes else "position_ambigue",
+            }
+        elif len(classes) > 1:
+            resume_position = {
+                "statut": "NON VÉRIFIÉ", "classe": "ambigue",
+                "cause": "position_change_au_fil_des_couches",
+            }
+        else:
+            resume_position = {"statut": "RENSEIGNÉE", "classe": next(iter(classes)), "cause": None}
+        qualification_sections["position_enveloppe_xy"] = {
+            **resume_position,
+            "par_couche": [
+                {"couche": sample["qualification_xy"]["couche"], **position}
+                for sample, position in zip(samples, positions, strict=True)
+            ],
+            "portee": (
+                "Position de coupe XY face aux enveloppes de la même coupe ; "
+                "aucune preuve de cavité 3D ou d'appui."
+            ),
+        }
     return {
         "centre_xy_mm": tuple(round(value, 3) for value in xy),
         "de_z": round(samples[0]["z"], 3),
@@ -182,14 +243,15 @@ def _rapport(track, terminal, lh, amax, hmin):
     }
 
 
-def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
+def analyse(path, lh=0.2, amax=40.0, hmin=2.0, *, qualifier_positions=False):
     """
     Retourne les îlots géométriques et leurs observations de sections XY.
 
     ``path`` désigne un maillage STL ; ``lh`` et ``hmin`` sont en mm, ``amax``
     en mm². Le rapport conserve les champs historiques et ajoute
     ``qualification_sections`` au statut NON VÉRIFIÉ pour tout appui après
-    tranchage. La fonction ne modifie ni le maillage ni les réglages.
+    tranchage. ``qualifier_positions`` ajoute optativement la position XY face
+    aux enveloppes de la même coupe. La fonction ne modifie ni maillage ni réglages.
 
     Une fin locale signifie que l'îlot n'a plus de section qui le recouvre en XY
     à l'échantillon suivant. Ce constat ne mesure pas le temps local de retour de
@@ -207,7 +269,7 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
     count = max(0, int(math.ceil((z1 - z0) / lh - 1e-9)))
 
     def finish(track, terminal):
-        report = _rapport(track, terminal, lh, amax, hmin)
+        report = _rapport(track, terminal, lh, amax, hmin, qualifier_positions)
         if report is not None:
             reports.append(report)
 
@@ -216,6 +278,7 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
         z = (bottom + top) / 2
         polygons = _sections_xy(mesh, z)
         total = sum(polygon.area for polygon in polygons)
+        arbre_position = STRtree(polygons) if qualifier_positions and polygons else None
         small = [polygon for polygon in polygons if polygon.area <= amax + 1e-8]
         union_precedente = unary_union(polygones_precedents) if polygones_precedents else None
         parents_par_polygone, branches_par_polygone = _relations_projection_xy(
@@ -250,6 +313,19 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
             )
             parents = parents_par_polygone[indices_petites[new_index]]
             branche = branches_par_polygone[indices_petites[new_index]]
+            position = None
+            if qualifier_positions:
+                # Recherche par boîtes : une île dans un trou ne coupe pas
+                # l’anneau, mais ses boîtes XY se recouvrent.
+                enveloppes = [
+                    polygons[int(index)]
+                    for index in arbre_position.query(polygon)
+                    if int(index) != indices_petites[new_index]
+                ]
+                position = _position_enveloppes_xy(
+                    polygon,
+                    enveloppes,
+                )
             track["samples"].append(
                 {
                     "z": z,
@@ -265,6 +341,8 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
                         "branche_projection_xy": branche,
                         "fusion_projection_xy": len(parents) > 1,
                         "cavites_section": len(polygon.interiors),
+                        "couche": layer,
+                        **({"position_enveloppe_xy": position} if position is not None else {}),
                     },
                 }
             )
@@ -278,11 +356,14 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
 
 
 def main(argv=None):
+    """Analyse un STL et écrit son rapport JSON sur stdout, sans préparation du maillage."""
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
         print(__doc__)
         return 2
-    result = analyse(args[0], *(float(value) for value in args[1:4]))
+    qualifier_positions = "--qualifier-position-enveloppes" in args
+    args = [arg for arg in args if arg != "--qualifier-position-enveloppes"]
+    result = analyse(args[0], *(float(value) for value in args[1:4]), qualifier_positions=qualifier_positions)
     print(json.dumps({"fichier": args[0], "ilots_isoles": result}, indent=1, ensure_ascii=False))
     return 2 if result else 0
 

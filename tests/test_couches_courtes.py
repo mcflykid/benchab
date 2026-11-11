@@ -1,5 +1,7 @@
 """Régressions géométriques synthétiques ; aucune pièce destinée à imprimer."""
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -7,15 +9,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import numpy as np
 import trimesh
 from shapely.geometry import box as polygon_box
 
-from benchab.controles.appuis_gcode import mesurer_appui
+from benchab.controles.appuis_gcode import analyser_lignes
 from benchab.controles.couches_courtes import (
     _mesurer_recouvrement_xy,
+    _position_enveloppes_xy,
     _relations_projection_xy,
     analyse,
+    main,
 )
 
 
@@ -82,14 +85,112 @@ class CouchesCourtes(unittest.TestCase):
         self.assertEqual(qualification["fraction_recouvrement_xy_min"], 0.0)
         self.assertEqual(qualification["statut"], "NON VÉRIFIÉ")
 
-        points = np.array([[15.0, y, 0.2] for y in (-0.3, 0.0, 0.3)])
-        resultat_gcode = mesurer_appui(
-            points, points, recouvrement_min_mm=0.05, pas_mm=0.15
+        def gcode(support):
+            """Construit un témoin au même repère XY/Z, sans dépendre d'un trancheur."""
+            x0 = 15 if support else 100
+            x1 = x0 + 1
+            type_premiere_couche = "Support" if support else "Outer wall"
+            return [
+                "G90", "M83", "EXCLUDE_OBJECT_START NAME=ilot",
+                ";LAYER_CHANGE", ";Z:4.0", ";WIDTH:0.4", f";TYPE:{type_premiere_couche}",
+                f"G0 X{x0} Y0 Z4.0 F600", f"G1 X{x1} Y0 E1 F600",
+                ";LAYER_CHANGE", ";Z:4.2", ";WIDTH:0.4", ";TYPE:Outer wall",
+                "G0 X15 Y0 Z4.2 F600", "G1 X16 Y0 E1 F600",
+                "EXCLUDE_OBJECT_END NAME=ilot",
+            ]
+
+        sans_support = analyser_lignes(gcode(False), mode="local", pas_mm=0.15)
+        avec_support = analyser_lignes(gcode(True), mode="local", pas_mm=0.15)
+        sans_support_cible = next(r for r in sans_support["par_couche"] if r["z_mm"] == 4.2)
+        avec_support_cible = next(r for r in avec_support["par_couche"] if r["z_mm"] == 4.2)
+        comparaison = {
+            "sections_stl": {
+                "relation": qualification["premiere_relation_appui_xy"],
+                "fraction_min": qualification["fraction_recouvrement_xy_min"],
+                "statut": qualification["statut"],
+            },
+            "trajectoires_sans_support": {
+                "points_avec_appui_pct": sans_support_cible["points_avec_appui_pct"],
+                "longueur_max_sans_appui_mm": sans_support_cible["portee_libre_max_mm"],
+            },
+            "trajectoires_avec_support": {
+                "points_avec_appui_pct": avec_support_cible["points_avec_appui_pct"],
+                "recouvrement_min_mm": avec_support_cible["recouvrement_min_echantillonne_mm"],
+                "longueur_max_sans_appui_mm": avec_support_cible["portee_libre_max_mm"],
+            },
+        }
+        self.assertEqual(comparaison["sections_stl"], {
+            "relation": "sans_recouvrement_xy_echantillonne",
+            "fraction_min": 0.0,
+            "statut": "NON VÉRIFIÉ",
+        })
+        self.assertEqual(comparaison["trajectoires_sans_support"]["points_avec_appui_pct"], 0.0)
+        self.assertEqual(comparaison["trajectoires_avec_support"]["points_avec_appui_pct"], 100.0)
+        self.assertAlmostEqual(comparaison["trajectoires_avec_support"]["recouvrement_min_mm"], 0.4)
+        self.assertEqual(comparaison["trajectoires_avec_support"]["longueur_max_sans_appui_mm"], 0.0)
+
+    def test_position_d_un_ilot_dans_un_trou_exige_inclusion_stricte(self):
+        """Une section entièrement dans un anneau reçoit une position locale, non physique."""
+        anneau = polygon_box(0, 0, 10, 10).difference(polygon_box(3, 3, 7, 7))
+        ilot = polygon_box(4, 4, 6, 6)
+
+        resultat = _position_enveloppes_xy(ilot, [anneau])
+
+        self.assertEqual(resultat["classe"], "interieur_d_un_trou")
+        self.assertEqual(resultat["statut"], "RENSEIGNÉE")
+
+    def test_position_exterieure_ne_confond_pas_contact_frontiere_et_exterieur(self):
+        """Une frontière touchée reste ambiguë ; une enveloppe disjointe est extérieure."""
+        enveloppe = polygon_box(0, 0, 10, 10)
+
+        exterieur = _position_enveloppes_xy(polygon_box(12, 0, 14, 2), [enveloppe])
+        frontiere = _position_enveloppes_xy(polygon_box(10, 2, 12, 4), [enveloppe])
+
+        self.assertEqual(exterieur["classe"], "exterieur_aux_enveloppes")
+        self.assertEqual(exterieur["statut"], "RENSEIGNÉE")
+        self.assertEqual(frontiere["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(frontiere["cause"], "frontiere_touchee")
+
+    def test_position_ambigue_si_ilot_chevauche_une_enveloppe_ou_si_invalidite(self):
+        """Un recouvrement matériel ou une géométrie invalide ne devient pas une classe."""
+        enveloppe = polygon_box(0, 0, 10, 10)
+        recouvrement = _position_enveloppes_xy(polygon_box(1, 1, 2, 2), [enveloppe])
+        invalide = _position_enveloppes_xy(polygon_box(11, 1, 12, 2), [None])
+
+        self.assertEqual(recouvrement["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(recouvrement["cause"], "chevauchement_enveloppe")
+        self.assertEqual(invalide["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(invalide["cause"], "geometrie_invalide")
+
+    def test_position_enveloppe_optionnelle_et_changement_sur_hauteur_reste_ambigu(self):
+        """La position XY est opt-in et son changement au fil des coupes n'est pas aplati."""
+        anneau = trimesh.creation.annulus(r_min=4, r_max=5, height=2)
+        anneau.apply_translation((0, 0, 1))
+        ilot = box((1, 1, 4), (0, 0, 2))
+        historique = self.check_mesh([anneau, ilot], hmin=1)
+        ilot_historique = next(r for r in historique if r["hauteur_mm"] == 4.0)
+        assert "position_enveloppe_xy" not in ilot_historique["qualification_sections"]
+
+        qualifie = analyse(self.path, hmin=1, qualifier_positions=True)
+        ilot_qualifie = next(r for r in qualifie if r["hauteur_mm"] == 4.0)
+        position = ilot_qualifie["qualification_sections"]["position_enveloppe_xy"]
+
+        self.assertEqual(position["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(position["classe"], "ambigue")
+        self.assertEqual(position["cause"], "position_change_au_fil_des_couches")
+        self.assertEqual(
+            {item["classe"] for item in position["par_couche"]},
+            {"interieur_d_un_trou", "exterieur_aux_enveloppes"},
         )
-        self.assertEqual(resultat_gcode["points"], 3)
-        self.assertEqual(resultat_gcode["points_avec_appui_pct"], 100.0)
-        self.assertAlmostEqual(resultat_gcode["recouvrement_min_echantillonne_mm"], 0.4)
-        self.assertEqual(resultat_gcode["longueur_max_parcours_sans_appui_mm"], 0.0)
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = main([str(self.path), "--qualifier-position-enveloppes"])
+        rapport_cli = json.loads(sortie.getvalue())
+        self.assertEqual(code, 2)
+        self.assertIn(
+            "position_enveloppe_xy",
+            rapport_cli["ilots_isoles"][-1]["qualification_sections"],
+        )
 
     def test_qualification_quantifie_un_recouvrement_partiel_de_coupes(self):
         result = self.check_mesh(

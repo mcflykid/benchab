@@ -38,6 +38,16 @@ sections, sans modifier ni préparer le modèle :
   paramètres de commande, sans validation indépendante ni signification
   physique universelle.
 
+L’option CLI `--qualifier-position-enveloppes` ajoute, sans changer le rapport
+historique par défaut, `qualification_sections.position_enveloppe_xy` :
+`interieur_d_un_trou` exige que toute la section de l’îlot soit strictement
+incluse dans l’anneau intérieur d’une autre section de la même coupe ;
+`exterieur_aux_enveloppes` signifie qu’elle est strictement disjointe de toutes
+les enveloppes de cette coupe. Une frontière touchée, un chevauchement matériel,
+une géométrie invalide ou une classe qui change au fil des couches donne
+`NON VÉRIFIÉ`. La valeur décrit une position XY échantillonnée par couche, pas
+une cavité fermée en 3D, un appui, ni une propriété du tranchage.
+
 Les intersections sont retenues au-delà de `1e-9 mm²`, uniquement pour écarter
 les résidus numériques de géométrie. Ce nombre n’est ni une taille minimale
 d’appui ni un seuil de fabrication. Chaque qualification garde le statut
@@ -54,14 +64,15 @@ picots ni une validation physique.
 ## Comparaison synthétique reproductible
 
 Le test `test_comparaison_synthetique_sections_et_appui_gcode_supporte` place
-un îlot de maillage séparé à X = 15 mm, au-dessus d’un solide distinct. Les
+un îlot de maillage séparé à X = 15 mm, Z = 4 à 6 mm, au-dessus d’un solide distinct. Les
 sections du STL donnent `sans_recouvrement_xy_echantillonne`, fraction minimale
-0.0 et statut `NON VÉRIFIÉ`. Un nuage synthétique de trois points de parcours
-et trois points de support coïncidents, chacun avec demi-largeur 0.2 mm,
-transmis à `appuis_gcode.mesurer_appui` donne 3 points appuyés sur 3 (100 %),
-recouvrement nominal minimal 0.4 mm et longueur maximale sans appui 0 mm.
+0.0 et statut `NON VÉRIFIÉ`. Deux G-code synthétiques au même repère placent
+un parcours cible à Z = 4.2 mm : le premier n’a aucun cordon antérieur sous
+l’îlot (0 % des points appuyés), le second ajoute un support coïncident (100 %,
+recouvrement nominal minimal 0.4 mm, portée libre maximale 0 mm). Le parcours
+est mesuré par `appuis_gcode.analyser_lignes`.
 
-Ce témoin n’est pas issu d’un trancheur : il vérifie seulement que des supports
+Ces témoins ne sont pas issus d’un trancheur : ils vérifient seulement que des supports
 ajoutés dans un G-code peuvent fournir une géométrie d’appui absente des coupes
 du modèle avant tranchage. Il ne qualifie ni le placement réel de supports, ni
 leur adhérence ou tenue.
