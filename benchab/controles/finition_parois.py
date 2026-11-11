@@ -208,6 +208,12 @@ def _lire(path):
 
 
 def analyser(source, maitre=None, limites_filaments=None, options=None):
+    """Analyse une source G-code/3MF ; positions mm, durées s et débits mm³/s.
+
+    Renvoie PASS, WARN, FAIL ou NON VÉRIFIÉ. Les arcs ne prouvent pas la
+    couverture des parois, mais leur durée et leur débit sont analytiques.
+    Ne transforme ni archive, ni réglage, ni trajectoire ; pas de validation physique.
+    """
     cfg = _options(options)
     if limites_filaments is not None and (
         not isinstance(limites_filaments, dict) or any(not isinstance(v, dict) for v in limites_filaments.values())
