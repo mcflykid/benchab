@@ -15,7 +15,7 @@ La déclaration JSON de schéma 1 contient :
   d’un rapport existant. Le rapport est relu et son empreinte comparée.
 
 Le statut PASS du lien indique que les références sont démontrées. Il ne dit
-pas que les tests ont été lancés, que l’issue est fermée ou qu’une impression
-a été validée. L’exécution demeure NON VÉRIFIÉE et attribuée au rapport déclaré.
+pas que les tests ont été lancés, que l’issue est rattachée au commit sur
+GitHub ou qu’une impression a été validée. L’exécution demeure NON VÉRIFIÉE et attribuée au rapport déclaré.
 La commande ne télécharge pas d’objet Git, ne modifie ni code, ni réglage, ni
 projet et n’ajoute pas automatiquement de connaissance à SQLite.
