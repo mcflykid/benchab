@@ -5,7 +5,6 @@ import json
 import os
 import sqlite3
 import stat
-import uuid
 from contextlib import closing, contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -127,38 +126,16 @@ def _sha_membre(dossier_fd, nom):
     return _empreinte_membre_export(dossier_fd, nom)[0]
 
 
-def _quarantiner(destination, identite_stage):
-    """Conserve en quarantaine un dossier publié altéré, seulement si son inode est le stage."""
-    if _identite_dossier(destination) != identite_stage:
-        raise ValueError("La cible ne désigne plus le dossier préparé ; aucun tiers déplacé.")
-    for _ in range(8):
-        quarantaine = destination.with_name(f".{destination.name}.quarantaine-{uuid.uuid4().hex}")
-        try:
-            renommer_exclusif(destination, quarantaine)
-            break
-        except FileExistsError:
-            continue
-    else:
-        raise ValueError("Aucun nom de quarantaine neuve disponible.")
-    if _identite_dossier(quarantaine) != identite_stage:
-        # Une course a substitué la source après le contrôle. Si la destination
-        # est toujours libre, restaurer le dossier déplacé sans écrasement.
-        try:
-            renommer_exclusif(quarantaine, destination)
-        except (FileExistsError, OSError):
-            pass
-        raise ValueError("Le dossier déplacé en quarantaine n’est pas le stage attendu.")
-    return quarantaine
-
-
 def preparer(prive, table, sortie):
     """Publie une copie neuve d’une table absente, avec preuve JSON, hors export/.
 
     Reçoit la racine privée, une table BENCHAB et un dossier de sortie absent.
     PASS signifie que le JSONL (octets, lignes) relu égale l’empreinte du
     manifeste et le contenu d’un instantané SQLite en lecture seule ; le JSONL
-    et la preuve sont rehachés après renommage. Une divergence conserve le stage
-    en quarantaine et refuse le PASS. ValueError ou OSError signifie refus ;
+    et la preuve sont rehachés après renommage. Le fichier de preuve reste
+    CANDIDAT ; seul le résultat de retour devient PASS après revérification.
+    Une divergence laisse le dossier publié en place pour diagnostic. ValueError
+    ou OSError signifie refus ;
     aucune copie n’est appliquée, aucun original ni table SQLite n’est modifié.
     """
     if table not in TABLES:
@@ -171,9 +148,10 @@ def preparer(prive, table, sortie):
     signature_base = _signature_sqlite(base)
     _verifier_journal(base)
     nom = table + ".jsonl"
-    with _dossier_export(racine) as (fd, verifier_dossier), closing(
-        sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1)
-    ) as connexion:
+    with (
+        _dossier_export(racine) as (fd, verifier_dossier),
+        closing(sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1)) as connexion,
+    ):
         _absence(fd, nom)
         connexion.row_factory = sqlite3.Row
         connexion.execute("PRAGMA query_only = ON")
@@ -190,10 +168,22 @@ def preparer(prive, table, sortie):
             if sha != empreintes[table] or sha256_fichier(dossier / nom) != sha:
                 raise ValueError("L’empreinte de la copie diffère du manifeste ou de sa relecture.")
             rapport = {
-                "schema": 1, "statut": "PASS", "applique": False,
-                "table": table, "cible_canonique": "export/" + nom,
-                "copie": nom, "lignes": lignes, "octets": octets, "sha256": sha,
-                "manifeste_sha256": sha_manifeste, "version_sqlite": version,
+                "schema": 1,
+                "statut": "CANDIDAT",
+                "applique": False,
+                "table": table,
+                "cible_canonique": "export/" + nom,
+                "copie": nom,
+                "lignes": lignes,
+                "octets": octets,
+                "sha256": sha,
+                "manifeste_sha256": sha_manifeste,
+                "version_sqlite": version,
+                "sha256_attendu": sha,
+                "verification": (
+                    "Revérification requise après publication ; le PASS est renvoyé séparément "
+                    "après lecture des deux membres."
+                ),
                 "limite": "Copie vérifiée d’une seule table, non appliquée ; aucune reconstruction de base.",
             }
             octets_preuve = (json.dumps(rapport, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
@@ -237,10 +227,18 @@ def preparer(prive, table, sortie):
                 except (OSError, ValueError) as erreur:
                     if _identite_dossier(destination) != identite_stage:
                         raise ValueError(
-                            "La cible ne désigne plus le dossier préparé ; aucun tiers déplacé."
+                            "La cible publiée a changé ; elle est laissée en place sans déplacement."
                         ) from erreur
-                    quarantaine = _quarantiner(destination, identite_stage)
                     raise ValueError(
-                        f"Contenu publié illisible ou modifié ; dossier conservé en quarantaine : {quarantaine.name}"
+                        "La vérification après publication a échoué ; le dossier est laissé en place pour diagnostic."
                     ) from erreur
-    return rapport
+    resultat = dict(rapport)
+    resultat.update(
+        statut="PASS",
+        statut_preuve_fichier="CANDIDAT",
+        preuve_sha256=attendus["preuve.json"],
+        sha256_attendus=attendus,
+        verification_post_publication="PASS",
+        verification="PASS après relecture exacte du JSONL et de la preuve publiés.",
+    )
+    return resultat

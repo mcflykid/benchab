@@ -102,8 +102,10 @@ et `preuve.json` ensemble si le SHA-256 relu correspond au SHA déjà déclaré
 dans le manifeste. Une cible existante, liée, une source modifiée ou un SHA
 divergent donnent un refus sans dossier final. Après le renommage, les SHA du
 JSONL et de `preuve.json` sont relus depuis le dossier publié épinglé ; tout
-écart conserve le dossier sous un nom de quarantaine neuf et refuse le PASS.
-Si la cible a été remplacée par un tiers, elle reste intacte et le contrôle
-refuse la reprise. Les autres tables ne sont
+écart refuse le PASS et laisse le dossier publié intact pour diagnostic, même
+s’il est altéré ou remplacé par un tiers. Aucun second renommage ni suppression
+n’est tenté après publication. Sur disque, `preuve.json` garde le statut
+`CANDIDAT`, les SHA attendus et la mention de revérification ; seul le retour
+de commande devient `PASS` après relecture exacte. Les autres tables ne sont
 pas évaluées par cette commande. Le statut PASS qualifie une **copie non
 appliquée**, et ne dispense pas d’un contrôle de cohérence avant toute reprise.

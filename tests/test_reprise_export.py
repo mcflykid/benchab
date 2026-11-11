@@ -1,5 +1,6 @@
 """Prépare une copie d’export sans modifier l’atelier canonique."""
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -37,9 +38,16 @@ def test_preparation_restitue_les_octets_sans_appliquer(tmp_path, atelier):
     sortie = tmp_path / "reprise"
     rapport = preparer(prive, "projets", sortie)
     assert rapport["statut"] == "PASS" and rapport["applique"] is False
+    assert rapport["statut_preuve_fichier"] == "CANDIDAT"
+    assert rapport["verification_post_publication"] == "PASS"
+    assert "PASS" in rapport["verification"]
+    assert rapport["preuve_sha256"] == hashlib.sha256((sortie / "preuve.json").read_bytes()).hexdigest()
     assert rapport["table"] == "projets" and rapport["lignes"] == 1
     assert (sortie / "projets.jsonl").read_bytes() == attendu
-    assert json.loads((sortie / "preuve.json").read_bytes()) == rapport
+    preuve = json.loads((sortie / "preuve.json").read_bytes())
+    assert preuve["statut"] == "CANDIDAT"
+    assert preuve["sha256_attendu"] == rapport["sha256"]
+    assert "revérification" in preuve["verification"].lower()
     assert not cible.exists()
     assert (prive / "benchab.sqlite").read_bytes() == avant
     assert (prive / "export/manifest.json").read_bytes() == manifeste
@@ -107,41 +115,53 @@ def test_cli_prepare_sans_ouvrir_base_ni_enregistrer_mesure(tmp_path, atelier, c
     avant = (prive / "benchab.sqlite").read_bytes()
     sortie = tmp_path / "reprise"
     arguments = [
-        "--prive", str(prive), "controle", "preparer-reprise-export",
-        "--table", "projets", "--sortie", str(sortie),
+        "--prive",
+        str(prive),
+        "controle",
+        "preparer-reprise-export",
+        "--table",
+        "projets",
+        "--sortie",
+        str(sortie),
     ]
     assert cli.main(arguments) == 0
-    assert json.loads(capsys.readouterr().out) == json.loads((sortie / "preuve.json").read_bytes())
+    retour_cli = json.loads(capsys.readouterr().out)
+    preuve = json.loads((sortie / "preuve.json").read_bytes())
+    assert retour_cli["statut"] == "PASS"
+    assert preuve["statut"] == "CANDIDAT"
+    assert retour_cli["preuve_sha256"] == hashlib.sha256((sortie / "preuve.json").read_bytes()).hexdigest()
     assert (sortie / "projets.jsonl").read_bytes() == attendu
     assert (prive / "benchab.sqlite").read_bytes() == avant and not cible.exists()
     assert cli.main(arguments) == 2
 
 
 @pytest.mark.parametrize("membre", ["projets.jsonl", "preuve.json"])
-def test_course_sur_membre_publie_est_quarantaine_sans_pass(tmp_path, atelier, monkeypatch, membre):
-    """Une mutation entre hachage et renommage garde ses octets en quarantaine et refuse PASS."""
+def test_course_sur_membre_publie_refuse_sans_second_renommer(tmp_path, atelier, monkeypatch, membre):
+    """Une mutation après le SHA prévu reste à la destination et refuse PASS sans second déplacement."""
     import benchab.qualite.reprise_export as reprise
 
     prive, _cible, attendu = atelier
     sortie = tmp_path / "reprise"
     renommer = reprise.renommer_exclusif
+    appels_renommage = []
 
     def modifier_au_renommage(source, destination, **kwargs):
-        if Path(destination) == sortie:
+        appels_renommage.append((Path(source), Path(destination)))
+        if Path(destination) == sortie and Path(source) != sortie:
             (Path(source) / membre).write_bytes(b"modification concurrente\n")
         return renommer(source, destination, **kwargs)
 
     monkeypatch.setattr(reprise, "renommer_exclusif", modifier_au_renommage)
-    with pytest.raises(ValueError, match="Contenu publié illisible ou modifié"):
+    with pytest.raises(ValueError, match="vérification|modifié|diffèrent"):
         reprise.preparer(prive, "projets", sortie)
 
-    quarantaine, = tmp_path.glob(".reprise.quarantaine-*")
-    assert not sortie.exists()
-    assert (quarantaine / membre).read_bytes() == b"modification concurrente\n"
-    assert (quarantaine / "projets.jsonl").read_bytes() == (
+    assert sortie.is_dir()
+    assert (sortie / membre).read_bytes() == b"modification concurrente\n"
+    assert (sortie / "projets.jsonl").read_bytes() == (
         b"modification concurrente\n" if membre == "projets.jsonl" else attendu
     )
-    assert (quarantaine / "preuve.json").is_file()
+    assert len(appels_renommage) == 1
+    assert not list(tmp_path.glob(".reprise.quarantaine-*"))
 
 
 def test_destination_remplacee_apres_renommage_reste_intacte(tmp_path, atelier, monkeypatch):
@@ -150,15 +170,17 @@ def test_destination_remplacee_apres_renommage_reste_intacte(tmp_path, atelier, 
 
     prive, _cible, _attendu = atelier
     sortie = tmp_path / "reprise"
-    detour = tmp_path / "stage-deplace"
     renommer = reprise.renommer_exclusif
+    appels = []
 
     def substituer_apres_renommage(source, destination, **kwargs):
+        appels.append((Path(source), Path(destination)))
         if Path(destination) == sortie:
-            renommer(source, detour, **kwargs)
+            renommer(source, destination, **kwargs)
+            sortie.rename(tmp_path / "stage-deplace")
             sortie.mkdir()
             (sortie / "projets.jsonl").write_bytes(b"dossier tiers\n")
-            return None
+            return
         return renommer(source, destination, **kwargs)
 
     monkeypatch.setattr(reprise, "renommer_exclusif", substituer_apres_renommage)
@@ -166,7 +188,8 @@ def test_destination_remplacee_apres_renommage_reste_intacte(tmp_path, atelier, 
         reprise.preparer(prive, "projets", sortie)
 
     assert (sortie / "projets.jsonl").read_bytes() == b"dossier tiers\n"
-    assert (detour / "projets.jsonl").is_file()
+    assert (tmp_path / "stage-deplace" / "projets.jsonl").is_file()
+    assert len(appels) == 1
     assert not list(tmp_path.glob(".reprise.quarantaine-*"))
 
 
