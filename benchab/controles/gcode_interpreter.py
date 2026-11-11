@@ -80,7 +80,9 @@ class Interpreter:
         """Lit une ligne ; positions et longueurs en mm, vitesse mm/min, ou None sans mouvement.
 
         Aucune commande exécutée ; seuls les arcs G17 XY décrits dans la documentation
-        de continuité sont mesurés analytiquement.
+        de continuité sont mesurés analytiquement. Le champ arc_g17 décrit
+        leur centre physique (mm), leurs angles (rad) et le début relatif du
+        dépôt si le centre est représentable ; aucun point de corde n'est fourni.
         """
         c = self._preparer_ligne(line)
         if not c or self._traiter_objet(c):
@@ -467,9 +469,10 @@ class Interpreter:
         if not all(math.isfinite(v) for v in (*command_end, *end)):
             self.error("repère de mouvement hors capacité numérique")
             return None
+        arc = None
         if op in {"G2", "G3"}:
-            longueur = self._longueur_arc(op, c, command_start, command_end, vals)
-            if longueur is None:
+            arc = self._geometrie_arc(op, c, command_start, command_end, vals)
+            if arc is None:
                 return None
         self.feed = vals.get("F", self.feed)
         old = self.e.get(None, 0.0)
@@ -489,7 +492,7 @@ class Interpreter:
         self.retracted[None] = debt
         self.xyz = command_end
         self.spatial_xyz = end
-        length = longueur if op in {"G2", "G3"} else math.dist(start, end)
+        length = arc[0] if arc is not None else math.dist(start, end)
         if length > 0 and self._apres_homing:
             self._apres_homing = False
             if deposited > 0:
@@ -497,11 +500,12 @@ class Interpreter:
                 self.last_event["homing_unverified"] = True
                 deposited = 0.0
         ratio = deposited / de if de > 0 else 0.0
-        # Les consommateurs géométriques refusent les arcs ; ne pas leur fournir une fausse corde (#123).
+        # La première position de dépôt sur un arc reste décrite en fraction de courbe,
+        # jamais par un point interpolé sur la corde (#123).
         deposition_start = None if op in {"G2", "G3"} else tuple(
             b - (b - a) * ratio for a, b in zip(start, end)
         )
-        return {
+        mouvement = {
             "start": start,
             "end": end,
             "spatial_start": start,
@@ -523,8 +527,21 @@ class Interpreter:
             "metadata": dict(self.metadata),
         }
 
-    def _longueur_arc(self, op, raw, start, end, vals):
-        """Mesure G17 XY en mm ; I/J relatifs ou R signé, None et aucun effet si invalide."""
+        if arc is not None:
+            _, cx, cy, rayon, angle, balayage = arc
+            centre = (start[0] + (cx - command_start[0]), start[1] + (cy - command_start[1]))
+            if all(math.isfinite(v) for v in centre):
+                mouvement["arc_g17"] = {
+                    "centre_xy_mm": centre,
+                    "rayon_mm": rayon,
+                    "angle_debut_rad": angle,
+                    "balayage_signe_rad": balayage,
+                    "debut_depot_fraction": 1 - ratio,
+                }
+        return mouvement
+
+    def _geometrie_arc(self, op, raw, start, end, vals):
+        """Donne longueur/centre/rayon (mm), angle et balayage (rad) ; None si invalide."""
         if self.arc_plane != "G17":
             self.error("plan d'arc non pris en charge : " + self.arc_plane)
             return None
@@ -578,4 +595,5 @@ class Interpreter:
         if not math.isfinite(longueur):
             self.error("géométrie d'arc hors capacité numérique : " + raw)
             return None
-        return longueur
+        angle_debut = math.atan2(sy - cy, sx - cx)
+        return longueur, cx, cy, rayon, angle_debut, balayage if op == "G3" else -balayage

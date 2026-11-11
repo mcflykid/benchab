@@ -15,6 +15,7 @@ import trimesh
 
 from benchab import reglages as schema_reglages
 from benchab.controles.gcode_interpreter import Interpreter
+from benchab.gcode.geometrie_arc import longueur_deposee_dans_boite
 
 
 def _reglage(densite: int, motif: str = "gyroid") -> dict[str, str]:
@@ -121,17 +122,22 @@ def analyser_gcode(
     regions: dict[str, list[float]],
     types: tuple[str, ...] = ("Sparse infill", "Internal solid infill", "Inner wall", "Outer wall"),
 ) -> dict[str, dict[str, float]]:
-    """Mesure les dépôts par type en régions 3D ; refuse les arcs faute d'intersection courbe exacte."""
+    """Mesure les longueurs déposées (mm) par rôle dans des boîtes 3D (mm).
+
+    Prend les segments et arcs G17 qualifiés, refuse les mouvements ambigus
+    et ne change ni réglages ni trajectoires. Les valeurs sont arrondies à 0,1 mm.
+    """
     rapport = {nom: {type_ligne: 0.0 for type_ligne in types} for nom in regions}
     interpreteur = Interpreter()
     for ligne in gcode.splitlines():
         mouvement = interpreteur.feed_line(ligne)
-        if mouvement and mouvement["trajectory"] == "arc_g17_xy":
-            raise ValueError("arc G2/G3 non pris en charge pour la découpe linéaire des régions")
         if not mouvement or mouvement["deposited_length"] <= 0 or mouvement["type"] not in types:
             continue
         debut, fin = mouvement["deposition_start"], mouvement["end"]
         for nom, bornes in regions.items():
+            if mouvement["trajectory"] == "arc_g17_xy":
+                rapport[nom][mouvement["type"]] += longueur_deposee_dans_boite(mouvement, bornes)
+                continue
             x0, y0, x1, y1, z0, z1 = bornes
             minimum, maximum = 0.0, 1.0
             for origine, delta, bas, haut in zip(
