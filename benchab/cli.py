@@ -219,6 +219,8 @@ def parser():
     envoi.add_argument("--reference", type=Path)
     envoi.add_argument("--geometrie", type=Path)
     envoi.add_argument("--revue-locale", type=Path)
+    envoi.add_argument("--sortie", type=Path, help="Rapport complet JSON privé neuf ; destination existante refusée")
+    envoi.add_argument("--detail", action="store_true", help="Affiche le rapport complet dans stdout")
     envoi.add_argument(
         "--relation-reference",
         choices=[
@@ -529,6 +531,8 @@ def executer(arguments, base):
             return rapport["code"]
         if arguments.controle == "envoi":
             from benchab.controles.envoi import controler
+            from benchab.controles.envoi import resumer as resumer_envoi
+            from benchab.qualite.ecritures import ecrire_json_neuf, sortie_durable
 
             rapport = controler(
                 arguments.fichier,
@@ -538,7 +542,19 @@ def executer(arguments, base):
                 revue_locale=arguments.revue_locale,
                 relation_reference=arguments.relation_reference,
             )
-            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            if arguments.sortie:
+                sortie = arguments.sortie
+                if not sortie.is_absolute():
+                    sortie = base.prive / sortie
+                sortie = sortie_durable(sortie.absolute(), prive=base.prive)
+                entrees = [arguments.fichier] + [
+                    chemin for chemin in (
+                        arguments.declaration, arguments.reference, arguments.geometrie, arguments.revue_locale,
+                    ) if chemin is not None
+                ]
+                ecrire_json_neuf(sortie, rapport, entrees=entrees)
+            affichage = rapport if arguments.detail or not arguments.sortie else resumer_envoi(rapport)
+            print(json.dumps(affichage, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle == "typographie":
             from benchab.qualite.edition import typographie
