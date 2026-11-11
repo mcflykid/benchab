@@ -7,6 +7,7 @@ import json
 import math
 import re
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -15,6 +16,7 @@ import trimesh
 
 from benchab import reglages as schema_reglages
 from benchab.controles.gcode_interpreter import Interpreter
+from benchab.gcode.geometrie_arc import longueur_deposee_dans_boite
 
 
 def _reglage(densite: int, motif: str = "gyroid") -> dict[str, str]:
@@ -121,17 +123,22 @@ def analyser_gcode(
     regions: dict[str, list[float]],
     types: tuple[str, ...] = ("Sparse infill", "Internal solid infill", "Inner wall", "Outer wall"),
 ) -> dict[str, dict[str, float]]:
-    """Mesure les dépôts par type en régions 3D ; refuse les arcs faute d'intersection courbe exacte."""
+    """Mesure les longueurs déposées (mm) par rôle dans des boîtes 3D (mm).
+
+    Prend les segments et arcs G17 qualifiés, refuse les mouvements ambigus
+    et ne change ni réglages ni trajectoires. Les valeurs sont arrondies à 0,1 mm.
+    """
     rapport = {nom: {type_ligne: 0.0 for type_ligne in types} for nom in regions}
     interpreteur = Interpreter()
     for ligne in gcode.splitlines():
         mouvement = interpreteur.feed_line(ligne)
-        if mouvement and mouvement["trajectory"] == "arc_g17_xy":
-            raise ValueError("arc G2/G3 non pris en charge pour la découpe linéaire des régions")
         if not mouvement or mouvement["deposited_length"] <= 0 or mouvement["type"] not in types:
             continue
         debut, fin = mouvement["deposition_start"], mouvement["end"]
         for nom, bornes in regions.items():
+            if mouvement["trajectory"] == "arc_g17_xy":
+                rapport[nom][mouvement["type"]] += longueur_deposee_dans_boite(mouvement, bornes)
+                continue
             x0, y0, x1, y1, z0, z1 = bornes
             minimum, maximum = 0.0, 1.0
             for origine, delta, bas, haut in zip(
@@ -153,6 +160,44 @@ def analyser_gcode(
     if interpreteur.errors:
         raise ValueError("; ".join(interpreteur.errors))
     return {nom: {kind: round(value, 1) for kind, value in mesures.items()} for nom, mesures in rapport.items()}
+
+
+def evaluer_effet_densite(temoin, variante):
+    """Compare deux mesures homologues en mm ; PASS, FAIL ou NON VÉRIFIÉ.
+
+    Chaque dictionnaire fournit zone_mm et hors_zone_mm. Le contrôle compare
+    une seule hausse de densité déclarée, pas une combinaison de réglages.
+    Aucun verdict physique ni changement de réglage.
+    """
+    seuil = Decimal("0.1")
+    rapport = {"statut": "NON VÉRIFIÉ", "seuil_mm": float(seuil),
+               "delta_zone_mm": None, "delta_hors_zone_mm": None}
+    champs = ("zone_mm", "hors_zone_mm")
+    brutes = [r.get(c) if isinstance(r, dict) else None for r in (temoin, variante) for c in champs]
+    try:
+        if any(type(x) not in (int, float) or not math.isfinite(x) or x < 0 for x in brutes):
+            return {**rapport, "detail": "Mesures homologues manquantes ou non valides."}
+    except OverflowError:
+        return {**rapport, "detail": "Mesures hors capacité numérique."}
+    a, controle_a, b, controle_b = (Decimal(str(x)) for x in brutes)
+    delta, controle = b - a, controle_b - controle_a
+    rapport.update(delta_zone_mm=float(delta), delta_hors_zone_mm=float(controle))
+    if min(a, controle_a, controle_b) <= seuil:
+        return {**rapport, "detail": "Dépôts de référence ou de contrôle insuffisants."}
+    # Deux arrondis indépendants à 0,1 mm peuvent déplacer le delta de 0,1 mm (#82).
+    bas, haut = delta - seuil, delta + seuil
+    hors_bas, hors_haut = controle - seuil, controle + seuil
+    rapport.update(intervalle_delta_zone_mm=[float(bas), float(haut)],
+                   intervalle_delta_hors_zone_mm=[float(hors_bas), float(hors_haut)])
+    if hors_bas < -seuil or hors_haut > seuil:
+        return {**rapport, "detail": "La stabilité hors zone n'est pas établie avec cette précision."}
+    if bas > seuil:
+        return {**rapport, "statut": "PASS", "detail": "Hausse mesurée dans la zone, contrôle hors zone stable."}
+    if haut < -seuil:
+        return {**rapport, "statut": "FAIL", "detail": "Dépôt diminué malgré la hausse de densité."}
+    if bas >= -seuil and haut <= seuil:
+        return {**rapport, "statut": "FAIL", "detail": "Aucune hausse mesurable à cette précision."}
+    return {**rapport, "detail": "L'incertitude de mesure couvre le seuil de l'effet attendu."}
 
 
 def _sortie_privee(sortie: str | Path) -> Path:
@@ -253,7 +298,8 @@ def eprouvette(sortie: str | Path, base_3mf: str | Path) -> dict:
                     "secondes": resultat["secondes"],
                     "avertissements": resultat["avertissements"],
                     "longueurs_mm": longueurs,
-                    "densite_zone_sur_hors_zone": round((zone / 26) / max(1e-9, hors_zone / 56), 2),
+                    "mesure_effet": {"zone_mm": zone, "hors_zone_mm": hors_zone},
+                "densite_zone_sur_hors_zone": round((zone / 26) / max(1e-9, hors_zone / 56), 2),
                 }
             )
     rapport = {
@@ -261,6 +307,8 @@ def eprouvette(sortie: str | Path, base_3mf: str | Path) -> dict:
         "zone": bilan,
         "reference": reference,
         "variantes": mesures,
+        # La troisième plaque change aussi les parois : seule B/A isole l'effet de densité.
+        "effet_densite_B_sur_A": evaluer_effet_densite(mesures[0]["mesure_effet"], mesures[1]["mesure_effet"]),
     }
     (sortie / "eprouvette.json").write_text(json.dumps(rapport, indent=1, ensure_ascii=False), encoding="utf-8")
     return rapport

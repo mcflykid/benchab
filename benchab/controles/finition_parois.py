@@ -208,6 +208,12 @@ def _lire(path):
 
 
 def analyser(source, maitre=None, limites_filaments=None, options=None):
+    """Analyse une source G-code/3MF ; positions mm, durées s et débits mm³/s.
+
+    Renvoie PASS, WARN, FAIL ou NON VÉRIFIÉ. Les arcs ne prouvent pas la
+    couverture des parois, mais leur durée et leur débit sont analytiques.
+    Ne transforme ni archive, ni réglage, ni trajectoire ; pas de validation physique.
+    """
     cfg = _options(options)
     if limites_filaments is not None and (
         not isinstance(limites_filaments, dict) or any(not isinstance(v, dict) for v in limites_filaments.values())
@@ -314,11 +320,6 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
                 block += 1
             if not move:
                 continue
-            if move["trajectory"] == "arc_g17_xy":
-                report["couverture"]["erreurs"].append(
-                    f"{member}:{line_no}: arc analytique non couvert par la géométrie linéaire des parois"
-                )
-                continue
             if any(abs(a - b) > 1e-10 for a, b in zip(move["start"], move["end"])):
                 have_xyz = True
             if any(
@@ -349,6 +350,12 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
                     flow["debit_max_mm3_s"] = max(flow["debit_max_mm3_s"] or 0, q)
                     flow["depassements"] += int(q > ceiling + max(1e-9, ceiling * 1e-10))
                     flow["statut"] = "FAIL" if flow["depassements"] else "PASS"
+            # Durée et débit sont analytiques même quand la couverture de paroi exige des segments (#133).
+            if move["trajectory"] == "arc_g17_xy":
+                report["couverture"]["erreurs"].append(
+                    f"{member}:{line_no}: arc analytique non couvert par la géométrie linéaire des parois"
+                )
+                continue
             if move["deposited_length"] <= 0 or move["deposited"] <= 0 or move["type"] not in OUTER:
                 excluded[move["type"] or "non identifié"] += 1
                 if len(excluded_examples) < 128:

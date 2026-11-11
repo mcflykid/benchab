@@ -99,10 +99,10 @@ class Zones(unittest.TestCase):
         self.assertEqual(mesure["droite"]["Sparse infill"], 10)
         self.assertEqual(mesure["droite"]["Outer wall"], 4)
 
-    def test_arc_analytique_est_refuse_pour_decoupe_lineaire_de_regions(self):
-        """La mesure de région ne remplace pas une trajectoire circulaire par sa corde."""
-        gcode = "G90\nM83\nG1 X1 Y0 Z2 F600\n;TYPE:Sparse infill\nG3 X0 Y1 I-1 J0 E1"
-        with self.assertRaisesRegex(ValueError, "arc G2/G3 non pris en charge"):
+    def test_plan_arc_non_qualifie_est_refuse(self):
+        """Le modèle G17 ne suppose rien pour les arcs verticaux."""
+        gcode = "G90\nM83\nG1 X1 Y0 Z2 F600\nG18\n;TYPE:Sparse infill\nG3 X0 Z3 I-1 J0 E1"
+        with self.assertRaisesRegex(ValueError, "plan d'arc non pris en charge"):
             remplissage.analyser_gcode(gcode, {"zone": [-2, -2, 2, 2, 0, 3]})
 
     def test_etude_delegue_au_lanceur_unique_en_mode_temoin(self):

@@ -109,6 +109,25 @@ class Finition(unittest.TestCase):
         self.assertTrue(archive)
         self.assertEqual(parts, [("Metadata/plate_1.gcode", "G1 X1")])
 
+    def test_paroi_en_arc_non_verifiee_sans_planter(self):
+        """Un arc sans représentation linéaire rend la couverture NON VÉRIFIÉE."""
+        gcode = fixture().replace("G1 X10 E1 F7200", "G2 X10 Y0 I5 J0 E1 F7200", 1)
+        r = self.analyse(gcode)
+        self.assertEqual(r["couverture"]["statut"], "NON VÉRIFIÉ")
+        self.assertFalse(r["transformable"])
+        self.assertTrue(any("arc" in erreur for erreur in r["couverture"]["erreurs"]))
+
+    def test_debit_arc_depasse_plafond_meme_si_geometrie_non_verifiee(self):
+        """Le débit analytique reste opposable même si la paroi en arc est non mesurée."""
+        gcode = fixture().replace("G1 X10 E1 F7200", "G2 X10 Y0 I5 J0 E3 F7200", 1)
+        limites = {"1": {"diametre_mm": 1.75, "plafond_mm3_s": 30}}
+        r = self.analyse(gcode, limites_filaments=limites)
+        debit = r["plaques"][0]["debit_strict_brut_par_outil"]["1"]
+        self.assertEqual(debit["depassements"], 1)
+        self.assertEqual(debit["statut"], "FAIL")
+        self.assertEqual(r["statut"], "FAIL")
+        self.assertEqual(r["couverture"]["statut"], "NON VÉRIFIÉ")
+
     def test_series_z_distinct_height_et_cout(self):
         r = self.analyse()
         layers = [x for s in r["series"] for x in s["couches"]]

@@ -66,3 +66,19 @@ borné et les réponses retournées ne permettent pas de modifier les résultats
 Les mutations et comptes d’octets sont protégés contre les appels concurrents. Une même clé insérée deux fois
 ne réserve sa taille qu’une fois ; les lectures et analyses s’exécutent hors du verrou de cache.
 La continuité conserve au plus 128 diagnostics détaillés du lecteur, puis un message de dépassement explicite.
+
+
+## Mesures de dépôts dans une région 3D
+
+La mesure de remplissage localisé peut utiliser les arcs G17 XY qualifiés
+(#123). Elle calcule les intersections avec les six faces d’une boîte en mm
+sur la trajectoire analytique : angles pour X/Y et fraction de hauteur pour Z
+dans une hélice. La dette de rétraction déplace le début du dépôt le long de la
+courbe. Le repère physique reste distinct du repère de commande après G92.
+Les longueurs sont arrondies à 0,1 mm ; aucune corde n’est comptée. Les
+bornes, extrémités et enveloppes circulaires au-delà de ±1 000 000 mm sont refusées.
+
+Cette extension concerne les mesures par boîte. Les contrôles de couverture
+première couche, de continuité et d’appuis qui attendent encore des segments
+restent NON VÉRIFIÉS pour les arcs. Les autres plans et centres absolus ne sont
+pas qualifiés. La mesure est numérique et ne valide pas une impression.
