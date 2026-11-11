@@ -29,7 +29,7 @@ raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
 contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
 duree = "Tant que le composant text-to-cad est conservé"
 preuve_fichier = "benchab/reference/licences.json"
-preuve_sha256 = "11dc9b9757f2c418c1d4218188af76bf6be58a325a505386cf9b7e3344af9167"
+preuve_sha256 = "aea77ebec449f347c4199c3793b25d43f8dfcee72ce6952752506661d2d00f91"
 consommateur = "benchab/qualite/edition.py"
 
 [[exceptions]]
@@ -39,7 +39,7 @@ raison = "La licence MIT doit rester au chemin exact que contrôle l'édition"
 contrainte = "Le manifeste de licences déclare ce fichier et son SHA-256"
 duree = "Tant que les modules de modélisation copiés sont conservés"
 preuve_fichier = "benchab/reference/licences.json"
-preuve_sha256 = "11dc9b9757f2c418c1d4218188af76bf6be58a325a505386cf9b7e3344af9167"
+preuve_sha256 = "aea77ebec449f347c4199c3793b25d43f8dfcee72ce6952752506661d2d00f91"
 consommateur = "benchab/qualite/edition.py"
 
 [[ressources]]
