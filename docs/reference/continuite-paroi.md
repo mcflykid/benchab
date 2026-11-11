@@ -49,8 +49,9 @@ seuil historique de raccord de 0,02 mm reste inchangé. Les hélices, autres
 plans, rôles d’arc non reconnus et géométries incohérentes rendent la couverture
 NON VÉRIFIÉE. Les arcs n’établissent qu’une continuité numérique des trajectoires
 déclarées ; cela ne valide ni l’interpolation du firmware, ni l’adhésion ou la
-tenue physique. Le contrôle de première couche conserve ses limites et laisse
-les arcs NON VÉRIFIÉS. Aucun arc n’y est remplacé par sa corde.
+tenue physique. Le contrôle de première couche peut mesurer les dépôts G17 à
+Z constant avec `--arcs-planaires` ; sans cette option, ils restent NON
+VÉRIFIÉS. Aucun arc n’y est remplacé par sa corde.
 
 Le contrôle des capacités-machine calcule aussi l’enveloppe XYZ analytique de la portion déposée d’un arc G17 pour
 le verdict local `volume XYZ déposé`. Il inclut les extrema angulaires réellement parcourus et les deux extrémités Z
@@ -103,8 +104,8 @@ bornes, extrémités et enveloppes circulaires au-delà de ±1 000 000 mm sont r
 Cette extension concerne les mesures par boîte. La continuité des parois
 extérieures suit les limites décrites plus haut ; les
 [appuis](couches-courtes.md) mesurent les arcs G17 planaires seulement avec
-`--arcs-planaires`. La couverture de première couche laisse les arcs NON
-VÉRIFIÉS. Les autres plans et centres absolus ne sont pas qualifiés. Ces
+`--arcs-planaires`, comme la première couche. Les autres plans et centres
+absolus ne sont pas qualifiés. Ces
 mesures sont numériques et ne valident pas une impression.
 
 Dans un 3MF, un numéro de plaque désigne un seul membre G-code. Un nom
