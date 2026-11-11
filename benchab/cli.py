@@ -220,6 +220,11 @@ def parser():
         "consommation-retour", help="Lit un plan numérique de filament pour un retour identifié"
     )
     consommation_retour.add_argument("--retour", required=True, help="Identifiant du retour enregistré")
+    ecart_z = controle.add_parser(
+        "ecart-z-supports", help="Estime les écarts Z depuis les dépôts horizontaux d’une plaque"
+    )
+    ecart_z.add_argument("source", type=Path, help="3MF exact à lire sans modification")
+    ecart_z.add_argument("--plaque", type=int, help="Numéro de plaque si le 3MF en contient plusieurs")
     entretien = controle.add_parser("entretien", help="Bilan conditionnel depuis un historique privé explicite")
     entretien.add_argument("--historique", type=Path, required=True, help="Historique JSON privé à relire")
     entretien.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; une sortie existante est refusée")
@@ -980,6 +985,7 @@ def main(argv=None):
             "appliquer-reparation-vue",
             "entretien",
             "consommation-retour",
+            "ecart-z-supports",
             "coutures",
         }
         for i in range(len(argv) - 1)
@@ -1057,6 +1063,18 @@ def main(argv=None):
         rapport = planifier_lecture(arguments.prive, arguments.retour)
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
         return rapport["code"]
+    if arguments.commande == "controle" and arguments.controle == "ecart-z-supports":
+        from benchab.controles.ecart_z_supports import analyser
+
+        try:
+            rapport = analyser(arguments.source, arguments.plaque)
+            print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            # Une absence de couverture reste un résultat valide NON MESURABLE ;
+            # seules les entrées illisibles relèvent du code technique 2.
+            return 0
+        except (OSError, ValueError, KeyError, UnicodeError, RuntimeError) as erreur:
+            print(f"BENCHAB : lecture de l’écart Z refusée : {erreur}", file=sys.stderr)
+            return 2
     if arguments.commande == "controle" and arguments.controle == "entretien":
         try:
             from benchab.entretien.bilan import bilan_fichier, code
