@@ -62,7 +62,8 @@ physique, ni le contact, ni le retrait (#89).
 
 ### Espacements de l’interface et de la base
 
-Deux sondes sur le même coupon concentrique et le même binaire ont
+Deux sondes sur le même coupon à support arborescent `organic` et
+interface concentrique, avec le même binaire, ont
 changé une seule clé à la fois. La valeur demandée reste embarquée dans
 chaque archive. Les deux répétitions de chaque variante donnent le
 même G-code hors date de génération.
@@ -83,6 +84,14 @@ Cette absence d’effet observé reste limitée à la géométrie et au type de
 support essayés. Les sources et les 646 profils relus sont intacts. Les
 avertissements du trancheur restent identiques et la recette du retrait
 physique reste à faire (#89).
+
+Sur le témoin à support normal `grid`, la même variation isolée de
+`support_base_pattern_spacing` change les trajets. Les deux rejeux
+passent de 921 à 786 segments `Support` et de 7 813,261 à 6 670,812 mm
+d’axes de dépôt de ce rôle. La médiane Z reste à 0,18 mm. La projection
+discrète passe de 121 à 113,5 mm² et les estimations du slicer de
+3,64 à 3,49 g et de 984 à 982 s. Les rejeux concordent hors date et
+les profils relus et sources restent intacts.
 
 ## Variabilité observée du style arborescent fort
 
