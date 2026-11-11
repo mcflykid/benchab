@@ -53,7 +53,7 @@ class _Percage:
 
 @dataclass(frozen=True, slots=True)
 class _Poche:
-    """Décrit un retrait rectangulaire borgne ou traversant, en mm."""
+    """Décrit un retrait droit, arrondi ou oblong, borgne ou traversant, en mm."""
 
     x: float
     y: float
@@ -63,6 +63,7 @@ class _Poche:
     source_cotes: str
     rayon_angle: float
     traversante: bool
+    oblongue: bool
 
 
 def _rayon_entree(trou):
@@ -171,7 +172,7 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
     poches = []
     for numero, data in enumerate(valeurs, 1):
         etiquette = f"Poche {numero}"
-        if not isinstance(data, dict) or not cles <= data.keys() <= cles | modes | {"rayon_angle_mm"}:
+        if not isinstance(data, dict) or not cles <= data.keys() <= cles | modes | {"rayon_angle_mm", "oblongue"}:
             raise ValueError(f"{etiquette} : centre XY, deux largeurs, profondeur ou traversée et source requis.")
         if len(data.keys() & modes) != 1 or ("traversante" in data and data["traversante"] is not True):
             raise ValueError(f"{etiquette} : déclarer une profondeur ou traversante: true, sans les combiner.")
@@ -183,7 +184,17 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
         profondeur = dz if traversante else _cote(data["profondeur_mm"], f"{etiquette} profondeur", longueur=True)
         source = _source_cotes(data["source_cotes"], etiquette)
         rayon = 0.0
-        if "rayon_angle_mm" in data:
+        oblongue = "oblongue" in data
+        if oblongue:
+            if data["oblongue"] is not True:
+                raise ValueError(f"{etiquette} : le drapeau oblongue doit valoir true.")
+            if "rayon_angle_mm" in data:
+                raise ValueError(f"{etiquette} : oblongue: true est incompatible avec un rayon d’angle.")
+            if abs(lx - ly) <= _MARGE_MM:
+                raise ValueError(f"{etiquette} : deux largeurs distinctes sont requises pour une forme oblongue.")
+            # Le noyau réduit à un segment s’élargit d’un disque du rayon de l’extrémité (#32).
+            rayon = min(lx, ly) / 2
+        elif "rayon_angle_mm" in data:
             rayon = _cote(data["rayon_angle_mm"], f"{etiquette} rayon d’angle", longueur=True)
             if min(lx, ly) / 2 - rayon <= _MARGE_MM:
                 raise ValueError(f"{etiquette} : rayon d’angle strictement inférieur à chaque demi-largeur.")
@@ -212,7 +223,7 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
                 touche = abs(x - voisine.x) - demi_x <= _MARGE_MM and abs(y - voisine.y) - demi_y <= _MARGE_MM
             if touche:
                 raise ValueError(f"{etiquette} : chevauchement ou tangence entre deux poches.")
-        poches.append(_Poche(x, y, lx, ly, profondeur, source, rayon, traversante))
+        poches.append(_Poche(x, y, lx, ly, profondeur, source, rayon, traversante, oblongue))
     return poches
 
 
@@ -288,8 +299,12 @@ def _script(bloc, trous, poches, rayon_base=None):
         "from build123d import Align, Box, Cone, Cylinder, Pos"
         if any(trou.fraisage for trou in trous) else "from build123d import Align, Box, Cylinder, Pos"
     )
+    if any(poche.rayon_angle and not poche.oblongue for poche in poches):
+        imports += ", RectangleRounded"
+    if any(poche.oblongue for poche in poches):
+        imports += ", SlotOverall"
     if any(poche.rayon_angle for poche in poches):
-        imports += ", RectangleRounded, extrude"
+        imports += ", extrude"
     lignes = [
         '"""Bloc CAO en mm issu d’une fiche BENCHAB ; aucune validation physique."""',
         "",
@@ -335,7 +350,16 @@ def _script(bloc, trous, poches, rayon_base=None):
         # Une poche borgne garde le fond coté, une ouverture dépasse les deux faces.
         z_outil = -1.0 if poche.traversante else bloc[2] - poche.profondeur
         hauteur_outil = poche.profondeur + (2 if poche.traversante else 1)
-        if poche.rayon_angle:
+        if poche.oblongue:
+            longueur, largeur = max(poche.largeur_x, poche.largeur_y), min(poche.largeur_x, poche.largeur_y)
+            rotation = 0 if poche.largeur_x > poche.largeur_y else 90
+            lignes.extend([
+                f"    solide -= Pos({poche.x!r}, {poche.y!r}, {z_outil!r}) * extrude(",
+                f"        SlotOverall({longueur!r}, {largeur!r}, rotation={rotation}),",
+                f"        amount={hauteur_outil!r},",
+                "    )",
+            ])
+        elif poche.rayon_angle:
             lignes.extend([
                 f"    solide -= Pos({poche.x!r}, {poche.y!r}, {z_outil!r}) * extrude(",
                 f"        RectangleRounded({poche.largeur_x!r}, {poche.largeur_y!r}, {poche.rayon_angle!r}),",
@@ -403,7 +427,8 @@ def _generer(source, sortie, *, prive):
         **({"poches_rectangulaires": [
             {"x_mm": p.x, "y_mm": p.y, "largeur_x_mm": p.largeur_x, "largeur_y_mm": p.largeur_y,
              "profondeur_mm": p.profondeur, "source_cotes": p.source_cotes}
-            | ({"rayon_angle_mm": p.rayon_angle} if p.rayon_angle else {})
+            | ({"oblongue": True, "rayon_extremites_mm": p.rayon_angle} if p.oblongue else
+               {"rayon_angle_mm": p.rayon_angle} if p.rayon_angle else {})
             | ({"traversante": True} if p.traversante else {})
             for p in poches
         ]} if poches else {}),

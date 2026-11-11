@@ -62,6 +62,15 @@ avec [le rectangle arrondi de build123d](https://build123d.readthedocs.io/en/sta
 et l’extrude jusqu’au fond déclaré. Orientations, chanfreins et parois
 physiques ne sont pas déduits (#32).
 
+Une poche peut aussi déclarer `"oblongue": true` à la place de
+`rayon_angle_mm`. Les deux largeurs doivent être distinctes ; la plus
+longue donne l’axe et la longueur totale, la plus courte le diamètre des
+deux extrémités semicirculaires. Le plan indique leur rayon dérivé.
+La forme est construite par `SlotOverall` et peut être borgne ou
+traversante. Les marges et collisions sont calculées sur le contour
+oblong, y compris pour un trou proche d’une extrémité ; aucun jeu
+d’impression n’est ajouté.
+
 ```sh
 benchab conception fiche-cao -- prive/fiche.json --sortie prive/plan-neuf
 benchab conception cad-engine -- build prive/plan-neuf/modele.py --output-dir prive/construction-neuve
