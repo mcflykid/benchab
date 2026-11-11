@@ -18,6 +18,7 @@ import hashlib
 import http.server
 import io
 import json
+import math
 import os
 import re
 import socket
@@ -91,11 +92,14 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(b)
 
-    def hote_valide(self):
-        return self.headers.get("Host") in {
-            f"localhost:{self.server.server_port}",
-            f"127.0.0.1:{self.server.server_port}",
-        }
+    def hote_valide(self, hote=None):
+        """Vérifie un Host local unique ; sans argument, lit et contrôle l'en-tête de la requête."""
+        if hote is None:
+            valeurs = self.headers.get_all("Host", [])
+            if len(valeurs) != 1:
+                return False
+            hote = valeurs[0]
+        return hote in {f"localhost:{self.server.server_port}", f"127.0.0.1:{self.server.server_port}"}
 
     def lire_json_post(self, maximum, *, cles_permises=None):
         """Valide les barrières POST locales puis lit un objet JSON borné ; renvoie dict ou None après HTTP 4xx.
@@ -105,8 +109,7 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
         """
         hote = self.headers.get_all("Host", [])
         origine = self.headers.get_all("Origin", [])
-        locaux = {f"localhost:{self.server.server_port}", f"127.0.0.1:{self.server.server_port}"}
-        if len(hote) != 1 or len(origine) != 1 or hote[0] not in locaux or origine[0] != "http://" + hote[0]:
+        if len(hote) != 1 or len(origine) != 1 or not self.hote_valide(hote[0]) or origine[0] != "http://" + hote[0]:
             self.repondre(403, {"erreur": "origine non autorisée"})
             return None
         types = self.headers.get_all("Content-Type", [])
@@ -123,7 +126,11 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
         if not re.fullmatch(r"[0-9]+", longueurs[0]):
             self.repondre(400, {"erreur": "requête invalide"})
             return None
-        taille = int(longueurs[0])
+        chiffres = longueurs[0].lstrip("0") or "0"
+        if len(chiffres) > len(str(maximum)):
+            self.repondre(413, {"erreur": "taille excessive ou vide"})
+            return None
+        taille = int(chiffres)
         if taille <= 0 or taille > maximum:
             self.repondre(413, {"erreur": "taille excessive ou vide"})
             return None
@@ -141,10 +148,17 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
                     resultat[cle] = valeur
                 return resultat
 
+            def flottant_fini(texte):
+                valeur = float(texte)
+                if not math.isfinite(valeur):
+                    raise ValueError("flottant JSON non fini")
+                return valeur
+
             donnees = json.loads(
                 brut.decode("utf-8"),
                 object_pairs_hook=objet_sans_doublons,
                 parse_constant=lambda _: (_ for _ in ()).throw(ValueError("constante JSON interdite")),
+                parse_float=flottant_fini,
             )
             if not isinstance(donnees, dict) or (
                 cles_permises is not None and set(donnees) - set(cles_permises)

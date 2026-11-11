@@ -234,6 +234,8 @@ class ValidationPOSTHTTP(Serveur):
                 self.assertEqual(self.poster(route, origine="https://fixture.invalid"), 403)
             with self.subTest(route=route, statut=413):
                 self.assertEqual(self.poster(route, longueur=limite + 1), 413)
+            with self.subTest(route=route, statut=413, motif="longueur au-delà de la capacité entière"):
+                self.assertEqual(self.poster(route, longueur="9" * 5000), 413)
             with self.subTest(route=route, statut=415):
                 self.assertEqual(self.poster(route, media="text/plain"), 415)
             with self.subTest(route=route, statut=400):
@@ -252,6 +254,15 @@ class ValidationPOSTHTTP(Serveur):
                     ),
                     400,
                 )
+
+    def test_exposant_json_non_fini_refuse_avant_validation_metier(self):
+        """Un exposant qui déborde le flottant est refusé avant le validateur des commentaires."""
+        from unittest.mock import patch
+
+        donnees = b'{"page":"/projets/lampe/preuves/visualisation/projet-3d.html","commentaires":[],"x":1e10000}'
+        with patch.object(S, "valider", wraps=S.valider) as valider:
+            self.assertEqual(self.poster("/__commentaires", donnees), 400)
+        valider.assert_not_called()
 
 
 class AutomatisationHTTP(unittest.TestCase):
