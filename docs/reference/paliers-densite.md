@@ -50,3 +50,23 @@ et disjointes en volume. Le témoin incliné vérifie les profondeurs, les
 volumes analytiques et la conservation du maillage. L’effet G-code de
 cette famille et les distances à une surface courbe restent à qualifier
 (#83).
+
+### Témoin natif de paliers plans
+
+Un coupon de 32 × 24 × 12 mm, en deux bandes à 6 et 10 mm sous le
+dessus déclaré, a été tranché hors ligne avec ASN 2.0.0.3, SHA-256
+`618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d`.
+L’unique réglage modifié est la densité du premier modificateur,
+de 20 % à 60 % avant et après tranchage. Le dépôt clairsemé dans
+deux boîtes intérieures mesurées donne :
+
+| Zone | À 20 % | À 60 % |
+| --- | ---: | ---: |
+| Près de la face | 1 272,1 mm | 3 546,3 mm |
+| Plus en profondeur (témoin) | 1 279,3 mm | 1 279,3 mm |
+
+Les 61 448 lignes du G-code répété à 60 % ne diffèrent que sur la
+date de génération. Les 646 profils relus et l’archive de référence
+sont inchangés. Le résultat vaut pour ces boîtes et ce binaire ;
+les avertissements natifs de température du plateau et de dureté de
+buse ne sont pas levés. Aucun envoi ni essai de résistance n’a été fait.
