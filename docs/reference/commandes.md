@@ -12,7 +12,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `imports importer`, `geometrie`, `reparer`, `maillage-avance`, `echange-blender` | Import et géométrie |
 | `conception cad-engine`, `assistant-projet`, `variantes`, `dfam` | CAO et variantes |
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
-| `fabrication trancher`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation et tranchage |
+| `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
 | `fabrication exportable`, `rattachements`, `envois-slicer`, `retour`, `planning` | Livrables, historique et retours |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |

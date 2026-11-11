@@ -42,6 +42,18 @@ justifie pas de modifier `top_shell_layers`. Au plus trois essais par cause.
 Après tranchage, lancer les [contrôles d’envoi](controles.md), inspecter l’état
 sauvé dans le slicer et suivre le [vote](vote.md). Un fichier tranché n’est pas
 une preuve d’envoi ni d’impression.
+
+Pour reprendre une archive déjà tranchée sans reconstruire ni relancer le
+slicer, utiliser `benchab fabrication revue-archive ARCHIVE.3mf --declaration
+DECLARATION.json --sortie prive/rapports/envoi-final.json`. La commande crée
+des rapports initiaux et finaux, une revue et ses faits dans l’atelier privé.
+Une revue source peut être fournie avec `--revue-source`; elle doit porter les
+empreintes actuelles de l’archive et de la géométrie, et se trouver dans le
+même dossier que la sortie afin de préserver les chemins relatifs de ses
+preuves. Une revue périmée est refusée sans la réécrire. Les décisions humaines
+et leurs preuves sont conservées quand ces empreintes concordent. Les zones
+restantes non revues gardent un statut NON VÉRIFIÉ. Ce parcours ne valide pas
+physiquement la pièce et n’envoie aucune commande à la machine.
 # Chaîne commune des projets
 
 `benchab fabrication chaine CHEMIN_PROJET` ou `make tout` dans un gabarit
