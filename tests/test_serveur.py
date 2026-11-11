@@ -192,6 +192,68 @@ class AuditHTTP(Serveur):
         self.assertEqual(e.exception.code, 403)
 
 
+class ValidationPOSTHTTP(Serveur):
+    """Vérifie les mêmes barrières HTTP pour les quatre routes POST locales."""
+
+    ROUTES = (
+        ("/__commentaires", 1_000_000),
+        ("/__decoupe", 1_000_000),
+        ("/__cloud_lecture", 8192),
+        ("/__automatisation", 4096),
+    )
+
+    def poster(self, route, donnees=b"{}", *, origine=None, hote=None, media="application/json",
+               longueur=None):
+        import http.client
+
+        port = self.srv.server_port
+        headers = {"Origin": origine or f"http://127.0.0.1:{port}", "Content-Type": media}
+        if hote is not None:
+            headers["Host"] = hote
+        connexion = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            if longueur is None:
+                connexion.request("POST", route, donnees, headers)
+            else:
+                connexion.putrequest("POST", route)
+                for cle, valeur in headers.items():
+                    connexion.putheader(cle, valeur)
+                connexion.putheader("Content-Length", str(longueur))
+                connexion.endheaders()
+            with connexion.getresponse() as reponse:
+                reponse.read()
+                return reponse.status
+        finally:
+            connexion.close()
+
+    def test_routes_partagent_les_rejets_http_synthetiques(self):
+        """Chaque route rejette origine, taille, type et JSON avant tout traitement métier."""
+        port = self.srv.server_port
+        for route, limite in self.ROUTES:
+            with self.subTest(route=route, statut=403):
+                self.assertEqual(self.poster(route, origine="https://fixture.invalid"), 403)
+            with self.subTest(route=route, statut=413):
+                self.assertEqual(self.poster(route, longueur=limite + 1), 413)
+            with self.subTest(route=route, statut=415):
+                self.assertEqual(self.poster(route, media="text/plain"), 415)
+            with self.subTest(route=route, statut=400):
+                self.assertEqual(self.poster(route, b"{"), 400)
+            with self.subTest(route=route, statut=403, motif="origin-host désaccordés"):
+                self.assertEqual(
+                    self.poster(route, origine=f"http://localhost:{port}", hote=f"127.0.0.1:{port}"), 403
+                )
+            with self.subTest(route=route, statut=400, motif="localhost cohérent"):
+                self.assertEqual(
+                    self.poster(
+                        route,
+                        b"{",
+                        origine=f"http://localhost:{port}",
+                        hote=f"localhost:{port}",
+                    ),
+                    400,
+                )
+
+
 class AutomatisationHTTP(unittest.TestCase):
     setUp = Serveur.setUp
     tearDown = Serveur.tearDown

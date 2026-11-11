@@ -97,6 +97,64 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             f"127.0.0.1:{self.server.server_port}",
         }
 
+    def lire_json_post(self, maximum, *, cles_permises=None):
+        """Valide les barrières POST locales puis lit un objet JSON borné ; renvoie dict ou None après HTTP 4xx.
+
+        `maximum` est en octets ; corps, en-têtes, UTF-8 et clés permis sont contrôlés
+        avant l’action métier. Délai de lecture fixe à 5 s ; aucun effet secondaire.
+        """
+        hote = self.headers.get_all("Host", [])
+        origine = self.headers.get_all("Origin", [])
+        locaux = {f"localhost:{self.server.server_port}", f"127.0.0.1:{self.server.server_port}"}
+        if len(hote) != 1 or len(origine) != 1 or hote[0] not in locaux or origine[0] != "http://" + hote[0]:
+            self.repondre(403, {"erreur": "origine non autorisée"})
+            return None
+        types = self.headers.get_all("Content-Type", [])
+        if len(types) != 1 or types[0].split(";", 1)[0].strip().lower() != "application/json":
+            self.repondre(415, {"erreur": "JSON requis"})
+            return None
+        longueurs = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding", []) or len(longueurs) > 1:
+            self.repondre(400, {"erreur": "requête invalide"})
+            return None
+        if not longueurs:
+            self.repondre(413, {"erreur": "taille excessive ou vide"})
+            return None
+        if not re.fullmatch(r"[0-9]+", longueurs[0]):
+            self.repondre(400, {"erreur": "requête invalide"})
+            return None
+        taille = int(longueurs[0])
+        if taille <= 0 or taille > maximum:
+            self.repondre(413, {"erreur": "taille excessive ou vide"})
+            return None
+        try:
+            self.connection.settimeout(5)
+            brut = self.rfile.read(taille)
+            if len(brut) != taille:
+                raise ValueError("requête incomplète")
+
+            def objet_sans_doublons(paires):
+                resultat = {}
+                for cle, valeur in paires:
+                    if cle in resultat:
+                        raise ValueError("clé JSON dupliquée")
+                    resultat[cle] = valeur
+                return resultat
+
+            donnees = json.loads(
+                brut.decode("utf-8"),
+                object_pairs_hook=objet_sans_doublons,
+                parse_constant=lambda _: (_ for _ in ()).throw(ValueError("constante JSON interdite")),
+            )
+            if not isinstance(donnees, dict) or (
+                cles_permises is not None and set(donnees) - set(cles_permises)
+            ):
+                raise ValueError("objet JSON ou clés invalides")
+            return donnees
+        except (OSError, ValueError, UnicodeError, RecursionError):
+            self.repondre(400, {"erreur": "requête invalide"})
+            return None
+
     def send_head(self):
         """GET et HEAD partagent une liste positive ; aucun listing du dépôt.
 
@@ -316,37 +374,20 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(body)
 
     def cloud_lecture(self):
-        """Traite le POST explicite JSON/8192octets max ; HTTP200/4xx, lecture Cloud seule, aucune commande machine."""
-        allowed = {f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"}
-        if self.headers.get("Origin") not in allowed or "http://" + self.headers.get("Host", "") not in allowed:
-            return self.repondre(403, {"erreur": "origine non autorisée"})
-        if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
-            return self.repondre(415, {"erreur": "JSON requis"})
-        if self.headers.get("Transfer-Encoding"):
-            return self.repondre(400, {"erreur": "encodage non accepté"})
-        d = None
+        """Traite un objet Cloud JSON de 8192 octets max ; lecture seule, aucune commande machine."""
+        d = self.lire_json_post(8192, cles_permises={"jeton", "machine", "session_slicer", "compte"})
+        if d is None:
+            return
         token = None
         try:
-            size = int(self.headers.get("Content-Length", "0"))
-            if size <= 0 or size > 8192:
-                return self.repondre(413, {"erreur": "taille refusée"})
-            self.connection.settimeout(5)
-            raw = self.rfile.read(size)
-            if len(raw) != size:
-                raise ValueError("requête incomplète")
             from benchab.machine.cloud_lecture import (
                 CloudErreur,
                 _id,
-                _json,
                 relever_avec_compte,
                 relever_avec_jeton,
                 token_slicer,
             )
 
-            d = _json(raw)
-            raw = None
-            if not isinstance(d, dict) or set(d) - {"jeton", "machine", "session_slicer", "compte"}:
-                raise ValueError("demande invalide")
             if "compte" in d and type(d["compte"]) is not bool:
                 raise ValueError("choix de compte invalide")
             if d.get("compte") is True and ("jeton" in d or "session_slicer" in d):
@@ -397,24 +438,11 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
                 d.clear()
 
     def automatisation(self):
-        allowed = {f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"}
-        if self.headers.get("Origin") not in allowed or "http://" + self.headers.get("Host", "") not in allowed:
-            return self.repondre(403, {"erreur": "origine non autorisée"})
-        if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
-            return self.repondre(415, {"erreur": "JSON requis"})
-        if self.headers.get("Transfer-Encoding"):
-            return self.repondre(400, {"erreur": "encodage non accepté"})
+        """Exécute l’action locale bornée d’un objet JSON de 4096 octets max."""
+        d = self.lire_json_post(4096, cles_permises={"action", "projet", "preparation"})
+        if d is None:
+            return
         try:
-            size = int(self.headers.get("Content-Length", "0"))
-            if size <= 0 or size > 4096:
-                return self.repondre(413, {"erreur": "requête trop volumineuse ou vide"})
-            self.connection.settimeout(5)
-            raw = self.rfile.read(size)
-            if len(raw) != size:
-                raise ValueError("requête incomplète")
-            d = json.loads(raw)
-            if not isinstance(d, dict) or set(d) - {"action", "projet", "preparation"}:
-                raise ValueError("champs non autorisés")
             if d.get("action") not in ("executer", "ouvrir-slicer"):
                 raise ValueError("action non autorisée")
             from benchab.organisation import automatisation as auto
@@ -447,6 +475,7 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             return self.repondre(400, {"erreur": "demande refusée ; consulter les prérequis et le diagnostic local"})
 
     def do_POST(self):
+        """Route les POST connus vers leur lecteur JSON local ; réponses HTTP 4xx sur requête invalide."""
         if urllib.parse.urlparse(self.path).path == "/__decoupe":
             return self.decoupe()
         if urllib.parse.urlparse(self.path).path == "/__cloud_lecture":
@@ -455,22 +484,11 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             return self.automatisation()
         if urllib.parse.urlparse(self.path).path != "/__commentaires":
             return self.repondre(404, {"erreur": "inconnu"})
-        allowed = {f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"}
-        if self.headers.get("Origin") not in allowed or "http://" + self.headers.get("Host", "") not in allowed:
-            return self.repondre(403, {"erreur": "origine non autorisée"})
-        if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
-            return self.repondre(415, {"erreur": "JSON requis"})
-        if self.headers.get("Transfer-Encoding"):
-            return self.repondre(400, {"erreur": "encodage non accepté"})
+        d = self.lire_json_post(1_000_000)
+        if d is None:
+            return
         try:
-            size = int(self.headers.get("Content-Length", "0"))
-            if size <= 0 or size > 1000000:
-                return self.repondre(413, {"erreur": "taille excessive ou vide"})
-            self.connection.settimeout(5)
-            raw = self.rfile.read(size)
-            if len(raw) != size:
-                raise ValueError("requête incomplète")
-            d = valider(json.loads(raw))
+            d = valider(d)
             f = fichier_commentaires(d["page"], self.racine)
             with transaction(f):
                 old = lire(f)
@@ -483,25 +501,15 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             self.repondre(400, {"erreur": str(e)})
 
     def decoupe(self):
-        allowed = {f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"}
-        if not self.hote_valide() or self.headers.get("Origin") not in allowed:
-            return self.repondre(403, {"erreur": "origine non autorisée"})
-        if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
-            return self.repondre(415, {"erreur": "JSON requis"})
-        if self.headers.get("Transfer-Encoding"):
-            return self.repondre(400, {"erreur": "encodage non accepté"})
+        """Traite l’action locale de découpe sur un JSON de 1 Mio max, sans chemin de sortie client."""
+        requete = self.lire_json_post(1_000_000)
+        if requete is None:
+            return
         try:
-            size = int(self.headers.get("Content-Length", "0"))
-            if not 0 < size <= 1_000_000:
-                return self.repondre(413, {"erreur": "taille excessive ou vide"})
-            self.connection.settimeout(5)
-            raw = self.rfile.read(size)
-            if len(raw) != size:
-                raise ValueError("requête incomplète")
             from benchab.visualisation.decoupe import agir
 
             with self.server.verrou_decoupe:
-                resultat = agir(self.racine, json.loads(raw))
+                resultat = agir(self.racine, requete)
             self.repondre(200, resultat)
         except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
             self.repondre(400, {"erreur": str(exc)[:500]})
