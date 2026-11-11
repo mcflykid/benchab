@@ -3,6 +3,8 @@
 import hashlib
 import json
 
+import pytest
+
 from benchab.donnees.base import Base
 from benchab.donnees.vues import generer
 from benchab.qualite import plan_reparation
@@ -179,3 +181,173 @@ def test_plan_nouvre_pas_une_base_a_journal_wal(tmp_path, monkeypatch):
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["actions"] == []
     assert _empreintes(prive) == avant
+
+
+def test_appliquer_vue_absente_depuis_plan_conserve_sqlite(tmp_path):
+    """Applique explicitement une vue absente depuis son rendu SQLite confirmé."""
+    prive = _atelier(tmp_path)
+    cible = prive / "vues/INDEX.md"
+    cible.unlink()
+    projet = prive / "projets/demo/source.3mf"
+    projet.parent.mkdir(parents=True)
+    projet.write_bytes("projet synthétique intact".encode("utf-8"))
+    readme = prive / "README.md"
+    readme.write_text("Note éditoriale hors marqueurs\n" + readme.read_text(encoding="utf-8"), encoding="utf-8")
+    readme_avant = readme.read_bytes()
+    projet_avant = projet.read_bytes()
+    changelog_avant = (prive / "CHANGELOG.md").read_bytes()
+    base_sha = hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest()
+    rapport = plan_reparation.planifier(prive)
+
+    resultat = plan_reparation.appliquer_vue(prive, rapport, "vues/INDEX.md")
+
+    action = next(item for item in rapport["actions"] if item["cible"] == "vues/INDEX.md")
+    assert resultat["statut"] == "PASS"
+    assert hashlib.sha256(cible.read_bytes()).hexdigest() == action["sha256_attendu"]
+    assert resultat["sauvegarde"] is None
+    assert hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest() == base_sha
+    assert readme.read_bytes() == readme_avant
+    assert projet.read_bytes() == projet_avant
+    assert (prive / "CHANGELOG.md").read_bytes() == changelog_avant
+
+
+def test_appliquer_vue_divergente_sauvegarde_et_relit_les_octets(tmp_path):
+    """La vue divergente est sauvegardée neuve et relue avant remplacement atomique."""
+    prive = _atelier(tmp_path)
+    cible = next((prive / "vues/etats").glob("*.md"))
+    ancien = b"conserver exactement avant remplacement\n"
+    cible.write_bytes(ancien)
+    projet = prive / "projets/demo/source.3mf"
+    projet.parent.mkdir(parents=True)
+    projet.write_bytes("projet synthétique intact".encode("utf-8"))
+    projet_avant = projet.read_bytes()
+    base_sha = hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest()
+    rapport = plan_reparation.planifier(prive)
+
+    resultat = plan_reparation.appliquer_vue(prive, rapport, cible.relative_to(prive).as_posix())
+
+    sauvegarde = prive / resultat["sauvegarde"]
+    action = next(item for item in rapport["actions"] if item["cible"] == cible.relative_to(prive).as_posix())
+    assert sauvegarde.is_file() and not sauvegarde.is_symlink()
+    assert sauvegarde.read_bytes() == ancien
+    assert resultat["sha256_sauvegarde"] == hashlib.sha256(ancien).hexdigest()
+    assert hashlib.sha256(cible.read_bytes()).hexdigest() == action["sha256_attendu"]
+    assert hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest() == base_sha
+    assert projet.read_bytes() == projet_avant
+
+
+def test_appliquer_vue_refuse_reprise_cible_stale_et_rendu_stale(tmp_path):
+    """Une reprise ou une cible/source modifiée depuis le plan ne touche aucun original."""
+    prive = _atelier(tmp_path)
+    cible = prive / "vues/INDEX.md"
+    cible.unlink()
+    rapport = plan_reparation.planifier(prive)
+    plan_reparation.appliquer_vue(prive, rapport, "vues/INDEX.md")
+    contenu_applique = cible.read_bytes()
+    with pytest.raises((ValueError, RuntimeError)):
+        plan_reparation.appliquer_vue(prive, rapport, "vues/INDEX.md")
+    assert cible.read_bytes() == contenu_applique
+    assert (prive / "benchab.sqlite").is_file()
+
+    cible.unlink()
+    rapport_source = plan_reparation.planifier(prive)
+    base = Base(prive)
+    base.ecrire("UPDATE projets SET nom=? WHERE id=?", ("Source modifiée après plan", "demo"))
+    base.fermer()
+    with pytest.raises((ValueError, RuntimeError)):
+        plan_reparation.appliquer_vue(prive, rapport_source, "vues/INDEX.md")
+    assert not cible.exists()
+
+    rapport_cible = plan_reparation.planifier(prive)
+    cible.write_text("édition postérieure au plan\n", encoding="utf-8")
+    avant = cible.read_bytes()
+    with pytest.raises((ValueError, RuntimeError)):
+        plan_reparation.appliquer_vue(prive, rapport_cible, "vues/INDEX.md")
+    assert cible.read_bytes() == avant
+
+
+def test_appliquer_vue_refuse_champ_inattendu_sans_ecriture(tmp_path):
+    """Les plans enrichis de champs non reconnus ne sont jamais exécutés."""
+    prive = _atelier(tmp_path)
+    cible = prive / "vues/INDEX.md"
+    cible.unlink()
+    rapport = plan_reparation.planifier(prive)
+    rapport["actions"][0]["autoriser_autre_fichier"] = True
+    base_sha = hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError):
+        plan_reparation.appliquer_vue(prive, rapport, "vues/INDEX.md")
+
+    assert not cible.exists()
+    assert hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest() == base_sha
+
+
+def test_appliquer_vue_refuse_identite_sqlite_modifiee(tmp_path):
+    """Une identité de schéma modifiée après le plan bloque la réparation sans toucher la cible."""
+    import sqlite3
+    from contextlib import closing
+
+    prive = _atelier(tmp_path)
+    cible = prive / "vues/INDEX.md"
+    cible.unlink()
+    rapport = plan_reparation.planifier(prive)
+    with closing(sqlite3.connect(prive / "benchab.sqlite")) as connexion:
+        connexion.execute("PRAGMA user_version = 2")
+        connexion.commit()
+    base_sha = hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError):
+        plan_reparation.appliquer_vue(prive, rapport, "vues/INDEX.md")
+
+    assert not cible.exists()
+    assert hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest() == base_sha
+
+
+def test_appliquer_vue_refuse_cible_liee_apres_plan(tmp_path):
+    """Une cible remplacée par un lien après plan n'est jamais suivie ni écrasée."""
+    prive = _atelier(tmp_path)
+    cible = prive / "vues/INDEX.md"
+    cible.unlink()
+    rapport = plan_reparation.planifier(prive)
+    externe = tmp_path / "externe.md"
+    externe.write_text("conserver hors atelier\n", encoding="utf-8")
+    cible.symlink_to(externe)
+    avant = externe.read_bytes()
+
+    with pytest.raises((ValueError, OSError)):
+        plan_reparation.appliquer_vue(prive, rapport, "vues/INDEX.md")
+
+    assert cible.is_symlink()
+    assert externe.read_bytes() == avant
+
+
+def test_commande_applique_une_vue_explicitement_sans_base_ni_mesure(tmp_path, monkeypatch, capsys):
+    """La commande applique uniquement la cible choisie, sans Base écrivable ni mesure SQLite."""
+    from benchab import cli
+
+    prive = _atelier(tmp_path)
+    (prive / "vues/INDEX.md").unlink()
+    rapport = plan_reparation.planifier(prive)
+    plan = tmp_path / "plan.json"
+    plan.write_text(json.dumps(rapport), encoding="utf-8")
+
+    def interdit(*_args, **_kwargs):
+        raise AssertionError("la réparation ne doit ouvrir ni Base ni mesure")
+
+    monkeypatch.setattr(cli, "Base", interdit)
+    monkeypatch.setattr(cli, "Mesure", interdit)
+    code = cli.main([
+        "--prive",
+        str(prive),
+        "controle",
+        "appliquer-reparation-vue",
+        "--plan",
+        str(plan),
+        "--cible",
+        "vues/INDEX.md",
+    ])
+
+    resultat = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert resultat["cible"] == "vues/INDEX.md"
+    assert resultat["application_effectuee"] is True
