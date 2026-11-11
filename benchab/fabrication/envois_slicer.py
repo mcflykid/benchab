@@ -89,12 +89,16 @@ def _verifier_reste(archive, deja_lus):
 
 
 def lire(p):
-    """Inventorie un 3MF tranché sans écriture ; masses en g, réglages typés, refus si archive ambiguë."""
+    """Inventorie un 3MF tranché sans écriture, avec masses estimées en g.
+
+    Le SHA et les membres proviennent du même lecteur. Le rapport conserve
+    la taille en octets, les réglages typés et le contrôle final de la source.
+    Une archive ambiguë ou illisible est refusée ; aucune impression n’est attestée.
+    """
     p = Path(p)
     try:
         with Archive3MF(p) as archive:
-            initial = sha(p)
-            archive.verifier_source(p)
+            initial = archive.sha256()
             if _REGLES_PROJET not in archive.noms():
                 raise ValueError(f"{p.name} : réglages absents")
             st = archive.reglages(_REGLES_PROJET)
@@ -125,8 +129,6 @@ def lire(p):
                 "reglages": {k: st.get(k) for k in CLES if k in st},
                 **temperature_appliquee(st),
             }
-            if sha(p) != initial:
-                raise ValueError("source modifiée pendant lecture")
             archive.verifier_source(p)
             return rapport
     except (zipfile.BadZipFile, json.JSONDecodeError, KeyError, TypeError, AttributeError, UnicodeError) as e:
