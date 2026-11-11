@@ -42,3 +42,11 @@ l’estimation du slicer. Aucune pesée, affectation physique ou exécution
 n’est authentifiée, et le stock ne change pas. Le statut global et le code
 restent NON VÉRIFIÉ et 2. Sans les deux options, le rapport historique est
 conservé (#77).
+
+
+Pour un affichage court, ajouter `--resume --sortie prive/rapports/consommation.json`
+avec un nom JSON neuf dans l’atelier privé. Le résumé garde le statut, le code,
+les motifs de refus, le nombre de plaques estimées et le chemin du rapport.
+La commande écrit le JSON intégral avant d’afficher le résumé. Sans `--resume`,
+elle affiche le JSON intégral, avec ou sans copie demandée via `--sortie`.
+Un rapport existant est refusé ; le statut NON VÉRIFIÉ et le code 2 ne changent pas.

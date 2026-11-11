@@ -185,6 +185,58 @@ class PlanConsommation(unittest.TestCase):
         self.assertIn("aucune sélection T explicite", rapport["declaration_pesee"]["raison"])
         self.assertEqual(rapport["estimation"]["plaques"][0]["outils"][1]["grammes_estimes"], 12.5)
 
+    def test_cli_resume_conserve_le_rapport_complet_et_le_code(self):
+        """Le résumé #35 reste exploitable sans perdre le rapport ni les limites #77."""
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        preuve, sha = self._declaration_pesee()
+        commande = [
+            "--prive", str(self.racine), "controle", "consommation-retour",
+            "--retour", self.retour_id, "--preuve-pesee", str(preuve), "--sha256-preuve", sha,
+        ]
+        complet = StringIO()
+        with redirect_stdout(complet):
+            self.assertEqual(main(commande), 2)
+        cible = self.racine / "rapports/consommation.json"
+        cible.parent.mkdir(exist_ok=True)
+        court = StringIO()
+        with redirect_stdout(court):
+            self.assertEqual(main([*commande, "--resume", "--sortie", str(cible)]), 2)
+        self.assertEqual(json.loads(cible.read_text()), json.loads(complet.getvalue()))
+        resume = json.loads(court.getvalue())
+        self.assertEqual(resume["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(resume["rapport"], str(cible))
+        self.assertEqual(resume["plaques_estimees"], 2)
+        self.assertEqual(resume["declaration_pesee"]["statut"], "DÉCLARATION LIÉE")
+        self.assertLess(len(court.getvalue()), len(complet.getvalue()))
+        self.assertNotIn("bobine-fixture", court.getvalue())
+
+    def test_cli_resume_refuse_absence_de_rapport_et_ecrasement(self):
+        """Une sortie courte sans rapport serait une perte de preuve (#35)."""
+        from contextlib import redirect_stderr, redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        commande = [
+            "--prive", str(self.racine), "controle", "consommation-retour",
+            "--retour", "inconnu", "--resume",
+        ]
+        cible = self.racine / "rapports/precedent.json"
+        cible.parent.mkdir(exist_ok=True)
+        cible.write_text("précédent")
+        for options, motif in (([], "exige --sortie"), (["--sortie", str(cible)], "Sortie existante")):
+            with self.subTest(options=options):
+                erreur, stdout = StringIO(), StringIO()
+                with redirect_stderr(erreur), redirect_stdout(stdout):
+                    self.assertEqual(main([*commande, *options]), 2)
+                self.assertIn(motif, erreur.getvalue())
+                self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(cible.read_text(), "précédent")
+
     def test_retour_interrompu_est_non_verifie_sans_masses_utilisables(self):
         """Un retour interrompu n'est jamais transformé en quantité imputable."""
         retour = json.loads(self.base.connexion.execute(

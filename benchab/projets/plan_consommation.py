@@ -445,3 +445,28 @@ def planifier_lecture(
         return rapport
     except (OSError, ValueError, TypeError, OverflowError, sqlite3.Error) as erreur:
         return _nv_cli(str(retour_id), f"source privée indisponible : {type(erreur).__name__}")
+
+
+def resumer(rapport: dict, sortie: Path) -> dict:
+    """Résume un rapport complet déjà publié, sans réinterpréter le verdict.
+
+    Entrées : rapport de planifier_lecture et chemin JSON privé. Sortie :
+    code et statut NON VÉRIFIÉ, motifs, nombre de plaques estimées et chemin ;
+    aucun détail de masse en g, d'affectation ou de bobine n'est ajouté.
+    N'écrit rien ; conserver le rapport intégral avant cet affichage (#35).
+    """
+    estimation = rapport["estimation"]
+    resume = {
+        "statut": rapport["statut"],
+        "code": rapport["code"],
+        "rapport": str(sortie),
+        "plaques_estimees": len(estimation["plaques"]) if estimation is not None else 0,
+        "motifs": rapport["motifs"],
+    }
+    declaration = rapport.get("declaration_pesee")
+    if declaration is not None:
+        # Ne pas perdre la cause exacte du refus, sans exposer les masses de la déclaration.
+        resume["declaration_pesee"] = {
+            cle: declaration[cle] for cle in ("statut", "raison") if cle in declaration
+        }
+    return resume
