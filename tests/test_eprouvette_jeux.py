@@ -61,6 +61,20 @@ class Jeux(unittest.TestCase):
                 self.assertGreater(mesh.volume, 0.9 * mesh.bounding_box.volume - 12 * nominal**2 * 4.5)
             self.assertTrue(J.pion("rond", nominal).is_volume)
 
+    def test_base_liee_refusee_avant_generation(self):
+        """Une base 3MF liée n’est pas adoptée comme preuve de réglages de l’éprouvette."""
+        base = self.dossier / "base.3mf"
+        with zipfile.ZipFile(base, "w") as archive:
+            archive.writestr("Metadata/project_settings.config", "{}")
+        alias = self.dossier / "alias.3mf"
+        alias.symlink_to(base)
+        sortie = self.dossier / "preuve-neuve"
+        with patch.object(J, "generer") as generer:
+            with self.assertRaisesRegex(ValueError, "Lien symbolique"):
+                J.trancher(sortie, alias)
+            generer.assert_not_called()
+        self.assertFalse(sortie.exists())
+
     def test_trancher_delegue_usage_temoin_au_lanceur_unique(self):
         """Vérifie le 3MF canonique depuis le profil fixture ; aucune unité de mesure ni vrai slicer."""
         sortie = self.dossier / "temoin"
