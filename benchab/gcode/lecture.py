@@ -126,10 +126,11 @@ def lire_membre_3mf(chemin: str | Path, membre: str, *, archive: Archive3MF | No
 
 
 def membres_gcode_3mf(chemin: str | Path) -> tuple[str, ...]:
-    """Liste les membres G-code de plaque dans un ordre stable."""
+    """Liste les membres G-code en ordre historique ; refuse tout numéro ambigu, sans écriture."""
     with Archive3MF(chemin) as archive:
-        membres = archive.noms()
-    return tuple(sorted(nom for nom in membres if re.fullmatch(r"Metadata/plate_\d+\.gcode", nom)))
+        plaques = plaques_gcode_archive(archive)
+        archive.verifier_source(chemin)
+        return tuple(sorted(nom for _, nom in plaques))
 
 
 def plaques_gcode_archive(archive):
