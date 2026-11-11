@@ -46,6 +46,40 @@ CONTROLES_DIRECTS = {
     "ecarts-profils-3mf": "ecarts_profils_3mf",
     "plages-z": "couverture_plages_z",
 }
+CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({"appuis-gcode", "ecarts-profils-3mf"})
+
+# Les espaces homogènes gardent leur préfixe, leurs alias et leurs options en un seul endroit.
+ROUTES_NAMESPACE = {
+    "connaissances": {
+        "prefixe": "benchab.connaissances.",
+        "normalisation": "aucune",
+        "racine_privee": True,
+    },
+    "conception": {
+        "prefixe": "benchab.conception.",
+        "normalisation": "tirets_vers_underscore",
+        "modules_prives": frozenset({"trous", "eprouvette_trous", "vissage", "cad_engine", "decoupe"}),
+    },
+    "imports": {
+        "prefixe": "benchab.imports3d.",
+        "normalisation": "tirets_vers_underscore",
+        "modules_prives": frozenset({"maillage_avance"}),
+    },
+    "visualisation": {
+        "prefixe": "benchab.visualisation.",
+        "normalisation": "tirets_vers_underscore",
+        "alias": {"photo": "rendu_photo"},
+        "modules_prives": frozenset({
+            "maillage_avance", "rendu_photo", "inspection_scene", "assemblage_dossier",
+            "visionneuse", "serveur", "apercu_gcode", "commentaires",
+        }),
+    },
+    "references": {
+        "prefixe": "benchab.references_visuelles.",
+        "normalisation": "aucune",
+        "alias": {"verifier": "references"},
+    },
+}
 
 
 def _code_arret(arret):
@@ -55,6 +89,35 @@ def _code_arret(arret):
         return arret.code
     print(arret.code, file=sys.stderr)
     return 1
+
+
+def _arguments_delegues(arguments):
+    """Retire uniquement le séparateur initial de argparse ; conserve l'ordre des arguments métier."""
+    return arguments[1:] if arguments[:1] == ["--"] else arguments
+
+
+def _deleguer(fonction, arguments, *, options=None):
+    """Appelle une route métier ; convertit son résultat en code et préserve le texte de SystemExit."""
+    try:
+        return int(fonction(_arguments_delegues(arguments), **(options or {})) or 0)
+    except SystemExit as arret:
+        return _code_arret(arret)
+
+
+def _deleguer_namespace(arguments, base):
+    """Résout une famille déclarée, ses alias et ses options sans ouvrir un atelier supplémentaire."""
+    route = ROUTES_NAMESPACE[arguments.commande]
+    action = arguments.action
+    if route["normalisation"] == "tirets_vers_underscore":
+        action = action.replace("-", "_")
+    nom_module = route.get("alias", {}).get(arguments.action, action)
+    module = importlib.import_module(route["prefixe"] + nom_module)
+    options = {}
+    if route.get("racine_privee"):
+        options["racine"] = base.prive
+    if nom_module in route.get("modules_prives", ()):
+        options["prive"] = base.prive
+    return _deleguer(module.main, arguments.arguments, options=options)
 
 
 def duree_finie(texte):
@@ -373,7 +436,7 @@ def executer(arguments, base):
                 restauree.fermer()
         print(json.dumps(resultat, ensure_ascii=False, indent=2))
         if arguments.action == "comparer-arbres":
-            return 0 if resultat["statut"] == "PASS" else 2
+            return code_statut(resultat["statut"])
     elif arguments.commande == "controle":
         if arguments.controle in {"regles", "opportunite-decoupe"}:
             nom = "regles" if arguments.controle == "regles" else "opportunite_decoupe"
@@ -385,16 +448,8 @@ def executer(arguments, base):
             return module.main(directs, base=base)
         if arguments.controle in CONTROLES_DIRECTS:
             module = importlib.import_module("benchab.controles." + CONTROLES_DIRECTS[arguments.controle])
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                options = (
-                    {"prive": base.prive}
-                    if arguments.controle in {"appuis-gcode", "ecarts-profils-3mf"}
-                    else {}
-                )
-                return int(module.main(directs, **options) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            options = {"prive": base.prive} if arguments.controle in CONTROLES_DIRECTS_AVEC_PRIVE else {}
+            return _deleguer(module.main, arguments.arguments, options=options)
         if arguments.controle == "routine":
             from benchab.controles.routine import controler
 
@@ -602,77 +657,42 @@ def executer(arguments, base):
                 "strategies-procede": "strategies_procede",
             }
             module = importlib.import_module("benchab.fabrication." + noms_modules[arguments.action])
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(module.main(directs, base=base) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(module.main, arguments.arguments, options={"base": base})
         if arguments.action == "tracer-3mf":
             from benchab.fabrication.tracer_3mf import main as tracer
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(tracer(directs, base=base) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(tracer, arguments.arguments, options={"base": base})
         if arguments.action == "couches-variables":
             from benchab.fabrication.couches_variables import cli
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            directs = _arguments_delegues(arguments.arguments)
             if "--prive" in directs or any(argument.startswith("--prive=") for argument in directs):
                 raise ValueError("Utiliser --prive avant `fabrication couches-variables`.")
-            try:
-                return int(cli(["--prive", str(base.prive), *directs]) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(cli, ["--prive", str(base.prive), *directs])
         if arguments.action == "plaques-mixtes":
             from benchab.fabrication.plaques_mixtes import main as preparer_plaques
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(preparer_plaques(directs, prive=base.prive) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(preparer_plaques, arguments.arguments, options={"prive": base.prive})
         if arguments.action == "resistance":
             from benchab.fabrication.resistance import main as auditer_resistance
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(auditer_resistance(directs, prive=base.prive) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(auditer_resistance, arguments.arguments, options={"prive": base.prive})
         if arguments.action == "exportable":
             from benchab.fabrication.exportable import main as verifier_exportable
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(verifier_exportable(directs, prive=base.prive) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(verifier_exportable, arguments.arguments, options={"prive": base.prive})
         if arguments.action == "rattachements":
             from benchab.fabrication.rattachements import main as verifier_rattachements
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(verifier_rattachements(directs) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(verifier_rattachements, arguments.arguments)
         if arguments.action == "retour":
             from benchab.fabrication.retour import main as enregistrer_retour
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(enregistrer_retour(directs, base=base) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(enregistrer_retour, arguments.arguments, options={"base": base})
         if arguments.action == "envois-slicer":
             from benchab.fabrication.envois_slicer import main as gerer_envois_slicer
 
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            try:
-                return int(gerer_envois_slicer(directs, prive=base.prive) or 0)
-            except SystemExit as arret:
-                return _code_arret(arret)
+            return _deleguer(gerer_envois_slicer, arguments.arguments, options={"prive": base.prive})
         from benchab.fabrication.trancher import trancher_fichier
 
         sortie, rapport = trancher_fichier(
@@ -689,59 +709,21 @@ def executer(arguments, base):
         )
         print(json.dumps({"sortie": str(sortie), "rapport": rapport}, ensure_ascii=False, indent=2))
     elif arguments.commande == "connaissances":
-        module = importlib.import_module("benchab.connaissances." + arguments.action)
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        try:
-            return int(module.main(directs, racine=base.prive) or 0)
-        except SystemExit as arret:
-            return _code_arret(arret)
+        return _deleguer_namespace(arguments, base)
     elif arguments.commande == "conception":
-        module = importlib.import_module("benchab.conception." + arguments.action.replace("-", "_"))
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        try:
-            options = (
-                {"prive": base.prive}
-                if arguments.action in {"trous", "eprouvette-trous", "vissage", "cad-engine", "decoupe"}
-                else {}
-            )
-            return int(module.main(directs, **options) or 0)
-        except SystemExit as arret:
-            return _code_arret(arret)
+        return _deleguer_namespace(arguments, base)
     elif arguments.commande in {"imports", "visualisation"}:
-        famille = "imports3d" if arguments.commande == "imports" else "visualisation"
-        nom = "rendu_photo" if arguments.action == "photo" else arguments.action.replace("-", "_")
-        module = importlib.import_module(f"benchab.{famille}.{nom}")
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        options = (
-            {"prive": base.prive}
-            if nom in {"maillage_avance", "rendu_photo", "inspection_scene", "assemblage_dossier",
-                       "visionneuse", "serveur",
-                       "apercu_gcode", "commentaires"}
-            else {}
-        )
-        try:
-            return int(module.main(directs, **options) or 0)
-        except SystemExit as arret:
-            return _code_arret(arret)
+        return _deleguer_namespace(arguments, base)
     elif arguments.commande == "references":
-        module = importlib.import_module(
-            "benchab.references_visuelles." + ("references" if arguments.action == "verifier" else arguments.action)
-        )
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        try:
-            return int(module.main(directs) or 0)
-        except SystemExit as arret:
-            return _code_arret(arret)
+        return _deleguer_namespace(arguments, base)
     elif arguments.commande == "projet":
         from benchab.projets import nouveau
 
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        return int(nouveau.main(directs, prive=base.prive, base=base) or 0)
+        return _deleguer(nouveau.main, arguments.arguments, options={"prive": base.prive, "base": base})
     elif arguments.commande == "atelier":
         from benchab.organisation import automatisation
 
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        return int(automatisation.main(directs, prive=base.prive) or 0)
+        return _deleguer(automatisation.main, arguments.arguments, options={"prive": base.prive})
     elif arguments.commande == "skill":
         from benchab import skill as gestion_skill
 
@@ -755,30 +737,25 @@ def executer(arguments, base):
         return 0
     elif arguments.commande == "machine":
         module = importlib.import_module("benchab.machine." + arguments.action.replace("-", "_"))
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        return int(module.main(directs) or 0)
+        return _deleguer(module.main, arguments.arguments)
     elif arguments.commande == "qualite":
         if arguments.action == "syntaxe-privee":
             from benchab.qualite.references import verifier_scripts_projet
 
             commande = argparse.ArgumentParser(prog="benchab qualite syntaxe-privee")
             commande.add_argument("projet", help="Identifiant explicite du projet privé")
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
+            directs = _arguments_delegues(arguments.arguments)
             rapport = verifier_scripts_projet(base, commande.parse_args(directs).projet)
             rapport["code"] = code_statut(rapport["statut"])
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.action in {"archives", "comparer-fabrication"}:
             module = importlib.import_module("benchab.qualite." + arguments.action.replace("-", "_"))
-            directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-            return int(module.main(directs, prive=base.prive) or 0)
+            return _deleguer(module.main, arguments.arguments, options={"prive": base.prive})
         special = arguments.action in {"tout", "hooks"}
         module = importlib.import_module("benchab.qualite." + (arguments.action if special else "qualite"))
-        directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
-        try:
-            return int(module.main(directs if special else [arguments.action, *directs]) or 0)
-        except SystemExit as arret:
-            return _code_arret(arret)
+        directs = _arguments_delegues(arguments.arguments)
+        return _deleguer(module.main, directs if special else [arguments.action, *directs])
     elif arguments.commande == "seance":
         from benchab.donnees import seance
 

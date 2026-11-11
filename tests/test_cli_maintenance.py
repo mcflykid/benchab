@@ -89,5 +89,5 @@ def test_comparaison_arbres_cli_signale_ecart_sans_reparer(tmp_path, atelier_ini
     args = ["--prive", str(prive), "donnees", "comparer-arbres", str(a), str(b)]
     assert main(args) == 0
     (b / "note").write_text("def")
-    assert main(args) != 0
+    assert main(args) == 2
     assert (a / "note").read_text() == "abc" and (b / "note").read_text() == "def"
