@@ -74,3 +74,33 @@ et l’aperçu ; `--detail` affiche également le rapport intégral. Les
 propositions de placement ou d’essuyage restent des candidates à comparer.
 Aucun réglage n’est écrit, et aucun résultat esthétique ou physique n’est
 déduit de l’aperçu.
+
+La déclaration minimale a cette forme. Remplacer l’empreinte par celle
+donnée par `shasum -a 256` sur le 3MF exact. Les tolérances ci-dessous
+sont des cotes de fixture, à justifier pour le fichier examiné.
+
+```json
+{
+  "schema": 1,
+  "source_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "plaque": 1,
+  "objet_id": "PieceA",
+  "tolerances_mm": {
+    "fermeture_boucle": 0.02,
+    "classement_region": 0.05,
+    "alignement": 0.1
+  },
+  "regions": [{
+    "id": "face-avant",
+    "visibilite": "visible",
+    "polygone_xy_mm": [[-1, -1], [11, -1], [11, 1], [-1, 1]],
+    "z_min_mm": 0,
+    "z_max_mm": 1
+  }]
+}
+```
+
+Le contrôle qualifie des boucles linéaires G0/G1 de paroi extérieure à Z
+constant, pour un objet identifié sans ambiguïté. Une boucle visible isolée
+reste indiquée dans le rapport. Les arcs et les hélices restent NON VÉRIFIÉS.
+Si la liaison à la source n’est pas établie, seul le rapport est publié.

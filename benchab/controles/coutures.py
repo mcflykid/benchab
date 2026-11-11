@@ -217,6 +217,7 @@ def _rapport_base(source_sha, plaque=None, objet=None):
         "statut": "NON VÉRIFIÉ",
         "couverture_complete": False,
         "source_sha256": source_sha,
+        "liaison_source": "NON VÉRIFIÉ",
         "unites": "mm",
         "repere": "coordonnees spatiales du G-code, régions déclarées par l’utilisateur",
         "plaque": plaque,
@@ -329,7 +330,7 @@ def analyser(source: str | Path, declaration: dict) -> dict:
     rapport = _rapport_base(None)
     try:
         regions, tol = _valider_declaration(declaration)
-        rapport["source_sha256"] = declaration["source_sha256"]
+        rapport["source_sha256_declare"] = declaration["source_sha256"]
         rapport["plaque"] = declaration["plaque"]
         rapport["objet_id"] = declaration["objet_id"]
         rapport["regions"] = regions
@@ -457,6 +458,7 @@ def analyser(source: str | Path, declaration: dict) -> dict:
                     {"cause": "identite_objet_repetee_ou_ambigue", "occurrences": target_object_starts}
                 )
             archive.verifier_source(source)
+        rapport["liaison_source"] = "PASS"
         if target_object_starts == 1:
             rapport["groupes_alignes"] = _former_groupes(rapport, tol["alignement"])
         rapport["couverture_complete"] = not rapport["inconnues"] and bool(rapport["boucles"])

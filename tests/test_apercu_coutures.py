@@ -10,6 +10,7 @@ def _rapport():
     return {
         "schema": 1,
         "source_sha256": "a" * 64,
+        "liaison_source": "PASS",
         "objet_id": "Pièce <fixture>",
         "plaque": 1,
         "statut": "WARN",
@@ -62,3 +63,42 @@ def test_rapport_et_apercu_publies_dans_un_dossier_neuf(tmp_path):
     with pytest.raises(FileExistsError):
         publier(rapport, cible)
     assert (cible / "apercu.svg").read_bytes() == svg
+
+
+def test_cli_coutures_avertit_et_lie_les_deux_preuves(tmp_path, capsys, monkeypatch):
+    """Le parcours entier sauvegarde aperçu et rapport sans Base ni changement de source."""
+    from test_coutures import _archive, _declaration
+
+    from benchab import cli
+    from benchab.qualite.statuts import code_statut
+
+    def base_interdite(*_args, **_kwargs):
+        raise AssertionError("Le contrôle de couture ne doit pas ouvrir Base().")
+
+    monkeypatch.setattr(cli, "Base", base_interdite)
+    source = _archive(tmp_path)
+    avant = source.read_bytes()
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    declaration = prive / "regions.json"
+    declaration.write_text(json.dumps(_declaration(source)), encoding="utf-8")
+    sortie = prive / "preuve"
+    args = ["--prive", str(prive), "controle", "coutures", str(source),
+            "--declaration", str(declaration), "--sortie", str(sortie)]
+    assert cli.main(args) == code_statut("WARN")
+    resume = json.loads(capsys.readouterr().out)
+    rapport = json.loads((sortie / "rapport.json").read_bytes())
+    svg = ET.parse(sortie / "apercu.svg").getroot()
+    assert resume["statut"] == rapport["statut"] == "WARN"
+    assert svg.get("data-source-sha256") == rapport["source_sha256"]
+    assert all(p["statut"] == "CANDIDAT" for p in rapport["propositions"]) and rapport["propositions"]
+    assert source.read_bytes() == avant and not (prive / "benchab.sqlite").exists()
+
+    # Une déclaration dont l’empreinte est fausse ne reçoit pas de dessin lié à la source.
+    declaration.write_text(json.dumps({**_declaration(source), "source_sha256": "0" * 64}), encoding="utf-8")
+    sortie_refusee = prive / "rapport-sans-apercu"
+    assert cli.main([*args[:-1], str(sortie_refusee)]) == code_statut("NON VÉRIFIÉ")
+    assert json.loads(capsys.readouterr().out)["apercu"] is None
+    rapport_refuse = json.loads((sortie_refusee / "rapport.json").read_bytes())
+    assert rapport_refuse["liaison_source"] == "NON VÉRIFIÉ"
+    assert not (sortie_refusee / "apercu.svg").exists()

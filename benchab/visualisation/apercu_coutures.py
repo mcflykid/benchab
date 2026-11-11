@@ -64,7 +64,7 @@ def rendre(rapport):
     visibilité physique ni la géométrie entière de la pièce.
     """
     sha = rapport.get("source_sha256")
-    if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{64}", sha):
+    if rapport.get("liaison_source") != "PASS" or not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{64}", sha):
         raise ValueError("Empreinte du 3MF source requise pour l’aperçu.")
     regions = [
         (region, [_coord(p, 2) for p in region["polygone_xy_mm"]])
@@ -139,19 +139,20 @@ def publier(rapport, sortie, *, prive=None):
 
     Les chemins n’ont pas d’unité. La destination est privée ou temporaire,
     et une collision lève FileExistsError sans réécrire un fichier existant.
-    Le statut renvoyé est celui du rapport ; aucun contrôle physique ajouté.
+    Sans liaison source PASS, seul le rapport est publié ; aucun contrôle physique ajouté.
     """
     destination = destination_neuve(sortie, prive=prive)
-    svg = rendre(rapport)
+    svg = rendre(rapport) if rapport.get("liaison_source") == "PASS" else None
     with TemporaryDirectory(prefix=".coutures-", dir=destination.parent) as temporaire:
         dossier = Path(temporaire)
         (dossier / "rapport.json").write_text(
             json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8",
         )
-        (dossier / "apercu.svg").write_text(svg, encoding="utf-8")
+        if svg is not None:
+            (dossier / "apercu.svg").write_text(svg, encoding="utf-8")
         renommer_exclusif(dossier, destination)
     return {"statut": rapport["statut"], "rapport": str(destination / "rapport.json"),
-            "apercu": str(destination / "apercu.svg")}
+            "apercu": str(destination / "apercu.svg") if svg is not None else None}
 
 
 def _cles_uniques(paires):
