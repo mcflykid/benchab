@@ -463,7 +463,11 @@ def lire_matrice_purge(donnees):
     nombre = nombre_filaments_metadata(donnees)
     profils = donnees.get("filament_settings_id")
     couleurs = donnees.get("filament_colour")
-    if nombre is None or any(not isinstance(x, str) or not x.strip() for x in [*profils, *couleurs]):
+    # Le nombre seul ne décrit pas le type des listes relues par ce contrôle (#72).
+    if (
+        nombre is None or not isinstance(profils, list) or not isinstance(couleurs, list)
+        or any(not isinstance(x, str) or not x.strip() for x in (*profils, *couleurs))
+    ):
         return {**inconnu, "raison": "Les listes de profils et couleurs ne qualifient pas les mêmes slots."}
     matrice = donnees.get(cle)
     inconnu["nombre_slots"] = nombre
