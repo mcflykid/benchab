@@ -20,9 +20,11 @@ import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive
 from benchab.fabrication.slicer_runtime import executable, informations
 from benchab.fabrication.trancher import demander_ouverture
+from benchab.organisation.synthese_fichiers import MAX_ARCHIVE, _archive_liee, _lecture
 from benchab.qualite import publication
 from benchab.qualite.ecritures import PublicationNeuve, _sans_lien
 from benchab.qualite.empreintes import sha256_fichier as sha
@@ -136,14 +138,11 @@ def controle_preparation(root, nom, ident=None):
             erreurs.append(key + " : fichier absent ou altéré")
             continue
         try:
-            from benchab.organisation.synthese_atelier import _archive_liee
-
-            with _archive_liee(target, item["sha256"]) as (z, stream):
-                if not z.infolist() or sum((x.file_size for x in z.infolist())) > 256 * 1024 * 1024:
-                    raise ValueError("archive vide ou budget dépassé")
-                if z.testzip():
-                    raise ValueError("CRC invalide")
-        except (zipfile.BadZipFile, ValueError):
+            with _archive_liee(target, item["sha256"]) as archive:
+                if not archive.noms():
+                    raise ValueError("archive vide")
+                archive.verifier()
+        except (zipfile.BadZipFile, OSError, ValueError):
             erreurs.append(key + " : archive invalide ou trop volumineuse")
             continue
         fichiers.append(str(target.relative_to(Path(root))))
@@ -305,11 +304,12 @@ def creer_preparation(root, nom, sortie, executer_creation=False):
         if any((str(v).upper() in ("FAIL", "ERROR", "BLOQUE", "BLOQUÉ", "NO GO") for v in statuts(lire_json(f)))):
             return {"statut": "BLOQUE", "erreur": "contrôle candidat en échec : " + f.name}
     for f in pair.values():
-        if f.stat().st_size > 128 * 1024 * 1024:
-            raise ValueError("candidat volumineux")
-        with zipfile.ZipFile(f) as z:
-            if not z.infolist() or sum((x.file_size for x in z.infolist())) > 256 * 1024 * 1024 or z.testzip():
-                raise ValueError("archive candidate invalide ou trop volumineuse")
+        with _lecture(f, 128 * 1024 * 1024) as flux, Archive3MF.depuis_descripteur(
+            f, flux.fileno(), taille_max_membre=MAX_ARCHIVE, taille_max_totale=MAX_ARCHIVE,
+        ) as archive:
+            if not archive.noms():
+                raise ValueError("archive candidate vide")
+            archive.verifier()
     ids = [int(x.name[1:]) for x in (p / "preparations").glob("P*") if re.fullmatch("P[0-9]+", x.name)]
     ident = "P" + str(max(ids, default=0) + 1).zfill(2)
     argv = [

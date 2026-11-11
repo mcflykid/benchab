@@ -14,13 +14,13 @@ import re
 import tempfile
 import zipfile
 from pathlib import Path
-from xml.etree.ElementTree import ParseError, fromstring
+from xml.etree.ElementTree import ParseError
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import decoder_xml
 from benchab.controles.contact_support import ContactSupport
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.organisation.synthese_fichiers import (
-    MAX_ARCHIVE,
     MAX_JSON,
     _archive_liee,
     _digest,
@@ -146,10 +146,10 @@ def _preuve(root, projet, rel, attendu=None):
 
 
 def _membre(z, nom, limite=MAX_MEMBRE):
-    info = z.getinfo(nom)
-    if info.file_size > limite:
+    """Lit un membre du 3MF épinglé ; limite en octets propre à la synthèse."""
+    if z.taille_membre(nom) > limite:
         raise ValueError("Membre d’archive trop volumineux")
-    return z.read(nom)
+    return z.lire(nom, limite_octets=limite)
 
 
 def _archives(root, projet, fiche):
@@ -171,12 +171,8 @@ def _archives(root, projet, fiche):
         try:
             debut_tranches = len(tranches)
             debut_supports = len(supports)
-            with _archive_liee(path, ref.get("sha256")) as (z, _):
-                if sum((x.file_size for x in z.infolist())) > MAX_ARCHIVE:
-                    raise ValueError("Archive décompressée trop volumineuse")
-                if len(z.namelist()) != len(set(z.namelist())):
-                    raise ValueError("Membres d’archive dupliqués")
-                if "Metadata/project_settings.config" in z.namelist():
+            with _archive_liee(path, ref.get("sha256")) as z:
+                if "Metadata/project_settings.config" in z.noms():
                     cfg = schema_reglages.decoder(_membre(z, "Metadata/project_settings.config", MAX_JSON))
                     if not isinstance(cfg, dict):
                         raise ValueError("Réglages 3MF malformés")
@@ -184,8 +180,8 @@ def _archives(root, projet, fiche):
                 if cle != "tranche_3mf":
                     continue
                 z_objets = []
-                if "Metadata/model_settings.config" in z.namelist():
-                    modele = fromstring(_membre(z, "Metadata/model_settings.config", MAX_JSON))
+                if "Metadata/model_settings.config" in z.noms():
+                    modele = decoder_xml(_membre(z, "Metadata/model_settings.config", MAX_JSON), limite_octets=MAX_JSON)
                     for obj in modele.findall("object"):
                         for element in [obj, *obj.findall("part")]:
                             valeurs = {
@@ -209,7 +205,7 @@ def _archives(root, projet, fiche):
                     durees = anycubic.resultats_xml(_membre(z, "Metadata/slice_info.config", MAX_JSON))
                 except (KeyError, ValueError, ParseError, zipfile.BadZipFile):
                     alertes.append("Durée et masse estimées du slicer indisponibles")
-                for name in sorted(z.namelist()):
+                for name in sorted(z.noms()):
                     m = re.fullmatch("Metadata/plate_(\\d+)\\.gcode", name)
                     if not m:
                         continue
@@ -553,12 +549,8 @@ def placement_preparation(root, projet, fiche):
     ref = (fiche or {}).get("plaques_3mf", {})
     if not ref.get("fichier"):
         return None
-    with _archive_liee(_racine(root, ref["fichier"], projet), ref.get("sha256")) as (archive, _):
-        if len(archive.namelist()) != len(set(archive.namelist())):
-            raise ValueError("Membres source dupliqués")
-        if sum((i.file_size for i in archive.infolist())) > MAX_ARCHIVE:
-            raise ValueError("Source volumineuse")
-        if "Metadata/benchab_geometry.json" not in archive.namelist():
+    with _archive_liee(_racine(root, ref["fichier"], projet), ref.get("sha256")) as archive:
+        if "Metadata/benchab_geometry.json" not in archive.noms():
             return None
         meta = json.loads(_membre(archive, "Metadata/benchab_geometry.json", MAX_JSON))
     if not isinstance(meta, dict) or meta.get("schema") != 1 or meta.get("unite") != "millimeter":
@@ -623,18 +615,16 @@ def correspondance_geometrie(root, projet, fiche, objets):
     ref = (fiche or {}).get("plaques_3mf", {})
     if not ref.get("fichier") or not objets:
         return result
-    with _archive_liee(_racine(root, ref["fichier"], projet), ref.get("sha256")) as (z, _):
-        if "Metadata/benchab_geometry.json" not in z.namelist():
+    with _archive_liee(_racine(root, ref["fichier"], projet), ref.get("sha256")) as z:
+        if "Metadata/benchab_geometry.json" not in z.noms():
             return result
-        if len(z.namelist()) != len(set(z.namelist())):
-            raise ValueError("Membres de provenance dupliqués")
         meta = json.loads(_membre(z, "Metadata/benchab_geometry.json", MAX_JSON))
         if not isinstance(meta, dict):
             raise ValueError("Provenance 3MF malformée")
         result["source_3mf"] = dict(ref)
         if meta.get("schema") != 1 or meta.get("unite") != "millimeter":
             raise ValueError("Identité 3MF : schéma ou unité inconnue")
-        xml = fromstring(_membre(z, "3D/3dmodel.model"))
+        xml = decoder_xml(_membre(z, "3D/3dmodel.model"), limite_octets=MAX_MEMBRE)
         ns = {"m": "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"}
         if xml.get("unit") != "millimeter":
             raise ValueError("Unité réelle du 3MF différente")
@@ -642,7 +632,7 @@ def correspondance_geometrie(root, projet, fiche, objets):
             int(x.get("objectid")): [float(v) for v in x.get("transform", "").split()]
             for x in xml.findall("m:build/m:item", ns)
         }
-        config = fromstring(_membre(z, "Metadata/model_settings.config", MAX_JSON))
+        config = decoder_xml(_membre(z, "Metadata/model_settings.config", MAX_JSON), limite_octets=MAX_JSON)
         noms = {
             int(o.get("id")): next((m.get("value") for m in o.findall("metadata") if m.get("key") == "name"), None)
             for o in config.findall("object")

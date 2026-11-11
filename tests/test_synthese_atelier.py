@@ -125,25 +125,41 @@ class Synthese(unittest.TestCase):
             S.correspondance_geometrie(self.r, self.p.resolve(), fiche, [{"piece": "Q"}])
 
     def test_budget_gcode_distinct_sans_allouer_gros_membre(self):
-        from types import SimpleNamespace
         from unittest.mock import Mock
 
         archive = Mock()
-        archive.getinfo.return_value = SimpleNamespace(file_size=70 * 1024 * 1024)
-        archive.read.return_value = b"M83\n"
+        archive.taille_membre.return_value = 70 * 1024 * 1024
+        archive.lire.return_value = b"M83\n"
         with self.assertRaises(ValueError):
             S._membre(archive, "autre.model")
-        archive.read.assert_not_called()
+        archive.lire.assert_not_called()
         self.assertEqual(S._membre(archive, "Metadata/plate_1.gcode", S.MAX_GCODE), b"M83\n")
         archive.reset_mock()
-        archive.getinfo.return_value = SimpleNamespace(file_size=S.MAX_GCODE + 1)
+        archive.taille_membre.return_value = S.MAX_GCODE + 1
         with self.assertRaises(ValueError):
             S._membre(archive, "Metadata/plate_1.gcode", S.MAX_GCODE)
-        archive.read.assert_not_called()
-        archive.getinfo.return_value = SimpleNamespace(file_size=S.MAX_JSON + 1)
+        archive.lire.assert_not_called()
+        archive.taille_membre.return_value = S.MAX_JSON + 1
         with self.assertRaises(ValueError):
             S._membre(archive, "Metadata/project_settings.config", S.MAX_JSON)
-        archive.read.assert_not_called()
+        archive.lire.assert_not_called()
+
+    def test_bilan_refuse_le_xml_de_modele_hors_contrat(self):
+        """Un XML avec déclaration DTD ne doit pas alimenter la synthèse."""
+        fiche = self.p / "preparations/P01/PREPARATION.json"
+        declaration = json.loads(fiche.read_bytes())
+        archive = self.r / declaration["tranche_3mf"]["fichier"]
+        with ZipFile(archive, "a") as z:
+            z.writestr("Metadata/model_settings.config", "<!DOCTYPE config><config/>")
+        declaration["tranche_3mf"]["sha256"] = sha(archive)
+        fiche.write_text(json.dumps(declaration))
+        empreinte = sha(archive)
+
+        _, tranches, supports, _, alertes = S._archives(self.r, self.p, declaration)
+
+        self.assertEqual((tranches, supports), ([], []))
+        self.assertTrue(any("DOCTYPE" in alerte for alerte in alertes))
+        self.assertEqual(sha(archive), empreinte)
 
     def test_bilan_applique_budget128_uniquement_aux_gcodes(self):
         with patch.object(S, "_membre", wraps=S._membre) as lire:
