@@ -199,6 +199,10 @@ def parser():
         "--candidat-lien", action="append", default=[], metavar="CHEMIN",
         help="Candidat privé relatif ; propose un lien uniquement si un SHA unique correspond au rendu SQLite",
     )
+    consommation_retour = controle.add_parser(
+        "consommation-retour", help="Lit un plan numérique de filament pour un retour identifié"
+    )
+    consommation_retour.add_argument("--retour", required=True, help="Identifiant du retour enregistré")
     entretien = controle.add_parser("entretien", help="Bilan conditionnel depuis un historique privé explicite")
     entretien.add_argument("--historique", type=Path, required=True, help="Historique JSON privé à relire")
     entretien.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; une sortie existante est refusée")
@@ -309,6 +313,7 @@ def parser():
         "retour",
         "envois-slicer",
         "tracer-3mf",
+        "remplacer-maillage",
     ):
         route = fabrication.add_parser(nom, add_help=False)
         route.add_argument("-h", "--help", action="store_true", help="Affiche l’aide métier sans exécution")
@@ -694,6 +699,10 @@ def executer(arguments, base):
             from benchab.fabrication.tracer_3mf import main as tracer
 
             return _deleguer(tracer, arguments.arguments, options={"base": base})
+        if arguments.action == "remplacer-maillage":
+            from benchab.fabrication.remplacement_maillage import main as remplacer_maillage
+
+            return _deleguer(remplacer_maillage, arguments.arguments, options={"base": base})
         if arguments.action == "couches-variables":
             from benchab.fabrication.couches_variables import cli
 
@@ -935,9 +944,11 @@ def _mesurer_refus(argv, commande, code):
 
 
 def main(argv=None):
-    """Analyse argv sans écriture, puis ouvre l'atelier choisi ; codes CLI et durées s, aucune autorisation machine.
+    """Distribue les commandes, codes CLI et durées s, sans autorisation machine implicite.
 
-    --help/--version restent sans effet ; seul init crée un atelier CLI absent (docs/reference/chemins-et-atelier.md).
+    Les plans `controle plan-reparation` et `controle consommation-retour` ne créent
+    ni atelier ni mesure. --help/--version restent sans effet ; seul init crée un
+    atelier CLI absent (docs/reference/chemins-et-atelier.md).
     """
     from benchab.chemins import atelier_prive
 
@@ -948,7 +959,11 @@ def main(argv=None):
             "plan-reparation",
             "appliquer-reparation-vue",
             "entretien",
+            "consommation-retour",
         }
+        for i in range(len(argv) - 1)
+    ) or any(
+        argv[i] == "fabrication" and argv[i + 1] == "remplacer-maillage"
         for i in range(len(argv) - 1)
     )
     commande, sensible = commande_sans_secrets(argv)
@@ -975,6 +990,13 @@ def main(argv=None):
         # Comme le diagnostic d'installation, ce plan reste hors Base() et hors mesure (#119).
         rapport = planifier(atelier_prive(arguments.prive), candidats=arguments.candidat_lien)
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
+        return rapport["code"]
+    if arguments.commande == "controle" and arguments.controle == "consommation-retour":
+        from benchab.projets.plan_consommation import planifier_lecture
+
+        # Le rapport reste NON VÉRIFIÉ et ne passe ni par Base() ni par Mesure (#77).
+        rapport = planifier_lecture(arguments.prive, arguments.retour)
+        print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
         return rapport["code"]
     if arguments.commande == "controle" and arguments.controle == "entretien":
         try:
@@ -1051,6 +1073,18 @@ def main(argv=None):
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
             print(f"BENCHAB : {erreur}", file=sys.stderr)
             return 2
+    if arguments.commande == "fabrication" and arguments.action == "remplacer-maillage":
+        from types import SimpleNamespace
+
+        from benchab.fabrication.remplacement_maillage import main as remplacer_maillage
+
+        # Le remplacement reste indépendant de SQLite et de ses mesures automatiques.
+        base_ephemere = SimpleNamespace(prive=atelier_prive(arguments.prive))
+        try:
+            return _deleguer(remplacer_maillage, arguments.arguments, options={"base": base_ephemere})
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
+            print(f"BENCHAB : remplacement de maillage refusé : {erreur}", file=sys.stderr)
+            return 1
     mesure = Mesure()
     base = None
     code = 1

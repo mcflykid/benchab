@@ -17,6 +17,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `controle plages-z` | Compare les plages de couches d’un 3MF à une intention Z explicite, en mm ; `--sortie` donne un résumé borné et un rapport privé, `--detail` ajoute le JSON complet à stdout |
 | `fabrication exportable`, `rattachements`, `envois-slicer`, `retour`, `planning` | Livrables, historique et retours |
 | `fabrication tracer-3mf SOURCE --sortie NOM.3mf` | Copie privée avec empreinte source facultative ; conservation native NON VÉRIFIÉE |
+| `fabrication remplacer-maillage` | Remplace une géométrie directe identifiée par SHA dans une copie privée ; périmètre strict et slicer NON VÉRIFIÉ |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
 | `controle surplombs-connexes SOURCE.stl --unite-mm` | Groupes de triangles orientés vers le bas ; rapport numérique sans validation d’appui |
 | `controle entretien --historique FICHIER [--sortie RAPPORT]` | Bilan conditionnel depuis un historique privé explicite, sans SQLite ni action machine |

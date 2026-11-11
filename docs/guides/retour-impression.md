@@ -53,6 +53,10 @@ Les [retours d’expérience](../explications/retours-d-experience.md) donnent d
 exemples : surplomb imparfait, couture visible, picots dont la cause reste
 inconnue. Aucune nouvelle impression n’est autorisée par l’enregistrement du retour.
 
+Le [plan numérique de filament](../reference/plan-numerique-filament.md) peut
+présenter l’estimation du G-code par plaque et index d’outil. Elle ne prouve ni
+le fichier exécuté ni la bobine utilisée et ne modifie jamais le stock.
+
 Un retour portant sur l'ensemble, sans travail restant déclaré, fait passer le
 projet à IMPRIME. Ce statut signifie qu'il a été imprimé ; le résultat physique
 reste distinct et peut être « défaut ». Un retour partiel ne clôt pas le travail.

@@ -4,6 +4,14 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.8.0
 
+- 3MF : remplace une cible directe ou une feuille non partagée d’un assemblage
+  Core en préservant les autres géométries, matrices et membres (#112).
+- Études : associe les résultats de l’éprouvette interne aux membres G-code
+  exacts et refuse les métadonnées de plaque ambiguës (#169).
+- Filament : consulte les estimations d’un retour et de son envoi vérifié,
+  sans décompter de bobine ni modifier l’atelier (suite de #77).
+- Conception : génère trois outils de logement à cotes explicites, sans
+  compensation ni prétention d’ajustement physique (suite de #27).
 - Archives : vérifie les paquets de plaques mixtes et la provenance des réglages
   de l’éprouvette de jeux avec le lecteur commun (suite de #122).
 - Rapports : affiche les plaques et défauts prioritaires de première couche ;
