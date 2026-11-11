@@ -12,7 +12,8 @@ l’extrusion, en position Z horizontale, avec les métadonnées explicites `WID
 et `HEIGHT`. La position Z provient des commandes de déplacement en repère
 physique suivi par l’interpréteur ; les commentaires `;Z:` et les réglages du
 3MF ne remplacent jamais les positions effectivement déposées. Les arcs ne sont
-pas approximés par des cordes. Les rôles auxiliaires connus sont exclus ; les
+pas approximés par des cordes. Les rôles Support, Support interface et Support
+transition sont reconnus ; les rôles auxiliaires connus sont exclus. Les
 rôles inconnus, arcs, dépôts non horizontaux, métadonnées manquantes et erreurs
 de parseur sont signalés et peuvent limiter le rapport à `PARTIEL`.
 
@@ -20,12 +21,12 @@ L’échantillonnage est plafonné à 15 000 000 opérations de voisinage, avec 
 budgets complémentaires de grille hérités de `ContactSupport`. L’archive et le
 membre G-code sont lus en flux jusqu’à EOF afin de contrôler la taille et le
 CRC ; le SHA-256 porte sur les octets du 3MF épinglé. Les erreurs de lecture
-technique donnent le code CLI 2. Un résultat `NON MESURABLE` lié au choix ou à
-l’absence d’une plaque est un rapport valide et donne le code 0.
+technique donnent le code CLI 2. Tout rapport JSON produit donne le code 0 :
+un appel automatisé doit lire le champ `statut` pour connaître la couverture.
 
 `ESTIMATION` décrit seulement une projection discrétisée de rubans nominaux XY
 et des écarts Z locaux entre supports reconnus et dessous de dépôts reconnus,
 en mm. `PARTIEL` décrit une portion incomplète et expose ses exclusions. Aucun
 statut ne prouve un contact, une séparation, un retrait réussi, la tenue physique
-ou la qualité d’impression. Voir [ContactSupport](../../explications/fiabilite-fdm.md)
+ou la qualité d’impression. Voir [ContactSupport](../explications/fiabilite-fdm.md)
 pour les limites de la projection.

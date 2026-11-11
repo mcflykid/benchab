@@ -12,12 +12,30 @@ def _archive(path, plates):
 
 
 def _gcode():
-    return "\n".join([
-        "G90", "M83", "G1 X0 Y0 Z0.2 F6000", "G92 X100 Y200 Z0.2 E0",
-        ";TYPE:Support", ";HEIGHT:0.2", ";WIDTH:0.6", ";Z:99", "G1 X110 Y200 E1 F1200",
-        "G92 X100 Y200 Z0.2 E0", "G1 X98 Y200 F6000", "G1 Z0.6",
-        ";TYPE:Outer wall", ";HEIGHT:0.2", ";WIDTH:0.6", ";Z:0.4", "G1 X118 Y200 E1 F1200",
-    ]) + "\n"
+    return (
+        "\n".join(
+            [
+                "G90",
+                "M83",
+                "G1 X0 Y0 Z0.2 F6000",
+                "G92 X100 Y200 Z0.2 E0",
+                ";TYPE:Support",
+                ";HEIGHT:0.2",
+                ";WIDTH:0.6",
+                ";Z:99",
+                "G1 X110 Y200 E1 F1200",
+                "G92 X100 Y200 Z0.2 E0",
+                "G1 X98 Y200 F6000",
+                "G1 Z0.6",
+                ";TYPE:Outer wall",
+                ";HEIGHT:0.2",
+                ";WIDTH:0.6",
+                ";Z:0.4",
+                "G1 X118 Y200 E1 F1200",
+            ]
+        )
+        + "\n"
+    )
 
 
 def test_ecart_z_emploie_depots_reels_apres_g92_et_ignore_commentaire(tmp_path):
@@ -89,11 +107,28 @@ def test_cli_est_diagnostic_sans_base_ni_mesure(tmp_path, monkeypatch, capsys):
 
 def test_arcs_et_roles_inconnus_sont_visibles_sans_corde(tmp_path):
     source = tmp_path / "incertain.3mf"
-    texte = "\n".join([
-        "G90", "M83", "G17", "G1 X0 Y0 Z1 F6000", ";TYPE:Support", ";HEIGHT:0.2", ";WIDTH:0.6",
-        "G1 X10 E1 F1200", ";TYPE:Outer wall", "G1 Z1.4", "G1 X-5 E1 F1200", "G1 X1 Y0 E1 F1200",
-        "G3 X0 Y1 I-1 J0 E1 F1200", ";TYPE:Experimental role", "G1 X20 E1 F1200",
-    ]) + "\n"
+    texte = (
+        "\n".join(
+            [
+                "G90",
+                "M83",
+                "G17",
+                "G1 X0 Y0 Z1 F6000",
+                ";TYPE:Support",
+                ";HEIGHT:0.2",
+                ";WIDTH:0.6",
+                "G1 X10 E1 F1200",
+                ";TYPE:Outer wall",
+                "G1 Z1.4",
+                "G1 X-5 E1 F1200",
+                "G1 X1 Y0 E1 F1200",
+                "G3 X0 Y1 I-1 J0 E1 F1200",
+                ";TYPE:Experimental role",
+                "G1 X20 E1 F1200",
+            ]
+        )
+        + "\n"
+    )
     _archive(source, {"Metadata/plate_1.gcode": texte})
 
     rapport = analyser(source, plaque=1)
@@ -119,3 +154,24 @@ def test_cli_archive_illisible_retourne_code_2_sans_atelier(tmp_path, monkeypatc
     assert "lecture de l’écart Z refusée" in sortie.err
     assert not sortie.out
     assert not (tmp_path / "atelier-absent").exists()
+
+
+def test_cli_conteneur_zip_invalide_est_un_refus_technique(tmp_path, capsys):
+    """Un 3MF tronqué ne remonte pas une exception non traitée."""
+    source = tmp_path / "tronque.3mf"
+    source.write_bytes(b"PK\x03\x04")
+    assert cli.main(["controle", "ecart-z-supports", str(source)]) == 2
+    sortie = capsys.readouterr()
+    assert "lecture de l’écart Z refusée" in sortie.err
+    assert not sortie.out
+
+
+def test_role_support_inconnu_ne_devient_pas_support_mesure(tmp_path):
+    """Un préfixe seul n'établit pas le rôle du dépôt."""
+    source = tmp_path / "role.3mf"
+    texte = _gcode() + ";TYPE:Support experiment\nG1 X128 Y200 E1 F1200\n"
+    _archive(source, {"Metadata/plate_1.gcode": texte})
+    rapport = analyser(source)
+    assert rapport["statut"] == "PARTIEL"
+    assert rapport["exclusions"]["roles_inconnus"] == 1
+    assert rapport["couverture"]["segments_mesures"] == 2

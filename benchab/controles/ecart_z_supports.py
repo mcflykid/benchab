@@ -5,13 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from benchab.archives_3mf import Archive3MF
-from benchab.controles.contact_support import ContactSupport
+from benchab.controles.contact_support import PIECE, ContactSupport
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import plaques_gcode_archive
 
 _MAX_ECHANTILLONS = 15_000_000
 _MAX_LIGNES = 5_000_000
 _MAX_LIGNE_OCTETS = 1024 * 1024
+# Les rôles reconnus correspondent aux familles de support du contrôleur de colonnes.
+_SUPPORTS = {"support", "support interface", "support transition"}
 _AUXILIAIRES = {"wipe tower", "prime tower", "skirt", "brim", "custom"}
 
 
@@ -63,8 +65,13 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
 
         contact = ContactSupport(max_echantillons=_MAX_ECHANTILLONS)
         analyseur = Interpreter(error_limit=64)
-        exclusions = {"auxiliaires": 0, "roles_inconnus": 0, "trajectoires_non_lineaires": 0,
-                      "depots_non_horizontaux": 0, "depots_sans_dimensions": 0}
+        exclusions = {
+            "auxiliaires": 0,
+            "roles_inconnus": 0,
+            "trajectoires_non_lineaires": 0,
+            "depots_non_horizontaux": 0,
+            "depots_sans_dimensions": 0,
+        }
         lignes = 0
         with archive.ouvrir_flux(membre) as flux:
             while donnees := flux.readline(_MAX_LIGNE_OCTETS + 1):
@@ -81,21 +88,14 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
                     break
                 ligne = donnees.decode("utf-8", errors="strict")
                 mouvement = analyseur.feed_line(ligne)
-                if (
-                    mouvement is None
-                    or mouvement.get("deposited", 0) <= 0
-                    or mouvement.get("deposited_length", 0) <= 0
-                ):
+                if mouvement is None or mouvement.get("deposited", 0) <= 0 or mouvement.get("deposited_length", 0) <= 0:
                     continue
                 role = mouvement.get("type")
                 role_normalise = role.strip().lower() if isinstance(role, str) else ""
                 if role_normalise in _AUXILIAIRES:
                     exclusions["auxiliaires"] += 1
                     continue
-                if role_normalise.startswith("support") or role_normalise in {
-                    "outer wall", "inner wall", "overhang wall", "gap infill", "sparse infill",
-                    "internal solid infill", "bridge", "internal bridge", "top surface", "bottom surface",
-                }:
+                if role_normalise in _SUPPORTS or role_normalise in PIECE:
                     if mouvement.get("op") in {"G2", "G3"} or mouvement.get("trajectory") != "lineaire":
                         exclusions["trajectoires_non_lineaires"] += 1
                         continue
@@ -103,10 +103,10 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
                     if debut is None or fin is None or debut[2] != fin[2]:
                         exclusions["depots_non_horizontaux"] += 1
                         continue
-                    sans_dimensions = not {"HEIGHT", "WIDTH"}.issubset(analyseur.metadata)
-                    if sans_dimensions:
-                        exclusions["depots_sans_dimensions"] += 1
+                    # Compter aussi les dimensions présentes mais inexploitables.
+                    absents_avant = contact.absents
                     contact.ajouter(mouvement, analyseur.metadata)
+                    exclusions["depots_sans_dimensions"] += contact.absents - absents_avant
                 else:
                     exclusions["roles_inconnus"] += 1
 
@@ -115,19 +115,19 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
         else:
             resultat = contact.resultat()
         statut = resultat["statut"]
-        if contact.absents and exclusions["depots_sans_dimensions"] == 0:
-            exclusions["depots_sans_dimensions"] = contact.absents
-        if exclusions["roles_inconnus"] or any(exclusions[k] for k in (
-            "trajectoires_non_lineaires", "depots_non_horizontaux", "depots_sans_dimensions"
-        )):
+        if exclusions["roles_inconnus"] or any(
+            exclusions[k] for k in ("trajectoires_non_lineaires", "depots_non_horizontaux", "depots_sans_dimensions")
+        ):
             if statut == "ESTIMATION":
                 statut = "PARTIEL"
         if contact.arret or analyseur.errors:
             statut = "PARTIEL"
         if statut == "NON_MESURABLE":
-            rapport = _non_mesurable(sha256, contact.arret or (
-                "erreurs_parseur" if analyseur.errors else "aucun_ecart_observable"
-            ), disponibles)
+            rapport = _non_mesurable(
+                sha256,
+                contact.arret or ("erreurs_parseur" if analyseur.errors else "aucun_ecart_observable"),
+                disponibles,
+            )
             rapport["plaque"] = {"numero": numero, "membre": membre}
             rapport["exclusions"] = exclusions
             rapport["diagnostics_parseur"] = analyseur.errors
@@ -158,7 +158,7 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
                     "HEIGHT et WIDTH doivent être explicites dans le G-code ; "
                     "les réglages déclarés ne les remplacent pas."
                 ),
-                "roles_auxiliaires": "Support uniquement si le type commence par support ; rôles auxiliaires exclus.",
+                "roles_auxiliaires": "Support, Support interface et Support transition ; rôles auxiliaires exclus.",
                 "roles_inconnus": "Exclus et signalés ; un résultat partiel ne décrit que la portion reconnue.",
                 "arcs": "Arcs et trajectoires non linéaires exclus, sans approximation par corde.",
                 "physique": "Ne mesure ni contact, retrait, déformation, adhérence ni tenue physique.",

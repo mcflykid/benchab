@@ -1064,6 +1064,8 @@ def main(argv=None):
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
         return rapport["code"]
     if arguments.commande == "controle" and arguments.controle == "ecart-z-supports":
+        from zipfile import BadZipFile
+
         from benchab.controles.ecart_z_supports import analyser
 
         try:
@@ -1072,7 +1074,7 @@ def main(argv=None):
             # Une absence de couverture reste un résultat valide NON MESURABLE ;
             # seules les entrées illisibles relèvent du code technique 2.
             return 0
-        except (OSError, ValueError, KeyError, UnicodeError, RuntimeError) as erreur:
+        except (OSError, ValueError, KeyError, BadZipFile, RuntimeError) as erreur:
             print(f"BENCHAB : lecture de l’écart Z refusée : {erreur}", file=sys.stderr)
             return 2
     if arguments.commande == "controle" and arguments.controle == "entretien":
