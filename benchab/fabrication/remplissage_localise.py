@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -38,6 +39,11 @@ ROLES = {
 }
 FORMES = ("boite", "cylindre")
 _NOMBRE_GCODE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+_MOTIFS_ASN_QUALIFIES = {"gyroid", "grid", "rectilinear", "zigzag", "crosshatch"}
+_DENSITES_MODIFICATEUR_QUALIFIEES = ("20%", "60%")
+_ASN_R1_VERSION = "2.0.0.3"
+_ASN_R1_SHA256 = "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d"
+# Les valeurs restent bornées à la sonde native #48 ; voir enumerations-asn.md.
 
 
 def _gcodes_resultats(tranche: str | Path, resultats: list[dict]) -> dict[int, str]:
@@ -214,6 +220,162 @@ def evaluer_effet_densite(temoin, variante):
     if bas >= -seuil and haut <= seuil:
         return {**rapport, "statut": "FAIL", "detail": "Aucune hausse mesurable à cette précision."}
     return {**rapport, "detail": "L'incertitude de mesure couvre le seuil de l'effet attendu."}
+
+
+def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_reglage):
+    """Compare l’effet de densité clairsemée du témoin ASN qualifié #48.
+
+    Entrées : deux dictionnaires issus de la lecture 3MF, leurs G-codes, le SHA-256
+    du maillage et les deux régions nommées ``zone``/``hors_zone`` en mm. Ces
+    éléments forment un contexte déclaré, non authentifié par cette fonction.
+    Le contrôle accepte seulement le binaire ASN R1 déclaré, 20→60 % de
+    ``sparse_infill_density``, un motif clairsemé qualifié, le rôle ``Sparse infill``
+    et une même Application. Sortie :
+    longueurs en mm et verdict PASS/FAIL/NON VÉRIFIÉ à 0,1 mm. Aucun réglage,
+    profil, archive ni G-code n'est modifié ; aucune tenue physique n'est déduite.
+    Les réglages passent par le dictionnaire typé ; les boîtes doivent être
+    strictement disjointes, contact compris. Les champs peau/squelette verrouillés
+    et autres rôles restent NON VÉRIFIÉS.
+    """
+    rapport = {
+        "statut": "NON VÉRIFIÉ",
+        "provenance_contexte": "DÉCLARÉ, NON AUTHENTIFIÉ",
+        "limite_provenance": (
+            "Réglages, identités, Application, binaire déclaré et G-code sont des entrées de l’appelant ; "
+            "leur origine et leur liaison au 3MF ne sont pas authentifiées ici."
+        ),
+        "type_trajet": type_trajet,
+        "cle_reglage": cle_reglage,
+        "delta_zone_mm": None,
+        "delta_hors_zone_mm": None,
+        "seuil_mm": 0.1,
+    }
+
+    def inconnu(detail):
+        return {**rapport, "detail": detail}
+
+    if not isinstance(type_trajet, str) or not type_trajet or not isinstance(cle_reglage, str) or not cle_reglage:
+        return inconnu("Type de trajet ou clé de réglage invalide.")
+    if not isinstance(temoin, dict) or not isinstance(variante, dict):
+        return inconnu("Témoin ou variante absents.")
+    for entree in (temoin, variante):
+        if not isinstance(entree.get("gcode"), str) or not entree["gcode"].strip():
+            return inconnu("G-code absent ou vide.")
+        sha = entree.get("sha_geometrie")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
+            return inconnu("SHA-256 de géométrie absent ou invalide.")
+        application = entree.get("application")
+        if not isinstance(application, str) or not application.strip():
+            return inconnu("Application 3MF absente ou inconnue.")
+        if entree.get("version_slicer") != _ASN_R1_VERSION or entree.get("sha_binaire") != _ASN_R1_SHA256:
+            return inconnu("Binaire différent ou non relié à la qualification R1.")
+        if (
+            entree.get("role_modificateur") != "modifier_part"
+            or not isinstance(entree.get("identifiant_modificateur"), str)
+            or not entree["identifiant_modificateur"].strip()
+            or not isinstance(entree.get("sha_modificateur"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", entree["sha_modificateur"])
+        ):
+            return inconnu("Identité, rôle ou SHA du modificateur absent ou invalide.")
+        if not isinstance(entree.get("reglages"), schema_reglages.Reglages):
+            return inconnu("Réglages non fournis par le dictionnaire typé.")
+    if temoin["sha_geometrie"] != variante["sha_geometrie"]:
+        return inconnu("Les maillages de référence et de variante diffèrent.")
+    if temoin["application"] != variante["application"]:
+        return inconnu("Les champs Application ne sont pas équivalents.")
+    if (
+        temoin["identifiant_modificateur"] != variante["identifiant_modificateur"]
+        or temoin["sha_modificateur"] != variante["sha_modificateur"]
+    ):
+        return inconnu("Le modificateur et sa géométrie ne sont pas équivalents.")
+    if (
+        cle_reglage != "sparse_infill_density"
+        or type_trajet != "Sparse infill"
+    ):
+        return inconnu("Seule la densité clairsemée du rôle Sparse infill est qualifiée ici.")
+    if not isinstance(regions, dict) or set(regions) != {"zone", "hors_zone"}:
+        return inconnu("Les régions zone et hors_zone doivent être déclarées ensemble.")
+    for bornes in regions.values():
+        try:
+            valides = (
+                isinstance(bornes, (list, tuple))
+                and len(bornes) == 6
+                and all(type(v) in (int, float) and math.isfinite(v) for v in bornes)
+                and bornes[2] > bornes[0]
+                and bornes[3] > bornes[1]
+                and bornes[5] > bornes[4]
+            )
+        except OverflowError:
+            valides = False
+        if not valides:
+            return inconnu("Une boîte de mesure est invalide ou vide.")
+    zone, controle = regions["zone"], regions["hors_zone"]
+    separent_strictement = (
+        zone[2] < controle[0] or controle[2] < zone[0]
+        or zone[3] < controle[1] or controle[3] < zone[1]
+        or zone[5] < controle[4] or controle[5] < zone[4]
+    )
+    if not separent_strictement:
+        return inconnu("Les boîtes zone et hors_zone se recouvrent ou se touchent.")
+    reglages_a, reglages_b = temoin["reglages"], variante["reglages"]
+    absent = object()
+
+    def lire_reglage(donnees, cle):
+        """Lit une clé native par son schéma ; distingue son absence d’une valeur présente à None."""
+        if cle not in donnees:
+            return absent
+        return schema_reglages.valeur_brute(donnees, cle)
+
+    try:
+        valeurs_a = {cle: lire_reglage(reglages_a, cle) for cle in reglages_a.keys()}
+        valeurs_b = {cle: lire_reglage(reglages_b, cle) for cle in reglages_b.keys()}
+    except (TypeError, ValueError) as erreur:
+        return inconnu(f"Lecture typée des réglages impossible : {str(erreur)[:180]}")
+    differents = {
+        cle for cle in valeurs_a.keys() | valeurs_b.keys()
+        if valeurs_a.get(cle, absent) != valeurs_b.get(cle, absent)
+    }
+    if differents != {cle_reglage}:
+        return inconnu("Les variantes doivent différer uniquement par le réglage annoncé.")
+
+    valeur_brute_a = valeurs_a.get(cle_reglage, absent)
+    valeur_brute_b = valeurs_b.get(cle_reglage, absent)
+    motif_a = valeurs_a.get("sparse_infill_pattern", absent)
+    motif_b = valeurs_b.get("sparse_infill_pattern", absent)
+    if (
+        (valeur_brute_a, valeur_brute_b) != _DENSITES_MODIFICATEUR_QUALIFIEES
+        or motif_a != motif_b
+        or not isinstance(motif_a, str)
+        or motif_a not in _MOTIFS_ASN_QUALIFIES
+    ):
+        return inconnu("Valeurs ou motif hors du témoin de modificateur qualifié (#48, ASN 2.0.0.3).")
+    try:
+        mesure_a = analyser_gcode(temoin["gcode"], regions, (type_trajet,))
+        mesure_b = analyser_gcode(variante["gcode"], regions, (type_trajet,))
+    except (TypeError, ValueError, KeyError, OverflowError) as erreur:
+        return inconnu(f"Mesure G-code incomplète : {str(erreur)[:240]}")
+    effet = evaluer_effet_densite(
+        {"zone_mm": mesure_a["zone"][type_trajet], "hors_zone_mm": mesure_a["hors_zone"][type_trajet]},
+        {"zone_mm": mesure_b["zone"][type_trajet], "hors_zone_mm": mesure_b["hors_zone"][type_trajet]},
+    )
+    return {
+        **rapport,
+        **effet,
+        "valeurs_reglage": [valeur_brute_a, valeur_brute_b],
+        "sha_geometrie": temoin["sha_geometrie"],
+        "identifiant_modificateur": temoin["identifiant_modificateur"],
+        "sha_modificateur": temoin["sha_modificateur"],
+        "role_modificateur": temoin["role_modificateur"],
+        "application": temoin["application"],
+        "version_slicer": _ASN_R1_VERSION,
+        "sha_binaire": _ASN_R1_SHA256,
+        "sha256_gcode": {
+            "temoin": hashlib.sha256(temoin["gcode"].encode("utf-8")).hexdigest(),
+            "variante": hashlib.sha256(variante["gcode"].encode("utf-8")).hexdigest(),
+        },
+        "regions_mm": {nom: list(bornes) for nom, bornes in regions.items()},
+        "mesures_mm": {"temoin": mesure_a, "variante": mesure_b},
+    }
 
 
 def _sortie_privee(sortie: str | Path) -> Path:

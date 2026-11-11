@@ -25,6 +25,7 @@ def test_detection_du_cou_et_quatre_pieces_sans_placer_les_coupes(tmp_path):
 
 
 def test_catalogue_exact_et_ajustements_geometriques():
+    """Chaque entrée explicite du catalogue passe le contrôle du joint plan nominal."""
     assert set(C.CATALOGUE) == {
         "cheville-rond",
         "cheville-rectangle",
@@ -34,10 +35,12 @@ def test_catalogue_exact_et_ajustements_geometriques():
         "rotule-double",
         "douille",
         "canal-tige",
+        "clip-languette",
+        "clip-double",
         "aucun",
     }
     mesh = trimesh.creation.box((40, 40, 40))
-    coupe = {"origine": [0, 0, 0], "normale": [0, 0, 1]}
+    coupe = {"type": "plan", "origine": [0, 0, 0], "normale": [0, 0, 1]}
     parties, _ = G.couper(mesh, coupe)
     for type_ in C.CATALOGUE:
         p, extras, rapport = C.appliquer(mesh, parties, coupe, {"type": type_})

@@ -164,9 +164,11 @@ class Base:
             self.exporter()
 
     def fermer(self):
+        """Ferme la connexion SQLite ; ne crée aucun export supplémentaire."""
         self.connexion.close()
 
     def ecrire(self, requete, parametres=()):
+        """Exécute le SQL paramétré dans une transaction vérifiée et renvoie son curseur."""
         with self.transaction() as connexion:
             curseur = connexion.execute(requete, parametres)
         return curseur

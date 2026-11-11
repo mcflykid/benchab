@@ -50,10 +50,64 @@ if (D.decoupe) {
       for(const points of contours){const ligne=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:0xff7b31,depthTest:false}));ligne.renderOrder=20;traitsDec.add(ligne);}
       pts.forEach((p,pi)=>{const point=new THREE.Mesh(new THREE.SphereGeometry(D.taille*.006,10,8),new THREE.MeshBasicMaterial({color:0xffd329,depthTest:false}));
         point.position.copy(p);point.userData={coupe:ci,point:pi};point.renderOrder=21;traitsDec.add(point);poignetsDec.push(point);});
+      // Seules les positions recalculées sur ce plan servent de repères 3D.
+      const calcul=D.decoupe.rapport.coupes?.[ci]?.connecteur;
+      const cleClip=c=>JSON.stringify([c?.type,c?.origine,c?.normale,c?.connecteur]);
+      if(calcul?.placement&&cleClip(coupe)===cleClip(D.decoupe.plan.coupes[ci])){
+        for(const joint of calcul.joints){
+          const repere=new THREE.Mesh(new THREE.SphereGeometry(D.taille*.008,12,10),new THREE.MeshBasicMaterial({color:0x13dcc6,depthTest:false}));
+          repere.position.copy(toWorld(joint.position_mm));repere.renderOrder=22;traitsDec.add(repere);
+        }
+      }
     });
   }
   function editePoint(ci,pi,axe,v){dc.coupes[ci].points[pi][axe]=v;dc.coupes[ci].type='courbe';
     etatDec.textContent='Point modifié : surface courbe sélectionnée. Recalculer pour vérifier les volumes.';}
+  // Les entrées UV appartiennent au plan de coupe ; le moteur seul contrôle la matière et les gardes.
+  function formulairePlacementClip(bloc,coupe,i,dernier){
+    if(coupe.type!=='plan'||!['clip-languette','clip-double'].includes(coupe.connecteur.type))return;
+    const zone=document.createElement('fieldset'),titre=document.createElement('legend');
+    titre.textContent='Positions des clips';zone.append(titre);bloc.append(zone);
+    const mode=document.createElement('select');mode.setAttribute('aria-label','Placement des clips coupe '+(i+1));
+    for(const [v,t] of [['','Automatique par îlot'],['ligne','Ligne dans le plan'],['grille','Grille dans le plan'],['manuel','Coordonnées manuelles']]){
+      const choix=document.createElement('option');choix.value=v;choix.textContent=t;mode.append(choix);
+    }
+    const placement=coupe.connecteur.placement;mode.value=placement?.mode||'';zone.append(mode);
+    const marque=()=>{etatDec.textContent='Positions modifiées : recalculer avant export.';};
+    const positionsCalculees=dernier?.connecteur?.placement?.positions_uv_mm;
+    mode.onchange=()=>{
+      if(!mode.value)delete coupe.connecteur.placement;
+      else if(mode.value==='manuel')coupe.connecteur.placement={mode:'manuel',positions_uv_mm:structuredClone(positionsCalculees||[[0,0]])};
+      else if(mode.value==='ligne')coupe.connecteur.placement={mode:'ligne',centre_uv_mm:[0,0],colonnes:2,pas_u_mm:14};
+      else coupe.connecteur.placement={mode:'grille',centre_uv_mm:[0,0],colonnes:2,lignes:2,pas_u_mm:14,pas_v_mm:14};
+      marque();formulairesDec();dessinerDec();
+    };
+    if(!placement)return;
+    const texte=document.createElement('p');
+    texte.textContent='U et V sont en millimètres à partir de l’origine du plan. Les repères turquoise apparaissent après calcul.';
+    zone.append(texte);
+    if(placement.mode==='manuel'){
+      placement.positions_uv_mm.forEach((p,j)=>{
+        const ligne=document.createElement('div');zone.append(ligne);
+        ['U','V'].forEach((axe,k)=>champDec(ligne,axe+' du clip '+(j+1)+' coupe '+(i+1),p[k],v=>{p[k]=v;marque();}));
+        if(placement.positions_uv_mm.length>1)boutonDec(ligne,'Retirer le clip '+(j+1),()=>{
+          placement.positions_uv_mm.splice(j,1);marque();formulairesDec();dessinerDec();
+        });
+      });
+      if(placement.positions_uv_mm.length<9)boutonDec(zone,'Ajouter un clip manuel',()=>{
+        const [u,v]=placement.positions_uv_mm.at(-1);placement.positions_uv_mm.push([u+14,v]);
+        marque();formulairesDec();dessinerDec();
+      });
+      return;
+    }
+    ['U','V'].forEach((axe,k)=>champDec(zone,'Centre '+axe+' (mm) coupe '+(i+1),placement.centre_uv_mm[k],v=>{placement.centre_uv_mm[k]=v;marque();}));
+    const champs=[['colonnes','Colonnes',true],['pas_u_mm','Pas U (mm)',false]];
+    if(placement.mode==='grille')champs.push(['lignes','Lignes',true],['pas_v_mm','Pas V (mm)',false]);
+    for(const [cle,label,entier] of champs){
+      const entree=champDec(zone,label+' coupe '+(i+1),placement[cle],v=>{placement[cle]=v;marque();});
+      if(entier){entree.step=1;entree.min=1;entree.max=9;}else{entree.min=.01;entree.max=1000;}
+    }
+  }
   function formulairesDec(){
     listeDec.replaceChildren();
     dc.coupes.forEach((coupe,i)=>{
@@ -62,7 +116,7 @@ if (D.decoupe) {
       const contexte=document.createElement('p'),dernier=D.decoupe.rapport.coupes?.[i];contexte.textContent=dernier?'Cible calculée : '+dernier.cible+' ; '+dernier.pieces.length+' volumes issus de la coupe.':'Cible automatique : plus grand volume traversé, à vérifier après recalcul.';bloc.append(contexte);
       const type=document.createElement('select');type.setAttribute('aria-label','Type de coupe '+(i+1));
       for(const [v,t] of [['plan','Plane'],['courbe','Courbe fermée']]){const o=document.createElement('option');o.value=v;o.textContent=t;type.append(o);}
-      type.value=coupe.type||'plan';type.onchange=()=>{coupe.type=type.value;etatDec.textContent='Type modifié : recalcul requis.';dessinerDec();};bloc.append(type);
+      type.value=coupe.type||'plan';type.onchange=()=>{coupe.type=type.value;etatDec.textContent='Type modifié : recalcul requis.';formulairesDec();dessinerDec();};bloc.append(type);
       for(const cle of ['origine','normale']){
         coupe[cle] ||= cle==='normale'?[0,0,1]:(coupe.points?.length?[0,1,2].map(k=>coupe.points.reduce((n,p)=>n+p[k],0)/coupe.points.length):[...D.centre]);
         const row=document.createElement('div');row.style.display='grid';row.style.gridTemplateColumns='repeat(3,minmax(0,1fr))';row.style.gap='5px';bloc.append(row);
@@ -75,8 +129,9 @@ if (D.decoupe) {
       }
       const select=document.createElement('select');select.setAttribute('aria-label','Connecteur coupe '+(i+1));
       for(const [k,v] of Object.entries(catalogue)){const o=document.createElement('option');o.value=k;o.textContent=v;select.append(o);}
-      coupe.connecteur ||= {type:'douille'};if(coupe.connecteur.type===undefined)coupe.connecteur.type='douille';select.value=coupe.connecteur.type;select.onchange=()=>{coupe.connecteur.type=select.value;texteConseil();etatDec.textContent='Connecteur modifié : recalcul requis.';};bloc.append(select);
+      coupe.connecteur ||= {type:'douille'};if(coupe.connecteur.type===undefined)coupe.connecteur.type='douille';select.value=coupe.connecteur.type;select.onchange=()=>{coupe.connecteur.type=select.value;if(!select.value.startsWith('clip-'))delete coupe.connecteur.placement;etatDec.textContent='Connecteur modifié : recalcul requis.';formulairesDec();dessinerDec();};bloc.append(select);
       for(const [cle,val,libelle] of [['diametre',6,'Diamètre (mm)'],['longueur',12,'Longueur (mm)'],['paroi_min',1.2,'Paroi minimale (mm)']])champDec(bloc,libelle+' connecteur '+(i+1),coupe.connecteur[cle]??val,v=>{coupe.connecteur[cle]=v;});
+      formulairePlacementClip(bloc,coupe,i,dernier);
       const conseil=document.createElement('p');
       function texteConseil(){const initial=coupe.conseil_connecteur;
         conseil.textContent=initial?(coupe.connecteur.type===initial.type?'Proposition retenue : ':'Choix manuel. Proposition initiale : ')+initial.raison:'Choix manuel ; ajustement à contrôler.';}

@@ -54,6 +54,7 @@ def _pieces(pieces):
 
 
 def etat_projet(base, projet):
+    """Renvoie le suivi déclaré du projet, depuis SQLite ou la fiche de qualité, sans écriture."""
     projet = _projet(base, projet)
     ident = projet.relative_to(base.prive.resolve()).as_posix()
     ligne = base.connexion.execute("SELECT donnees_json FROM projets WHERE id=?", (ident,)).fetchone()

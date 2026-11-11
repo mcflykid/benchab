@@ -16,7 +16,7 @@ import trimesh
 
 from benchab.archives_3mf import Archive3MF
 from benchab.fabrication import anycubic
-from benchab.gcode.lecture import iter_lignes_gcode_3mf, membres_gcode_3mf
+from benchab.gcode.lecture import iter_lignes_gcode_3mf, plaques_gcode_archive
 from benchab.projets.protections import protections
 from benchab.qualite.ecritures import acquerir_verrou, ouvrir_verrou
 from benchab.qualite.empreintes import sha256_fichier
@@ -148,7 +148,7 @@ def _chemin_autorise(chemin: str | Path) -> Path:
 
 
 def ecrire_profils(source: str | Path, destination: str | Path, profils: dict) -> None:
-    """Publie les plages Z/hauteurs en mm ; refuse les autres écarts, sans écraser une sortie ni modifier le projet."""
+    """Publie les plages Z/hauteurs en mm ; refuse tout autre écart et protège les sorties figées."""
     from benchab import integrite_3mf
 
     source = Path(source).expanduser()
@@ -200,23 +200,25 @@ def ecrire_profils(source: str | Path, destination: str | Path, profils: dict) -
             with tempfile.TemporaryDirectory(prefix=".couches-variables-", dir=destination.parent) as temporaire:
                 temporaire = Path(temporaire) / "profils.3mf"
                 cle = "Metadata/layer_config_ranges.xml"
-                with zipfile.ZipFile(source) as entree, zipfile.ZipFile(temporaire, "w") as sortie:
-                    informations = entree.infolist()
-                    noms = [information.filename for information in informations]
-                    if len(noms) != len(set(noms)):
-                        raise ValueError("Membres 3MF dupliqués.")
-                    sortie.comment = entree.comment
-                    for information in informations:
-                        if information.filename == cle:
+                with Archive3MF(source) as entree, zipfile.ZipFile(temporaire, "w") as sortie:
+                    noms = entree.noms()
+                    sortie.comment = entree.commentaire
+                    for nom in noms:
+                        information = entree.information(nom)
+                        if nom == cle:
+                            # Les anciennes plages doivent être lisibles, même si elles sont remplacées.
+                            entree.verifier(membres=[nom])
                             sortie.writestr(information, xml)
                         else:
-                            with entree.open(information) as lecteur, sortie.open(information, "w") as ecrivain:
+                            with entree.ouvrir_flux(nom) as lecteur, sortie.open(information, "w") as ecrivain:
                                 shutil.copyfileobj(lecteur, ecrivain, 1024 * 1024)
                     if cle not in noms:
                         sortie.writestr(cle, xml)
-                with zipfile.ZipFile(temporaire) as relecture:
-                    if relecture.testzip() or relecture.read(cle) != xml:
+                    entree.verifier_source(source)
+                with Archive3MF(temporaire) as relecture:
+                    if relecture.lire(cle, limite_octets=relecture.taille_max_xml) != xml:
                         raise ValueError("Profils 3MF relus non conformes.")
+                    relecture.verifier(membres=[nom for nom in relecture.noms() if nom != cle])
                 # Seul le membre de plages calculé ci-dessus change ; tous
                 # les réglages projet/objet/plaque restent identiques
                 # (docs/reference/integrite-3mf.md).
@@ -240,13 +242,15 @@ def ecrire_profils(source: str | Path, destination: str | Path, profils: dict) -
 
 
 def hauteurs_gcode(archive: str | Path) -> dict:
-    """Résume les hauteurs de couches en flux avec le lecteur G-code partagé."""
-    hauteurs = [
-        float(correspondance.group(1))
-        for membre in membres_gcode_3mf(archive)
-        for ligne in iter_lignes_gcode_3mf(archive, membre)
-        if (correspondance := re.match(r"^;HEIGHT:([\d.]+)", ligne))
-    ]
+    """Résume les hauteurs G-code en mm, en flux depuis un seul 3MF ; aucune écriture."""
+    with Archive3MF(archive) as source:
+        hauteurs = [
+            float(correspondance.group(1))
+            for _, membre in plaques_gcode_archive(source)
+            for ligne in iter_lignes_gcode_3mf(archive, membre, archive=source)
+            if (correspondance := re.match(r"^;HEIGHT:([\d.]+)", ligne))
+        ]
+        source.verifier_source(archive)
     return {
         "couches": len(hauteurs),
         "min": min(hauteurs) if hauteurs else None,

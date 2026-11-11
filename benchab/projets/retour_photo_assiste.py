@@ -18,7 +18,7 @@ from benchab import processus
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.gcode.lecture import plaques_gcode_archive
-from benchab.qualite.ecritures import PublicationNeuve, renommer_exclusif, sortie_durable
+from benchab.qualite.ecritures import PublicationNeuve, ecrire_json_neuf, renommer_exclusif, sortie_durable
 from benchab.qualite.empreintes import sha256_fichier
 
 _MAX_PHOTO_OCTETS = 50 * 1024 * 1024
@@ -242,14 +242,20 @@ def _lier_archive(archive_3mf, declaration, plaque, region_id):
 
 
 def creer_suggestion(
-    photo, destination, *, prive=None, archive_3mf=None, declaration=None, plaque=None, region_id=None
+    photo, destination, *, prive=None, archive_3mf=None, declaration=None, plaque=None, region_id=None,
+    origine_media="NON VÉRIFIÉ",
 ):
     """Crée un candidat privé neuf avec photo conservée, aperçu JPEG et SHA ; aucun projet/DB écrit.
 
     Entrées : photo locale, destination de dossier privé, archive/déclaration facultatives.
+    Origine média déclarée facultative : photo_importee, image_deja_disponible ou NON VÉRIFIÉ.
     Sortie : manifeste CANDIDAT ; le lien photo, l’identité du modèle et le défaut restent NON VÉRIFIÉS.
     Les nombres Z déclarés sont en mm. Aucun diagnostic visuel ou validation physique n’est produit.
     """
+    if not isinstance(origine_media, str) or origine_media not in {
+        "photo_importee", "image_deja_disponible", "NON VÉRIFIÉ"
+    }:
+        raise ValueError("origine média déclarée non prise en charge")
     racine = atelier_prive(prive)
     source, identite_source = _entree_prive(photo)
     cible = sortie_durable(destination, prive=racine)
@@ -275,6 +281,7 @@ def creer_suggestion(
     rapport = {
         "schema": 1,
         "suggestion": "CANDIDAT",
+        "origine_media_declaree": origine_media,
         "cree_utc": datetime.now(timezone.utc).isoformat(),
         "photo": {
             "source_fichier": copie.name,
@@ -387,6 +394,15 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         membres_attendus[nom] = (sha, info.st_size, limite)
     if fichiers_references[0] == fichiers_references[1] or identites_references[0] == identites_references[1]:
         raise ValueError("les fichiers source et aperçu doivent être distincts")
+    from benchab.projets.observation_zone import construire
+
+    origine_media = suggestion.get("origine_media_declaree", "NON VÉRIFIÉ")
+    observation_zone = construire(
+        suggestion,
+        sha_suggestion=empreinte_suggestion,
+        texte_declare=observation_declaree.strip(),
+        origine_media=origine_media,
+    )
     capture = {
         "schema": 1,
         "nature": "CONFIRMATION_HUMAINE_SEPAREE",
@@ -394,16 +410,16 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         "suggestion_sha256": empreinte_suggestion,
         "confirmation_humaine": True,
         "observation_declaree": observation_declaree.strip(),
+        "observation_zone": observation_zone,
         "cree_utc": datetime.now(timezone.utc).isoformat(),
         "limite": (
             "Cette confirmation consigne une déclaration ; elle ne certifie ni photo, modèle, "
             "impression ni cause physique."
         ),
     }
+    octets_confirmation = (json.dumps(capture, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
     with PublicationNeuve([chemin, *fichiers_references], [destination]) as publication:
-        publication.temporaire(destination).write_text(
-            json.dumps(capture, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-        )
+        publication.temporaire(destination).write_bytes(octets_confirmation)
         # Revérifier la preuve depuis un seul dossier épinglé. Les chemins
         # de la fiche et des deux images ne sont jamais lus sans plafond.
         repertoire_fd = os.open(chemin.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -420,7 +436,10 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         finally:
             os.close(repertoire_fd)
         publication.publier()
-    return capture
+    relus, sha_confirmation = _lire_fiche_epinglee(destination)
+    if relus != octets_confirmation:
+        raise ValueError("La confirmation publiée diffère des octets attendus ; elle reste en place.")
+    return {**capture, "confirmation_sha256": sha_confirmation}
 
 
 def _json_sans_doublons(paires):
@@ -532,7 +551,7 @@ def _signature(info):
 
 
 def main(argv=None, *, prive=None):
-    """Expose l’import candidat et la confirmation séparée, codes 0/2 sans mesure SQLite."""
+    """Expose le candidat, la confirmation et leur comparaison ; codes 0/2, sans SQLite."""
     commande = argparse.ArgumentParser(prog="benchab visualisation retour-photo")
     sous = commande.add_subparsers(dest="action", required=True)
     proposer = sous.add_parser("proposer", help="Copie une photo et prépare un candidat privé")
@@ -542,14 +561,28 @@ def main(argv=None, *, prive=None):
     proposer.add_argument("--declaration", type=Path, help="JSON privé liant SHA 3MF, plaque, région et plage Z")
     proposer.add_argument("--plaque", type=int)
     proposer.add_argument("--region")
+    proposer.add_argument(
+        "--origine-image", choices=("photo_importee", "image_deja_disponible", "NON VÉRIFIÉ"),
+        default="NON VÉRIFIÉ", help="Origine déclarée du fichier image ; aucun accès caméra",
+    )
     confirmer = sous.add_parser("confirmer", help="Consigne une déclaration humaine dans un JSON distinct")
     confirmer.add_argument("fiche", type=Path)
     confirmer.add_argument("--sha256", required=True, dest="empreinte")
     confirmer.add_argument("--observation", required=True)
     confirmer.add_argument("--sortie", type=Path, required=True)
+    comparer_retours = sous.add_parser("comparer", help="Vérifie la portée commune de deux retours confirmés")
+    comparer_retours.add_argument("paire", type=Path, help="Déclaration privée de deux retours et archives")
+    comparer_retours.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
     args = commande.parse_args(argv)
     try:
-        if args.action == "proposer":
+        if args.action == "comparer":
+            from benchab.projets.retour_photo_comparaison import comparer
+
+            racine = atelier_prive(prive)
+            rapport = comparer(_lire_declaration_privee(args.paire, racine), prive=racine)
+            if args.sortie:
+                ecrire_json_neuf(sortie_durable(args.sortie, prive=racine), rapport, entrees=[args.paire])
+        elif args.action == "proposer":
             declaration = None
             if args.declaration is not None:
                 declaration = _lire_declaration_privee(args.declaration, atelier_prive(prive))
@@ -561,6 +594,7 @@ def main(argv=None, *, prive=None):
                 declaration=declaration,
                 plaque=args.plaque,
                 region_id=args.region,
+                origine_media=args.origine_image,
             )
             rapport["dossier_prive"] = str(args.destination)
         else:
@@ -572,7 +606,7 @@ def main(argv=None, *, prive=None):
                 prive=prive,
             )
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
-        return 0
+        return 2 if args.action == "comparer" and rapport["statut"] != "PASS" else 0
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as erreur:
         print(f"BENCHAB : {erreur}")
         return 2

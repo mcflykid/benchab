@@ -32,6 +32,13 @@ avec `sips` quand Pillow ne sait pas le lire. L’original est conservé octet p
 octet et les deux fichiers reçoivent une empreinte SHA-256. La commande n’ouvre
 pas SQLite et ne modifie aucun projet.
 
+Le même contrat s’applique à une image déjà disponible dans l’atelier.
+Déclarer son origine avec `--origine-image image_deja_disponible` ; pour un
+nouveau fichier apporté au parcours, utiliser `--origine-image photo_importee`.
+La valeur par défaut reste NON VÉRIFIÉ. Cette origine est une déclaration
+utilisateur, pas une provenance automatiquement authentifiée. Les deux cas
+copient les octets dans un dossier privé neuf.
+
 Si la publication échoue avant le renommage, le dossier d’étape privé reste
 conservé pour diagnostic ; BENCHAB ne le supprime ni ne le déplace.
 
@@ -69,8 +76,46 @@ benchab visualisation retour-photo confirmer DOSSIER/suggestion.json \
 Cette confirmation neuve garde le SHA de la fiche et la déclaration écrite ; elle
 ne modifie ni la fiche candidate, ni le projet, ni SQLite. Elle n’identifie pas
 un défaut, le modèle ou l’impression et ne constitue pas une mesure physique.
-La comparaison entre modèles de même origine ou entre machine et matière n’est
-pas réalisée par ce premier sous-lot.
+Le JSON de confirmation inclut `observation_zone`, le contrat partagé schema 1 :
+média source et aperçu par SHA, origine déclarée, zone exacte si liée, plage Z
+en mm et observation déclarée. Sans liaison qualifiée, sa zone reste
+NON VÉRIFIÉE. L’image n’est pas interprétée pour détecter une région ou un défaut.
+L’observation confirmée reste distincte d’une hypothèse, d’une mesure
+physique et d’un réglage manuel ; la commande n’effectue aucune de ces actions.
+
+Un [exemple commun entièrement fictif](../examples/observation-zone-fictive.json)
+illustre le format. Pour une image déjà disponible, seule la valeur
+`media.origine_declaree` devient `image_deja_disponible` ; les autres champs
+gardent le même schéma. Aucun exemple ne reprend de photo, projet ou
+renseignement réel ; les SHA de l’exemple sont des valeurs factices, sans
+archive ni image associée.
+La commande affiche également `confirmation_sha256`, l’empreinte du fichier
+de confirmation qu’elle a relu.
+
+### Vérifier la portée d’une comparaison
+
+Préparer une paire JSON privée au schéma 1. Sa liste `sources` contient deux
+objets, chacun avec `suggestion` (chemin de `suggestion.json`),
+`confirmation` (chemin de la déclaration humaine), `confirmation_sha256`
+(empreinte affichée à la confirmation) et `archive` (chemin du 3MF tranché).
+Les chemins dans cette paire sont relatifs à l’atelier privé.
+
+```text
+benchab visualisation retour-photo comparer prive/paire.json --sortie prive/comparaison.json
+```
+
+La commande revérifie les fichiers et leurs empreintes. Deux retours
+déclarés sur la même archive, plaque, région et plage Z partagent le
+même contexte déclaré. Avec des sources différentes, elle peut seulement
+qualifier la correspondance des réglages si le modèle de machine et la
+matière unique embarqués concordent. En dehors de ces cas, la portée reste
+NON VÉRIFIÉE. Même source ne signifie pas même impression ; aucune
+géométrie physique, cause de défaut ou identité de bobine n’est déduite.
+Les images et les observations ne sont pas reproduites dans le rapport (#28).
+
+Le rapport privé porte les empreintes du 3MF, des réglages, du G-code et de
+l’identifiant de région, avec la plaque et la plage Z déclarées en mm. Le
+libellé de région et le texte de l’observation ne sont pas recopiés.
 
 ## Distinguer fait, hypothèse et validation
 

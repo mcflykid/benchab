@@ -2,6 +2,25 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## Non publié
+
+- Retour photo : un format privé commun à une photo importée ou déjà
+  disponible distingue suggestion, confirmation et mesure. La comparaison
+  relie le contexte exact sans reproduire les images ni le récit (#28).
+- Découpe : ajoute deux clips nominaux (#29) et le placement en ligne, en
+  grille ou manuel dans la visionneuse. Les positions sont conservées et
+  le réassemblage vérifié à l’export (#31). L’insertion reste à mesurer.
+- Supports : estime les écarts Z des dépôts horizontaux depuis une plaque
+  exacte, avec couverture et exclusions. Aucune conclusion de retrait (suite de #89).
+- Remplissage : compare le dépôt clairsemé dans une zone et un témoin
+  pour le couple 20 %/60 % qualifié. Le contexte de mesure est déclaré ;
+  peau et squelette restent NON VÉRIFIÉS (suite de #82).
+- 3MF : le résumé des hauteurs refuse les numéros de plaques ambigus
+  (#191). La lecture et la relecture des plages partagent le lecteur
+  borné et gardent le différentiel de réglages (suite de #122).
+- Annotations : vérifie les docstrings publiques des domaines données,
+  mesure et projets (suite de #127).
+
 ## 1.13.0 — 2026-11-11
 
 - Première couche : ajoute une mesure optionnelle des arcs G17 planaires,
