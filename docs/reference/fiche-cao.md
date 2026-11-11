@@ -1,7 +1,7 @@
 # Préparer une pièce CAO depuis une fiche JSON
 
-Ce gabarit couvre un bloc rectangulaire et jusqu’à huit perçages cylindriques
-traversants, avec un lamage supérieur facultatif par perçage. Jusqu’à
+Ce gabarit couvre un bloc rectangulaire ou une base cylindrique, avec jusqu’à
+huit perçages traversants et un lamage supérieur facultatif par perçage. Jusqu’à
 quatre poches rectangulaires peuvent aussi être déclarées au-dessus.
 Les cotes sont en millimètres. L’origine est au centre en XY et le dessous
 est à Z = 0 mm.
@@ -23,6 +23,13 @@ est à Z = 0 mm.
   "hors_perimetre": ["Tenue sous charge"]
 }
 ```
+
+Pour une base cylindrique, remplacer `bloc_mm` par
+`"base_cylindrique": {"diametre_mm": 30, "epaisseur_mm": 6}`. Une seule base
+est permise. Les perçages, lamages et poches utilisent le même repère. La
+marge d’un trou se mesure depuis son bord le plus éloigné du centre et
+celle d’une poche depuis son coin le plus éloigné. Cela évite d’accepter
+une opération située dans la boîte englobante mais hors du disque.
 
 Les dimensions et diamètres sont compris entre 0,1 et 1 000 mm. Les centres
 sont déclarés dans le même repère XY. Le gabarit refuse les trous tangents ou
@@ -83,3 +90,11 @@ dimensions et volumes attendus. Plans et scripts concordent exactement
 entre les deux répétitions. La préparation a pris 3,0 ms en médiane et la
 construction 33 ms sur cette exécution (premier démarrage : 1,59 s). Le
 résumé normalisé occupe 74 octets et le détail 824 à 1 908 octets.
+
+La recette de la base cylindrique couvre cinq autres fiches : disque plein,
+alésage central, lamage excentré, poche et combinaison de deux lamages et deux
+poches. Les dix STEP relus ont chacun un solide valide, avec dimensions et
+volumes analytiques conformes et plans/scripts identiques au rejeu. Les cinq
+fiches rectangulaires avec poches conservent leurs plans et scripts historiques.
+Préparation : 3,0 ms en médiane ; construction : 23 ms (premier démarrage :
+2,08 s). Le résumé normalisé occupe 74 octets et le détail 640 à 1 532 octets.

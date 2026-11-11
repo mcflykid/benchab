@@ -21,6 +21,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `fabrication remplacer-maillage` | Remplace une géométrie directe identifiée par SHA dans une copie privée ; périmètre strict et slicer NON VÉRIFIÉ |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
 | `controle ecart-z-supports SOURCE.3mf [--plaque N]` | [Écarts Z nominaux des dépôts autour des supports](ecart-z-supports.md), lecture seule et sans preuve physique |
+| `controle comparer-projets-3mf SOURCE CANDIDAT` | [Diagnostic en lecture seule](comparer-projets-3mf.md) des réglages, palettes et peinture littérale, sans conversion |
 | `controle coutures` | [Contrôle et aperçu de coutures sur régions déclarées](../explications/coutures.md#contrôle-sur-des-régions-déclarées) |
 | `controle preparer-reprise-export` | [Copie vérifiée d’une table exportée absente](plan-reparation-vues.md#préparer-la-reprise-dune-table-exportée), sans l’appliquer |
 | `controle appliquer-reprise-export` | Applique une table absente depuis une preuve CANDIDAT et son SHA explicitement déclaré |

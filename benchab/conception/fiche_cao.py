@@ -120,7 +120,7 @@ def _normaliser_lamage(lamage, numero, rayon_passage, epaisseur):
     return _Lamage(rayon, profondeur, source)
 
 
-def _normaliser_poches(valeurs, bloc, percages):
+def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
     """Valide le fond, la marge XY et les intersections au dessus du bloc."""
     if not isinstance(valeurs, list) or len(valeurs) > 4:
         raise ValueError("De zéro à quatre poches rectangulaires sont acceptées.")
@@ -137,8 +137,13 @@ def _normaliser_poches(valeurs, bloc, percages):
         ly = _cote(data["largeur_y_mm"], f"{etiquette} largeur y", longueur=True)
         profondeur = _cote(data["profondeur_mm"], f"{etiquette} profondeur", longueur=True)
         source = _source_cotes(data["source_cotes"], etiquette)
-        if min((dx - lx) / 2 - abs(x), (dy - ly) / 2 - abs(y)) <= _MARGE_MM:
-            raise ValueError(f"{etiquette} : marge insuffisante au bord du bloc.")
+        if rayon_base is None:
+            marge = min((dx - lx) / 2 - abs(x), (dy - ly) / 2 - abs(y))
+        else:
+            # Le coin le plus éloigné doit rester dans le disque réel.
+            marge = rayon_base - math.hypot(abs(x) + lx / 2, abs(y) + ly / 2)
+        if marge <= _MARGE_MM:
+            raise ValueError(f"{etiquette} : marge insuffisante au bord de la base.")
         if dz - profondeur <= _MARGE_MM:
             raise ValueError(f"{etiquette} : profondeur inférieure à l’épaisseur du bloc requise.")
         for trou in percages:
@@ -159,19 +164,32 @@ def _normaliser_poches(valeurs, bloc, percages):
 
 
 def _normaliser(data):
-    requis = {"schema", "id", "bloc_mm", "percages"}
+    """Lit une base unique et des opérations disjointes, avec toutes les cotes en mm."""
+    requis = {"schema", "id", "percages"}
+    bases = {"bloc_mm", "base_cylindrique"}
     if (
         not isinstance(data, dict)
-        or not requis <= data.keys() <= requis | {"hors_perimetre", "poches_rectangulaires"}
+        or not requis <= data.keys() <= requis | bases | {"hors_perimetre", "poches_rectangulaires"}
+        or len(bases & data.keys()) != 1
         or type(data["schema"]) is not int or data["schema"] != 1
     ):
-        raise ValueError("Fiche schema 1 : id, bloc_mm et percages requis ; poches et exclusions facultatives.")
+        raise ValueError("Fiche schema 1 : id, une base bloc_mm ou base_cylindrique et percages requis.")
     identifiant = data["id"]
     if not isinstance(identifiant, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", identifiant):
         raise ValueError("Identifiant simple de 1 à 48 caractères requis.")
-    if not isinstance(data["bloc_mm"], list) or len(data["bloc_mm"]) != 3:
-        raise ValueError("Trois dimensions du bloc en mm sont requises.")
-    dx, dy, dz = bloc = [_cote(x, "dimension du bloc", longueur=True) for x in data["bloc_mm"]]
+    rayon_base = None
+    if "bloc_mm" in data:
+        if not isinstance(data["bloc_mm"], list) or len(data["bloc_mm"]) != 3:
+            raise ValueError("Trois dimensions du bloc en mm sont requises.")
+        bloc = [_cote(x, "dimension du bloc", longueur=True) for x in data["bloc_mm"]]
+    else:
+        base = data["base_cylindrique"]
+        if not isinstance(base, dict) or set(base) != {"diametre_mm", "epaisseur_mm"}:
+            raise ValueError("Base cylindrique : diamètre et épaisseur en mm requis.")
+        diametre = _cote(base["diametre_mm"], "diamètre de base", longueur=True)
+        rayon_base = diametre / 2
+        bloc = [diametre, diametre, _cote(base["epaisseur_mm"], "épaisseur de base", longueur=True)]
+    dx, dy, dz = bloc
     trous = data["percages"]
     if not isinstance(trous, list) or len(trous) > 8:
         raise ValueError("De zéro à huit perçages sont acceptés.")
@@ -185,8 +203,9 @@ def _normaliser(data):
         rayon = _cote(trou["diametre_mm"], f"perçage {numero} diamètre", longueur=True) / 2
         lamage = _normaliser_lamage(trou["lamage"], numero, rayon, dz) if "lamage" in trou else None
         operation = _Percage(x, y, rayon, lamage)
-        if min(dx / 2 - abs(x), dy / 2 - abs(y)) - _rayon_entree(operation) <= _MARGE_MM:
-            raise ValueError(f"Perçage {numero} : marge insuffisante au bord du bloc.")
+        marge = min(dx / 2 - abs(x), dy / 2 - abs(y)) if rayon_base is None else rayon_base - math.hypot(x, y)
+        if marge - _rayon_entree(operation) <= _MARGE_MM:
+            raise ValueError(f"Perçage {numero} : marge insuffisante au bord de la base.")
         percages.append(operation)
     for premier, second in itertools.combinations(percages, 2):
         distance = math.hypot(premier.x - second.x, premier.y - second.y)
@@ -198,12 +217,17 @@ def _normaliser(data):
         or not exigence.isprintable() for exigence in exclus
     ):
         raise ValueError("Au plus huit exigences hors périmètre, une ligne de 240 caractères chacune.")
-    poches = _normaliser_poches(data.get("poches_rectangulaires", []), bloc, percages)
-    return identifiant, bloc, percages, poches, exclus
+    poches = _normaliser_poches(data.get("poches_rectangulaires", []), bloc, percages, rayon_base)
+    return identifiant, bloc, rayon_base, percages, poches, exclus
 
 
-def _script(bloc, trous, poches):
+def _script(bloc, trous, poches, rayon_base=None):
+    """Émet les seules opérations couvertes, sous la forme d’un script fermé en mm."""
     # Gabarit fermé : seules les cotes normalisées deviennent des littéraux Python.
+    construction = (
+        f"Box({bloc[0]!r}, {bloc[1]!r}, {bloc[2]!r}, " if rayon_base is None
+        else f"Cylinder({rayon_base!r}, {bloc[2]!r}, "
+    )
     lignes = [
         '"""Bloc CAO en mm issu d’une fiche BENCHAB ; aucune validation physique."""',
         "",
@@ -214,7 +238,7 @@ def _script(bloc, trous, poches):
         '@step(out="modele.step")',
         "def construire():",
         '    """Retourne le solide nominal ; origine XY centrée et base à z=0 mm."""',
-        f"    solide = Box({bloc[0]!r}, {bloc[1]!r}, {bloc[2]!r}, align=(Align.CENTER, Align.CENTER, Align.MIN))",
+        f"    solide = {construction}align=(Align.CENTER, Align.CENTER, Align.MIN))",
     ]
     for trou in trous:
         x, y, rayon = trou.x, trou.y, trou.rayon
@@ -246,10 +270,11 @@ def _script(bloc, trous, poches):
 
 
 def _generer(source, sortie, *, prive):
-    identifiant, bloc, trous, poches, exclus = _normaliser(_lire(source))
+    identifiant, bloc, rayon_base, trous, poches, exclus = _normaliser(_lire(source))
     destination = destination_neuve(sortie, prive=prive)
-    script = _script(bloc, trous, poches)
+    script = _script(bloc, trous, poches, rayon_base)
     dx, dy, dz = bloc
+    aire_base = dx * dy if rayon_base is None else math.pi * rayon_base**2
     volume_lamages = math.fsum(
         math.pi * (trou.lamage.rayon**2 - trou.rayon**2) * trou.lamage.profondeur
         for trou in trous if trou.lamage
@@ -259,14 +284,14 @@ def _generer(source, sortie, *, prive):
         "dimensions_mm": bloc,
         "solides": 1,
         "volume_mm3": (
-            (dx * dy - math.fsum(math.pi * trou.rayon**2 for trou in trous)) * dz - volume_lamages - volume_poches
+            (aire_base - math.fsum(math.pi * trou.rayon**2 for trou in trous)) * dz - volume_lamages - volume_poches
         ),
     }
     statut = "NON VÉRIFIÉ" if exclus else "PASS"
     plan = {
         "schema": 1, "id": identifiant, "statut": statut,
         "portee": "Gabarit nominal : script généré, aucun STEP construit ni validation physique.",
-        "bloc_mm": bloc,
+        **({"bloc_mm": bloc} if rayon_base is None else {"base_cylindrique": {"diametre_mm": dx, "epaisseur_mm": dz}}),
         "percages": [
             {"x_mm": trou.x, "y_mm": trou.y, "diametre_mm": 2 * trou.rayon}
             | ({"lamage": {

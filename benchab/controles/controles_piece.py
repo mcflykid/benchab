@@ -42,6 +42,12 @@ DELAI_COUCHES_S = 120
 
 
 def contexte_cache(options):
+    """Décrit les paramètres géométriques et outils du cache, sans créer de rapport.
+
+    Entrée : options d’épaisseur et de couche en mm, angle de surplomb en degrés,
+    plateau en mm et limites de faces. Sortie : paramètres déclarés et chemins
+    d’outils empreintés. Aucun maillage, réglage ou projet n’est modifié.
+    """
     outils = {Path(__file__).resolve(), CC.resolve(), Path(O.__file__).resolve(), Path(sys.executable).resolve()}
     versions = {}
     for nom in ("numpy", "trimesh", "shapely", "manifold3d", "rtree", "scipy", "networkx", "embreex"):
@@ -77,6 +83,12 @@ def contexte_cache(options):
 
 
 def rapport_reutilisable(rapport):
+    """Indique si chaque contrôle peut être mémorisé sans rendre une incertitude PASS.
+
+    Entrée : liste de contrôles numériques. Sortie : booléen ; seuls PASS, WARN et
+    NON APPLICABLE avec détails exploitables sont admissibles. Aucune donnée n’est
+    modifiée et aucune tenue physique n’est déduite.
+    """
     return bool(rapport) and all(
         isinstance(controle, dict)
         and controle.get("statut") in ("PASS", "WARN", "NON APPLICABLE")
@@ -92,6 +104,13 @@ def rapport_reutilisable(rapport):
 
 
 def controler_cache(fichier, projet, parametres, outils, options=None):
+    """Relit un cache géométrique vérifiable ou recalcule les contrôles de la pièce.
+
+    Entrées : maillage, projet de cache, empreintes de contexte et options en mm.
+    Sortie : contrôles numériques conservant PASS/WARN/FAIL/NON APPLICABLE.
+    La source est hachée avant et après ; la réutilisation est journalisée dans le
+    projet. Aucun réglage d’impression ni maillage source n’est modifié.
+    """
     chemin = str(Path(fichier).resolve())
     cle = "geometrie:" + hashlib.sha256(chemin.encode()).hexdigest()
     empreinte_initiale = O.sha(chemin)
@@ -352,6 +371,11 @@ def main(argv=None):
 
 
 def cli(argv=None):
+    """Exécute le contrôle CLI de pièces ; retourne le code agrégé ou 2 sur erreur.
+
+    Entrée : arguments du programme, dont cotes en mm et angle en degrés. Sortie :
+    code numérique de statut, sans commande machine ni validation physique.
+    """
     try:
         return main(argv)
     except Exception as exc:

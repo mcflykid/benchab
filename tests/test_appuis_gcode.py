@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from benchab.controles.appuis_gcode import analyser_fichier, evaluer_parcours, main, mesurer_appui
-from benchab.gcode.lecture import vider_cache_lecture
+from benchab.gcode.lecture import membres_gcode_3mf, vider_cache_lecture
 
 
 def test_mesure_appui_reunit_plusieurs_couches_et_conserve_seuils():
@@ -127,3 +127,37 @@ def test_cli_flux_refuse_rapport_hors_prive_et_ecrit_resume_prive(tmp_path, monk
     assert '"mode": "causal"' in capsys.readouterr().out
     with pytest.raises(ValueError, match="doit rester"):
         main([str(source), "--json", str(tmp_path / "public.json")])
+
+
+def test_appuis_refuse_deux_graphies_avant_selection(tmp_path, capsys):
+    """Une sélection de plaque ne peut pas masquer l’index homonyme du 3MF."""
+    import pytest
+
+    source = tmp_path / "alias.3mf"
+    with ZipFile(source, "w") as z:
+        for numero in ("1", "01"):
+            z.writestr(f"Metadata/plate_{numero}.gcode", "G90\nG1 X1 Y2 Z0.2\n")
+    avant = source.read_bytes()
+    with pytest.raises(ValueError, match="numéro de plaque dupliqué"):
+        membres_gcode_3mf(source)
+    with pytest.raises(ValueError, match="numéro de plaque dupliqué"):
+        analyser_fichier(source, plaques={1})
+    assert main([str(source), "--plaque", "1"]) == 2
+    sortie = capsys.readouterr()
+    assert "numéro de plaque dupliqué" in sortie.err
+    assert not sortie.out and source.read_bytes() == avant
+
+
+def test_sha_rapport_appuis_vient_de_l_archive_epinglee(tmp_path, monkeypatch):
+    """Le rapport ne mélange jamais le membre épinglé et un SHA d’une autre lecture."""
+    import hashlib
+
+    from benchab.controles import appuis_gcode
+
+    source = tmp_path / "preuve.3mf"
+    _ecrire_fixture_gcode_3mf(source)
+    avant = source.read_bytes()
+    monkeypatch.setattr(appuis_gcode, "empreinte_3mf", lambda chemin: "a" * 64, raising=False)
+    rapport = analyser_fichier(source, plaques={1})
+    assert rapport["sha256"] == hashlib.sha256(avant).hexdigest()
+    assert source.read_bytes() == avant

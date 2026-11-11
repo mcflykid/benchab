@@ -63,6 +63,11 @@ def zone_etude():
 
 
 def rotation_vers_bas(v):
+    """Aligne une direction unitaire de pièce vers le bas du plateau.
+
+    Entrée : vecteur sans unité dans le repère de la pièce. Sortie : matrice 4×4
+    de rotation ; la fonction ne modifie pas le maillage et n’évalue pas sa tenue.
+    """
     return tm.geometry.align_vectors(np.asarray(v, float) / np.linalg.norm(v), [0, 0, -1])
 
 
@@ -90,6 +95,12 @@ def pose(m, direction_bas, plateau=None):
 
 
 def directions(m, n=520):
+    """Échantillonne des directions de pose par sphère de Fibonacci et grandes faces.
+
+    Entrées : maillage et nombre entier de directions Fibonacci. Sortie : vecteurs
+    unitaires sans unité, complétés par jusqu’à 80 normales de l’enveloppe convexe.
+    C’est un ensemble candidat, pas une orientation physiquement validée.
+    """
     i = np.arange(n) + 0.5
     phi = np.arccos(1 - 2 * i / n)
     th = math.pi * (1 + 5**0.5) * i
@@ -106,6 +117,12 @@ def faces_surplomb(q):
 
 
 def mesure_rapide(q):
+    """Calcule les indicateurs rapides de surplomb et d’assise du maillage orienté.
+
+    Entrée : maillage en repère de fabrication. Sortie : surface de surplomb et
+    d’assise en mm² et indice de support en mm³. Ce premier classement géométrique
+    n’est ni une masse de support tranchée ni une preuve de résistance.
+    """
     n, c, a = q.face_normals, q.triangles_center, q.area_faces
     sur = faces_surplomb(q)
     plat = (n[:, 2] < -0.9) & (c[:, 2] < 0.6)
@@ -117,6 +134,12 @@ def mesure_rapide(q):
 
 
 def support_rayons(q, maxi=3000):
+    """Estime un volume géométrique sous les surplombs par rayons échantillonnés.
+
+    Entrées : maillage en mm et plafond de rayons, sans unité. Sortie : estimation
+    en mm³ vers la pièce ou le plateau. Elle ne remplace pas le volume de supports
+    mesuré dans le G-code et ne qualifie aucune tenue physique.
+    """
     n, c, a = q.face_normals, q.triangles_center, q.area_faces
     tous = faces_surplomb(q)
     if len(tous) == 0:

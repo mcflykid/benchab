@@ -14,6 +14,7 @@ from shapely.geometry import Point, Polygon, box
 from benchab.conception.decoupe import _plan, _repere, _vers_trimesh, section
 from benchab.conception.decoupe.geometrie import reassemblage, solide
 from benchab.conception.eprouvette_jeux import JEUX
+from benchab.conception.fixations import generer_outil
 
 CATALOGUE = {
     "cheville-rond": "Cheville conique ronde",
@@ -24,6 +25,7 @@ CATALOGUE = {
     "rotule-double": "Rotule double : deux douilles et axe à deux sphères séparé",
     "douille": "Douilles et goupille imprimée séparément",
     "canal-tige": "Canal pour tige de renfort",
+    "vis-ecrou": "Passage de vis, lamage et écrou prisonnier à cotes déclarées",
     "clip-languette": "Clip à une languette et rampe nominale",
     "clip-double": "Clip à deux languettes opposées",
     "aucun": "Joint plat, collage ou pose",
@@ -44,14 +46,14 @@ def politique_jeu(options):
     if mesure is not None:
         if not isinstance(mesure, dict) or not mesure.get("reference") or mesure.get("nature") != nature:
             raise ValueError(f"Une mesure exige nature={nature} et une référence physique explicite")
-        if clip and (
+        if (clip or type_ == "vis-ecrou") and (
             mesure.get("connecteur") != type_
             or not isinstance(mesure.get("reference"), str)
             or not mesure["reference"].strip()
             or not isinstance(mesure.get("bobine"), str)
             or not mesure["bobine"].strip()
         ):
-            raise ValueError("La mesure d’un clip exige le même connecteur et une bobine explicite")
+            raise ValueError("La mesure exige le même connecteur et une bobine explicite")
         if mesure.get("bobine") and mesure["bobine"] != options.get("bobine"):
             raise ValueError("La mesure de jeu ne concerne pas la bobine déclarée")
         valeur = mesure.get("valeur_mm")
@@ -236,6 +238,92 @@ def _dimensions_connecteur(options):
     return dimensions
 
 
+def _outils_vis_ecrou(original, point, normale, rayon, paroi, jeu, options):
+    """Construit les passages et gardes en mm entre deux faces réelles, sans cote ISO déduite."""
+    source = options.get("source_cotes")
+    if not isinstance(source, str) or not source.strip() or len(source) > 512:
+        raise ValueError("Une source explicite des cotes de visserie est requise")
+    portee = max(10.0, float(np.linalg.norm(original.extents)) * 2)
+    impacts, _, _ = original.ray.intersects_location([point - normale * portee], [normale])
+    hauteurs = sorted((impacts - point) @ normale)
+    if len(hauteurs) != 2 or not hauteurs[0] < 0 < hauteurs[1]:
+        raise ValueError("La vis exige deux faces extérieures non ambiguës de part et d’autre du joint")
+    bas, haut = hauteurs
+    passage = 2 * (rayon + jeu)
+    garde_passage = passage / 2 + paroi
+    epsilon = min(max(1e-6, float(haut - bas) * 1e-8), float(haut - bas) / 4)
+    garde = _cylindre(garde_passage, float(haut - bas) - 2 * epsilon, float((haut + bas) / 2))
+    milieu = float((haut + bas) / 2)
+    outils, details = [_cylindre(passage / 2, float(haut - bas) + 2 * epsilon, milieu)], {}
+
+    for nom, forme, cote, signe, bord, angle in (
+        ("lamage", "lamage", "lamage_diametre_mm", -1, haut, 0),
+        ("ecrou", "ecrou_hexagonal", "ecrou_sur_plats_mm", 1, bas, options.get("ecrou_orientation_deg", 0)),
+    ):
+        largeur = options.get(cote)
+        profondeur = options.get(f"{nom}_profondeur_mm")
+        if (
+            type(largeur) not in (int, float)
+            or not 0.2 <= largeur <= 500
+            or type(profondeur) not in (int, float)
+            or not 0.2 <= profondeur <= 500
+        ):
+            raise ValueError(f"Cotes du {nom} : largeur et profondeur finies entre 0,2 et 500 mm")
+        if profondeur + paroi >= abs(bord):
+            raise ValueError(f"Le {nom} ne conserve pas la paroi demandée avant le joint")
+        largeur_logement = largeur + 2 * jeu
+        rayon_garde = largeur_logement / (2 * math.cos(math.pi / 6)) if nom == "ecrou" else largeur_logement / 2
+        rayon_garde += paroi
+        # Le bloc de construction ne sert qu’à produire l’outil ; la garde est
+        # ensuite contrôlée dans le vrai corps maillé autour de chaque logement.
+        cote_bloc = 2 * rayon_garde + 2
+        outil, nominal = generer_outil(
+            forme,
+            largeur_mm=largeur_logement,
+            profondeur_mm=profondeur + epsilon,
+            bloc_xyz_mm=(cote_bloc, cote_bloc, abs(float(bord)) + 2 * epsilon),
+            centre_xy_mm=(cote_bloc / 2, cote_bloc / 2),
+            marge_min_mm=paroi,
+            source_cotes=source,
+            passage_mm=passage,
+            orientation_deg=angle,
+            inclure_passage=False,
+        )
+        outil.apply_translation([-cote_bloc / 2, -cote_bloc / 2, 0])
+        # Le passage est un cylindre commun. Garder seulement le renfoncement
+        # évite de superposer deux cylindres presque coplanaires près du joint.
+        outil_local = solide(outil)
+        if signe < 0:
+            outil_local = outil_local.rotate([180, 0, 0])
+        outils.append(outil_local.translate([0, 0, float(bord) - signe * epsilon]))
+        # Seule la face d’accès est exclue du contrôle, sur un epsilon numérique.
+        garde += _cylindre(
+            rayon_garde,
+            profondeur + paroi - epsilon,
+            float(bord) + signe * (profondeur + paroi + epsilon) / 2,
+        )
+        details[nom] = {
+            "centre_entree_mm": (point + normale * bord).tolist(),
+            "cote_declaree_mm": largeur,
+            "largeur_logement_mm": largeur_logement,
+            "convention_largeur": nominal["convention_largeur"],
+            "profondeur_mm": profondeur,
+            "orientation_deg": nominal["orientation_deg"],
+        }
+    return (
+        mf.Manifold.batch_boolean(outils, mf.OpType.Add),
+        garde,
+        {
+            "source_cotes": source,
+            "distance_faces_mm": float(haut - bas),
+            "passage_diametre_mm": passage,
+            "ajustement_reel": "NON VÉRIFIÉ",
+            "limite": "Cotes déclarées de visserie ; longueur utile et accès de l’outil restent à confirmer.",
+            **details,
+        },
+    )
+
+
 def appliquer(original, parties, coupe, options=None):
     """Ajoute un connecteur nominal à deux maillages complémentaires et rend leur contrôle.
 
@@ -247,8 +335,11 @@ def appliquer(original, parties, coupe, options=None):
     if not isinstance(type_, str) or type_ not in CATALOGUE:
         raise ValueError("Connecteur inconnu ; utiliser uniquement le catalogue de découpe")
     clip = type_ in _CLIPS
-    if clip and coupe.get("type") != "plan":
-        raise ValueError("Les clips nominaux exigent une coupe plane.")
+    vis_ecrou = type_ == "vis-ecrou"
+    if (clip or vis_ecrou) and coupe.get("type") != "plan":
+        raise ValueError("Les clips et la visserie nominale exigent une coupe plane.")
+    if vis_ecrou and "diametre" not in options:
+        raise ValueError("Le diamètre nominal de la vis doit être déclaré")
     if set(parties) != {"dessous", "dessus"}:
         raise ValueError("Deux faces complémentaires dessous/dessus exigées")
     if reassemblage(original, parties)["statut"] != "PASS":
@@ -284,8 +375,11 @@ def appliquer(original, parties, coupe, options=None):
     def place(outil):
         return outil.transform(transformation[:3])
 
-    extras, tige = {}, None
-    if outils_clip:
+    extras, tige, visserie = {}, None, None
+    if vis_ecrou:
+        outil, garde, visserie = _outils_vis_ecrou(original, point, n, r, paroi, jeu, options)
+        aa, bb = a - place(outil), b - place(outil)
+    elif outils_clip:
         male, femelle, garde, _, _ = outils_clip
         aa, bb = a + place(male), b - place(femelle)
     elif type_.startswith("cheville-"):
@@ -358,7 +452,7 @@ def appliquer(original, parties, coupe, options=None):
     ajoute, retire = float((union - source).volume()), float((source - union).volume())
     bilan = reassemblage(original, tout, volume_ajoute=ajoute, volume_retire=retire)
     manque_garde = float((place(garde) - source).volume())
-    trou_ouvert = type_ == "canal-tige"
+    trou_ouvert = type_ == "canal-tige" or vis_ecrou
     controles = [
         {
             "controle": "Volumes fermés et valides",
@@ -371,6 +465,8 @@ def appliquer(original, parties, coupe, options=None):
             "paroi_min_mm": paroi,
             "portee": "Garde tubulaire sur toute la traversée ; seules les faces de sortie sont exclues"
             if type_ == "canal-tige"
+            else "Gardes du passage et des logements ; seules les faces d’accès sont exclues"
+            if vis_ecrou
             else "Enveloppe nominale dans l'original ; paroi résiduelle près d'une couture courbe à vérifier"
             if coupe.get("type") == "courbe"
             else "Enveloppe nominale de logement et fond autour du joint plan",
@@ -383,16 +479,24 @@ def appliquer(original, parties, coupe, options=None):
         }
         if outils_clip
         else {
-            "controle": "Jeu radial de conception",
+            "controle": "Jeu radial nominal du passage" if vis_ecrou else "Jeu radial de conception",
             "statut": "PASS",
             "minimum_mm": jeu,
             "maximum_mm": jeu / 0.85 if type_.startswith("cheville-") else jeu,
         },
         {
             "controle": "Qualification du jeu",
-            "statut": "WARN" if provenance["statut"] == "NON MESURÉ" else "NON VÉRIFIÉ" if clip else "PASS",
+            "statut": "WARN"
+            if provenance["statut"] == "NON MESURÉ"
+            else "NON VÉRIFIÉ"
+            if clip or vis_ecrou
+            else "PASS",
             "provenance": provenance,
-            **({"detail": "Le jeu déclaré dimensionne le clip sans preuve U32 vérifiée."} if clip else {}),
+            **(
+                {"detail": "Le jeu déclaré dimensionne le logement sans preuve U32 vérifiée."}
+                if clip or vis_ecrou
+                else {}
+            ),
         },
         {
             "controle": "Orientation du connecteur",
@@ -410,15 +514,18 @@ def appliquer(original, parties, coupe, options=None):
     if trou_ouvert:
         controles.append(
             {
-                "controle": "Sorties de canal",
+                "controle": "Faces d’accès de la visserie" if vis_ecrou else "Sorties de canal",
                 "statut": "WARN",
-                "detail": "Débouchantes par conception ; inspecter les bords et l'accès de la tige",
+                "detail": "Accès de la tête et de l’écrou à contrôler sur la pièce réelle."
+                if vis_ecrou
+                else "Débouchantes par conception ; inspecter les bords et l'accès de la tige",
             }
         )
     rapport = {
         "type": type_,
         "libelle": CATALOGUE[type_],
-        **dimensions,
+        **({k: v for k, v in dimensions.items() if k != "longueur"} if vis_ecrou else dimensions),
+        **({"visserie": visserie} if visserie else {}),
         **({"jeu_lateral_demande_mm": jeu, "clip": outils_clip[4]} if outils_clip else {"jeu_radial_mm": jeu}),
         "position_mm": point.tolist(),
         "axe": n.tolist(),

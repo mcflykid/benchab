@@ -9,16 +9,17 @@ couches antérieures, selon le contrôle paramétré qui a construit les tableau
 import argparse
 import json
 import math
-import re
 import sys
 from pathlib import Path
+from zipfile import BadZipFile
 
 import numpy as np
 from scipy.spatial import cKDTree
 
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive
 from benchab.controles.gcode_interpreter import Interpreter
-from benchab.gcode.lecture import analyser_membre_gcode_3mf, empreinte_3mf, membres_gcode_3mf
+from benchab.gcode.lecture import analyser_membre_gcode_3mf, plaques_gcode_archive
 
 PAS_DEFAUT_MM = 0.15
 RECOUVREMENT_DEFAUT_MM = 0.05
@@ -406,7 +407,12 @@ def analyser_fichier(
     z_max_mm=None,
     plaques=None,
 ):
-    """Analyse un G-code ou les plaques G-code d'un 3MF en réutilisant le cache SHA."""
+    """Mesure les appuis nominaux en mm dans un G-code ou des plaques 3MF.
+
+    Les numéros de plaque sont sans unité. Sortie PASS ou NON VÉRIFIÉ selon
+    la couverture ; refuse un index ambigu même en cache. Aucun fichier ni
+    réglage n’est modifié et aucune adhérence réelle n’est déduite.
+    """
     path = Path(chemin)
     options = {
         "mode": mode,
@@ -418,20 +424,26 @@ def analyser_fichier(
         "z_max_mm": z_max_mm,
     }
     if path.suffix.lower() == ".3mf":
-        digest = empreinte_3mf(path)
-        members = membres_gcode_3mf(path)
-        chosen = [m for m in members if plaques is None or int(re.search(r"plate_(\d+)", m).group(1)) in plaques]
         results = []
-        for member in chosen:
-            plaque = int(re.search(r"plate_(\d+)", member).group(1))
+        with Archive3MF(path) as archive:
+            # Refuser l’index ambigu avant le filtre de sélection et le cache.
+            membres = sorted(plaques_gcode_archive(archive), key=lambda plaque_membre: plaque_membre[1])
+            # Le SHA du rapport porte sur le descripteur qui fournit les plaques.
+            digest = archive.sha256()
 
             def run(lines):
                 return analyser_lignes(lines, **options)
 
-            result = analyser_membre_gcode_3mf(path, member, options, run, version="appuis-gcode-1")
-            for row in result["lignes"]:
-                row["plaque"] = plaque
-            results.append(result)
+            for plaque, membre in membres:
+                if plaques is not None and plaque not in plaques:
+                    continue
+                result = analyser_membre_gcode_3mf(
+                    path, membre, options, run, version="appuis-gcode-1", archive=archive,
+                )
+                for row in result["lignes"]:
+                    row["plaque"] = plaque
+                results.append(result)
+            archive.verifier_source(path)
         return {
             "fichier": path.name,
             "sha256": digest,
@@ -471,17 +483,21 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--plaque", type=int, action="append", help="Numéro de plaque; répétable.")
     parser.add_argument("--json", type=Path, help="Chemin privé pour enregistrer le rapport.")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    result = analyser_fichier(
-        args.fichier,
-        mode=args.mode,
-        pas_mm=args.pas_mm,
-        recouvrement_min_mm=args.recouvrement_min_mm,
-        longueur_libre_max_mm=args.portee_libre_max_mm,
-        types_cibles=args.types,
-        z_min_mm=args.z_min_mm,
-        z_max_mm=args.z_max_mm,
-        plaques=set(args.plaque) if args.plaque else None,
-    )
+    try:
+        result = analyser_fichier(
+            args.fichier,
+            mode=args.mode,
+            pas_mm=args.pas_mm,
+            recouvrement_min_mm=args.recouvrement_min_mm,
+            longueur_libre_max_mm=args.portee_libre_max_mm,
+            types_cibles=args.types,
+            z_min_mm=args.z_min_mm,
+            z_max_mm=args.z_max_mm,
+            plaques=set(args.plaque) if args.plaque else None,
+        )
+    except (OSError, BadZipFile, ValueError) as erreur:
+        print(f"BENCHAB : contrôle des appuis refusé : {erreur}", file=sys.stderr)
+        return 2
     text = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     if args.json:
         prive = atelier_prive(prive)

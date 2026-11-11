@@ -35,6 +35,7 @@ def test_catalogue_exact_et_ajustements_geometriques():
         "rotule-double",
         "douille",
         "canal-tige",
+        "vis-ecrou",
         "clip-languette",
         "clip-double",
         "aucun",
@@ -43,7 +44,11 @@ def test_catalogue_exact_et_ajustements_geometriques():
     coupe = {"type": "plan", "origine": [0, 0, 0], "normale": [0, 0, 1]}
     parties, _ = G.couper(mesh, coupe)
     for type_ in C.CATALOGUE:
-        p, extras, rapport = C.appliquer(mesh, parties, coupe, {"type": type_})
+        options = {"type": type_}
+        if type_ == "vis-ecrou":
+            options.update(diametre=4, source_cotes="témoin synthétique", lamage_diametre_mm=8,
+                           lamage_profondeur_mm=4, ecrou_sur_plats_mm=8, ecrou_profondeur_mm=4)
+        p, extras, rapport = C.appliquer(mesh, parties, coupe, options)
         assert all(m.is_volume for m in (p | extras).values())
         assert rapport["reassemblage"]["statut"] == "PASS"
         assert rapport["validation_physique"] is False
