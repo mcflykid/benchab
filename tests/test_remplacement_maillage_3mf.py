@@ -55,6 +55,7 @@ def _source(
     cube = trimesh.creation.box((10, 12, 14))
     cible = _objet(ressources, "1", cube, facteur)
     if metadata_apres_mesh:
+        cible[0].tail = "\n    "
         meta = ET.SubElement(cible, f"{{{CORE}}}metadata", name="note")
         meta.text = "conservée après le mesh"
     _objet(ressources, "2", trimesh.creation.box((4, 6, 8)), facteur)
@@ -166,6 +167,7 @@ def test_remplacement_preserve_la_position_xml_du_maillage(tmp_path):
         racine = archive.xml(MEMBRE)
     objet = next(o for o in racine.findall(f"{{{CORE}}}resources/{{{CORE}}}object") if o.get("id") == "1")
     assert [enfant.tag.rsplit("}", 1)[-1] for enfant in objet] == ["mesh", "metadata"]
+    assert objet[0].tail == "\n    "
 
 
 @pytest.mark.parametrize("options", [
@@ -424,14 +426,23 @@ def _source_assemblage(path, *, partage=False, imbrique=False, build_feuille=Fal
             archive.writestr("Metadata/model_settings.config", "<config/>")
 
 
-def test_feuille_unique_preserve_autre_volume_et_transforms(tmp_path):
+@pytest.mark.parametrize("via_cli", [False, True])
+def test_feuille_unique_preserve_autre_volume_et_transforms(tmp_path, capsys, via_cli):
     """La feuille déclarée change, l’autre volume et les matrices restent identiques."""
     source, candidat, sortie = (tmp_path / n for n in ("source.3mf", "volume.npz", "sortie.3mf"))
     _source_assemblage(source)
     sauvegarder(candidat, trimesh.creation.box((2, 4, 6)), prive=tmp_path)
     sha_avant = hashlib.sha256(source.read_bytes()).hexdigest()
-    rapport = remplacer(source, candidat, sortie, objet_id="3", volume_id="1", source_sha256=sha_avant,
-                        repere="local_objet_mm", decalage_mm=(1, 2, 3), prive=tmp_path)
+    if via_cli:
+        assert cli.main([
+            "--prive", str(tmp_path), "fabrication", "remplacer-maillage", str(source), str(candidat),
+            "--sortie", str(sortie), "--objet-id", "3", "--volume-id", "1", "--source-sha256", sha_avant,
+            "--repere", "local_objet_mm", "--decalage-mm", "1", "2", "3",
+        ]) == 0
+        rapport = json.loads(capsys.readouterr().out)
+    else:
+        rapport = remplacer(source, candidat, sortie, objet_id="3", volume_id="1", source_sha256=sha_avant,
+                            repere="local_objet_mm", decalage_mm=(1, 2, 3), prive=tmp_path)
     assert rapport["volume_id"] == "1"
     assert rapport["indice_composant"] == rapport["indice_build"] == 1
     assert rapport["statut"] == "PASS"

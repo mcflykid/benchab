@@ -105,7 +105,11 @@ def _sans_maillage(racine: ET.Element, identifiant: str) -> bytes:
     meshes = objets[0].findall(f"{{{_NS_MODELE}}}mesh")
     if len(meshes) != 1:
         raise ValueError("Un seul maillage direct est requis pour la cible")
-    objets[0].remove(meshes[0])
+    mesh = meshes[0]
+    # Le rang et le texte suivant le maillage appartiennent à l’objet, pas à ses triangles.
+    trace = ET.Element(mesh.tag)
+    trace.tail = mesh.tail
+    objets[0][list(objets[0]).index(mesh)] = trace
     return ET.tostring(copie_racine, encoding="utf-8")
 
 
@@ -391,6 +395,7 @@ def remplacer(
     position_mesh = list(objet).index(anciens_mesh[0])
     ET.register_namespace("", _NS_MODELE)
     source_sans_cible = _sans_maillage(racine, cible_id)
+    nouveau_mesh.tail = anciens_mesh[0].tail
     objet[position_mesh] = nouveau_mesh
     contenu_modele = ET.tostring(racine, encoding="utf-8", xml_declaration=True)
     source_sha_verifie = sha256_fichier(source)
