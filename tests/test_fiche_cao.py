@@ -210,3 +210,47 @@ def test_cli_resume_detail_et_exigence_non_verifiee(tmp_path, capsys, atelier_in
         assert ("plan" in affiche) == detail
         if detail:
             assert affiche["plan"] == json.loads((sortie / "plan.json").read_bytes())
+
+
+def test_base_cylindrique_avec_percage_et_poche_rejouable(tmp_path):
+    """Le volume du disque retire les deux usinages disjoints, sans réécriture."""
+    from math import pi
+
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {
+        "schema": 1, "id": "disque-test", "base_cylindrique": {"diametre_mm": 30, "epaisseur_mm": 6},
+        "percages": [{"x_mm": 5, "y_mm": 0, "diametre_mm": 4}],
+        "poches_rectangulaires": [_poche(-5, 0, lx=4, ly=3, z=2)],
+    }
+    source = tmp_path / "fiche.json"
+    for i in (0, 1):
+        source.write_text(json.dumps(fiche, indent=i, sort_keys=bool(i)), encoding="utf-8")
+        generer(source, tmp_path / f"p{i}")
+    plan = json.loads((tmp_path / "p0/plan.json").read_bytes())
+    assert plan["base_cylindrique"] == fiche["base_cylindrique"]
+    assert plan["attendu"]["dimensions_mm"] == [30, 30, 6]
+    assert plan["attendu"]["volume_mm3"] == pytest.approx(pi * (15**2 - 2**2) * 6 - 4 * 3 * 2)
+    for nom in ("modele.py", "plan.json"):
+        assert (tmp_path / "p0" / nom).read_bytes() == (tmp_path / "p1" / nom).read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("trous", "poches"),
+    [
+        ([{"x_mm": 10, "y_mm": 10, "diametre_mm": 2}], []),
+        ([], [_poche(10, 10, lx=2, ly=2)]),
+    ],
+)
+def test_base_cylindrique_refuse_operations_hors_du_cercle(tmp_path, trous, poches):
+    """Une opération dans la boîte englobante peut sortir de la matière du disque."""
+    from benchab.conception.fiche_cao import generer
+
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps({
+        "schema": 1, "id": "disque-bord", "base_cylindrique": {"diametre_mm": 30, "epaisseur_mm": 6},
+        "percages": trous, "poches_rectangulaires": poches,
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="marge"):
+        generer(source, tmp_path / "p")
+    assert not (tmp_path / "p").exists()
