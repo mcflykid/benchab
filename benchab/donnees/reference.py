@@ -38,12 +38,14 @@ def source_livree(ligne):
 
 
 def verifier_source(source):
+    """Vérifie l’identité exacte d’une provenance du paquet, sans consulter l’atelier."""
     if source.get("reference_paquet") != "reference/connaissances.jsonl":
         return False
     return source in _reference()[1].values()
 
 
 def importer(base):
+    """Ajoute le savoir public absent et renvoie le nombre de lignes ajoutées ; refuse tout conflit."""
     lignes = _lignes()
     for ligne in lignes:
         if set(ligne) != set(CHAMPS) or ligne["public"] != 1:

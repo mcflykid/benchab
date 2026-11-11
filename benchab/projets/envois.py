@@ -59,6 +59,7 @@ def _fusionner(fiche, evenements):
 
 
 def lire_fiche(base: Base, projet, ident):
+    """Relit la fiche préparée et ses envois déclarés, sans écrire ni interroger la machine."""
     _, reference, fiche = _fiche(base, projet, ident)
     return _fusionner(fiche, _evenements(base.connexion, reference))
 
@@ -105,6 +106,7 @@ def _archiver(base, fichier):
 
 
 def enregistrer(base: Base, projet, ident, fichier, *, ajouter=False, note=""):
+    """Archive le fichier déclaré et renvoie sa comparaison ; ne lance et ne vérifie aucune impression."""
     chemin, reference, fiche = _fiche(base, projet, ident)
     copie, empreinte, mouvements = _archiver(base, fichier)
     comparaison = comparer_envoi(mouvements, fiche["gcode"])

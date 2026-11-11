@@ -8,7 +8,9 @@ from datetime import datetime
 
 
 class Mesure:
+    """Suit un appel local et ses enfants : temps en secondes et mémoire de pointe en octets."""
     def __init__(self):
+        """Fige un identifiant et les compteurs de départ ; aucune écriture à la création."""
         self.identifiant = uuid.uuid4().hex
         self.debut = time.perf_counter()
         self.propre = resource.getrusage(resource.RUSAGE_SELF)
