@@ -299,6 +299,7 @@ def parser():
     complet.add_argument("--profil-canonique", type=Path)
     complet.add_argument("--index-filament", type=int)
     complet.add_argument("--declaration-envoi", type=Path)
+    complet.add_argument("--resume", action="store_true", help="Affichage court avec lien au rapport complet")
     for nom in CONTROLES_DIRECTS:
         direct = controle.add_parser(nom, add_help=False, help="Exécute le contrôle spécialisé et enregistre sa mesure")
         direct.add_argument("-h", "--help", action="store_true", help="Affiche l’aide métier sans exécution")
@@ -631,7 +632,7 @@ def executer(arguments, base):
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle == "complet":
-            from benchab.qualite.complet import executer
+            from benchab.qualite.complet import executer, resumer
 
             rapport = executer(
                 arguments.racine,
@@ -642,7 +643,7 @@ def executer(arguments, base):
                 declaration_envoi=arguments.declaration_envoi,
             )
             rapport["code"] = code_statut(rapport["statut"])
-            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            print(json.dumps(resumer(rapport) if arguments.resume else rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle == "envoi":
             from benchab.controles.envoi import controler

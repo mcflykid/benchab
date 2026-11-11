@@ -16,6 +16,7 @@ l’empreinte de la source.
 | Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
 | Première couche | `--resume --json RAPPORT.json` | Remplacer `--resume` par `--detail` |
 | Coutures | `--sortie DOSSIER_NEUF` | Ajouter `--detail` |
+| Contrôle complet | `--resume` | Retirer `--resume` ou lire le rapport déjà écrit |
 
 Choisissez une destination neuve dans `prive/rapports/`. Les options
 d’entrée restent propres à chaque commande : voir les

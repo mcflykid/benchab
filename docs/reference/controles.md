@@ -144,6 +144,11 @@ Un code de découverte pytest 5 reste FAIL. La RSS par étape est une somme de R
 du groupe échantillonnée, pas un pic d'allocation exact ; les maxima du processus
 appelant et de ses enfants cumulés sont présentés séparément.
 
+Avec `benchab controle complet --resume`, l’affichage donne le verdict
+global, le chemin du JSON complet et le statut et le journal de chaque
+étape. Le rapport privé conserve les diagnostics et les mesures. La
+commande renvoie le même code avec ou sans résumé (#35).
+
 La CI exécute `ruff check --select D10 benchab` sur tout le paquet pour
 vérifier la présence des docstrings publiques. La garde des portées
 modifiées contrôle aussi les annotations des fonctions et classes touchées.

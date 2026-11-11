@@ -50,6 +50,32 @@ def test_non_verifie_reste_non_verifie(tmp_path):
     assert rapport["etapes"][-1]["statut"] == "NON VÉRIFIÉ"
 
 
+def test_cli_resume_garde_les_diagnostics_dans_le_rapport(monkeypatch, capsys, atelier_initialise, tmp_path):
+    """Le résumé ne change pas le verdict et indique le journal du contrôle en échec."""
+    from benchab import cli
+    from benchab.qualite import complet
+
+    def etape(nom):
+        if nom == "coherence":
+            return {"statut": "FAIL", "erreurs": ["Lien privé absent à la ligne 17"]}
+        return {"statut": "PASS"}
+
+    def audit(racine, **options):
+        return executer(racine, executeur=etape, **options)
+
+    monkeypatch.setattr(complet, "executer", audit)
+    code = cli.main(["--prive", str(atelier_initialise), "controle", "complet", "--racine", str(tmp_path), "--resume"])
+    resume = json.loads(capsys.readouterr().out)
+    preuve = json.loads(Path(resume["rapport"]).read_bytes())
+    assert code == resume["code"] == preuve["code"] == 2
+    assert resume["statut"] == preuve["statut"] == "FAIL"
+    echec, = [ligne for ligne in resume["etapes"] if ligne["statut"] == "FAIL"]
+    detail, = [ligne for ligne in preuve["etapes"] if ligne["statut"] == "FAIL"]
+    assert echec == {"etape": "coherence", "statut": "FAIL", "journal": detail["journal"]}
+    assert detail["erreurs"] == ["Lien privé absent à la ligne 17"]
+    assert "Lien privé absent" in Path(echec["journal"]).read_text()
+
+
 def test_temoins_exigent_profil_index_et_fixture_avant_creation_rapport(tmp_path):
     racine, prive = _racines(tmp_path)
     with pytest.raises(ValueError, match="profil privé, index filament et fixture"):
