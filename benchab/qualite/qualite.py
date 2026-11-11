@@ -15,7 +15,6 @@ import re
 import stat
 import subprocess
 import sys
-import uuid
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as E
@@ -24,7 +23,7 @@ from benchab.archives_3mf import Archive3MF, decoder_xml
 from benchab.controles.rapports import _protege
 from benchab.gcode.lecture import iter_lignes_gcode_3mf, plaques_gcode_archive
 from benchab.machine.configuration import charger as configuration_machine
-from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, valider_chemins
+from benchab.qualite.ecritures import PublicationNeuve, _sans_lien
 from benchab.qualite.statuts import code_statut
 
 OK, KO, AV, NV = "PASS", "FAIL", "WARNING", "NON VÉRIFIÉ"
@@ -73,8 +72,32 @@ def _lire_preuve_existante(path):
     return contenu
 
 
+def _examiner_groupe(destination, contenus, annexes_absentes, entrees):
+    """Compare les octets d’un groupe de preuves, sans écrire ni associer une annexe orpheline."""
+    cibles = []
+    existants = {}
+    for nom in (*contenus, *annexes_absentes):
+        cible = _sans_lien(destination / nom)
+        _protege(cible)
+        if cible.resolve() in entrees:
+            raise ValueError("Collision entrée, sortie ou rapport : écrasement refusé.")
+        if nom in contenus:
+            cibles.append(cible)
+        try:
+            existants[nom] = _lire_preuve_existante(cible)
+        except FileNotFoundError:
+            continue
+    if len({p.resolve() for p in cibles}) != len(cibles):
+        raise ValueError("Collision entre les sorties du rapport : écrasement refusé.")
+    attendu = {nom: texte.encode("utf-8") for nom, texte in contenus.items()}
+    return cibles, "identique" if existants == attendu else "différent" if existants else "vide"
+
+
 class Rapport:
+    """Regroupe les constats d’un niveau sans changer les entrées ni les preuves précédentes."""
+
     def __init__(self, nom, cfg_path):
+        """Prépare un rapport depuis le nom du niveau et le chemin de sa configuration."""
         self.nom, self.items = nom, []
         self.base = Path(cfg_path).resolve().parent
         self.entrees = [Path(cfg_path).resolve()]
@@ -122,43 +145,27 @@ class Rapport:
         contenus = {**contenus_base, **supplementaires}
         if any(not isinstance(nom, str) or Path(nom).name != nom or nom in (".", "..") for nom in contenus):
             raise ValueError("Nom de preuve complémentaire invalide")
-        cibles = [out / nom for nom in contenus]
-        for cible in cibles:
-            _protege(cible)
-        entrees = [_sans_lien(p).resolve() for p in self.entrees]
-        cibles = [_sans_lien(p) for p in cibles]
-        cibles_resolues = [p.resolve() for p in cibles]
-        if len(set(cibles_resolues)) != len(cibles_resolues) or set(entrees) & set(cibles_resolues):
-            raise ValueError("Collision entrée, sortie ou rapport : écrasement refusé.")
-        existants = {}
-        for cible in cibles:
-            try:
-                existants[cible] = _lire_preuve_existante(cible)
-            except FileNotFoundError:
-                continue
-        if len(existants) == len(cibles) and all(
-            existants[cible] == contenus[cible.name].encode("utf-8") for cible in cibles
-        ):
-            pass
-        else:
-            destination = out
-            if existants:
-                for _ in range(8):
-                    destination = out / f"rejeu-{uuid.uuid4().hex}"
-                    if not destination.exists() and not destination.is_symlink():
-                        break
-                else:
-                    raise FileExistsError("Impossible de réserver une nouvelle preuve de rejeu")
-                cibles = [destination / nom for nom in contenus]
-                for cible in cibles:
-                    _protege(cible)
-            valider_chemins(entrees, cibles)
+        entrees = {_sans_lien(p).resolve() for p in self.entrees}
+        # Un arrêt précoce ne doit pas faire passer un ancien tableau pour sa propre annexe (#160).
+        annexes_absentes = ("plaques.json",) if self.nom == "niveau3" and "plaques.json" not in contenus else ()
+        destination = out
+        cibles, etat = _examiner_groupe(destination, contenus, annexes_absentes, entrees)
+        if etat == "différent":
+            # L'empreinte porte sur tous les noms et octets ; le rejeu vérifie encore chaque fichier.
+            serialise = json.dumps(contenus, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            destination = out / f"rejeu-{hashlib.sha256(serialise.encode('utf-8')).hexdigest()}"
+            cibles, etat = _examiner_groupe(destination, contenus, annexes_absentes, entrees)
+            if etat == "différent":
+                raise ValueError(f"Preuve de rejeu incomplète ou différente, conservée : {destination}")
+        if etat == "vide":
             with PublicationNeuve(self.entrees, cibles) as publication:
                 for cible in cibles:
                     publication.temporaire(cible).write_text(contenus[cible.name], encoding="utf-8")
                 publication.publier()
             if destination != out:
                 print(f"Résultat différent conservé dans une nouvelle preuve : {destination}")
+        elif destination != out:
+            print(f"Rejeu identique à la preuve existante : {destination}")
         print("\n".join(lignes[:1] + lignes[2:40]))
         return global_
 
@@ -240,6 +247,10 @@ def _indices_slice_info(info):
 
 
 def niveau1(cfg_path):
+    """Contrôle intégrité, maillages et dimensions en mm depuis la configuration du projet.
+
+    Renvoie PASS, FAIL, WARNING ou NON VÉRIFIÉ et préserve les fichiers de preuve existants.
+    """
     import trimesh
 
     cfg, base, P = charger(cfg_path)
@@ -570,6 +581,7 @@ def resume(cfg_path):
 
 
 def main(argv=None):
+    """Lance le contrôle historique demandé et renvoie son code, ou 2 en cas de refus."""
     a = list(sys.argv[1:] if argv is None else argv)
     if len(a) < 2:
         print(__doc__)

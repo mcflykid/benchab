@@ -99,7 +99,50 @@ def test_rapport_qualite_publie_en_groupe_sans_recrire_ni_ecraser(tmp_path, caps
     assert different.ecrire({"plaques.json": "[]\n"}) == Q.KO
     assert "nouvelle preuve" in capsys.readouterr().out
     assert {p: p.read_bytes() for p in avant} == {p: v[0] for p, v in avant.items()}
-    assert len(list((tmp_path / "preuves/qualite").glob("rejeu-*/niveau3.json"))) == 1
+    archives = list(cible.parent.glob("rejeu-*"))
+    assert len(archives) == 1
+    copie = {p: (p.read_bytes(), p.stat().st_ino, p.stat().st_mtime_ns) for p in archives[0].iterdir()}
+    assert different.ecrire(suppl) == Q.KO
+    assert list(cible.parent.glob("rejeu-*")) == archives
+    assert {p: (p.read_bytes(), p.stat().st_ino, p.stat().st_mtime_ns) for p in copie} == copie
+
+
+def test_rapport_qualite_preserve_un_rejeu_incomplet(tmp_path):
+    """Un groupe incomplet à la même empreinte reste intact et reçoit un refus explicite."""
+    cfg = tmp_path / "qualite.json"
+    cfg.write_text("{}")
+    premier = Q.Rapport("niveau1", cfg)
+    assert premier.ecrire() == Q.OK
+    divergent = Q.Rapport("niveau1", cfg)
+    divergent.add("contrôle", Q.KO, "nouveau résultat")
+    assert divergent.ecrire() == Q.KO
+    groupe, = (tmp_path / "preuves/qualite").glob("rejeu-*")
+    restant = groupe / "niveau1.md"
+    avant = restant.read_bytes()
+    (groupe / "niveau1.json").unlink()
+    with pytest.raises(ValueError, match="Preuve de rejeu incomplète"):
+        divergent.ecrire()
+    assert list(groupe.iterdir()) == [restant]
+    assert restant.read_bytes() == avant
+
+
+def test_rapport_qualite_ne_rattache_pas_un_tableau_orphelin(tmp_path):
+    """Un niveau 3 arrêté avant le tableau ne complète pas une ancienne preuve orpheline."""
+    cfg = tmp_path / "qualite.json"
+    cfg.write_text("{}")
+    historique = tmp_path / "preuves/qualite"
+    historique.mkdir(parents=True)
+    plaques = historique / "plaques.json"
+    plaques.write_text("[123]")
+    rapport = Q.Rapport("niveau3", cfg)
+    rapport.add("fichier de tranchage absent", Q.KO)
+
+    assert rapport.ecrire() == Q.KO
+    assert not (historique / "niveau3.json").exists()
+    assert plaques.read_text() == "[123]"
+    rejeux = list(historique.glob("rejeu-*"))
+    assert len(rejeux) == 1
+    assert {p.name for p in rejeux[0].iterdir()} == {"niveau3.json", "niveau3.md"}
 
 
 def test_rapport_qualite_refuse_lien_et_collision_entree(tmp_path):
