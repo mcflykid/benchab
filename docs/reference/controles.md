@@ -149,14 +149,14 @@ global, le chemin du JSON complet et le statut et le journal de chaque
 étape. Le rapport privé conserve les diagnostics et les mesures. La
 commande renvoie le même code avec ou sans résumé (#35).
 
-La CI exécute `ruff check --select D10,D202,D204,D209,D300 benchab`.
+La CI exécute `ruff check --select D10,D202,D204,D209,D300,D400,D403 benchab`.
 `D10` vérifie la présence des docstrings publiques. La garde des portées
 modifiées contrôle aussi les annotations des fonctions et classes touchées.
 La relecture vérifie les unités, statuts et invariants annoncés par le texte.
 
-Les quatre règles de forme portent sur les lignes vides, la fermeture
-des docstrings multilignes et les guillemets doubles. Le rattrapage de ces
-règles a gardé les textes normalisés et le code identiques. Les couples
+Les règles de forme contrôlent les lignes vides, la fermeture des docstrings
+multilignes, les guillemets doubles, le point final du résumé et sa majuscule initiale.
+Les couples
 `D203` / `D211` et `D212` / `D213` proposent des formes incompatibles
 au sein de chaque couple. Leur choix et l’adaptation des règles de style
 rédactionnel aux textes français restent suivis dans #127.

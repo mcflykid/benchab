@@ -29,7 +29,7 @@ jobs:
       - run: uv run python -m benchab.qualite.frontiere --racine .
       - run: uv run ruff check .
       - name: Vérifier la présence et la mise en forme des docstrings du paquet
-        run: uv run ruff check --select D10,D202,D204,D209,D300 benchab
+        run: uv run ruff check --select D10,D202,D204,D209,D300,D400,D403 benchab
       - name: Contrôler les annotations publiques modifiées
         env:
           BENCHAB_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

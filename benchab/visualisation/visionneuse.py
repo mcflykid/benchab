@@ -221,8 +221,10 @@ class Visionneuse:
         self.groupes[groupe] = False
 
     def mecanisme(self, ident, libelle, valeurs, poses, unite="", etat=None, defaut=0):
-        """valeurs : suite des positions échantillonnées. poses(v) -> {nom_pièce: matrice 4×4, ou None pour masquer}.
-        Les pièces absentes du dictionnaire gardent leur pose de base. etat(v) -> texte affiché (facultatif).
+        """Enregistre les poses du mécanisme pour chaque position échantillonnée.
+
+        Le rappel poses fournit une matrice 4×4 par pièce ou None pour la masquer.
+        Les pièces omises gardent leur pose initiale. Le rappel etat fournit le texte facultatif.
         """
         valeurs = list(valeurs)
         frames = [poses(v) for v in valeurs]

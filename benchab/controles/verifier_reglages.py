@@ -1,9 +1,8 @@
-"""
+"""Vérifie l’effet des réglages par objet dans le G-code tranché.
 
-Vérifie dans le G-code réellement tranché que les réglages par objet demandés ont pris effet
-(bordure, lissage, vitesse de paroi extérieure, couture côté arrière du plateau, hauteur de couche, température).
-usage : python -I verifier_reglages.py <3mf_tranche> <placement.json> <sortie.json>
-
+Le contrôle porte sur la bordure, le lissage, la vitesse de paroi extérieure,
+la couture côté arrière du plateau, la hauteur de couche et la température.
+Commande : python -I verifier_reglages.py <3mf_tranche> <placement.json> <sortie.json>
 """
 
 import collections

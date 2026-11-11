@@ -16,7 +16,7 @@ _results = []
 
 
 def load_parts(path):
-    """name -> world-transformed Trimesh (same-name nodes merged)."""
+    """Charge les maillages par nom dans le repère de la scène et fusionne les noms répétés."""
     loaded = trimesh.load(path)
     if isinstance(loaded, trimesh.Trimesh):
         return {"part": loaded}
@@ -172,7 +172,7 @@ def breach_check(shell, parts, names, min_wall, pitch, seed=0):
 
 
 def placed_meshes(path, skip=()):
-    """name -> world-transformed mesh, from a GLB scene (or a single mesh file)."""
+    """Charge une scène ou un maillage dans son repère de placement et filtre les noms exclus."""
     loaded = trimesh.load(path)
     out = {}
     if isinstance(loaded, trimesh.Scene):
