@@ -296,7 +296,18 @@ conservée (#35) ; sa documentation distingue les modes d’analyse des arcs
 (#123). Trois contrats de contrôle sont annotés sans changement de comportement
 (#127).
 
-## Prochaine version : 1.21.0
+## Version 1.21.0 — preuves de rejeu et capacités
+
+Deux ou trois reçus de tranchage permettent de comparer les G-code et les
+dépôts de support sans relancer le moteur. La variabilité du style fort
+est reproduite à entrée identique ; sa cause reste dans le chantier des
+familles de support (#89, #208).
+
+Le contrôle des capacités lie l’empreinte aux membres qu’il analyse
+depuis le même fichier régulier (#210). Les maxima nominaux des arcs G17
+restent séparés de la cinématique, des seuils et des verdicts (#123).
+
+## Prochaine version : 1.22.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -328,8 +339,9 @@ G-code des modificateurs #82, puis les variantes de supports #89.
 La [qualification native #48](docs/reference/integrite-3mf.md#qualification-native-dun-modificateur-48)
 couvre une sonde multi-volumes. #49 garde le lot des 32 archives historiques aux
 réglages ambigus. Les essais natifs conservent leurs conditions d’application.
-#208 suit la variabilité des supports à entrée identique : comparer la
-stabilité des mesures séparément de l’égalité des trajets.
+La comparaison de rejeux acquise dans #208 sépare stabilité des mesures
+et égalité des trajets. Le choix du style et la cause des écarts restent
+dans #89.
 
 ### 3. Compléter les parcours de préparation
 
