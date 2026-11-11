@@ -99,9 +99,15 @@ class Archive3MF:
         self._flux_ouverts = []
 
     def __enter__(self):
-        """Ouvre l’archive une fois et refuse son index dangereux ou hors budget."""
+        """Ouvre un contexte neuf et refuse réentrée, index invalide ou budget dépassé."""
         from benchab.chemins import sans_lien
 
+        if self._fichier is not None or self._archive is not None:
+            raise RuntimeError("Archive 3MF déjà ouverte dans un contexte actif")
+        # Index, identité et quota appartiennent à une ouverture, pas à l'objet réutilisé (#128).
+        self._infos.clear()
+        self._identite = None
+        self._octets_lus = 0
         # O_NOFOLLOW ne couvre que le dernier composant ; contrôler aussi les parents (#17).
         self.chemin = sans_lien(self.chemin, strict=True)
         for nom, valeur in (
@@ -284,6 +290,12 @@ class Archive3MF:
         if self._archive is None:
             raise RuntimeError("ouvrir Archive3MF avec un bloc with")
         return tuple(self._infos)
+
+    def taille_membre(self, membre):
+        """Renvoie la taille déclarée en octets après validation de l'index, sans décompresser."""
+        if self._archive is None:
+            raise RuntimeError("ouvrir Archive3MF avec un bloc with")
+        return self._infos[membre].file_size
 
     def verifier(self):
         """Parcourt les membres par blocs de 1 Mio pour détecter CRC et flux invalides."""

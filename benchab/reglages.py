@@ -4,7 +4,6 @@ import copy
 import json
 from functools import lru_cache
 from importlib.resources import files
-from zipfile import ZipFile
 
 _ABSENT = object()
 
@@ -397,9 +396,11 @@ def lire_membre_projet(archive):
 
 
 def lire_3mf(chemin):
-    """Lit le projet d'un 3MF (unités natives), retourne Reglages ; aucune écriture ni ouverture du slicer."""
-    with ZipFile(chemin) as archive:
-        return decoder(lire_membre_projet(archive))
+    """Lit au plus 8 Mio de réglages 3MF en unités natives ; archive refusée si ambiguë, aucune écriture."""
+    from benchab.archives_3mf import Archive3MF
+
+    with Archive3MF(chemin, taille_max_xml=8 * 1024 * 1024) as archive:
+        return archive.reglages()
 
 
 def valeur_brute_indice(donnees, cle, indice, *, lecteur):

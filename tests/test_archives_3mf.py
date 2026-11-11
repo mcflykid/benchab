@@ -35,6 +35,43 @@ def test_repertoires_zip_sont_acceptes(tmp_path):
         assert archive.lire("Metadata/x") == b"x"
 
 
+def test_deux_contextes_sequentiels_reinitialisent_index_et_budget(tmp_path):
+    """Le même lecteur reconstruit l'index et son budget à chaque ouverture."""
+    path = tmp_path / "reouverture.3mf"
+    _zip(path, [("x", b"ABCD")])
+    lecteur = Archive3MF(path, taille_max_totale=4)
+    for _ in range(2):
+        with lecteur as archive:
+            assert archive.lire("x") == b"ABCD"
+
+
+def test_reentree_refusee_ne_ferme_pas_le_flux_actif(tmp_path):
+    """Le contexte extérieur conserve son flux après le refus d'une ouverture imbriquée."""
+    path = tmp_path / "reentree.3mf"
+    _zip(path, [("x", b"ABCD")])
+    lecteur = Archive3MF(path)
+    with lecteur, lecteur.ouvrir_flux("x") as flux:
+        assert flux.read(2) == b"AB"
+        with pytest.raises(RuntimeError, match="déjà ouverte"):
+            with lecteur:
+                pytest.fail("Un même objet ne doit pas ouvrir deux contextes imbriqués")
+        assert flux.read() == b"CD"
+
+
+def test_echec_index_initial_ne_pollue_pas_reouverture(tmp_path):
+    """Après un refus d'index, une nouvelle ouverture examine le ZIP courant à neuf."""
+    path = tmp_path / "index-refuse.3mf"
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        _zip(path, [("x", b"avant"), ("x", b"doublon")])
+    lecteur = Archive3MF(path)
+    with pytest.raises(ValueError, match="dupliqué"):
+        with lecteur:
+            pytest.fail("L'index invalide ne doit pas être ouvert")
+    _zip(path, [("x", b"apres")])
+    with lecteur:
+        assert lecteur.lire("x") == b"apres"
+
+
 def test_source_refuse_parent_symbolique_avant_ouverture(tmp_path):
     """Un parent lié ne contourne pas la garde source ; archive réelle intacte."""
     dossier = tmp_path / "reel"
