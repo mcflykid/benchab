@@ -39,7 +39,7 @@ Les parcours mémoire spécialisés déjà bornés sont conservés ; les autres
 familles de lecteurs seront migrées dans un lot distinct. Les projets et leurs
 preuves restent privés et ne sont pas réécrits par cette version.
 
-## Prochaine version : 1.3.0
+## Version 1.3.0 et suite de la feuille de route
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -63,8 +63,9 @@ Traiter les prérequis avant les nouveaux réglages :
 #80 établit les valeurs énumérées consommées par une version identifiée du
 slicer. Il précède les comparaisons de remplissage #81 et la preuve d’effet
 G-code des modificateurs #82, puis les variantes de supports #89.
-#48 qualifie les 3MF multi-volumes ; #49 garde le lot des 32 archives historiques
-aux réglages ambigus. Un test synthétique ne remplace pas cette qualification.
+La [qualification native #48](docs/reference/integrite-3mf.md#qualification-native-dun-modificateur-48)
+couvre une sonde multi-volumes. #49 garde le lot des 32 archives historiques aux
+réglages ambigus. Les essais natifs conservent leurs conditions d’application.
 
 ### 3. Compléter les parcours de préparation
 

@@ -14,6 +14,7 @@ ASN = {
     "cle,valeur",
     [
         ("sparse_infill_pattern", "zigzag"),
+        ("sparse_infill_pattern", "crosshatch"),
         ("internal_solid_infill_pattern", "monotonic"),
         ("top_surface_pattern", "monotonicline"),
         ("bottom_surface_pattern", "rectilinear"),

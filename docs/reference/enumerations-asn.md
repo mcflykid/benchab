@@ -23,7 +23,7 @@ Les rapports et fichiers de recette restent dans l’atelier privé.
 
 | Réglage | Valeurs conservées | Mesure numérique |
 | --- | --- | --- |
-| `sparse_infill_pattern` | `gyroid`, `grid`, `rectilinear`, `zigzag` | Trajectoires distinctes ; 5 502, 468, 456 et 456 segments déposés dans cet ordre. |
+| `sparse_infill_pattern` | `gyroid`, `grid`, `rectilinear`, `zigzag`, `crosshatch` | Trajectoires distinctes ; 5 502, 468, 456, 456 et 1 602 segments déposés dans cet ordre. |
 | `internal_solid_infill_pattern` | `rectilinear`, `monotonic` | Trajectoires de remplissage plein interne distinctes. |
 | `top_surface_pattern` | `monotonicline`, `rectilinear` | Trajectoires de surface supérieure distinctes. |
 | `bottom_surface_pattern` | `monotonic`, `rectilinear` | Trajectoires de surface inférieure distinctes. |
@@ -32,8 +32,9 @@ Les rapports et fichiers de recette restent dans l’atelier privé.
 Avec `zig-zag`, le moteur a sorti `zigzag` et les mêmes trajectoires qu’avec
 `zigzag` explicite. Une valeur fictive a donné `crosshatch`. Dans les deux cas,
 le moteur a terminé normalement et BENCHAB a refusé l’intégrité du résultat.
-Les défauts exportés par le moteur indiquent `crosshatch` ; cela ne remplace pas
-un essai de cette valeur en entrée avec comparaison des dépôts.
+Une variante explicite `crosshatch` a conservé la valeur et produit les mêmes
+trajectoires que le repli de la valeur fictive. Cette variante est aussi la
+valeur de remplissage clairsemé dans les défauts exportés par ce binaire.
 
 Lors des essais de peau et squelette verrouillés (motif clairsemé
 `lockedzag`, valeur `rectilinear`), les champs

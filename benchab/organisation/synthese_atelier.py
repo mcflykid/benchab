@@ -223,7 +223,7 @@ def _archives(root, projet, fiche):
         try:
             debut_tranches = len(tranches)
             debut_supports = len(supports)
-            with _archive_liee(path, ref.get("sha256")) as (z, stream):
+            with _archive_liee(path, ref.get("sha256")) as (z, _):
                 if sum((x.file_size for x in z.infolist())) > MAX_ARCHIVE:
                     raise ValueError("Archive décompressée trop volumineuse")
                 if len(z.namelist()) != len(set(z.namelist())):
@@ -257,7 +257,8 @@ def _archives(root, projet, fiche):
                 try:
                     from benchab.fabrication import anycubic
 
-                    durees = anycubic.resultats(stream)
+                    # Garder le même descripteur lié au SHA ; une réouverture ne porterait pas cette preuve.
+                    durees = anycubic.resultats_xml(_membre(z, "Metadata/slice_info.config", MAX_JSON))
                 except (KeyError, ValueError, ParseError, zipfile.BadZipFile):
                     alertes.append("Durée et masse estimées du slicer indisponibles")
                 for name in sorted(z.namelist()):
