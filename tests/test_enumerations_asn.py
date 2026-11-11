@@ -19,6 +19,8 @@ ASN = {
         ("top_surface_pattern", "monotonicline"),
         ("bottom_surface_pattern", "rectilinear"),
         ("wall_sequence", "inner-outer-inner wall"),
+        ("support_interface_pattern", "auto"),
+        ("support_interface_pattern", "concentric"),
     ],
 )
 def test_valeur_qualifiee_ne_change_pas_les_reglages(cle, valeur):
@@ -45,6 +47,8 @@ def test_inconnu_reste_non_verifie():
         ({**ASN, "sha256": "0" * 64}, "sparse_infill_pattern", "grid"),
         (ASN, "sparse_infill_pattern", "motif jamais tenté"),
         (ASN, "locked_skeleton_infill_pattern", "rectilinear"),
+        (ASN, "support_interface_pattern", "grid"),
+        ({**ASN, "sha256": "0" * 64}, "support_interface_pattern", "concentric"),
     ):
         diagnostic, = reglages.verifier({cle: valeur}, identite_slicer=identite)
         assert diagnostic["statut"] == "NON VÉRIFIÉ"

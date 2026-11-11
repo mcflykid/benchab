@@ -47,3 +47,28 @@ Le [code source publié d’Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSli
 fournit des noms candidats. Aucun lien n’est établi entre cette révision et
 le binaire mesuré ; seuls le 3MF natif et le G-code tranché appuient les
 observations du tableau. Rien ici ne valide une vitesse ou une tenue physique.
+
+## Interface de support
+
+Le même binaire ASN a tranché un coupon synthétique composé d’un pilier de
+12 × 14 × 15 mm et d’une tablette de 28 × 14 × 3 mm, avec un recouvrement de
+0,2 mm. Les supports étaient de type arbre automatique, style organique,
+sur le plateau seulement, avec deux couches d’interface en haut et en bas.
+Les empreintes des 646 profils relus et du coupon sont restées identiques.
+
+Les profils système Kobra S1 pour buse de 0,4 mm déclarent `auto`. La valeur
+candidate `concentric` figure dans le [code source publié d’Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L4664-L4682).
+Ce lien fournit un nom candidat ; il n’identifie pas la révision du binaire.
+
+| Valeur demandée | Valeur embarquée | Segments d’interface | Longueur nominale | Temps et masse estimés du 3MF |
+| --- | --- | --- | --- | --- |
+| `auto` | `auto` | 100 | 525,374 mm | 989 s ; 3,28 g |
+| `concentric` | `concentric` | 64 | 523,232 mm | 990 s ; 3,28 g |
+| `concentric`, répétition | `concentric` | 64 | 523,232 mm | 990 s ; 3,28 g |
+
+La relecture des paquets confirme que seule `support_interface_pattern`
+diffère dans leurs réglages projet, et que les empreintes des trajectoires
+du rôle `Support interface` diffèrent du témoin. Les deux essais
+`concentric` donnent la même empreinte de trajectoires. Les autres valeurs,
+styles, matériaux, la mesure d’écart Z et le retrait physique restent hors
+de ce résultat (#80 et #89). Aucun réglage n’est adopté automatiquement.
