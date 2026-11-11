@@ -10,7 +10,7 @@ option explicite : `--ci-github ID/TENTATIVE`. Le dépôt est dérivé de l’`o
 du checkout fourni avec `--depot` ; seuls les formats HTTPS et SSH de GitHub
 sans identifiants sont acceptés. La commande fait des GET publics sans jeton,
 sans redirection, avec un délai de 5 secondes et une limite de 256 Kio par
-réponse, sans conserver les corps bruts. Les seuls chemins API sont
+réponse, sans conserver les corps bruts. Pour la tentative, les chemins API sont
 `/repos/{OWNER}/{REPO}/actions/runs/{ID}/attempts/{TENTATIVE}` et son suffixe
 `/jobs?per_page=20`.
 La vérification demande un dépôt source identique à l’origin, la même empreinte
@@ -23,6 +23,26 @@ statut `OBSERVATION CI PUBLIQUEMENT VÉRIFIÉE` ou `NON VÉRIFIÉ`. Une réponse
 indisponible ou une divergence reste `NON VÉRIFIÉ`. Cette observation ne
 modifie jamais `execution.statut`, n’authentifie ni le cas JUnit ni l’identité
 de l’exécuteur, et ne prouve pas l’exécution locale de la fiche.
+
+## Relier les cas à l’artefact de la tentative
+
+La CI publie un fichier `benchab-junit-TENTATIVE.xml` après un passage réussi
+du workflow sur `main`. Ce fichier est conservé quatorze jours et exclut
+les sorties capturées des tests. Récupérer le XML depuis les artefacts de
+la tentative, le conserver sous l’atelier privé et le déclarer comme
+`preuve_execution` avec son SHA et les cas attendus. Ajouter
+`--ci-github ID/TENTATIVE --artefact-github ID_ARTEFACT` à la commande.
+
+La fiche vérifie aussi le succès de l’étape de publication. Elle lit
+uniquement les métadonnées publiques de l’artefact et rapproche son
+identifiant, son nom, son run, sa révision, sa taille et son SHA-256.
+La requête vise `/repos/{OWNER}/{REPO}/actions/artifacts/{ID_ARTEFACT}`.
+Si les octets JUnit concordent, `ci_github.preuve_cas` rapporte le résultat
+des cas de cette tentative avec le statut `ARTEFACT JUNIT CI VÉRIFIÉ`.
+Un artefact absent, expiré ou différent reste NON VÉRIFIÉ. Cette option
+ne télécharge aucun fichier et ne modifie pas le statut de l’exécution locale.
+
+## Déclaration de l’incident
 
 La déclaration JSON de schéma 1 contient :
 

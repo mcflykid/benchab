@@ -434,6 +434,71 @@ def test_ci_github_est_opt_in_et_garde_un_sous_statut_separe(incident, monkeypat
     assert resultat["execution"]["statut"] == "NON VÉRIFIÉ"
 
 
+@pytest.mark.parametrize("divergence", [None, "digest", "name", "expired", "run", "publication"])
+def test_junit_ci_lie_le_fichier_au_run_et_a_la_tentative(incident, monkeypatch, divergence):
+    """Le résultat par cas ne vient que des octets attestés par la CI exacte."""
+    depot, prive, declaration, preuve, _ = incident
+    revision = declaration["revision"]
+    preuve.write_bytes(
+        b'<testsuite><testcase file="tests/test_regression.py" '
+        b'classname="tests.test_regression" name="test_exemple"/></testsuite>'
+    )
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    declaration["preuve_execution"].update(
+        sha256=sha, format="junit",
+        cas_attendus=[{"chemin": "tests/test_regression.py", "classe": "tests.test_regression", "nom": "test_exemple"}],
+    )
+    artefact = {
+        "id": 47, "name": "benchab-junit-1.xml", "expired": False,
+        "size_in_bytes": preuve.stat().st_size, "digest": "sha256:" + sha,
+        "workflow_run": {"id": 43048027734, "head_sha": revision, "head_branch": "main"},
+    }
+    if divergence == "run":
+        artefact["workflow_run"]["id"] += 1
+    elif divergence in {"digest", "name", "expired"}:
+        artefact[divergence] = {
+            "digest": "sha256:" + "0" * 64, "name": "benchab-junit-2.xml", "expired": True,
+        }[divergence]
+
+    def get_public(url):
+        if url.endswith("/jobs?per_page=20"):
+            jobs = _github_jobs(revision)
+            if divergence != "publication":
+                jobs["jobs"][0]["steps"].append({
+                    "name": "Publier le JUnit de la tentative", "status": "completed", "conclusion": "success",
+                })
+            return jobs
+        if url.endswith("/actions/artifacts/47"):
+            return artefact
+        return _github_run(revision)
+
+    monkeypatch.setattr(incidents, "_get_github_public", get_public)
+    resultat = incidents.fiche(
+        declaration, depot=depot, prive=prive, ci_github="43048027734/1", artefact_github="47",
+    )
+    preuve_ci = resultat["ci_github"]["preuve_cas"]
+    assert resultat["execution"]["statut"] == "NON VÉRIFIÉ"
+    if divergence is not None:
+        assert preuve_ci["statut"] == "NON VÉRIFIÉ"
+        assert "rapport_junit" not in preuve_ci
+    else:
+        assert preuve_ci["statut"] == "ARTEFACT JUNIT CI VÉRIFIÉ"
+        assert preuve_ci["rapport_junit"]["cas_trouves"] == 1
+        assert preuve_ci["rapport_junit"]["statut"] == "CONTENU RAPPORTÉ : TOUS LES CAS SANS ÉCHEC"
+
+
+def test_artefact_github_exige_la_tentative_avant_toute_requete(incident, monkeypatch):
+    """L’identifiant seul ne suffit pas à autoriser une observation."""
+    depot, prive, declaration, _, _ = incident
+
+    def interdire(_url):
+        pytest.fail("appel public avant validation des options")
+
+    monkeypatch.setattr(incidents, "_get_github_public", interdire)
+    with pytest.raises(ValueError, match="exige --ci-github"):
+        incidents.fiche(declaration, depot=depot, prive=prive, artefact_github="47")
+
+
 def test_ci_github_sans_option_ne_fait_aucun_acces_reseau(incident, monkeypatch):
     depot, prive, declaration, _, _ = incident
 
@@ -552,7 +617,8 @@ def test_ci_github_accepte_origin_ssh_sans_reseau(incident):
     assert incidents._depot_github(depot) == "fixture-owner/fixture-repo"
 
 
-def test_requete_github_est_get_sans_auth_et_bornee(incident, monkeypatch):
+@pytest.mark.parametrize("ressource", ["runs/123/attempts/1", "artifacts/47"])
+def test_requete_github_est_get_sans_auth_et_bornee(incident, monkeypatch, ressource):
     class Reponse:
         def __init__(self, contenu):
             self.contenu = contenu
@@ -578,7 +644,7 @@ def test_requete_github_est_get_sans_auth_et_bornee(incident, monkeypatch):
     )
 
     resultat = incidents._get_github_public(
-        "https://api.github.com/repos/fixture-owner/fixture-repo/actions/runs/123/attempts/1",
+        f"https://api.github.com/repos/fixture-owner/fixture-repo/actions/{ressource}",
     )
 
     assert resultat == {"ok": True}
