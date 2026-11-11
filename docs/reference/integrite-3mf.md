@@ -174,3 +174,30 @@ vérifie aussi le CRC des autres membres. Une différence d’unité ou de somme
 avec un CRC recalculé est donc refusée avant publication (#200) ; la sortie
 antérieure reste intacte. Les réglages gardent leur comparaison typée et
 les différences permises restent déclarées avant la transformation.
+
+### Frontière du lecteur commun
+
+Les lecteurs métier de 3MF sur disque utilisent `Archive3MF` : imports,
+conception, contrôle de G-code par membre et continuité, fabrication et
+optimisation, visualisation, synthèses d’atelier et preuves de préparation
+(#122). Les synthèses ouvrent le fichier régulier, le hachent, puis lisent
+le ZIP depuis un duplicata de ce même descripteur. Elles gardent leurs
+plafonds par type de membre ; un XML hors contrat ne fournit pas de mesures
+au bilan (#203).
+
+Les écritures ZIP restent propres à chaque transformation. Le clone
+d’optimisation lit sa source sur un descripteur épinglé ; la relecture
+contrôle l’identité, l’ordre et le commentaire de l’archive, les membres
+non modifiés et les différences de réglages déclarées (#202). La
+normalisation, les noms, les hauteurs et le remplacement de maillage
+gardent leur propre déclaration d’intégrité avant/après.
+
+Deux validateurs conservent leur format de lecture spécialisé : l’import
+`paquet_3mf` examine d’abord l’index OPC sur octets bornés, et
+`finition_parois` interprète un instantané mémoire immuable qui peut être
+un G-code simple. Les contrôles de qualité des paquets ZIP/TAR génériques
+conservent leurs budgets de parcours et ne chargent pas de réglages 3MF.
+
+Les rapports de synthèse et les membres des clones des trois témoins
+S/M/L ont été relus avant et après migration. Le contenu, l’ordre, les
+commentaires ZIP et les empreintes des sources sont identiques.
