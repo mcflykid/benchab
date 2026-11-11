@@ -129,7 +129,16 @@ if (D.decoupe) {
       }
       const select=document.createElement('select');select.setAttribute('aria-label','Connecteur coupe '+(i+1));
       for(const [k,v] of Object.entries(catalogue)){const o=document.createElement('option');o.value=k;o.textContent=v;select.append(o);}
-      coupe.connecteur ||= {type:'douille'};if(coupe.connecteur.type===undefined)coupe.connecteur.type='douille';select.value=coupe.connecteur.type;select.onchange=()=>{coupe.connecteur.type=select.value;if(!select.value.startsWith('clip-'))delete coupe.connecteur.placement;etatDec.textContent='Connecteur modifié : recalcul requis.';formulairesDec();dessinerDec();};bloc.append(select);
+      coupe.connecteur ||= {type:'douille'};if(coupe.connecteur.type===undefined)coupe.connecteur.type='douille';select.value=coupe.connecteur.type;select.onchange=()=>{
+        const ancien=coupe.connecteur.type;
+        if((ancien==='vis-ecrou')!==(select.value==='vis-ecrou')){
+          // Un diamètre ou jeu édité pour une autre forme n'est pas une cote de visserie.
+          for(const cle of ['diametre','longueur','mesure_jeu','source_cotes','lamage_diametre_mm','lamage_profondeur_mm',
+                            'ecrou_sur_plats_mm','ecrou_profondeur_mm','ecrou_orientation_deg'])delete coupe.connecteur[cle];
+        }
+        coupe.connecteur.type=select.value;if(!select.value.startsWith('clip-'))delete coupe.connecteur.placement;
+        etatDec.textContent='Connecteur modifié : recalcul requis.';formulairesDec();dessinerDec();
+      };bloc.append(select);
       const visserie=coupe.connecteur.type==='vis-ecrou';
       const dimensions=visserie?
         [['diametre','','Diamètre nominal de la vis (mm)'],['paroi_min',1.2,'Paroi minimale (mm)'],
