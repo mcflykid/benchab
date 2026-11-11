@@ -85,27 +85,24 @@ def _get_github_public(url):
 
 def _depot_github(depot):
     """Dérive un dépôt public uniquement depuis un origin GitHub sans identifiants."""
-    try:
-        lecture = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            cwd=depot,
-            env=_env_git(),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-            check=False,
+    env = _env_git()
+    with tempfile.TemporaryDirectory(prefix="benchab-origine-ci-") as diagnostics:
+        cles = _git_court(
+            depot, ["config", "--local", "--name-only", "--get-regexp", r"^remote\.origin\.url$"],
+            env, diagnostics,
         )
-    except (OSError, subprocess.TimeoutExpired) as erreur:
-        raise ValueError("origin GitHub indisponible") from erreur
-    if lecture.returncode != 0 or len(lecture.stdout) > 2048:
-        raise ValueError("origin absent ou invalide")
-    try:
-        origin = lecture.stdout.decode("utf-8").strip()
-    except UnicodeDecodeError as erreur:
-        raise ValueError("origin non UTF-8") from erreur
-    if not origin or len(origin) > 2048:
-        raise ValueError("origin absent ou invalide")
+        if cles.splitlines() != ["remote.origin.url"]:
+            raise ValueError("origin local absent ou ambigu")
+        # Git filtre la valeur avant capture : un origin avec identifiants
+        # n’apparaît jamais dans la sortie du lanceur, même en diagnostic.
+        motif = (
+            r"^((https://github\.com|ssh://git@github\.com)/|git@github\.com:)"
+            r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$"
+        )
+        origin = _git_court(depot, ["config", "--local", "--get", "remote.origin.url", motif], env, diagnostics).strip()
+    if not origin:
+        raise ValueError("origin local hors périmètre GitHub")
+
     def identifier_depuis_chemin(chemin):
         """Valide les deux composants d’un chemin de dépôt GitHub."""
         morceaux = chemin.split("/")

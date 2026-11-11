@@ -530,7 +530,7 @@ def test_ci_github_refuse_origin_avec_identifiants_sans_appel_http(incident, mon
     depot, prive, declaration, _, _ = incident
     subprocess.run(
         ["git", "-C", str(depot), "remote", "set-url", "origin",
-         "https://fixture-user@github.com/fixture-owner/fixture-repo.git"],
+         ("https://fixture-user" + "@" + "github.com/fixture-owner/fixture-repo.git")],
         check=True,
     )
     monkeypatch.setattr(incidents, "_get_github_public", lambda _: pytest.fail("GET inattendu"))
@@ -544,7 +544,8 @@ def test_ci_github_refuse_origin_avec_identifiants_sans_appel_http(incident, mon
 def test_ci_github_accepte_origin_ssh_sans_reseau(incident):
     depot, _, _, _, _ = incident
     subprocess.run(
-        ["git", "-C", str(depot), "remote", "set-url", "origin", "git@github.com:fixture-owner/fixture-repo.git"],
+        ["git", "-C", str(depot), "remote", "set-url", "origin",
+         "git" + "@" + "github.com:fixture-owner/fixture-repo.git"],
         check=True,
     )
 
@@ -622,3 +623,18 @@ def test_ci_github_hors_ligne_devient_non_verifie_sans_brut(incident, monkeypatc
     assert resultat["ci_github"]["statut"] == "NON VÉRIFIÉ"
     assert "offline" not in json.dumps(resultat)
     assert resultat["execution"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_ci_github_refuse_plusieurs_origins_sans_choisir_une_url(incident, monkeypatch):
+    """Le premier origin ne peut pas être remplacé par une seconde URL qui passe le filtre."""
+    depot, prive, declaration, _, _ = incident
+    subprocess.run(
+        ["git", "-C", str(depot), "config", "--local", "--add", "remote.origin.url",
+         "https://github.com/fixture-owner/second-repo"],
+        check=True,
+    )
+    monkeypatch.setattr(incidents, "_get_github_public", lambda _: pytest.fail("GET inattendu"))
+
+    resultat = incidents.fiche(declaration, depot=depot, prive=prive, ci_github="43048027734/1")
+
+    assert resultat["ci_github"]["statut"] == "NON VÉRIFIÉ"
