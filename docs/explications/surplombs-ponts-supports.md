@@ -136,9 +136,17 @@ classification des cartes avant tranchage (#93).
 --translation-mm X Y Z --sha-stl SHA_STL --sha-3mf SHA_3MF` relit la carte avec
 le même seuil d’angle et sélectionne l’îlot demandé. Il compare les SHA aux
 deux fichiers relus avant de mesurer. Les trois composantes de translation
-en mm sont une déclaration : le contrôle ne reconstitue pas une rotation,
-une échelle ou une correspondance entre objets. `--sortie RAPPORT_NEUF`
+en mm sont déclarées. Pour une pièce tournée sur le plateau, ajouter
+`--rotation-z-deg ANGLE`. L’angle positif tourne X vers Y autour de
+l’origine du STL, avant la translation. Le contrôle conserve le repère
+déclaré dans le rapport et laisse l’échelle et la correspondance entre
+objets à la qualification de l’appelant. `--sortie RAPPORT_NEUF`
 conserve le détail en privé et affiche un résumé.
+
+Sur une copie du coupon de pont de 4 mm tournée de −90°, la déclaration
+de +90° retrouve le résultat de référence sur les deux archives tranchées
+déjà conservées. Chacune donne neuf axes `Bridge` concordants, sur 36 mm
+au total. Ce rejeu numérique vérifie la transformation de repère (#93).
 
 Le sous-cas couvre un îlot horizontal et des axes de dépôt linéaires
 des rôles `Bridge` et `Internal Bridge`. Le rapport distingue les longueurs

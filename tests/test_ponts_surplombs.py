@@ -52,6 +52,31 @@ def test_refuse_une_projection_non_horizontale():
         rapprocher(triangles, [], translation_mm=(0, 0, 0))
 
 
+def test_rotation_z_declaree_avant_translation():
+    """Un rectangle tourné de 90° occupe une autre zone XY et garde son altitude."""
+    lignes = [
+        "G90", "M83", "G1 X8 Y11 Z7.2", ";HEIGHT:0.2",
+        ";TYPE:Bridge", "G1 Y19 E1",
+    ]
+    deplacement = (10, 10, 3)
+    droit = rapprocher(TRIANGLES, lignes, translation_mm=deplacement)
+    tourne = rapprocher(TRIANGLES, lignes, translation_mm=deplacement, rotation_z_deg=90)
+    assert droit["association"] == "AUCUNE CONCORDANCE MESURÉE"
+    assert "rotation_z_declaree_deg" not in droit
+    assert tourne["association"] == "CONCORDANCE MESURÉE"
+    assert tourne["rotation_z_declaree_deg"] == 90
+    assert tourne["altitude_ilot_mm"] == 7
+    assert tourne["projection_mm2"] == 32
+    assert tourne["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 7
+
+
+@pytest.mark.parametrize("angle", [True, float("nan"), float("inf"), 361])
+def test_refuse_rotation_z_invalide(angle):
+    """Le repère déclaré exige un angle numérique fini en degrés."""
+    with pytest.raises(ValueError, match="Rotation Z"):
+        rapprocher(TRIANGLES, [], translation_mm=(0, 0, 0), rotation_z_deg=angle)
+
+
 def test_niveau_different_sans_nouvelle_hauteur_reste_non_verifie():
     """Même sans marqueur de couche, un ancien HEIGHT ne couvre pas un autre niveau."""
     lignes = [
@@ -90,6 +115,8 @@ def test_cli_rattache_un_ilot_a_une_plaque_et_aux_deux_empreintes(tmp_path, caps
     assert r["source_sha256"] == sha_stl and r["archive_sha256"] == sha_tranche
     assert r["plaque"] == 2 and r["ilot"] == "surplomb-001"
     assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 8
+    assert main([*commande, "--sha-3mf", sha_tranche, "--rotation-z-deg", "0"]) == 0
+    assert json.loads(capsys.readouterr().out)["rotation_z_declaree_deg"] == 0
     assert main([*commande, "--sha-3mf", "0" * 64]) == 2
     sortie = capsys.readouterr()
     assert "empreinte" in sortie.err.lower() and not sortie.out

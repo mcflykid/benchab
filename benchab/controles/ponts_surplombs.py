@@ -28,7 +28,7 @@ _MAX_GCODE_OCTETS = 64 * 1024 * 1024
 _TOLERANCE_PLAN_MM = 1e-6
 
 
-def _projection(triangles_mm, translation_mm):
+def _projection(triangles_mm, translation_mm, rotation_z_deg):
     """Prépare une projection XY en mm² d’un îlot horizontal orienté vers le bas."""
     try:
         triangles = np.asarray(triangles_mm, dtype=float)
@@ -41,6 +41,15 @@ def _projection(triangles_mm, translation_mm):
         raise ValueError("Triangles et translation XYZ finis requis.")
     if np.max(np.abs(triangles)) > 100_000 or np.max(np.abs(translation)) > 100_000:
         raise ValueError("Cotes hors bornes : ±100 000 mm maximum.")
+    if rotation_z_deg is not None:
+        angle = math.radians(rotation_z_deg)
+        cosinus, sinus = math.cos(angle), math.sin(angle)
+        # Garder les arêtes sur leurs axes aux quarts de tour (#93).
+        if rotation_z_deg % 90 == 0:
+            cosinus, sinus = round(cosinus), round(sinus)
+        rotation = np.array([[cosinus, sinus], [-sinus, cosinus]])
+        triangles = triangles.copy()
+        triangles[:, :, :2] = triangles[:, :, :2] @ rotation
     places = triangles + translation
     z = places[:, :, 2]
     if float(np.ptp(z)) > _TOLERANCE_PLAN_MM:
@@ -54,10 +63,11 @@ def _projection(triangles_mm, translation_mm):
     return projection, float((z.min() + z.max()) / 2), translation.tolist()
 
 
-def rapprocher(triangles_mm, lignes, *, translation_mm, tolerance_z_mm=0.001):
+def rapprocher(triangles_mm, lignes, *, translation_mm, rotation_z_deg=None, tolerance_z_mm=0.001):
     """Compare les dépôts linéaires de pont à un îlot horizontal en mm.
 
-    La translation XYZ est déclarée par l’appelant, jamais inférée. Le
+    La rotation facultative autour de Z, en degrés, précède la translation
+    XYZ en mm. L’appelant déclare les deux transformations. Le
     rapport mesure les intersections d’axes XY et le niveau nominal
     Z − HEIGHT en mm ; PASS signifie que cette comparaison est couverte,
     NON VÉRIFIÉ qu’une trajectoire ou une donnée manque. Ne mesure ni la
@@ -65,7 +75,12 @@ def rapprocher(triangles_mm, lignes, *, translation_mm, tolerance_z_mm=0.001):
     """
     if type(tolerance_z_mm) not in (float, int) or not 0.000001 <= tolerance_z_mm <= 0.05:
         raise ValueError("Tolérance Z finie entre 0,000001 et 0,05 mm requise.")
-    projection, altitude, translation = _projection(triangles_mm, translation_mm)
+    placement = {}
+    if rotation_z_deg is not None:
+        if type(rotation_z_deg) not in (float, int) or not -360 <= rotation_z_deg <= 360:
+            raise ValueError("Rotation Z finie entre −360 et 360 degrés requise.")
+        placement["rotation_z_declaree_deg"] = rotation_z_deg
+    projection, altitude, translation = _projection(triangles_mm, translation_mm, rotation_z_deg)
     roles = {nom: {
         "segments_lus": 0, "segments_projection_xy": 0, "segments_niveau_concordant": 0,
         "longueur_projection_xy_mm": 0.0, "longueur_niveau_concordant_mm": 0.0,
@@ -147,6 +162,7 @@ def rapprocher(triangles_mm, lignes, *, translation_mm, tolerance_z_mm=0.001):
             else "NON VÉRIFIÉE"
         ),
         "translation_declaree_mm": translation,
+        **placement,
         "altitude_ilot_mm": round(altitude, 6),
         "tolerance_z_mm": tolerance_z_mm,
         "projection_mm2": round(projection.area, 6),
@@ -154,7 +170,11 @@ def rapprocher(triangles_mm, lignes, *, translation_mm, tolerance_z_mm=0.001):
         "exclusions": exclusions,
         "erreurs_interpreteur": lecteur.errors,
         "validation_physique": False,
-        "limite": "Axes G-code seulement ; translation déclarée et dessous nominal Z − HEIGHT, aucun appui établi.",
+        "limite": (
+            "Axes G-code seulement ; placement déclaré et dessous nominal Z − HEIGHT, aucun appui établi."
+            if placement
+            else "Axes G-code seulement ; translation déclarée et dessous nominal Z − HEIGHT, aucun appui établi."
+        ),
     }
 
 
@@ -197,7 +217,9 @@ def _rapport_fichiers(args):
         if membre is None or archive.taille_membre(membre) > _MAX_GCODE_OCTETS:
             raise ValueError("Plaque absente ou G-code de plus de 64 Mio.")
         with archive.ouvrir_flux(membre) as flux:
-            resultat = rapprocher(triangles, _lignes(flux), translation_mm=args.translation_mm)
+            resultat = rapprocher(
+                triangles, _lignes(flux), translation_mm=args.translation_mm, rotation_z_deg=args.rotation_z_deg,
+            )
         archive.verifier_source(args.tranche)
     return {
         **resultat, "source_sha256": sha_stl, "archive_sha256": sha_3mf, "plaque": args.plaque,
@@ -209,7 +231,8 @@ def main(argv=None, *, prive=None):
     """Rend une comparaison nominale en mm, facultativement dans un rapport privé neuf.
 
     Codes 0 si comparaison couverte, 2 si refus ou NON VÉRIFIÉ. Les deux SHA
-    et la translation sont déclarés ; aucun tranchage ou réglage modifié.
+    et le placement (translation en mm, rotation Z facultative en degrés)
+    sont déclarés. Aucun tranchage ou réglage modifié.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="STL exact de l’îlot")
@@ -219,6 +242,7 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--angle-max-deg", type=float, default=50.0)
     parser.add_argument("--plaque", type=int, required=True)
     parser.add_argument("--translation-mm", nargs=3, type=float, required=True)
+    parser.add_argument("--rotation-z-deg", type=float, help="Rotation autour de l’origine du STL, avant translation")
     parser.add_argument("--sha-stl", required=True)
     parser.add_argument("--sha-3mf", required=True)
     parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")

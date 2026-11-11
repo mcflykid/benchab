@@ -60,7 +60,11 @@ def _reconnu(data, outil, source, path):
         "plaques_interface": ("fichier", {"plaques", "conforme"}),
         "disposition_reelle": ("source", {"plaques", "conforme"}),
     }
-    champ, requis = contrats[outil]
+    contrat = contrats.get(outil)
+    if contrat is None:
+        # Seuls ces formats historiques sont reconnus sans provenance explicite.
+        return False
+    champ, requis = contrat
     nom = data.get(champ)
     if not requis <= set(data) or not isinstance(nom, str):
         return False

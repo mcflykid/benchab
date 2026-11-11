@@ -88,3 +88,17 @@ def test_main_utilise_base_prive_et_refuse_sortie_exterieure(tmp_path, monkeypat
     assert all(r["statut"] == "NON VÉRIFIÉ" and r["motif"] for r in rapport["hors_portee"])
     assert main([str(source), "--sortie", str(tmp_path / "public.json")], prive=prive) == 2
     assert "espace privé" in capsys.readouterr().err
+
+
+def test_main_refuse_un_rapport_etranger_avec_un_diagnostic(tmp_path, capsys):
+    """Un fichier déjà présent et sans provenance reste intact."""
+    source = _archive(tmp_path / "source.3mf")
+    cible = tmp_path / "rapport.json"
+    original = b'{"note":"a conserver"}'
+    cible.write_bytes(original)
+
+    assert main([str(source), "--sortie", str(cible)], prive=tmp_path) == 2
+    sortie = capsys.readouterr()
+    assert "Destination existante non reconnue" in sortie.err
+    assert sortie.out == ""
+    assert cible.read_bytes() == original
