@@ -87,17 +87,18 @@ def _section_readme(contenu: bytes, attendu: str):
     return statut, hashlib.sha256(corps.encode("utf-8")).hexdigest()
 
 
-def _action(cible, sha_attendu, source_sha, genre):
+def _action(cible, sha_attendu, source_sha, genre, *, avant):
     """Décrit une future action avec sauvegarde et contrôles requis ; n'exécute rien."""
     return {
         "action": genre,
         "cible": cible,
         "sha256_attendu": sha_attendu,
+        "cible_avant": {"statut": avant["statut"], "sha256": avant.get("sha256_actuel")},
         "source": {"type": "rendu des vues depuis SQLite en lecture seule", "sha256": source_sha},
         "preconditions_requises": {
             "sauvegarde_verifiee_avant": True,
             "rendu_source_recalcule_et_identique": True,
-            "cible_reverifiee_sans_lien": True,
+            "cible_inchangee_et_reverifiee_sans_lien": True,
             "controle_apres_application": True,
         },
     }
@@ -116,6 +117,14 @@ def _rapport_indisponible(erreur):
     }
 
 
+def _entete_sqlite(chemin):
+    fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as flux:
+        if not stat.S_ISREG(os.fstat(flux.fileno()).st_mode):
+            return b""
+        return flux.read(20)
+
+
 def planifier(prive: Path | str | None = None) -> dict[str, Any]:
     """Compare les vues privées à SQLite et prépare un plan JSON sans écriture ni mesure.
 
@@ -126,8 +135,12 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
     try:
         racine = atelier_prive(prive).absolute()
         base = sans_lien(racine / "benchab.sqlite", racine=racine, strict=True)
-        if not base.is_file():
-            return _rapport_indisponible("Base privée absente ou non régulière.")
+        entete = _entete_sqlite(base)
+        if not entete.startswith(b"SQLite format 3\0") or len(entete) != 20:
+            return _rapport_indisponible("Base privée SQLite non reconnue.")
+        # Un journal WAL peut demander des fichiers auxiliaires à l'ouverture, même en lecture.
+        if entete[18:20] != b"\x01\x01":
+            return _rapport_indisponible("Journal SQLite incompatible avec le plan sans écriture.")
         with closing(sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1)) as connexion:
             connexion.row_factory = sqlite3.Row
             connexion.execute("PRAGMA query_only = ON")
@@ -170,7 +183,7 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
             entree["sha256_actuel"] = actuel["sha256"]
         lignes.append(entree)
         if statut in {"ABSENTE", "DIVERGENTE"}:
-            actions.append(_action(relatif, attendu, sha_source, "REGENERER_VUE"))
+            actions.append(_action(relatif, attendu, sha_source, "REGENERER_VUE", avant=entree))
         elif statut not in {"PRESENTE_IDENTIQUE"}:
             incertitudes = True
 
@@ -191,7 +204,7 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
         entree["sha256_actuel"] = sha_actuel
     lignes.append(entree)
     if statut in {"ABSENTE", "DIVERGENTE"}:
-        actions.append(_action(entree["cible"], sha_section, sha_source, "REGENERER_SECTION"))
+        actions.append(_action(entree["cible"], sha_section, sha_source, "REGENERER_SECTION", avant=entree))
     elif statut != "PRESENTE_IDENTIQUE":
         incertitudes = True
 
@@ -210,7 +223,7 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
         entree["sha256_actuel"] = manifeste_actuel["sha256"]
     lignes.append(entree)
     if statut in {"ABSENTE", "DIVERGENTE"}:
-        actions.append(_action(MANIFESTE, entree["sha256_attendu"], sha_source, "REGENERER_MANIFESTE"))
+        actions.append(_action(MANIFESTE, entree["sha256_attendu"], sha_source, "REGENERER_MANIFESTE", avant=entree))
     elif statut != "PRESENTE_IDENTIQUE":
         incertitudes = True
 

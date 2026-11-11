@@ -45,6 +45,8 @@ def test_plan_vue_absente_et_divergente_sans_ecriture(tmp_path):
     assert all(ligne["statut"] != "FALSIFIEE" for ligne in rapport["vues"])
     actions = {action["cible"]: action for action in rapport["actions"]}
     for chemin in ("vues/INDEX.md", cible.relative_to(prive).as_posix()):
+        assert actions[chemin]["cible_avant"]["statut"] == par_cible[chemin]["statut"]
+        assert actions[chemin]["cible_avant"]["sha256"] == par_cible[chemin].get("sha256_actuel")
         assert actions[chemin]["sha256_attendu"]
         assert actions[chemin]["source"]["sha256"]
         assert actions[chemin]["preconditions_requises"]["sauvegarde_verifiee_avant"] is True
@@ -153,6 +155,26 @@ def test_base_etrangere_ne_peut_pas_servir_de_source(tmp_path):
     with closing(sqlite3.connect(prive / "benchab.sqlite")) as db, db:
         db.execute("PRAGMA application_id = 0")
     avant = _empreintes(prive)
+    rapport = plan_reparation.planifier(prive)
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["actions"] == []
+    assert _empreintes(prive) == avant
+
+
+def test_plan_nouvre_pas_une_base_a_journal_wal(tmp_path, monkeypatch):
+    """Le diagnostic évite les fichiers auxiliaires SQLite d'un journal non pris en charge."""
+    import sqlite3
+    from contextlib import closing
+
+    prive = _atelier(tmp_path)
+    with closing(sqlite3.connect(prive / "benchab.sqlite")) as db:
+        assert db.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
+    avant = _empreintes(prive)
+
+    def refus(*args, **kwargs):
+        raise AssertionError("SQLite ne doit pas ouvrir cette base en WAL")
+
+    monkeypatch.setattr(sqlite3, "connect", refus)
     rapport = plan_reparation.planifier(prive)
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["actions"] == []

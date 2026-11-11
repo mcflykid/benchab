@@ -24,3 +24,7 @@ pas proposés à la réparation.
 Exemple : `benchab controle plan-reparation --prive /chemin/atelier`.
 Le résultat est un aperçu de la commande future ; sauvegarde, application et
 vérification restent à concevoir dans une étape distincte de #119.
+
+Le plan exige l’identité et le schéma BENCHAB, ainsi que le format de journal
+SQLite ordinaire. Un journal WAL reste NON VÉRIFIÉ sans ouverture par SQLite.
+Chaque action décrit aussi l’état et le SHA actuels de la cible, quand connus.
