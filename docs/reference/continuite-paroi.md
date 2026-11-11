@@ -44,6 +44,14 @@ Les mesures analytiques d’arc servent aux calculs de longueur et de débit. La
 première couche exigent une représentation de trajectoire qui sache suivre une courbe ; tant qu’ils ne consomment
 pas ce modèle, tout arc valide y rend le verdict `NON VÉRIFIÉ`. Aucun arc n’est remplacé par sa corde dans ces contrôles.
 
+Le contrôle des capacités-machine calcule aussi l’enveloppe XYZ analytique de la portion déposée d’un arc G17 pour
+le verdict local `volume XYZ déposé`. Il inclut les extrema angulaires réellement parcourus et les deux extrémités Z
+d’une hélice ; le début est décalé selon la fraction de dépôt après rétraction. Les dépassements du volume déclaré
+au-delà de la tolérance donnent FAIL. Une tolérance numérique de 1e-6 mm est appliquée à ces bornes ; les coordonnées
+ou l’enveloppe hors de ±1 000 000 mm restent NON VÉRIFIÉES. La corde n’est jamais utilisée et le rayon déclaré par
+l’interpréteur n’est pas ajusté. Les vitesses et accélérations par axe d’un arc restent NON VÉRIFIÉES ; cette
+enveloppe numérique ne confirme ni la trajectoire firmware, ni la géométrie utile réelle, ni la tenue physique.
+
 Le rapport distingue l’accélération extérieure configurée de l’accélération `M204` observée pendant les dépôts.
 Une commande de mouvement non prise en charge rend la couverture incomplète : le résultat devient `NON VÉRIFIÉ`.
 

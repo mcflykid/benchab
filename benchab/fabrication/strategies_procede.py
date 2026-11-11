@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.donnees.base import Base
 from benchab.fabrication.optimisation import _fichier_prive, _lire_maitre, _publier_json, lire_3mf, positif
 from benchab.machine import profil_maitre as maitre_api
@@ -426,8 +427,9 @@ def executer_etude(base: Base, etude: str | Path, maitre=None) -> dict:
     sortie = dossier / sortie_rel
     if sortie.exists() or sortie.is_symlink():
         raise ValueError("Sortie d’étude déjà utilisée.")
-    with zipfile.ZipFile(dossier / "reference.3mf") as archive:
-        reglages = schema_reglages.decoder(archive.read("Metadata/project_settings.config"))
+    # Le SHA du manifeste ne rend pas les membres ambigus ni les réglages illimités valides (#122).
+    with Archive3MF(dossier / "reference.3mf") as archive:
+        reglages = archive.reglages()
     pieces = donnees.get("pieces")
     if not isinstance(pieces, list) or len(pieces) != 1:
         raise ValueError("L’étude doit contenir une pièce unique.")

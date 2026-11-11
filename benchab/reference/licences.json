@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "declarations_sha256": "b094dcfee515c2bc1977bc2403f59ce08953504d0ce1908ba0c53f810e1cc992",
-  "lock_sha256": "bdbb77f97e0369942e67b25faf06e0dfa9205086244cce130d884643dd557ab1",
+  "declarations_sha256": "33c11826ff496cc3c8ee842a4922a5c9ebd3dc9560331c85ca8deac4e3bc07aa",
+  "lock_sha256": "dca85e813b481c732f7e916de4ec06924bb88170ce647cc9a42f0df299359e64",
   "python": [
     {
       "nom": "anytree",
@@ -12,6 +12,22 @@
         {
           "fichier": "anytree-2.13.0.dist-info/licenses/LICENSE",
           "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+        }
+      ]
+    },
+    {
+      "nom": "ast-serialize",
+      "version": "0.13.1",
+      "licence": "MIT",
+      "source": "métadonnées et notices de la distribution installée ; groupe de vérification typage",
+      "preuves": [
+        {
+          "fichier": "ast_serialize-0.13.1.dist-info/licenses/LICENSE",
+          "sha256": "db90b8fd0ae1748117ab467680a5193bfd057a3119846cb53ee3b64f16577b3b"
+        },
+        {
+          "fichier": "ast_serialize-0.13.1.dist-info/licenses/crates/LICENSE",
+          "sha256": "2597d854122b77ddc71971564ca2350a37608575ce324adc5650a2b2051c8f18"
         }
       ]
     },
@@ -413,6 +429,18 @@
       ]
     },
     {
+      "nom": "librt",
+      "version": "0.16.0",
+      "licence": "MIT",
+      "source": "métadonnées et notices de la distribution installée ; groupe de vérification typage",
+      "preuves": [
+        {
+          "fichier": "librt-0.16.0.dist-info/licenses/LICENSE",
+          "sha256": "88f9e379c684580053c58e75e296ca2eb243b6edcc6e5357f247310e96eeef8a"
+        }
+      ]
+    },
+    {
       "nom": "manifold3d",
       "version": "3.5.4",
       "licence": "Apache-2.0",
@@ -500,6 +528,22 @@
         {
           "fichier": "mpmath-1.3.0.dist-info/LICENSE",
           "sha256": "c26cae81da4508e5e249985777a33821f183223ebb74d7f8cfbf90fe7eef2fb7"
+        }
+      ]
+    },
+    {
+      "nom": "mypy",
+      "version": "2.4.1",
+      "licence": "MIT AND Apache-2.0",
+      "source": "métadonnées et notices de la distribution installée ; groupe de vérification typage",
+      "preuves": [
+        {
+          "fichier": "mypy-2.4.1.dist-info/licenses/LICENSE",
+          "sha256": "fdf1cd17f50e1305ed8cfd37467312d27a984648dba622cef70573b5512e4e1b"
+        },
+        {
+          "fichier": "mypy-2.4.1.dist-info/licenses/mypy/typeshed/LICENSE",
+          "sha256": "295f8538c94ae5c3043301cf7cff1c852dab6a786a8ddee471e061b40d5ecabe"
         }
       ]
     },

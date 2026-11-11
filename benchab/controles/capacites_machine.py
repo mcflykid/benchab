@@ -19,7 +19,7 @@ from xml.etree import ElementTree as ET
 
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
-from benchab.gcode import debit
+from benchab.gcode import debit, geometrie_arc
 from benchab.gcode.lecture import lire_membre_3mf
 
 RACINE = Path(__file__).resolve().parents[2]
@@ -499,7 +499,8 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                     note(
                         "trajectoire géométrique",
                         "NON VÉRIFIÉ",
-                        "longueur et débit d’arc exacts ; limites XYZ et enveloppe exigent une courbe, pas la corde",
+                        "vitesses et accélérations par axe exigent une cinématique courbe ; "
+                        "aucune corde n'est utilisée",
                         plaque=number,
                         outil=move["tool"],
                         objet=move["object"],
@@ -634,15 +635,47 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                         and len(volume_limits) == 3
                         and all(_positif(v) is not None for v in volume_limits)
                     )
-                    inside = not arc and valid_volume and all(
-                        -1e-6 <= v <= float(bound) + 1e-6
-                        for point in (move["deposition_start"], move["end"])
-                        for v, bound in zip(point, volume_limits)
+                    enveloppe = None
+                    if valid_volume:
+                        try:
+                            if arc:
+                                enveloppe = geometrie_arc.enveloppe_deposee_xyz(move)
+                            else:
+                                points = (move["deposition_start"], move["end"])
+                                enveloppe = tuple(
+                                    (min(point[axe] for point in points), max(point[axe] for point in points))
+                                    for axe in range(3)
+                                )
+                        except (KeyError, TypeError, ValueError, OverflowError):
+                            enveloppe = None
+                    inside = valid_volume and enveloppe is not None and all(
+                        minimum >= -1e-6 and maximum <= float(bound) + 1e-6
+                        for (minimum, maximum), bound in zip(enveloppe or (), volume_limits or ())
                     )
+                    statut_volume = (
+                        "NON VÉRIFIÉ"
+                        if not valid_volume or enveloppe is None
+                        else "PASS"
+                        if inside
+                        else "FAIL"
+                    )
+                    detail_volume = {
+                        "bornes_mm": volume_limits,
+                        "debut": move["deposition_start"],
+                        "fin": move["end"],
+                    }
+                    if arc:
+                        detail_volume.update(
+                            {
+                                "enveloppe_xyz_mm": enveloppe,
+                                "debut_depot_fraction": move.get("arc_g17", {}).get("debut_depot_fraction"),
+                                "tolerance_mm": 1e-6,
+                            }
+                        )
                     note(
                         "volume XYZ déposé",
-                        "NON VÉRIFIÉ" if arc else "PASS" if inside else "FAIL" if valid_volume else "NON VÉRIFIÉ",
-                        {"bornes_mm": volume_limits, "debut": move["deposition_start"], "fin": move["end"]},
+                        statut_volume,
+                        detail_volume,
                         plaque=number,
                         outil=tool,
                         objet=obj,

@@ -5,6 +5,7 @@ import json
 import math
 from functools import lru_cache
 from importlib.resources import files
+from typing import Any, Self
 
 _ABSENT = object()
 
@@ -103,14 +104,16 @@ def contexte_filaments(donnees, *, consommateur=None):
     if consommateur not in (None, "cli", "preset_bundle"):
         raise ValueError("Consommateur de réglages non qualifié")
     identites = donnees.get("filament_settings_id")
-    valides = isinstance(identites, list) and bool(identites) and all(
+    identites_valides = identites if isinstance(identites, list) and all(
         isinstance(nom, str) and bool(nom.strip()) for nom in identites
-    )
-    contexte = {
+    ) else []
+    correspondances: dict[str, list[str]] = {}
+    diagnostics: list[dict[str, object]] = []
+    contexte: dict[str, object] = {
         "filament_settings_id": copy.deepcopy(identites) if isinstance(identites, list) else [],
-        "nombre_filaments_declares": len(identites) if valides else 0,
-        "correspondances_filaments": {},
-        "diagnostics_filaments": [],
+        "nombre_filaments_declares": len(identites_valides),
+        "correspondances_filaments": correspondances,
+        "diagnostics_filaments": diagnostics,
     }
     # Une déclaration de filament sans profil ne doit pas masquer le profil machine existant (#103).
     if "printer_settings_id" in donnees:
@@ -120,18 +123,18 @@ def contexte_filaments(donnees, *, consommateur=None):
     for cle, valeur in donnees.items():
         if cle == "filament_settings_id" or definition(cle, valeur=valeur)["type"] != "liste_filament":
             continue
-        apparie = valides and isinstance(valeur, list) and len(valeur) == len(identites)
+        apparie = bool(identites_valides) and isinstance(valeur, list) and len(valeur) == len(identites_valides)
         if apparie:
-            contexte["correspondances_filaments"][cle] = list(identites)
-        contexte["diagnostics_filaments"].append({
+            correspondances[cle] = list(identites_valides)
+        diagnostics.append({
             "cle": cle, "statut": "PASS" if apparie else "NON VÉRIFIÉ",
             "taille_observee": len(valeur) if isinstance(valeur, list) else None,
-            "taille_declaree": contexte["nombre_filaments_declares"],
+            "taille_declaree": len(identites_valides),
             "detail": ("Identités ordonnées conservées" if apparie
                        else "Correspondance absente ou cardinalité non appariée"),
         })
-    contexte["statut_contexte_filaments"] = "PASS" if valides and all(
-        d["statut"] == "PASS" for d in contexte["diagnostics_filaments"]
+    contexte["statut_contexte_filaments"] = "PASS" if identites_valides and all(
+        d["statut"] == "PASS" for d in diagnostics
     ) else "NON VÉRIFIÉ"
     return contexte
 
@@ -258,9 +261,12 @@ class Reglages(dict):
     aucune liste n'est complétée.
     """
 
-    def __init__(self, donnees=(), *, contexte=None):
+    def __init__(self, donnees=(), *, contexte=None) -> None:
+        """Copie les valeurs natives, leur état d’origine et le contexte déclaré."""
         super().__init__(copy.deepcopy(dict(donnees)))
-        self.original = copy.deepcopy(donnees.original if isinstance(donnees, Reglages) else dict(donnees))
+        self.original: dict[str, Any] = copy.deepcopy(
+            donnees.original if isinstance(donnees, Reglages) else dict(donnees)
+        )
         self.contexte = dict(contexte if contexte is not None else getattr(donnees, "contexte", {}))
 
     def __setitem__(self, cle, valeur):
@@ -285,7 +291,8 @@ class Reglages(dict):
                 raise ValueError("Correspondance NON VÉRIFIÉE : réindexation interdite : " + cle)
         dict.__setitem__(self, cle, copy.deepcopy(valeur))
 
-    def update(self, autre=(), **valeurs):
+    # Conserver l’appel historique par mot-clé `autre` et la validation des écritures.
+    def update(self, autre=(), **valeurs) -> None:  # type: ignore[override]
         """Affecte des valeurs explicites dans leurs unités natives ;
         aucune normalisation silencieuse, lève sur FAIL."""
         nouveaux = {**dict(autre), **valeurs}
@@ -335,7 +342,9 @@ class Reglages(dict):
         """Refuse la suppression implicite d'une clé ; aucun réglage choisi arbitrairement."""
         raise ValueError("Suppression implicite des réglages interdite")
 
-    def __ior__(self, autre):
+    # Comme dict, la fusion sur place admet aussi un itérable de paires.
+    def __ior__(self, autre) -> Self:  # type: ignore[misc]
+        """Fusionne sur place en appliquant les mêmes gardes de réglages que update."""
         self.update(autre)
         return self
 
@@ -454,7 +463,11 @@ def lire_matrice_purge(donnees):
     nombre = nombre_filaments_metadata(donnees)
     profils = donnees.get("filament_settings_id")
     couleurs = donnees.get("filament_colour")
-    if nombre is None or any(not isinstance(x, str) or not x.strip() for x in [*profils, *couleurs]):
+    # Le nombre seul ne décrit pas le type des listes relues par ce contrôle (#72).
+    if (
+        nombre is None or not isinstance(profils, list) or not isinstance(couleurs, list)
+        or any(not isinstance(x, str) or not x.strip() for x in (*profils, *couleurs))
+    ):
         return {**inconnu, "raison": "Les listes de profils et couleurs ne qualifient pas les mêmes slots."}
     matrice = donnees.get(cle)
     inconnu["nombre_slots"] = nombre

@@ -14,6 +14,75 @@ def _ajouter_angles(coupures, angles, a0, balayage, debut):
                 coupures.add(fraction)
 
 
+def enveloppe_deposee_xyz(mouvement):
+    """Vérifier la géométrie et calculer les bornes XYZ du dépôt G17, en mm.
+
+    Entrée : mouvement qualifié par l'interpréteur, centre physique en mm,
+    angles en rad et début de dépôt en fraction de balayage.
+    Sortie : triplet de paires (min, max) pour X, Y et Z, en mm.
+    Échec : ValueError si la courbe est incohérente ou hors de ±1 000 000 mm.
+    Ne remplace jamais l'arc par sa corde et ne valide aucune propriété physique.
+    """
+    try:
+        arc = mouvement["arc_g17"]
+        start, end = tuple(map(float, mouvement["start"])), tuple(map(float, mouvement["end"]))
+        cx, cy = map(float, arc["centre_xy_mm"])
+        rayon = float(arc["rayon_mm"])
+        a0 = float(arc["angle_debut_rad"])
+        balayage = float(arc["balayage_signe_rad"])
+        debut = float(arc["debut_depot_fraction"])
+    except (KeyError, TypeError, ValueError, OverflowError) as erreur:
+        raise ValueError("Géométrie G17 du dépôt absente ou invalide.") from erreur
+    if len(start) != 3 or len(end) != 3:
+        raise ValueError("Coordonnées XYZ du dépôt invalides.")
+    valeurs = (*start, *end, cx, cy, rayon, a0, balayage, debut)
+    if (
+        not all(math.isfinite(valeur) for valeur in valeurs)
+        or any(abs(valeur) > _MAX_COORDONNEE_MM for valeur in (*start, *end, cx, cy, rayon))
+        or rayon <= 0
+        or abs(balayage) <= 0
+        or abs(balayage) > math.tau
+        or abs(a0) > math.pi
+        or not 0 <= debut < 1
+        or abs(cx) + rayon > _MAX_COORDONNEE_MM
+        or abs(cy) + rayon > _MAX_COORDONNEE_MM
+    ):
+        raise ValueError("Arc G17 hors du domaine d'enveloppe XYZ.")
+    rayon_debut = math.hypot(start[0] - cx, start[1] - cy)
+    x_debut = cx + rayon * math.cos(a0)
+    y_debut = cy + rayon * math.sin(a0)
+    angle_fin = a0 + balayage
+    x_fin = cx + rayon * math.cos(angle_fin)
+    y_fin = cy + rayon * math.sin(angle_fin)
+    if (
+        not math.isclose(rayon_debut, rayon, rel_tol=1e-7, abs_tol=1e-6)
+        or not math.isclose(x_debut, start[0], rel_tol=0.0, abs_tol=1e-6)
+        or not math.isclose(y_debut, start[1], rel_tol=0.0, abs_tol=1e-6)
+        or not math.isclose(x_fin, end[0], rel_tol=0.0, abs_tol=1e-6)
+        or not math.isclose(y_fin, end[1], rel_tol=0.0, abs_tol=1e-6)
+    ):
+        raise ValueError("Rayon ou extrémité incohérents avec l'arc G17.")
+
+    def point(fraction):
+        angle = a0 + balayage * fraction
+        return (
+            cx + rayon * math.cos(angle),
+            cy + rayon * math.sin(angle),
+            start[2] + (end[2] - start[2]) * fraction,
+        )
+
+    points = [point(debut), point(1.0)]
+    for angles in ((0.0, math.pi), (math.pi / 2, 3 * math.pi / 2)):
+        for angle in angles:
+            for tour in range(-2, 3):
+                fraction = (angle + tour * math.tau - a0) / balayage
+                if debut < fraction < 1:
+                    points.append(point(fraction))
+    if any(not math.isfinite(coord) or abs(coord) > _MAX_COORDONNEE_MM for p in points for coord in p):
+        raise ValueError("Enveloppe XYZ hors du domaine d'un million de mm.")
+    return tuple((min(p[axe] for p in points), max(p[axe] for p in points)) for axe in range(3))
+
+
 def longueur_deposee_dans_boite(mouvement, bornes):
     """Renvoie la longueur déposée G17 en mm dans la boîte cartésienne donnée.
 

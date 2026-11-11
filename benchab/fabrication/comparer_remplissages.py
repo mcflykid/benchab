@@ -9,6 +9,7 @@ from pathlib import Path
 import trimesh
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.fabrication import anycubic, remplissage_localise
 from benchab.fabrication.resistance import cle_classement
@@ -400,12 +401,13 @@ def main(
         raise ValueError("Étude invalide : une liste non vide de pièces est requise.")
     racine = etude.parent
     archive_base = _fichier_etude(racine, donnees["base_3mf"])
-    with zipfile.ZipFile(archive_base) as archive:
-        noms = archive.namelist()
+    with Archive3MF(archive_base) as archive:
         membre = "Metadata/project_settings.config"
-        if noms.count(membre) != 1 or len(noms) != len(set(noms)) or archive.testzip():
-            raise ValueError("Archive source dupliquée, invalide ou corrompue.")
-        reglages_base = schema_reglages.decoder(archive.read(membre))
+        if membre not in archive.noms():
+            raise ValueError("Réglages de l’archive source absents.")
+        reglages_base = archive.reglages(membre)
+        # Conserver le CRC des membres que l’étude ne consomme pas, sans relire les réglages.
+        archive.verifier(membres=(nom for nom in archive.noms() if nom != membre))
     couleurs = schema_reglages.valeur_brute(reglages_base, "filament_colour")
     if not isinstance(couleurs, list) or not couleurs:
         raise ValueError("L'étude exige un 3MF préparé avec couleurs de filaments explicitement configurées.")

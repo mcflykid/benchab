@@ -54,6 +54,7 @@ dev = [
 reception = [
     "playwright>=1.64.1",
 ]
+typage = ["mypy==2.4.1"]
 
 [tool.ruff]
 line-length = 120
@@ -61,6 +62,22 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.13"
+files = [
+    "benchab/chemins.py",
+    "benchab/controles/gcode_interpreter.py",
+    "benchab/donnees/base.py",
+    "benchab/processus.py",
+    "benchab/reglages.py",
+]
+check_untyped_defs = true
+incremental = false
+cache_dir = "/dev/null"
+follow_imports = "silent"
+ignore_missing_imports = true
+warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
