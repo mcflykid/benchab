@@ -160,3 +160,39 @@ def longueur_deposee_dans_boite(mouvement, bornes):
         if xmin <= x <= xmax and ymin <= y <= ymax and zmin <= z <= zmax:
             total += b - a
     return mouvement["length"] * total
+
+
+def vitesses_axes_nominales_g17(mouvement):
+    """Renvoie les maxima absolus X/Y/Z en mm/s de l’arc G17 entier.
+
+    Le mouvement analytique fournit centre et rayon en mm, angles en radians,
+    coordonnées physiques en mm et avance F en mm/min. ValueError si l’arc
+    ou l’avance ne permet pas le calcul. Le calcul à F constant inclut le
+    trajet avant dépôt ; il ne qualifie ni accélération, ni jonction,
+    ni interpolation du micrologiciel et ne change aucun réglage.
+    """
+    try:
+        if mouvement["trajectory"] != "arc_g17_xy" or isinstance(mouvement["feed"], bool):
+            raise ValueError("Arc G17 et avance F explicites requis.")
+        arc = mouvement["arc_g17"]
+        rayon, angle, balayage = (float(arc[k]) for k in ("rayon_mm", "angle_debut_rad", "balayage_signe_rad"))
+        dz = float(mouvement["end"][2]) - float(mouvement["start"][2])
+        longueur_declaree, feed = float(mouvement["length"]), float(mouvement["feed"]) / 60
+    except (KeyError, TypeError, ValueError, IndexError, OverflowError) as erreur:
+        raise ValueError("Paramètres de vitesse nominale G17 absents ou invalides.") from erreur
+    # La vérification du cercle entier ne dépend pas de la fraction déposée :
+    # un déplacement à vide peut demander les mêmes vitesses (#123).
+    enveloppe_deposee_xyz({**mouvement, "arc_g17": {**arc, "debut_depot_fraction": 0.0}})
+    longueur_xy = rayon * abs(balayage)
+    longueur = math.hypot(longueur_xy, dz)
+    if not 0 < feed < math.inf or longueur <= 0 or not math.isclose(longueur, longueur_declaree, rel_tol=1e-8):
+        raise ValueError("Longueur de l’arc ou avance F nominale incohérente.")
+    vitesse_xy = feed * (longueur_xy / longueur)
+    candidats = {0.0, 1.0}
+    _ajouter_angles(candidats, (0.0, math.pi / 2, math.pi, -math.pi / 2), angle, balayage, 0.0)
+    angles = [angle + fraction * balayage for fraction in candidats]
+    return {
+        "X": vitesse_xy * max(abs(math.sin(a)) for a in angles),
+        "Y": vitesse_xy * max(abs(math.cos(a)) for a in angles),
+        "Z": feed * (abs(dz) / longueur),
+    }

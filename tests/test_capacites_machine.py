@@ -141,6 +141,11 @@ class Capacites(unittest.TestCase):
         """Une corde ne qualifie ni les vitesses par axe ni le volume d'un arc."""
         resultat = self.analyser(BASE + "G2 X20 E1 I5 F600")
         self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        vitesses = resultat["metriques"]["vitesses_mm_s"]
+        self.assertIsNone(vitesses["axes_max"]["X"])
+        nominales = vitesses["projection_nominale_arcs_g17"]
+        self.assertEqual(nominales["arcs_mesures"], 1)
+        self.assertEqual(nominales["axes_max"], {"X": 10.0, "Y": 10.0, "Z": 0.0})
 
     def test_arc_depose_hors_volume_est_fail_meme_si_sa_corde_y_reste(self):
         """Les extrema courbes détectent le dépassement Y que masque la corde."""

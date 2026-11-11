@@ -58,8 +58,10 @@ le verdict local `volume XYZ déposé`. Il inclut les extrema angulaires réelle
 d’une hélice ; le début est décalé selon la fraction de dépôt après rétraction. Les dépassements du volume déclaré
 au-delà de la tolérance donnent FAIL. Une tolérance numérique de 1e-6 mm est appliquée à ces bornes ; les coordonnées
 ou l’enveloppe hors de ±1 000 000 mm restent NON VÉRIFIÉES. La corde n’est jamais utilisée et le rayon déclaré par
-l’interpréteur n’est pas ajusté. Les vitesses et accélérations par axe d’un arc restent NON VÉRIFIÉES ; cette
-enveloppe numérique ne confirme ni la trajectoire firmware, ni la géométrie utile réelle, ni la tenue physique.
+l’interpréteur n’est pas ajusté. Une métrique séparée rapporte les maxima X, Y et Z de la demande nominale à F
+constant, avec les extrema de tangente et la longueur XYZ pour une hélice. Elle couvre le déplacement entier des
+seuls arcs G17 reconnus, même avant reprise du dépôt. Les accélérations, les vitesses atteintes, les limites du
+firmware et les jonctions restent NON VÉRIFIÉES ; le verdict des capacités et U25 ne changent pas (#123).
 
 La revue des zones locales utilise l’enveloppe du dépôt G17 pour les ponts et
 parois en surplomb explicitement déclarés, en repère physique après G92. Elle
