@@ -1,10 +1,14 @@
 """Compare les réglages d’un 3MF à des profils explicitement fournis."""
 
 import argparse
+import hashlib
 import json
+import os
+import stat
 from pathlib import Path
 
 from benchab import integrite_3mf, reglages
+from benchab.chemins import sans_lien
 from benchab.machine.profil_maitre import resoudre_preset
 from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
 from benchab.qualite.empreintes import sha256_fichier
@@ -17,19 +21,42 @@ SENSIBLES = {
     "materiel": ("nozzle", "filament", "material", "bed_type"),
 }
 PORTÉES = ("projet/", "objet/", "plaque/")
+MAX_PROFIL_OCTETS = 8 * 1024 * 1024
+
+
+def _lire_profil(chemin):
+    """Décode un profil typé depuis au plus 8 Mio et renvoie le SHA des octets décodés."""
+    fichier = sans_lien(chemin, strict=True)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descripteur = os.open(fichier, flags)
+    with os.fdopen(descripteur, "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode):
+            raise ValueError("Fichier de profil ordinaire requis : " + str(fichier))
+        if avant.st_size > MAX_PROFIL_OCTETS:
+            raise ValueError("Profil trop volumineux (limite 8 Mio) : " + str(fichier))
+        contenu = flux.read(MAX_PROFIL_OCTETS + 1)
+        apres = os.fstat(flux.fileno())
+        if len(contenu) > MAX_PROFIL_OCTETS:
+            raise ValueError("Profil trop volumineux (limite 8 Mio) : " + str(fichier))
+        if (avant.st_dev, avant.st_ino, avant.st_size, avant.st_mtime_ns) != (
+            apres.st_dev, apres.st_ino, apres.st_size, apres.st_mtime_ns
+        ) or len(contenu) != apres.st_size:
+            raise ValueError("Profil modifié pendant sa lecture : " + str(fichier))
+    donnees = reglages.decoder(contenu.decode("utf-8"))
+    return donnees, hashlib.sha256(contenu).hexdigest()
 
 
 def _charger_profils(fichiers, dossiers):
     """Résout les presets explicitement choisis et leurs parents ; renvoie les empreintes lues."""
     resultats, empreintes, chemins, debut_profils = {}, {}, {}, {}
-    sources, bruts = {}, {}
+    sources, chemins_noms, bruts = {}, {}, {}
     for brut in fichiers:
-        fichier = Path(brut).expanduser().resolve(strict=True)
-        if not fichier.is_file() or fichier.is_symlink():
+        fichier = sans_lien(Path(brut).expanduser(), strict=True)
+        if not fichier.is_file():
             raise ValueError("Profil ordinaire requis : " + str(brut))
-        debut = sha256_fichier(fichier)
+        donnees, debut = _lire_profil(fichier)
         debut_profils[str(fichier)] = debut
-        donnees = reglages.decoder(fichier.read_text(encoding="utf-8"))
         categorie, nom = donnees.get("type"), donnees.get("name")
         if categorie not in {"machine", "process", "filament"} or not isinstance(nom, str) or not nom:
             raise ValueError("Profil explicite de type machine, process ou filament requis : " + str(fichier))
@@ -37,55 +64,63 @@ def _charger_profils(fichiers, dossiers):
             raise ValueError("Nom de profil répété : " + nom)
         if categorie != "filament" and any(p["categorie"] == categorie for p in resultats.values()):
             raise ValueError("Un seul profil explicite par famille est accepté : " + categorie)
-        sources[nom] = fichier
+        sources[nom] = dict(donnees)
+        chemins_noms[nom] = fichier
         bruts[nom] = donnees
-        debut_profils[nom] = debut
         resultats[nom] = {"categorie": categorie, "chemin": fichier}
-    racines = [*sorted({str(p["chemin"].parent) for p in resultats.values()})]
+    racines = [*sorted({p["chemin"].parent for p in resultats.values()}, key=str)]
     for dossier in dossiers:
-        racine = Path(dossier).expanduser().resolve(strict=True)
+        racine = sans_lien(Path(dossier).expanduser(), strict=True)
         if not racine.is_dir():
             raise ValueError("Dossier explicite de presets requis : " + str(dossier))
-        racines.append(str(racine))
+        racines.append(racine)
     en_attente = [parent for donnees in bruts.values() for parent in _parents(donnees)]
     while en_attente:
         nom_parent = en_attente.pop()
         if nom_parent in sources:
             continue
+        candidats = []
         for racine in racines:
-            fichier_parent = Path(racine) / (nom_parent + ".json")
-            if fichier_parent.is_file() and not fichier_parent.is_symlink():
-                donnees_parent = reglages.decoder(fichier_parent.read_text(encoding="utf-8"))
-                if donnees_parent.get("name", nom_parent) != nom_parent:
-                    raise ValueError("Identité du profil parent incohérente : " + nom_parent)
-                source_parent = fichier_parent.resolve(strict=True)
-                empreinte_parent = sha256_fichier(source_parent)
-                if empreinte_parent != sha256_fichier(fichier_parent):
-                    raise ValueError("Profil parent modifié pendant sa lecture : " + str(source_parent))
-                debut_profils[str(source_parent)] = empreinte_parent
-                sources[nom_parent] = source_parent
-                bruts[nom_parent] = donnees_parent
-                en_attente.extend(_parents(donnees_parent))
-                break
+            fichier_parent = sans_lien(racine / (nom_parent + ".json"))
+            if fichier_parent.is_file():
+                candidats.append(fichier_parent)
+        if len(candidats) > 1:
+            raise ValueError("Profil parent ambigu dans les dossiers explicites : " + nom_parent)
+        if not candidats:
+            continue
+        source_parent = sans_lien(candidats[0], strict=True)
+        donnees_parent, empreinte_parent = _lire_profil(source_parent)
+        if donnees_parent.get("name", nom_parent) != nom_parent:
+            raise ValueError("Identité du profil parent incohérente : " + nom_parent)
+        debut_profils[str(source_parent)] = empreinte_parent
+        sources[nom_parent] = dict(donnees_parent)
+        chemins_noms[nom_parent] = source_parent
+        bruts[nom_parent] = donnees_parent
+        en_attente.extend(_parents(donnees_parent))
     for nom, profil in resultats.items():
-        categorie, fichier = profil["categorie"], profil["chemin"]
+        categorie = profil["categorie"]
         resolution = resoudre_preset(nom, categorie, sources)
         for origine in resolution["heritages"]:
-            source = origine["source"]
-            if origine["empreinte_type"] != "octets du fichier source":
-                raise ValueError("Profil résolu sans empreinte d’octets : " + origine["name"])
-            chemin = Path(source).resolve(strict=True)
+            chemin = chemins_noms.get(origine["name"])
+            if chemin is None or origine["empreinte_type"] != "JSON canonique en mémoire":
+                raise ValueError("Profil résolu sans source explicite ou empreinte typée : " + origine["name"])
+            chemin = sans_lien(chemin, strict=True)
             empreinte = debut_profils.get(str(chemin))
-            # Le SHA de resoudre_preset lie l’objet résolu aux octets de référence (#38).
-            if empreinte is None or empreinte != origine["sha256"]:
-                raise ValueError("Profil modifié pendant sa résolution : " + str(chemin))
+            empreinte_canonique = hashlib.sha256(json.dumps(
+                sources[origine["name"]], sort_keys=True, ensure_ascii=False, allow_nan=False
+            ).encode()).hexdigest()
+            # resoudre_preset hashe la table typée en mémoire ; le SHA octet couvre sa source exacte (#38).
+            if empreinte is None or empreinte_canonique != origine["sha256"]:
+                raise ValueError("Profil incohérent pendant sa résolution : " + str(chemin))
             empreintes[str(chemin)] = empreinte
             chemins[str(chemin)] = chemin
-        if str(fichier) not in empreintes:
-            raise ValueError("Le profil sélectionné n’apparaît pas dans sa résolution : " + str(fichier))
-        if empreintes[str(fichier)] != debut_profils[str(fichier)]:
-            raise ValueError("Profil modifié pendant sa lecture : " + str(fichier))
         profil["resolution"] = resolution
+        profil["fichiers_par_nom"] = chemins_noms
+        profil["sha_par_nom"] = {
+            nom_source: debut_profils[str(chemin_source)]
+            for nom_source, chemin_source in chemins_noms.items()
+            if str(chemin_source) in debut_profils
+        }
         profil["contexte_filaments"] = reglages.contexte_filaments(
             {**dict(resolution["valeurs"]), "filament_settings_id": [nom]}
         ) if categorie == "filament" else None
@@ -96,7 +131,15 @@ def _parents(donnees):
     """Retourne les noms d’héritage déclarés sans en inventer ni les normaliser."""
     parents = donnees.get("inherits") or []
     parents = [parents] if isinstance(parents, str) else parents
-    return [nom for nom in parents if isinstance(nom, str) and nom]
+    if not isinstance(parents, list):
+        raise ValueError("Héritage invalide dans un profil explicite.")
+    for nom in parents:
+        if (
+            not isinstance(nom, str) or not nom or Path(nom).name != nom
+            or nom in (".", "..") or "\\" in nom
+        ):
+            raise ValueError("Nom de preset hors périmètre : " + str(nom))
+    return parents
 
 
 def _sensibilites(cle):
@@ -226,7 +269,7 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
                 "raison": f"Héritage absent du preset {nom_profil} : {parent}",
                 "profil": {"name": parent}, "modification_manuelle": "NON VÉRIFIÉ",
             })
-    sha_apres = {nom: sha256_fichier(chemin) for nom, chemin in chemins.items()}
+    sha_apres = {nom: _lire_profil(chemin)[1] for nom, chemin in chemins.items()}
     sha_3mf_apres = sha256_fichier(archive)
     if sha_3mf_apres != sha_3mf_avant or sha_apres != sha_avant:
         raise ValueError("Archive ou profil modifié pendant la comparaison.")
@@ -242,7 +285,14 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
         "comparaisons": comparaisons, "differences": différences, "non_verifies": non_verifies,
         "profils": [
             {"categorie": p["categorie"], "name": nom,
-             "heritages": p["resolution"]["heritages"],
+             "heritages": [
+                 {
+                     **heritage,
+                     "fichier": str(p["fichiers_par_nom"][heritage["name"]]),
+                     "sha256_fichier": p["sha_par_nom"][heritage["name"]],
+                 }
+                 for heritage in p["resolution"]["heritages"]
+             ],
              "manquants": p["resolution"]["manquants"]}
             for nom, p in sorted(profils.items())
         ],
@@ -259,6 +309,8 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
 def _comparaison(chemin, cle, valeur_3mf, valeur_profil, preset, *, slot_id=None, archive):
     """Décrit une égalité ou un écart exact et ses deux origines, avec sensibilité lexicale."""
     domaines = _sensibilites(cle)
+    origine = preset["resolution"]["origine_par_cle"].get(cle)
+    fichier_origine = preset["fichiers_par_nom"].get(origine, preset["chemin"])
     ligne = {
         "chemin": chemin, "portee": _portee(chemin), "cle": cle,
         "valeur_3mf": valeur_3mf, "valeur_profil": valeur_profil,
@@ -266,7 +318,8 @@ def _comparaison(chemin, cle, valeur_3mf, valeur_profil, preset, *, slot_id=None
         "sensible": bool(domaines), "domaines_sensibles": domaines,
         "profil": {
             "name": preset["resolution"]["valeurs"].get("name"),
-            "source": preset["resolution"]["origine_par_cle"].get(cle, str(preset["chemin"])),
+            "source": str(fichier_origine),
+            "sha256": preset["sha_par_nom"].get(origine),
         },
         "provenance_3mf": {"source": str(archive), "chemin": chemin},
         "modification_manuelle": "NON VÉRIFIÉ",
@@ -299,10 +352,9 @@ def main(argv=None, *, prive=None):
         cible = sortie_privee(args.rapport, prive=args.prive)
         entrees = [args.archive, *args.profil]
         entrees.extend(
-            heritage["source"]
+            heritage["fichier"]
             for profil in rapport["profils"]
             for heritage in profil["heritages"]
-            if heritage["empreinte_type"] == "octets du fichier source"
         )
         ecrire_json_neuf(cible, rapport, entrees=entrees)
         print(json.dumps({"statut": rapport["statut"], "rapport": str(cible)}, ensure_ascii=False))

@@ -13,15 +13,18 @@ ou diffusion implicite n’est appliquée. Les clés, formes, héritages ou
 correspondances inconnues restent `NON VÉRIFIÉ`. Les vecteurs de filaments ne
 sont comparés que si `filament_settings_id` et les cardinalités sont cohérents,
 et chaque profil fourni correspond exactement à l’identité du slot. Un slot sans
-profil explicite reste `NON VÉRIFIÉ`.
+profil explicite reste `NON VÉRIFIÉ`. Les fichiers JSON de profil sont bornés à
+8 Mio. Un nom d’héritage hors périmètre ou un parent ambigu dans les dossiers
+explicitement fournis est refusé avant chargement.
 
 Chaque égalité ou différence indique la portée, la valeur du 3MF, le profil et
 son origine par clé, et les domaines sensibles reconnus parmi débit, vitesse,
 température, accélération et matériel. `modification_manuelle` reste toujours
 `NON VÉRIFIÉ` : la divergence prouve seulement que les valeurs intégrées au
 projet diffèrent du profil comparé. Le rapport contient les SHA-256 du 3MF et
-des profils résolus avant et après le contrôle ; toute variation interrompt le
-rapport. La sortie est créée exclusivement sous l’atelier privé ou dans le
+des octets de profils résolus avant et après le contrôle. Le SHA canonique en
+mémoire du résolveur de presets est conservé à part du SHA du fichier ; toute
+variation interrompt le rapport. La sortie est créée exclusivement sous l’atelier privé ou dans le
 dossier temporaire système, sans remplacer une preuve existante.
 
 `PASS` indique qu’au moins une comparaison typée a abouti sans écart ni

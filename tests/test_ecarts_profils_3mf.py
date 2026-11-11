@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
@@ -57,6 +58,10 @@ def test_compare_reglages_typages_portees_origines_et_sha(tmp_path):
 
     assert rapport["sha256_3mf_avant"] == rapport["sha256_3mf_apres"] == sha_modele
     assert rapport["profils_sha256_avant"] == rapport["profils_sha256_apres"] == sha_profils
+    parent_resolu = next(h for p in rapport["profils"] for h in p["heritages"]
+                         if h["name"] == "Processus-parent")
+    assert parent_resolu["empreinte_type"] == "JSON canonique en mémoire"
+    assert parent_resolu["sha256_fichier"] == sha_profils[str(parent.resolve())]
     assert {(d["cle"], d["portee"], d["profil"]["source"]) for d in rapport["differences"]} == {
         ("top_shell_layers", "projet", str(parent)),
     }
@@ -146,6 +151,51 @@ def test_profils_modifies_pendant_comparaison_refuses_le_rapport(tmp_path, monke
 
     monkeypatch.setattr(ecarts_profils_3mf, "_comparaison", modifier)
     with pytest.raises(ValueError, match="profil modifié"):
+        ecarts_profils_3mf.comparer(modele, [profil])
+
+
+def test_nom_heritage_hors_dossier_refuse_avant_lecture(tmp_path, monkeypatch):
+    """Un héritage traversant est refusé avant toute tentative de lecture hors racine."""
+    repertoire = tmp_path / "profils"
+    repertoire.mkdir()
+    modele = tmp_path / "scene.3mf"
+    _archive(modele, {"top_shell_layers": "5"})
+    profil = _profil(repertoire / "P.json", "process", "P", {"top_shell_layers": "5"}, inherits="../secret")
+    (tmp_path / "secret.json").write_text(
+        json.dumps({"type": "process", "name": "secret", "top_shell_layers": "5"}), encoding="utf-8"
+    )
+    lire_initial = ecarts_profils_3mf._lire_profil
+    lus = []
+
+    def tracer(chemin):
+        lus.append(Path(chemin).resolve())
+        return lire_initial(chemin)
+
+    monkeypatch.setattr(ecarts_profils_3mf, "_lire_profil", tracer)
+    with pytest.raises(ValueError, match="hors périmètre"):
+        ecarts_profils_3mf.comparer(modele, [profil])
+    assert lus == [profil.resolve()]
+
+
+def test_profil_symlink_refuse_avant_resolution(tmp_path):
+    """Une cible de profil liée n’est pas légitimée par resolve()."""
+    modele = tmp_path / "scene.3mf"
+    _archive(modele, {"top_shell_layers": "5"})
+    cible = _profil(tmp_path / "cible.json", "process", "P", {"top_shell_layers": "5"})
+    lien = tmp_path / "P.json"
+    lien.symlink_to(cible)
+    with pytest.raises(ValueError, match="Lien symbolique"):
+        ecarts_profils_3mf.comparer(modele, [lien])
+
+
+def test_json_profil_borne_avant_decodage(tmp_path):
+    """Un profil au-delà de 8 Mio est refusé avant décodage et comparaison."""
+    modele = tmp_path / "scene.3mf"
+    _archive(modele, {"top_shell_layers": "5"})
+    profil = tmp_path / "P.json"
+    profil.write_text('{"type":"process","name":"P","pad":"' + "x" * (8 * 1024 * 1024) + '"}',
+                      encoding="utf-8")
+    with pytest.raises(ValueError, match="limite 8 Mio"):
         ecarts_profils_3mf.comparer(modele, [profil])
 
 
