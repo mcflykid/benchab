@@ -8,6 +8,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
   sans approximation par la corde (suite de #123).
 - CAO : ajoute les poches rectangulaires aux fiches déterministes et
   vérifie dix constructions répétées sur cinq nouvelles fiches (#32).
+- Supports : compare l’écart Z nominal sur les dépôts de la recette
+  d’interface, sans conclure au retrait physique (suite de #89).
 
 ## 1.12.0 — 2026-11-11
 

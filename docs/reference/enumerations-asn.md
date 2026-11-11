@@ -80,6 +80,27 @@ les trois sorties. La qualification porte sur la comparaison des motifs
 dans les fichiers obtenus ; ces messages n’établissent pas la fiabilité
 générale du moteur pour ce coupon.
 
+### Écart Z nominal sur les mêmes archives
+
+Une relecture sans retranchage a comparé les dépôts des rôles de pièce et
+de support sur les trois 3MF. Le rôle auxiliaire `Custom` est hors de la
+mesure. Les altitudes viennent des déplacements extrudés interprétés ;
+`HEIGHT` et `WIDTH` servent au dessous nominal et à la projection.
+Aucune altitude n’est déduite du réglage demandé ou d’un commentaire
+de couche seul.
+
+Avec une grille XY de 0,5 mm et une recherche limitée à 2 mm, la projection
+repère 770 cellules pour `auto` (192,5 mm²) et 710 pour les deux
+`concentric` (177,5 mm²). Pour les minima locaux sur les cellules mesurées,
+la médiane est de 0,20 mm dans les trois cas ; le troisième quartile passe
+de 0,40 à 0,60 mm. Le budget historique de deux millions de points était
+insuffisant ; cette relecture a fixé un plafond de quinze millions et n’a
+relevé aucune erreur de lecture ni dépôt retenu sans dimensions.
+
+Ces mesures sont une projection nominale du coupon, limitée aux paires
+à 2 mm ou moins. Elles ne mesurent ni la surface de contact physique, ni le
+retrait ou les marques ; les autres conditions restent non vérifiées (#89).
+
 ## Remplissage clairsemé cubique de support
 
 Sur une copie du témoin S, le même binaire a conservé `supportcubic` dans
