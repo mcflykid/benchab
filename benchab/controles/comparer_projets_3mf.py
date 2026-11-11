@@ -1,5 +1,6 @@
 """Compare les réglages reconnus de deux projets 3MF, en lecture seule."""
 
+import re
 from pathlib import Path
 
 from benchab import reglages
@@ -85,63 +86,163 @@ def _comparer_reglages(source, candidat):
 
 
 def _palette(source, candidat):
-    """Compare les couleurs par slot seulement lorsque les identités ordonnées concordent."""
-    resultats = {"statut": "NON VÉRIFIÉ", "slots": [], "attributions": {"statut": "NON VÉRIFIÉ"}}
+    """Compare la palette littérale et qualifie séparément son lien aux profils."""
+    resultats = {
+        "statut": "NON VÉRIFIÉ",
+        "identites_profil": {"statut": "NON VÉRIFIÉ", "source": None, "candidat": None},
+        "associations_profils": [],
+        "association_profil_couleur": {"statut": "NON VÉRIFIÉ"},
+        "differences_litterales": [],
+        "couleurs_residuelles": {"source": [], "candidat": []},
+        "attribution_physique_piece": {
+            "statut": "NON VÉRIFIÉ",
+            "raison": "Les identifiants de profil ne qualifient ni une bobine physique ni une attribution de pièce.",
+        },
+    }
     if source is None or candidat is None:
         resultats["raison"] = "Réglages projet manquants."
         return resultats
     identites_source = source.get("filament_settings_id")
     identites_candidat = candidat.get("filament_settings_id")
+    couleurs_source = source.get("filament_colour")
+    couleurs_candidat = candidat.get("filament_colour")
+    resultats["identites_profil"] = {
+        "statut": (
+            "PASS" if isinstance(identites_source, list) and identites_source
+            and all(isinstance(x, str) and x.strip() for x in identites_source)
+            and isinstance(identites_candidat, list)
+            and all(isinstance(x, str) and x.strip() for x in identites_candidat)
+            and identites_source == identites_candidat
+            else "NON VÉRIFIÉ" if identites_source is None and identites_candidat is None
+            else "DIFFÉRENT"
+        ),
+        "source": identites_source,
+        "candidat": identites_candidat,
+        "nature": "Références de profils déclarées ; pas des identités physiques.",
+    }
+    resultats["differences_litterales"] = _differences_couleurs_litterales(
+        source, candidat, couleurs_source, couleurs_candidat
+    )
+    resultats["couleurs_residuelles"] = {
+        "source": _couleurs_residuelles(identites_source, couleurs_source),
+        "candidat": _couleurs_residuelles(identites_candidat, couleurs_candidat),
+    }
+    raison = _raison_association_palette(
+        source, candidat, identites_source, identites_candidat, couleurs_source, couleurs_candidat
+    )
+    if raison is not None:
+        resultats["raison"] = raison
+        return resultats
+
+    profils = []
+    for index, (identite, couleur_source, couleur_candidat) in enumerate(
+        zip(identites_source, couleurs_source, couleurs_candidat, strict=True), start=1
+    ):
+        profils.append({
+            "index_declaration": index,
+            "identite_profil": identite,
+            "couleur_source": couleur_source,
+            "couleur_candidat": couleur_candidat,
+            "statut": "IDENTIQUE" if couleur_source == couleur_candidat else "DIFFÉRENT",
+        })
+    statut = "WARN" if any(p["statut"] == "DIFFÉRENT" for p in profils) else "PASS"
+    resultats.update(
+        statut=statut,
+        associations_profils=profils,
+        association_profil_couleur={
+            "statut": "PASS",
+            "portee": "Profil unique déclaré et index de palette ; aucune identité physique ou de pièce.",
+        },
+    )
+    return resultats
+
+
+def _differences_couleurs_litterales(source, candidat, couleurs_source, couleurs_candidat):
+    """Compare les valeurs présentes par indice JSON sans en faire des slots actifs."""
+    present_source = "filament_colour" in source
+    present_candidat = "filament_colour" in candidat
+    if not present_source and not present_candidat:
+        return []
+    if not present_source or not present_candidat:
+        return [{
+            "index_litteral": None,
+            "couleur_source": couleurs_source,
+            "couleur_candidat": couleurs_candidat,
+            "present_source": present_source,
+            "present_candidat": present_candidat,
+            "statut": "DIFFÉRENT",
+        }]
+    if not isinstance(couleurs_source, list) or not isinstance(couleurs_candidat, list):
+        return [{
+            "index_litteral": None,
+            "couleur_source": couleurs_source,
+            "couleur_candidat": couleurs_candidat,
+            "statut": "IDENTIQUE" if type(couleurs_source) is type(couleurs_candidat)
+            and couleurs_source == couleurs_candidat else "DIFFÉRENT",
+        }]
+    differences = []
+    for index in range(max(len(couleurs_source), len(couleurs_candidat))):
+        present_source = index < len(couleurs_source)
+        present_candidat = index < len(couleurs_candidat)
+        valeur_source = couleurs_source[index] if present_source else None
+        valeur_candidat = couleurs_candidat[index] if present_candidat else None
+        different = (
+            not present_source or not present_candidat or type(valeur_source) is not type(valeur_candidat)
+            or valeur_source != valeur_candidat
+        )
+        statut = "DIFFÉRENT" if different else "IDENTIQUE"
+        if statut == "DIFFÉRENT":
+            differences.append({
+                "index_litteral": index + 1,
+                "couleur_source": valeur_source,
+                "couleur_candidat": valeur_candidat,
+                "present_source": present_source,
+                "present_candidat": present_candidat,
+                "statut": statut,
+            })
+    return differences
+
+
+def _couleurs_residuelles(identites, couleurs):
+    """Liste les couleurs au-delà des identités de profil, sans les promouvoir en slots."""
+    if not isinstance(identites, list) or not isinstance(couleurs, list):
+        return []
+    return [
+        {"index_litteral": index + 1, "valeur": couleur, "statut": "NON VÉRIFIÉ"}
+        for index, couleur in enumerate(couleurs[len(identites):], start=len(identites))
+    ]
+
+
+def _raison_association_palette(source, candidat, identites_source, identites_candidat,
+                                couleurs_source, couleurs_candidat):
+    """Refuse le lien profil-couleur si unicité, couleur RGB ou contexte typé manquent."""
     if (
         not isinstance(identites_source, list)
         or not identites_source
         or not all(isinstance(x, str) and x.strip() for x in identites_source)
-        or not _type_qualifie("filament_settings_id", identites_source)
-        or not _type_qualifie("filament_settings_id", identites_candidat)
+        or not isinstance(identites_candidat, list)
+        or not all(isinstance(x, str) and x.strip() for x in identites_candidat)
         or identites_source != identites_candidat
     ):
-        resultats["raison"] = "Identités filament absentes, invalides ou d’ordre différent."
-        return resultats
-    couleurs_source = source.get("filament_colour")
-    couleurs_candidat = candidat.get("filament_colour")
-    if (
-        not isinstance(couleurs_source, list)
-        or not isinstance(couleurs_candidat, list)
-        or len(couleurs_source) != len(identites_source)
-        or len(couleurs_candidat) != len(identites_source)
-        or not _type_qualifie("filament_colour", couleurs_source)
-        or not _type_qualifie("filament_colour", couleurs_candidat)
+        return "Identités de profils absentes, invalides ou d’ordre différent."
+    if len(set(identites_source)) != len(identites_source):
+        return "Identifiant de profil répété ; association profil-couleur ambiguë."
+    for donnees, identites, couleurs in (
+        (source, identites_source, couleurs_source),
+        (candidat, identites_candidat, couleurs_candidat),
     ):
-        resultats["raison"] = "La palette n’est pas appariée exactement aux identités ordonnées."
-        return resultats
-    slots = []
-    for index, identite in enumerate(identites_source):
-        couleur_source = couleurs_source[index]
-        couleur_candidat = couleurs_candidat[index]
-        valide = isinstance(couleur_source, str) and isinstance(couleur_candidat, str)
-        slots.append({
-            "index": index + 1,
-            "identite": identite,
-            "couleur_source": couleur_source,
-            "couleur_candidat": couleur_candidat,
-            "statut": ("IDENTIQUE" if couleur_source == couleur_candidat else "DIFFÉRENT")
-            if valide else "NON VÉRIFIÉ",
-        })
-    if any(slot["statut"] == "NON VÉRIFIÉ" for slot in slots):
-        statut = "NON VÉRIFIÉ"
-    elif any(slot["statut"] == "DIFFÉRENT" for slot in slots):
-        statut = "WARN"
-    else:
-        statut = "PASS"
-    resultats.update(
-        statut=statut,
-        slots=slots,
-        attributions={
-            "statut": "PASS",
-            "raison": "Couleurs comparées par index uniquement sous identités exactes et ordonnées.",
-        },
-    )
-    return resultats
+        contexte = reglages.contexte_filaments(donnees)
+        if (
+            not _type_qualifie("filament_settings_id", identites)
+            or contexte["correspondances_filaments"].get("filament_colour") != identites
+            or not isinstance(couleurs, list)
+            or len(couleurs) != len(identites)
+            or not _type_qualifie("filament_colour", couleurs)
+            or any(not isinstance(couleur, str) or re.fullmatch(r"#[0-9A-Fa-f]{6}", couleur) is None
+                   for couleur in couleurs)
+        ):
+            return "Palette vide, mal formée ou de cardinalité non qualifiée par le contexte typé."
+    return None
 
 
 def comparer(source: str | Path, candidat: str | Path) -> dict:

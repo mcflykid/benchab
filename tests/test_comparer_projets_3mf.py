@@ -32,7 +32,8 @@ def test_palette_comparee_par_identite_et_ordre_sans_affirmer_peinture(tmp_path)
     rapport = comparer(source, candidate)
 
     assert rapport["palette"]["statut"] == "PASS"
-    assert [slot["identite"] for slot in rapport["palette"]["slots"]] == slots
+    assert [slot["identite_profil"] for slot in rapport["palette"]["associations_profils"]] == slots
+    assert rapport["palette"]["attribution_physique_piece"]["statut"] == "NON VÉRIFIÉ"
     assert rapport["reglages"]["statut"] == "PASS"
     assert rapport["peinture"]["statut"] == "NON VÉRIFIÉ"
     assert rapport["statut"] == "NON VÉRIFIÉ"
@@ -54,8 +55,8 @@ def test_palette_ordre_different_est_signale_et_attribution_reste_non_verifiee(t
     rapport = comparer(source, candidate)
 
     assert rapport["palette"]["statut"] == "NON VÉRIFIÉ"
-    assert rapport["palette"]["slots"] == []
-    assert rapport["palette"]["attributions"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["palette"]["associations_profils"] == []
+    assert rapport["palette"]["association_profil_couleur"]["statut"] == "NON VÉRIFIÉ"
     assert {d["cle"] for d in rapport["reglages"]["differences"]} == {"filament_settings_id"}
 
 
@@ -104,9 +105,74 @@ def test_palette_signale_couleur_litteralement_differente(tmp_path):
     rapport = comparer(source, candidate)
 
     assert rapport["palette"]["statut"] == "WARN"
-    assert rapport["palette"]["attributions"]["statut"] == "PASS"
-    assert rapport["palette"]["slots"][0]["statut"] == "DIFFÉRENT"
+    assert rapport["palette"]["association_profil_couleur"]["statut"] == "PASS"
+    assert rapport["palette"]["differences_litterales"][0]["statut"] == "DIFFÉRENT"
     assert rapport["reglages"]["statut"] == "WARN"
+
+
+def test_profils_repetes_n_interpretent_pas_les_couleurs_comme_slots(tmp_path):
+    """Des identifiants de profil répétés ne désignent pas des slots physiques distincts."""
+    source = tmp_path / "source.3mf"
+    candidate = tmp_path / "candidate.3mf"
+    ids = ["Profil partagé", "Profil partagé"]
+    _archive(source, {"filament_settings_id": ids, "filament_colour": ["#112233", "#AABBCC"]})
+    _archive(candidate, {"filament_settings_id": ids, "filament_colour": ["#112234", "#AABBCC"]})
+
+    rapport = comparer(source, candidate)
+
+    assert rapport["palette"]["association_profil_couleur"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["palette"]["associations_profils"] == []
+    assert rapport["palette"]["differences_litterales"][0]["index_litteral"] == 1
+    assert rapport["palette"]["differences_litterales"][0]["statut"] == "DIFFÉRENT"
+    assert rapport["palette"]["attribution_physique_piece"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_couleur_vide_ou_mal_formee_reste_visible_sans_association(tmp_path):
+    """Une chaîne vide ou qui n’est pas un RGB hexadécimal n’est pas un slot coloré qualifié."""
+    source = tmp_path / "source.3mf"
+    candidate = tmp_path / "candidate.3mf"
+    _archive(source, {"filament_settings_id": ["Profil A"], "filament_colour": [""]})
+    _archive(candidate, {"filament_settings_id": ["Profil A"], "filament_colour": ["#GGGGGG"]})
+
+    rapport = comparer(source, candidate)
+
+    assert rapport["palette"]["association_profil_couleur"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["palette"]["associations_profils"] == []
+    assert rapport["palette"]["differences_litterales"] == [{
+        "index_litteral": 1, "couleur_source": "", "couleur_candidat": "#GGGGGG",
+        "present_source": True, "present_candidat": True, "statut": "DIFFÉRENT",
+    }]
+
+
+def test_couleur_residuelle_est_signalee_sans_devenir_un_slot(tmp_path):
+    """Une couleur en trop reste un résidu littéral, jamais un filament actif inventé."""
+    source = tmp_path / "source.3mf"
+    candidate = tmp_path / "candidate.3mf"
+    _archive(source, {"filament_settings_id": ["Profil A"], "filament_colour": ["#112233", "#AABBCC"]})
+    _archive(candidate, {"filament_settings_id": ["Profil A"], "filament_colour": ["#112233"]})
+
+    rapport = comparer(source, candidate)
+
+    assert rapport["palette"]["association_profil_couleur"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["palette"]["associations_profils"] == []
+    assert rapport["palette"]["couleurs_residuelles"]["source"] == [{
+        "index_litteral": 2, "valeur": "#AABBCC", "statut": "NON VÉRIFIÉ",
+    }]
+    assert rapport["palette"]["differences_litterales"][0]["statut"] == "DIFFÉRENT"
+
+
+def test_absence_commune_de_palette_ne_devient_pas_une_difference(tmp_path):
+    """Deux palettes absentes ne sont ni égales ni différentes, et restent NON VÉRIFIÉES."""
+    source = tmp_path / "source.3mf"
+    candidate = tmp_path / "candidate.3mf"
+    _archive(source, {})
+    _archive(candidate, {})
+
+    rapport = comparer(source, candidate)
+
+    assert rapport["palette"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["palette"]["differences_litterales"] == []
+    assert rapport["palette"]["association_profil_couleur"]["statut"] == "NON VÉRIFIÉ"
 
 
 def test_cle_inconnue_reste_non_verifiee_meme_identique(tmp_path):

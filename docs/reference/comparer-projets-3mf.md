@@ -7,13 +7,21 @@ projet disponibles sont décodés par le dictionnaire BENCHAB et comparés dans
 leur forme native. Les clés absentes sont signalées, les valeurs non typées
 restent `NON VÉRIFIÉES`, et aucune conversion ou écriture n’a lieu.
 
-La palette `filament_colour` n’est rapprochée par index que si
-`filament_settings_id` contient les mêmes identités non vides dans le même
-ordre dans les deux projets, avec une couleur par identité. Les couleurs
-restent des chaînes littérales : elles ne sont ni normalisées ni réindexées.
-L’ordre des autres listes typées est comparé exactement. Un écart reconnu
-produit `WARN` pour les réglages/palette ; une ambiguïté produit
-`NON VÉRIFIÉ`.
+La comparaison littérale de `filament_colour` est toujours rendue par index de
+liste, y compris si l’association n’est pas qualifiée. Cet index de sérialisation
+ne devient jamais un slot actif par déduction ; les couleurs au-delà des profils
+déclarés sont listées comme résiduelles et `NON VÉRIFIÉES`.
+
+L’association `filament_colour`↔`filament_settings_id` n’est qualifiée que si
+les deux projets ont les mêmes identifiants de profil non vides et uniques dans
+le même ordre, si le contexte typé confirme exactement une couleur par profil,
+et si chaque couleur est une chaîne `#RRGGBB`. Même alors, le PASS porte
+uniquement sur la référence de profil déclarée et l’index de palette. Un nom de
+profil ne prouve ni une bobine réellement chargée, ni l’identité physique d’un
+filament, ni l’attribution d’une pièce ou d’une facette. Les couleurs restent
+des chaînes littérales, sans normalisation ni réindexation. L’ordre des autres
+listes typées est comparé exactement. Un écart reconnu produit `WARN` pour les
+réglages/palette ; une ambiguïté produit `NON VÉRIFIÉ`.
 
 La peinture par facette demeure `NON VÉRIFIÉE` dans ce premier lot. Le
 3MF Core décrit les propriétés d’objet et de triangle au moyen de références
