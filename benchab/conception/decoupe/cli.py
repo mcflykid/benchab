@@ -9,6 +9,7 @@ from .connecteurs import CATALOGUE
 
 
 def main(argv=None, *, prive=None):
+    """Prépare ou vérifie une découpe en mm ; code de sortie CLI, sans action machine."""
     parser = argparse.ArgumentParser(description=__doc__)
     commandes = parser.add_subparsers(dest="commande", required=True)
     commandes.add_parser("catalogue")

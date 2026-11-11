@@ -45,7 +45,7 @@ La destination doit être neuve et privée (ou dans `/tmp`). Le moteur refuse li
 les transformations inverses et les SHA sont conservés dans le rapport. Le 3MF
 est rouvert et vérifié ; il reste NON TRANCHÉ. Aucun profil d’impression n’est
 transféré implicitement. Avec `--format npz`, les positions en mm
-(float64) et les indices des triangles (int64) sont conservés sans fusion.
+(`float64`) et les indices des triangles (`int64`) sont conservés sans fusion.
 Le rapport compare avant export et après relecture brute : sommets, faces,
 composantes, volume signé, orientation, fermeture et bornes. Il conserve les
 transformations de pose et de réassemblage. Le NPZ n’est pas un fichier à
