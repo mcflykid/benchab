@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir
+
+- Coutures : relie les débuts de boucles extérieures à des régions déclarées,
+  signale les alignements visibles et fournit un aperçu lié au SHA (#26).
+- Reprise : prépare une copie vérifiée d’une table exportée absente sans
+  l’appliquer. La preuve et le JSONL sont vérifiés avant et après
+  publication exclusive (suite de #119).
+- Annotations : documente les fonctions de fabrication historiques,
+  sans modifier leur comportement (suite de #127).
+
 ## 1.10.0 — 2026-11-11
 
 - Diagnostic : signale les exports absents, liés, mal formés ou divergents

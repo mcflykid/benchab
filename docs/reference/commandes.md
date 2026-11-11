@@ -20,6 +20,8 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `fabrication tracer-3mf SOURCE --sortie NOM.3mf` | Copie privée avec empreinte source facultative ; conservation native NON VÉRIFIÉE |
 | `fabrication remplacer-maillage` | Remplace une géométrie directe identifiée par SHA dans une copie privée ; périmètre strict et slicer NON VÉRIFIÉ |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
+| `controle coutures` | [Contrôle et aperçu de coutures sur régions déclarées](../explications/coutures.md#contrôle-sur-des-régions-déclarées) |
+| `controle preparer-reprise-export` | [Copie vérifiée d’une table exportée absente](plan-reparation-vues.md#préparer-la-reprise-dune-table-exportée), sans l’appliquer |
 | `controle surplombs-connexes SOURCE.stl --unite-mm` | Groupes de triangles orientés vers le bas ; rapport numérique sans validation d’appui |
 | `controle entretien --historique FICHIER [--sortie RAPPORT]` | Bilan conditionnel depuis un historique privé explicite, sans SQLite ni action machine |
 | `controle ecarts-profils-3mf` | Compare les réglages 3MF aux profils explicitement fournis ; rapport privé |
