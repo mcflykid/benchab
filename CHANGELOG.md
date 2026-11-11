@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## Non publié
+
+- Origine 3MF : lit les modèles du plan dans le contexte commun, avec
+  plafonds et XML protégé. Un contenu hors contrat reste NON VÉRIFIÉ
+  (#196, suite de #122). Le parcours d’écriture reste distinct.
+- Arcs : rapporte un intervalle XY conditionnel d’après le demi-pas
+  déclaré, sans modifier le lecteur exact ni U25 (suite de #134).
+- Rapports : résume la comparaison de projets 3MF tout en conservant le
+  détail privé dans une sortie neuve (suite de #35).
+
 ## 1.15.0 — 2026-11-11
 
 - Appuis G-code : refuse les numéros de plaque homonymes avant sélection,
