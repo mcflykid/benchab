@@ -2,6 +2,12 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir — 1.6.0
+
+- Atelier : restaure une cible de lien privé absente par copie d’identité prouvée et conserve le lien et sa preuve (suite de #119).
+- Purge : compte les transitions explicites par plaque et sépare la matrice documentaire de toute mesure ou qualification du binaire (suite de #72).
+- Qualité : documente les gardes communes de chemins et verrous (suite de #127).
+
 ## 1.5.0 — 2026-11-11
 
 - Preuves : les contrôles historiques publient des fichiers neufs et la routine préserve les résultats précédents à la reprise (#152).
