@@ -417,111 +417,99 @@ def clone(source: str | Path, cible: str | Path, proposition: dict | None = None
     en flux avec leurs CRC ; aucune modification de la source n’est permise.
     """
     source, cible = Path(source), Path(cible)
-    with Archive3MF(source) as archive_initiale:
-        reglages, xml, geometrie = _lire_3mf_archive(archive_initiale)
-        sha_source_initial = archive_initiale.sha256()
-    if proposition is not None:
-        changements_globaux = proposition.get("reglages", {}).get("global", {})
-        changements_objets = proposition.get("reglages", {}).get("objets", [])
-        if set(changements_globaux) - VARIABLES or any(
-            set(item.get("reglages", {})) - VARIABLES for item in changements_objets
-        ):
-            raise ValueError("Réglage hors allowlist de vitesse et accélération.")
-        avant_etat = integrite_3mf.instantane(source)
-        reglages.update(changements_globaux)
-        index = {item["id"]: item["reglages"] for item in changements_objets}
-        for objet in xml.findall("object"):
-            for cle, valeur in index.get(objet.get("id"), {}).items():
-                meta = next((item for item in objet.findall("metadata") if item.get("key") == cle), None)
-                if meta is None:
-                    meta = ET.SubElement(objet, "metadata", key=cle)
-                meta.set("value", str(valeur))
-        # Le plan exact interdit les changements collatéraux dans un 3MF sérialisé (docs/reference/regles.md).
-        permis = []
-        for cle, valeur in changements_globaux.items():
-            chemin = "projet/" + cle
-            avant = avant_etat.get(chemin)
-            apres = reglages[cle]
-            if avant != apres:
-                permis.append(integrite_3mf.autorisation(chemin, avant, apres, present_avant=chemin in avant_etat))
-        for objet in xml.findall("object"):
-            identite = objet.find("metadata[@key='name']")
-            identifiant = objet.get("id")
-            nom = identite.get("value") if identite is not None else identifiant
-            for cle, valeur in index.get(identifiant, {}).items():
-                chemin = f"objet/{nom}/{cle}"
+    with Archive3MF(source) as archive:
+        noms_source = archive.noms()
+        reglages, xml, _ = _lire_3mf_archive(archive, calculer_geometrie=False, verifier_reste=False)
+        sha_source = archive.sha256()
+        if proposition is not None:
+            changements_globaux = proposition.get("reglages", {}).get("global", {})
+            changements_objets = proposition.get("reglages", {}).get("objets", [])
+            if set(changements_globaux) - VARIABLES or any(
+                set(item.get("reglages", {})) - VARIABLES for item in changements_objets
+            ):
+                raise ValueError("Réglage hors allowlist de vitesse et accélération.")
+            avant_etat = integrite_3mf.instantane(source)
+            archive.verifier_source(source)
+            if archive.sha256() != sha_source:
+                raise ValueError("Source modifiée pendant la lecture de son état d’intégrité.")
+            index = {item["id"]: item["reglages"] for item in changements_objets}
+            # Le plan exact interdit les changements collatéraux dans un 3MF sérialisé (docs/reference/regles.md).
+            permis = []
+            for cle in changements_globaux:
+                chemin = "projet/" + cle
                 avant = avant_etat.get(chemin)
-                apres = str(valeur)
+                apres = changements_globaux[cle]
                 if avant != apres:
                     permis.append(integrite_3mf.autorisation(chemin, avant, apres, present_avant=chemin in avant_etat))
-    else:
-        permis = []
-    with PublicationNeuve([source], [cible]) as publication:
-        temporaire = publication.temporaire(cible)
-        with Archive3MF(source) as archive:
-            # Analyse et copie restent liées au même descripteur ; le SHA inclut le commentaire ZIP.
-            reglages_source, xml_source, _ = _lire_3mf_archive(
-                archive, calculer_geometrie=False, verifier_reste=False
-            )
-            sha_source = archive.sha256()
-            if sha_source != sha_source_initial:
-                raise ValueError("Source différente depuis son analyse initiale.")
-            commentaire_source = archive.commentaire
-            if proposition is not None:
-                reglages_source.update(changements_globaux)
-                for objet in xml_source.findall("object"):
-                    for cle, valeur in index.get(objet.get("id"), {}).items():
-                        meta = next((item for item in objet.findall("metadata") if item.get("key") == cle), None)
-                        if meta is None:
-                            meta = ET.SubElement(objet, "metadata", key=cle)
-                        meta.set("value", str(valeur))
+            for objet in xml.findall("object"):
+                identite = objet.find("metadata[@key='name']")
+                identifiant = objet.get("id")
+                nom = identite.get("value") if identite is not None else identifiant
+                for cle, valeur in index.get(identifiant, {}).items():
+                    chemin = f"objet/{nom}/{cle}"
+                    avant = avant_etat.get(chemin)
+                    apres = str(valeur)
+                    if avant != apres:
+                        permis.append(
+                            integrite_3mf.autorisation(chemin, avant, apres, present_avant=chemin in avant_etat)
+                        )
+            reglages.update(changements_globaux)
+            for objet in xml.findall("object"):
+                for cle, valeur in index.get(objet.get("id"), {}).items():
+                    meta = next((item for item in objet.findall("metadata") if item.get("key") == cle), None)
+                    if meta is None:
+                        meta = ET.SubElement(objet, "metadata", key=cle)
+                    meta.set("value", str(valeur))
+        else:
+            changements_globaux, index, permis = {}, {}, []
+
+        commentaire_source = archive.commentaire
+        empreintes_membres = {}
+        geometrie_copie = {}
+        with PublicationNeuve([source], [cible]) as publication:
+            temporaire = publication.temporaire(cible)
             with zipfile.ZipFile(temporaire, "w") as sortie:
                 sortie.comment = commentaire_source
-                for nom in archive.noms():
+                for nom in noms_source:
                     info = archive.information(nom)
                     if nom == CONFIGURATION:
-                        contenu = reglages_types.encoder(
-                            reglages_source, ensure_ascii=False, allow_nan=False
-                        ).encode("utf-8")
+                        contenu = reglages_types.encoder(reglages, ensure_ascii=False, allow_nan=False).encode("utf-8")
                         sortie.writestr(info, contenu)
                     elif nom == OBJETS:
-                        contenu = ET.tostring(xml_source, encoding="utf-8", xml_declaration=True)
-                        sortie.writestr(info, contenu)
+                        sortie.writestr(info, ET.tostring(xml, encoding="utf-8", xml_declaration=True))
                     else:
+                        empreinte = hashlib.sha256()
                         with archive.ouvrir_flux(nom) as flux, sortie.open(info, "w") as destination:
-                            empreinte = hashlib.sha256() if nom.startswith("3D/") or nom in (
-                                "_rels/.rels", "[Content_Types].xml"
-                            ) else None
                             while bloc := flux.read(64 * 1024):
                                 destination.write(bloc)
-                                if empreinte is not None:
-                                    empreinte.update(bloc)
-                            if empreinte is not None:
-                                geometrie[nom] = empreinte.hexdigest()
+                                empreinte.update(bloc)
+                        empreintes_membres[nom] = empreinte.hexdigest()
+                        if nom.startswith("3D/") or nom in ("_rels/.rels", "[Content_Types].xml"):
+                            geometrie_copie[nom] = empreintes_membres[nom]
+
             archive.verifier_source(source)
-        _, _, apres = lire_3mf(temporaire)
-        if geometrie != apres:
-            raise ValueError("Géométrie modifiée : comparaison refusée.")
-        integrite = integrite_3mf.verifier(source, temporaire, permis)
-        with Archive3MF(source) as entree, Archive3MF(temporaire) as sortie:
-            if entree.sha256() != sha_source or sortie.commentaire != commentaire_source:
-                raise ValueError("Source ou commentaire ZIP modifié pendant le clone.")
-            for nom in entree.noms():
-                if nom not in (CONFIGURATION, OBJETS):
-                    with entree.ouvrir_flux(nom) as flux_entree, sortie.ouvrir_flux(nom) as flux_sortie:
-                        while True:
-                            bloc_entree = flux_entree.read(64 * 1024)
-                            bloc_sortie = flux_sortie.read(64 * 1024)
-                            if bloc_entree != bloc_sortie:
-                                raise ValueError("Membre inattendu modifié : " + nom)
-                            if not bloc_entree:
-                                break
-            entree.verifier_source(source)
-        publication.publier()
+            if archive.sha256() != sha_source:
+                raise ValueError("Source modifiée pendant la copie.")
+            _, _, geometrie_apres = lire_3mf(temporaire)
+            if geometrie_copie != geometrie_apres:
+                raise ValueError("Géométrie modifiée : comparaison refusée.")
+            integrite = integrite_3mf.verifier(source, temporaire, permis)
+            with Archive3MF(temporaire) as sortie:
+                if sortie.noms() != noms_source or sortie.commentaire != commentaire_source:
+                    raise ValueError("Ordre, liste ou commentaire ZIP modifié pendant le clone.")
+                for nom, empreinte_source in empreintes_membres.items():
+                    with sortie.ouvrir_flux(nom) as flux:
+                        empreinte_sortie = hashlib.file_digest(flux, "sha256").hexdigest()
+                    if empreinte_sortie != empreinte_source:
+                        raise ValueError("Membre inattendu modifié : " + nom)
+            archive.verifier_source(source)
+            if archive.sha256() != sha_source:
+                raise ValueError("Source modifiée avant publication.")
+            publication.publier()
     return {"fichier": str(cible), "sha256": sha256_fichier(cible)}, {
         "conforme": True,
         "statut": integrite["statut"],
-        "geometrie_sha256": geometrie,
+        "geometrie_sha256": geometrie_copie,
     }
 
 

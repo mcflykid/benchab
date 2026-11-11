@@ -418,7 +418,7 @@ class OptimisationTests(unittest.TestCase):
             return temporaire
 
         with patch.object(optimisation.PublicationNeuve, "temporaire", remplacer_source):
-            with self.assertRaisesRegex(ValueError, "Source différente"):
+            with self.assertRaisesRegex(ValueError, "(Source différente|archive 3MF modifiée)"):
                 optimisation.clone(self.source, copie, proposition)
         self.assertFalse(copie.exists())
 
