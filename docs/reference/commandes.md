@@ -26,6 +26,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `atelier diagnostic --projet NOM`, `tests-impact` | Capacités et navigation |
 | `references verifier`, `analyser`, `contours` | Références liées aux preuves |
 | `connaissances memoire`, `etudes`, `bobine`, `pdf` | Savoir, mesures et lecture PDF textuelle optionnelle |
+| `connaissances incidents` | Lie une [fiche privée](fiche-incident.md) aux fichiers de tests d’un commit, sans exécution |
 | `donnees impressions`, `vues`, `reconstruire`, `sauvegarder`, `restaurer` | Requêtes et reconstruction |
 | `machine profils-cibles`, `affectations-ace` | Profils de travail et correspondance des filaments |
 | `machine cloud-lecture`, `telemetrie`, `session-compte` | Lecture Cloud ; tests simulés, autorisation réseau distincte |

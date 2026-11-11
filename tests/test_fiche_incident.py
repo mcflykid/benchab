@@ -6,7 +6,9 @@ import subprocess
 
 import pytest
 
+from benchab.cli import main as cli
 from benchab.connaissances import incidents
+from benchab.donnees.base import Base
 
 
 @pytest.fixture
@@ -114,3 +116,28 @@ def test_cli_cree_une_fiche_sans_ecraser_la_preuve(incident, capsys):
     resultat = json.loads(capsys.readouterr().out)
     assert resultat["rapport"] == str(sortie)
     assert json.loads(sortie.read_bytes())["statut_lien"] == "PASS"
+
+
+
+def test_route_cli_transmet_atelier_prive(incident, capsys):
+    """La commande publique transmet l’atelier choisi et n’ajoute aucun fait à la base."""
+    depot, prive, declaration, _, _ = incident
+    base = Base(prive)
+    try:
+        assert base.connexion.execute("SELECT COUNT(*) FROM connaissances").fetchone()[0] == 0
+    finally:
+        base.fermer()
+    fichier = prive / "declaration.json"
+    fichier.write_text(json.dumps(declaration), encoding="utf-8")
+    sortie = prive / "rapports/fiche.json"
+
+    assert cli([
+        "--prive", str(prive), "connaissances", "incidents", str(fichier),
+        "--depot", str(depot), "--sortie", str(sortie),
+    ]) == 0
+    assert json.loads(capsys.readouterr().out)["rapport"] == str(sortie)
+    base = Base(prive, creer=False)
+    try:
+        assert base.connexion.execute("SELECT COUNT(*) FROM connaissances").fetchone()[0] == 0
+    finally:
+        base.fermer()

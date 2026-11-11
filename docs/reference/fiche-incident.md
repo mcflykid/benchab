@@ -1,6 +1,6 @@
 # Relier un incident à son test de régression
 
-`benchab connaissances incidents declaration.json --depot DEPOT --sortie FICHE.json`
+`benchab connaissances incidents prive/rapports/declaration.json --depot . --sortie prive/rapports/fiche.json`
 relie une déclaration privée à un commit local exact et aux octets de fichiers
 de test réguliers de son arbre. La déclaration et la sortie sont privées ;
 le chemin de sortie est neuf. Sans sortie, la commande affiche la fiche.
