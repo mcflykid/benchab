@@ -1,6 +1,7 @@
 """La routine reste rejouable et transmet chaque échec, même face à des JSON anciens conformes."""
 
 import json
+from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
@@ -62,9 +63,19 @@ def test_routine_complete_rejouable_sans_slicer_et_source_intacte(tmp_path):
     source = tmp_path / "fixture.3mf"
     placement = fixture(source)
     avant = source.read_bytes()
-    rapports = [routine.controler(source, source, placement, tmp_path / "rapports") for _ in range(2)]
+    sortie = tmp_path / "rapports"
+    premier = routine.controler(source, source, placement, sortie)
+    etats = {
+        chemin: (chemin.stat().st_ino, chemin.read_bytes())
+        for chemin in sortie.iterdir() if chemin.is_file()
+    }
+    rapports = [premier, routine.controler(source, source, placement, sortie)]
     assert all(r["statut"] == "PASS" for r in rapports), rapports
     assert rapports[0] == rapports[1]
+    assert {
+        chemin: (chemin.stat().st_ino, chemin.read_bytes())
+        for chemin in sortie.iterdir() if chemin.is_file()
+    } == etats
     assert source.read_bytes() == avant
 
 
@@ -115,6 +126,7 @@ def test_routine_ne_masque_pas_echec_par_ancien_json(tmp_path, monkeypatch, doss
         "debit-gcode",
     ):
         (sortie / f"{nom}.json").write_text('{"conforme":true,"tout_conforme":true}')
+    anciens = {p: p.read_bytes() for p in sortie.glob("*.json")}
     modules = {
         "plaques": plaques_interface,
         "reglages": verifier_reglages,
@@ -129,6 +141,9 @@ def test_routine_ne_masque_pas_echec_par_ancien_json(tmp_path, monkeypatch, doss
     rapport = routine.controler(source, source, placement, sortie)
     assert rapport["statut"] == "FAIL"
     assert any(r["code"] == 7 and r["statut"] == "FAIL" for r in rapport["resultats"])
+    echec = next(r for r in rapport["resultats"] if r["code"] == 7)
+    assert echec["rapport"] is None
+    assert {p: p.read_bytes() for p in anciens} == anciens
 
 
 def test_collision_refusee_avant_lecture_et_cli_mesuree(tmp_path, capsys, atelier_initialise):
@@ -161,3 +176,32 @@ def test_collision_refusee_avant_lecture_et_cli_mesuree(tmp_path, capsys, atelie
     rapport = json.loads(capsys.readouterr().out)
     assert rapport["statut"] == "PASS"
     assert rapport["validation_physique"] is False
+
+
+def test_rejeu_different_preserve_ancien_rapport_et_journal(tmp_path, monkeypatch):
+    """Un rapport ou journal différent reçoit un chemin neuf sans écraser l'ancien."""
+    source = tmp_path / "fixture.3mf"
+    placement = fixture(source)
+    sortie = tmp_path / "rapports"
+    sortie.mkdir()
+    ancien_rapport = sortie / "debit-gcode.json"
+    ancien_journal = sortie / "debit-gcode.log"
+    ancien_rapport.write_bytes(b'{"conforme":true,"origine":"ancien"}')
+    ancien_journal.write_bytes(b"journal precedent\n")
+    avant = {chemin: chemin.read_bytes() for chemin in (ancien_rapport, ancien_journal)}
+
+    def debit_nouveau(arguments):
+        Path(arguments[-1]).write_text('{"conforme":true}', encoding="utf-8")
+        print("journal du rejeu")
+        return 0
+
+    monkeypatch.setattr(debit_gcode, "main", debit_nouveau)
+
+    resultat = routine.controler(source, source, placement, sortie)
+
+    nouveau = resultat["resultats"][-1]
+    dossier_rejeu = Path(nouveau["rapport"]).parent
+    assert dossier_rejeu.name.startswith("rejeu-")
+    assert Path(nouveau["rapport"]).read_text(encoding="utf-8") == '{"conforme":true}'
+    assert (dossier_rejeu / "debit-gcode.log").read_text(encoding="utf-8") == "journal du rejeu\n"
+    assert {chemin: chemin.read_bytes() for chemin in avant} == avant
