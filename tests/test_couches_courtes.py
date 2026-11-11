@@ -8,8 +8,9 @@ import unittest
 from pathlib import Path
 
 import trimesh
+from shapely.geometry import box as polygon_box
 
-from benchab.controles.couches_courtes import analyse
+from benchab.controles.couches_courtes import _mesurer_recouvrement_xy, analyse
 
 
 def box(size, centre):
@@ -36,6 +37,74 @@ class CouchesCourtes(unittest.TestCase):
         self.assertEqual(result[0]["centre_xy_mm"], (25.0, 0.0))
         self.assertGreater(result[0]["aire_totale_max_mm2"], 240.0)
         self.assertAlmostEqual(result[0]["hauteur_mm"], 4.0)
+
+    def test_qualification_geometrique_releve_un_candidat_pose_sans_affirmer_contact_plateau(self):
+        result = self.check_mesh([box((2, 2, 3), (0, 0, 1.5))])
+        qualification = result[0]["qualification_sections"]
+        self.assertEqual(qualification["position_initiale"], "premier_echantillon_du_maillage")
+        self.assertTrue(qualification["candidat_pose_au_z_min_du_maillage"])
+        self.assertEqual(qualification["statut"], "NON VÉRIFIÉ")
+        self.assertFalse(qualification["contact_plateau_prouve"])
+        self.assertEqual(qualification["fraction_recouvrement_xy_min"], 1.0)
+
+    def test_qualification_releve_une_absence_de_recouvrement_sous_un_ilot_flottant(self):
+        result = self.check_mesh(
+            [box((10, 10, 2), (0, 0, 1)), box((2, 2, 2), (15, 0, 5))]
+        )
+        flottant = next(r for r in result if r["centre_xy_mm"] == (15.0, 0.0))
+        self.assertEqual(
+            flottant["qualification_sections"]["premiere_relation_appui_xy"],
+            "sans_recouvrement_xy_echantillonne",
+        )
+        self.assertEqual(
+            flottant["qualification_sections"]["fraction_recouvrement_xy_min"], 0.0
+        )
+
+    def test_qualification_quantifie_un_recouvrement_partiel_de_coupes(self):
+        result = self.check_mesh(
+            [box((4, 4, 2), (0, 0, 1)), box((4, 4, 2), (2, 0, 3))]
+        )
+        self.assertEqual(len(result), 1)
+        qualification = result[0]["qualification_sections"]
+        self.assertIn("recouvrement_partiel_xy_echantillonne", qualification["relations_appui_xy_observees"])
+        self.assertEqual(qualification["fraction_recouvrement_xy_min"], 0.5)
+
+    def test_qualification_detecte_une_branche_dans_la_graphe_des_coupes(self):
+        result = self.check_mesh(
+            [
+                box((6, 4, 3), (0, 0, 1.5)),
+                box((2, 2, 3), (-2, 0, 4.5)),
+                box((2, 2, 3), (2, 0, 4.5)),
+            ]
+        )
+        branches = [r for r in result if r["qualification_sections"]["branche_projection_xy"]]
+        self.assertTrue(branches)
+        self.assertTrue(branches[0]["qualification_sections"]["association_pistes_ambigue"])
+        self.assertIn(
+            "association_un_a_un_non_prouvee_branche_ou_fusion",
+            branches[0]["qualification_sections"]["ambiguites"],
+        )
+
+    def test_qualification_signale_un_vide_interieur_de_section(self):
+        mesh = trimesh.creation.annulus(r_min=1, r_max=3, height=3)
+        mesh.apply_translation((0, 0, 1.5))
+        result = self.check_mesh([mesh])
+        self.assertTrue(
+            any(r["qualification_sections"]["cavite_section_detectee"] for r in result)
+        )
+
+    def test_qualification_laisse_les_intersections_sous_precision_indeterminees(self):
+        petite = polygon_box(0, 0, 2e-5, 2e-5)
+        relation, aire, fraction = _mesurer_recouvrement_xy(
+            petite, [petite], couche=1
+        )
+        self.assertEqual(relation, "recouvrement_non_qualifie_precision_numerique")
+        self.assertLessEqual(aire, 1e-9)
+        self.assertIsNone(fraction)
+
+    def test_qualification_garde_la_terminaison_superieure_echantillonnee(self):
+        result = self.check_mesh([box((2, 2, 2), (0, 0, 1))])
+        self.assertTrue(result[0]["qualification_sections"]["sommet_terminal_echantillonne"])
 
     def test_petit_sommet_final_sous_hauteur_minimale(self):
         result = self.check_mesh([box((30, 30, 8), (0, 0, 4)), box((2, 2, 1), (0, 0, 8.5))])

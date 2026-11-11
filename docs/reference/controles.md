@@ -46,6 +46,9 @@ Les familles couvrent : plaques CLI/interface, réglages, pièces, paquet 3MF,
 finition/parois, débit, appuis, première couche, décollement, ponts internes,
 colonnes isolées, couches courtes, supports requis, orientations, disposition,
 ergots et assemblage. Les modules partagent un lecteur G-code indexé par SHA-256.
+Le contrôle des [couches courtes](couches-courtes.md) analyse un STL avant tranchage ;
+ses recouvrements de coupes ne remplacent ni `colonnes-isolees` ni l’analyse
+d’appui des trajectoires G-code.
 Une revue locale ne vaut que pour la zone et l’empreinte qu’elle vise ; un fichier
 modifié invalide sa preuve. Le contrôle de [continuité](continuite-paroi.md)
 utilise des seuils absolus et précise la portée de toute référence.
