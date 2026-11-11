@@ -49,6 +49,17 @@ def test_objet_huit_et_projet_cinq_conserves_et_plan_exact(tmp_path):
     assert integrite_3mf.verifier(a, b, plan)["statut"] == "PASS"
 
 
+def test_diametre_de_buse_lisible_mais_pas_modifiable_meme_si_declare(tmp_path):
+    """Le type documente les mm ; il ne donne aucun droit de réécrire une buse dans un 3MF."""
+    avant, apres = tmp_path / "avant.3mf", tmp_path / "apres.3mf"
+    for fichier, valeur in ((avant, ["0.4"]), (apres, ["0.6"])):
+        with ZipFile(fichier, "w") as archive:
+            archive.writestr("Metadata/project_settings.config", json.dumps({"nozzle_diameter": valeur}))
+    permis = [integrite_3mf.autorisation("projet/nozzle_diameter", ["0.4"], ["0.6"])]
+    with pytest.raises(ValueError, match="lecture seule"):
+        integrite_3mf.verifier(avant, apres, permis)
+
+
 @pytest.mark.parametrize('role', ['projet', 'objet', 'partie', 'nom_forge'])
 def test_portee_matrice_reelle_pas_deduite_du_nom(tmp_path, role):
     """Seule la métadonnée de partie connue est déclarable ; un nom contenant /part/0 ne contourne rien."""
