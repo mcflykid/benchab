@@ -22,8 +22,10 @@ et lui donne un recouvrement avec la peau.
 
 Le rapport enregistre les paramètres, les volumes en mm³, les protections,
 le nombre de triangles et le SHA-256 du STL. PASS signifie que le moteur
-trouve un seul corps positif, sans perte de zone protégée ni débord
-significatif, et que le STL relu est fermé avec un volume cohérent.
+trouve un seul corps positif au-dessus de la tolérance volumique,
+sans perte de zone protégée ni débord au-dessus de cette tolérance, et
+que le STL relu est fermé avec un volume cohérent. La tolérance vaut le
+maximum entre 0,000001 mm³ et un milliardième du volume du bloc plein.
 Le diamètre analytique s’applique à une boule centrée sur la surface
 médiane du champ continu infini. Il ne mesure ni l’épaisseur du STL ni
 celle des trajectoires extrudées. Le pas demandé est nominal ; il ne

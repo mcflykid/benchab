@@ -415,7 +415,22 @@ n’est imputé ; l’exécution et la correspondance avec l’outil physique
 ne sont pas établies (#77). Le résumé de consommation conserve les motifs
 et la référence au rapport intégral publié dans l’atelier (#35).
 
-## Prochaine version : 1.26.0
+## Version 1.26.0 — témoin gyroïde et lecture d’envoi
+
+Sur un coupon de 24 × 16 × 16 mm avec cellule de 8 mm, le gyroïde modélisé
+donne un STL fermé dont la zone protégée est préservée. Deux tranchages
+des mêmes octets à 0 % de remplissage sont identiques hors horodatage.
+Le slicer estime 4,91 g et 1 183 s, contre 3,79 g et 893 s pour la peau
+protégée seule à 0 %, et 3,25 g et 861 s pour le bloc natif à 15 %.
+L’enveloppe est comparable ; les géométries et le réglage natif diffèrent.
+Les avertissements du moteur restent consignés. L’épaisseur maillée et
+la tenue restent à qualifier (#87).
+
+Le plan de consommation conserve ses limites et vérifie l’envoi depuis
+le lecteur qui l’inventorie, sans hachage intégral répété (#223). Les
+annotations CAO et de finition sont précisées (#127).
+
+## Prochaine version : 1.27.0
 
 ### 1. Fiabiliser les fondations et les preuves
 

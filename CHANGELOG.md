@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.26.0 — 2026-11-11
+
+- Conception : produit le STL et le rapport d’un témoin gyroïde confiné
+  à une enveloppe cotée et à des protections déclarées (suite de #87).
+  Le contrôle de géométrie ne qualifie pas la tenue physique.
+- Consommation : le même lecteur 3MF valide le SHA attendu et inventorie
+  l’envoi. Les rapports des témoins S, M et L restent identiques (#223).
+- Annotations : précise les contrats des outils CAO et de finition
+  sans changer leurs calculs (suite de #127).
+
 ## 1.25.0 — 2026-11-11
 
 - Matière : relie une déclaration de pesée à un retour, une plaque, un
