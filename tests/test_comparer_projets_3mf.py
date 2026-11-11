@@ -557,8 +557,11 @@ def test_placement_different_ou_matrice_non_qualifiee(tmp_path, matrice):
         assert comparer(candidat, candidat)["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
 
 
-def _archive_assemblee(path, *, couleur="1", translation="1 0 0 0 1 0 0 0 1 2 0 0", variante=None):
-    """Construit un tétraèdre Core à feuille unique dans le même StartPart."""
+def _archive_assemblee(
+    path, *, couleur="1", translation="1 0 0 0 1 0 0 0 1 2 0 0", variante=None,
+    seconde=False, couleur2="2", materiau2="#654321",
+):
+    """Construit un assemblage Core à une ou deux feuilles dans le même StartPart."""
     from benchab.imports3d.lecture_3mf import NS, NS_REL, REL_MODELE
 
     racine = ET.Element(NS + "model", unit="millimeter")
@@ -578,6 +581,24 @@ def _archive_assemblee(path, *, couleur="1", translation="1 0 0 0 1 0 0 0 1 2 0 
     parent = ET.SubElement(ressources, NS + "object", id="2", type="model")
     composants = ET.SubElement(parent, NS + "components")
     composant = ET.SubElement(composants, NS + "component", objectid="1", transform=translation)
+    if seconde:
+        ET.SubElement(groupe, NS + "base", name="PLA-B", displaycolor=materiau2)
+        autre = ET.fromstring(ET.tostring(feuille))
+        autre.set("id", "4")
+        autre.set("pindex", "1")
+        premiere = autre.find(f".//{NS}triangle")
+        premiere.attrib.pop("paint_color", None)
+        if couleur2 is not None:
+            premiere.set("paint_color", couleur2)
+        ressources.insert(list(ressources).index(parent), autre)
+        nouveau = ET.SubElement(composants, NS + "component", objectid="4", transform="1 0 0 0 1 0 0 0 1 5 0 0")
+        if variante == "ordre-inverse":
+            composants.remove(nouveau)
+            composants.insert(0, nouveau)
+        elif variante == "deux-fois":
+            nouveau.set("objectid", "1")
+        elif variante == "extension-sommet":
+            autre.find(f".//{NS}vertex").set("{urn:fixture}inconnue", "1")
     if variante == "p:path":
         composant.set("{http://schemas.microsoft.com/3dmanufacturing/production/2015/06}path", "/3D/objet.model")
     elif variante == "propriete-parent":
@@ -641,6 +662,42 @@ def test_translation_differente_de_la_feuille_refuse_la_correspondance(tmp_path)
     source, candidat = tmp_path / "a.3mf", tmp_path / "b.3mf"
     _archive_assemblee(source)
     _archive_assemblee(candidat, translation="1 0 0 0 1 0 0 0 1 3 0 0")
+    rapport = comparer(source, candidat)["peinture"]
+    assert rapport["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["proprietes_standard_3mf"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_assemblage_local_compare_les_deux_feuilles_et_localise_la_difference(tmp_path):
+    """Deux feuilles explicites conservent leurs indices de facettes distincts."""
+    source, candidat = tmp_path / "a.3mf", tmp_path / "b.3mf"
+    _archive_assemblee(source, seconde=True)
+    _archive_assemblee(candidat, seconde=True, couleur2=None, materiau2="#101010")
+    avant = source.read_bytes(), candidat.read_bytes()
+    resultat = comparer(source, candidat)
+    peinture = resultat["peinture"]["extensions_asn_prusa"]
+    core = resultat["peinture"]["proprietes_standard_3mf"]
+    assert resultat["statut"] == "NON VÉRIFIÉ"
+    assert peinture["statut"] == "WARN"
+    assert [(d["objet_id"], d["facette"]) for d in peinture["differences_litterales"]] == [("4", 1)]
+    assert core["statut"] == "WARN" and core["facettes_comparees"] == 8
+    assert {d["objet_id"] for d in core["differences"]} == {"4"}
+    assert {d["facette"] for d in core["differences"] if d["portee"] == "facette"} == {1, 2, 3, 4}
+
+    from benchab.imports3d.lecture_3mf import lire
+
+    for archive in (source, candidat):
+        scene = lire(archive, identites=True)
+        assert scene.bounds.tolist() == [[12.0, 0.0, 0.0], [16.0, 1.0, 1.0]]
+        assert len(scene.geometry) == 2 and all(m.is_volume for m in scene.geometry.values())
+    assert (source.read_bytes(), candidat.read_bytes()) == avant
+
+
+@pytest.mark.parametrize("variante", ["ordre-inverse", "deux-fois", "extension-sommet"])
+def test_assemblage_a_deux_feuilles_refuse_ordre_change_ou_reference_repetee(tmp_path, variante):
+    """Des maillages égaux n’autorisent ni réindexation ni doublon."""
+    source, candidat = tmp_path / "a.3mf", tmp_path / "b.3mf"
+    _archive_assemblee(source, seconde=True)
+    _archive_assemblee(candidat, seconde=True, variante=variante)
     rapport = comparer(source, candidat)["peinture"]
     assert rapport["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
     assert rapport["proprietes_standard_3mf"]["statut"] == "NON VÉRIFIÉ"

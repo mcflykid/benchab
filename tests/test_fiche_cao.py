@@ -422,3 +422,67 @@ def test_ouverture_traversante_refuse_declaration_ambigue(tmp_path, option):
     with pytest.raises(ValueError, match="profondeur|traversante"):
         generer(source, tmp_path / "sortie")
     assert not (tmp_path / "sortie").exists()
+
+
+@pytest.mark.parametrize(("lx", "ly", "rotation"), [(9, 4, 0), (4, 9, 90)])
+@pytest.mark.parametrize("traversante", [False, True])
+def test_poche_oblongue_volume_et_orientation(tmp_path, lx, ly, rotation, traversante):
+    """La capsule coupe exactement l’axe coté et la profondeur choisie."""
+    from math import pi
+
+    from benchab.conception.fiche_cao import generer
+
+    forme = {**_poche(-8, 0, lx=lx, ly=ly), "oblongue": True}
+    if traversante:
+        forme.pop("profondeur_mm")
+        forme["traversante"] = True
+    fiche = {**_fiche(), "percages": [], "poches_rectangulaires": [forme]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche))
+    generer(source, tmp_path / "sortie")
+    plan = json.loads((tmp_path / "sortie/plan.json").read_bytes())
+    profondeur = 4 if traversante else forme["profondeur_mm"]
+    aire = 5 * 4 + pi * 4
+    assert plan["attendu"]["volume_mm3"] == pytest.approx(2400 - aire * profondeur)
+    assert plan["poches_rectangulaires"][0]["rayon_extremites_mm"] == 2
+    assert f"SlotOverall(9.0, 4.0, rotation={rotation})" in (tmp_path / "sortie/modele.py").read_text()
+
+
+@pytest.mark.parametrize(
+    ("forme", "motif"),
+    [
+        ({"oblongue": 1}, "oblongue"),
+        ({"oblongue": True, "rayon_angle_mm": 1}, "oblongue"),
+        ({"oblongue": True, "largeur_x_mm": 4, "largeur_y_mm": 4}, "distinctes"),
+        ({"oblongue": True, "x_mm": 9.5}, "bord"),
+    ],
+)
+def test_poche_oblongue_refuse_declaration_ambigue_ou_tangente(tmp_path, forme, motif):
+    """Pas de cercle implicite ni de chevauchement avec le bord du bloc."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {**_fiche(), "percages": [],
+             "poches_rectangulaires": [{**_poche(0, 0, lx=11, ly=4), **forme}]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche))
+    with pytest.raises(ValueError, match=motif):
+        generer(source, tmp_path / "sortie")
+    assert not (tmp_path / "sortie").exists()
+
+
+@pytest.mark.parametrize(("x", "y", "accepte"), [(-12.3, 1.8, True), (-12.9, 0, False)])
+def test_oblongue_et_percage_respectent_le_contour_et_la_tangence(tmp_path, x, y, accepte):
+    """Le contrôle ne confond pas l’extrémité arrondie avec la boîte XY."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {
+        **_fiche(), "hors_perimetre": [], "percages": [{"x_mm": x, "y_mm": y, "diametre_mm": 0.8}],
+        "poches_rectangulaires": [{**_poche(-8, 0, lx=9, ly=4), "oblongue": True}],
+    }
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche))
+    if accepte:
+        assert generer(source, tmp_path / "sortie")["statut"] == "PASS"
+    else:
+        with pytest.raises(ValueError, match="tangence"):
+            generer(source, tmp_path / "sortie")

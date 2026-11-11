@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.27.0 — 2026-11-11
+
+- 3MF : compare les matériaux et la peinture d’assemblages de plusieurs
+  feuilles Core locales distinctes. Les identifiants, l’ordre et les
+  translations doivent correspondre ; les écarts de facettes restent
+  localisés. Cette étape ne qualifie pas un échange entre slicers (#43).
+- CAO : accepte des poches borgnes et des ouvertures traversantes
+  oblongues, cotées sur leurs deux axes. Vérifie le fond, les marges
+  et le volume nominal avant la génération du modèle (#32).
+
 ## 1.26.0 — 2026-11-11
 
 - Reprise : recrée sur demande un seul fichier source absent depuis une
