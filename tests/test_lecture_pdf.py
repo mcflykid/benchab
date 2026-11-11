@@ -175,6 +175,23 @@ def test_pdf_malforme_est_non_verifie_sans_traceback(tmp_path, capsys):
     assert "PDF" in rapport["erreur"]
 
 
+@pytestmark_pdf
+def test_arbre_pages_invalide_donne_un_refus_json(tmp_path, capsys):
+    """Le lecteur ouvre le conteneur, mais refuse ses enfants de page mal formés."""
+    import pypdf
+
+    source = _construire_pdf(tmp_path / "pages-invalides.pdf", ["PAGE ONE", "PAGE TWO"])
+    source.write_bytes(source.read_bytes().replace(b"/Kids [3 0 R 5 0 R]", b"/Kids (3 0 R 5 0 R)"))
+    pypdf.PdfReader(source, strict=True)
+
+    assert pdf.main([str(source)]) == 2
+    sortie = capsys.readouterr()
+    rapport = json.loads(sortie.out)
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert "arbre" in rapport["erreur"].lower()
+    assert "Traceback" not in sortie.err
+
+
 def test_dependance_absente_donne_un_message_actionnable(tmp_path, monkeypatch, capsys):
     source = _construire_pdf(tmp_path / "guide.pdf", ["PAGE ONE", "PAGE TWO"])
     import_original = builtins.__import__

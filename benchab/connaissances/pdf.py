@@ -76,7 +76,12 @@ def analyser(source, pages=None, *, max_octets=_MAX_OCTETS, max_pages=_MAX_PAGES
             raise ValueError(f"PDF illisible ou structure invalide ({type(erreur).__name__}).") from erreur
         if lecteur.is_encrypted:
             raise ValueError("PDF chiffré refusé ; aucun mot de passe n’est demandé ni mémorisé.")
-        nombre_pages = len(lecteur.pages)
+        try:
+            # pypdf résout l’arbre des pages au premier comptage, après avoir
+            # accepté l’en-tête ; garder un refus JSON pour cette étape aussi.
+            nombre_pages = len(lecteur.pages)
+        except Exception as erreur:
+            raise ValueError(f"Arbre des pages PDF illisible ({type(erreur).__name__}).") from erreur
         if nombre_pages == 0:
             raise ValueError("PDF vide : aucune page disponible.")
         if nombre_pages > max_pages:
@@ -85,9 +90,8 @@ def analyser(source, pages=None, *, max_octets=_MAX_OCTETS, max_pages=_MAX_PAGES
         resultats = []
         caracteres_total = 0
         for numero in numeros:
-            page = lecteur.pages[numero - 1]
             try:
-                texte = page.extract_text() or ""
+                texte = lecteur.pages[numero - 1].extract_text() or ""
             except Exception as erreur:
                 raise ValueError(f"Extraction PDF impossible à la page {numero} ({type(erreur).__name__}).") from erreur
             if len(texte) > _MAX_TEXTE_PAGE:
