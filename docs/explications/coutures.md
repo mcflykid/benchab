@@ -7,7 +7,7 @@ observation de l’auteur sur sa Kobra S1 Combo. La position alignée sur une fa
 visible est la cause probable de cet aspect ; une mauvaise résistance n’a pas
 été démontrée.
 
-## Règle U31 dans la 1.0
+## Règle U31
 
 Avant tranchage, distinguer faces visibles, dessous, intérieur et arrière selon
 l’usage réel. Prévoir une couture sur une arête ou une face cachée lorsque le
@@ -15,8 +15,7 @@ slicer le permet. Rouvrir le résultat et examiner couche par couche les points
 de début et fin de paroi extérieure. Une orientation de couture n’est pas une
 peinture locale et ne garantit pas le placement sur toute la hauteur.
 
-BENCHAB 1.0 ne classe pas automatiquement les faces visibles et ne réalise pas
-le futur placement intelligent des coutures. Cette limite doit apparaître dans
+Le placement des coutures sur des faces visibles reste une revue manuelle (#26). Cette limite doit apparaître dans
 les risques de la relecture avant vote, avec le statut NON VÉRIFIÉ tant que
 l’aperçu n’a pas permis de trancher. Une couture aléatoire répartit les marques,
 elle ne les supprime pas et peut dégrader une autre surface.
@@ -39,7 +38,7 @@ L’aperçu du G-code doit montrer le mouvement réellement dirigé vers l’int
 et le raccord de la surface visible. Un nom d’option ou une case activée ne
 remplace pas cette lecture. Comparer ensuite sur une vraie pièce autorisée,
 en distinguant bavure, trou au raccord et surépaisseur. Aucun de ces réglages
-n’est activé automatiquement par la 1.0.
+n’est activé automatiquement par ce parcours de contrôle.
 
 ## Sources
 

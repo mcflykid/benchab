@@ -9,6 +9,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Finition : sépare les vérifications de mouvement, débit, couverture et proposition, avec rapports identiques (suite de #68).
 
 - Envois : refuse les plaques homonymes et lit les masses et outils en flux, avec CRC complet et copie vérifiée par SHA-256 (#147, suite de #122).
+- Documentation : actualise les commandes, les règles de preuve et les limites décrites dans les guides historiques (#149).
 
 - Guide : relie les premiers essais d’une machine ou d’une bobine aux témoins, aux températures, aux mesures d’ajustement et au retour d’impression (#74).
 - Savoir : génère hors ligne une vitrine du corpus public, par matière, réglage, défaut, entretien et code, avec statuts et portées (#75).

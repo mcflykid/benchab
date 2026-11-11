@@ -30,7 +30,7 @@ Aucune commande de préparation ne lance une impression.
 
 ## Limites
 
-Seule la Kobra S1 est qualifiée dans la 1.0, sur macOS avec Anycubic Slicer Next 2.0.0.3.
+Le parcours qualifié couvre la Kobra S1 sur macOS avec Anycubic Slicer Next 2.0.0.3.
 La qualification concerne la chaîne numérique ; aucun contrôle numérique ne
 prouve le résultat physique. Les jeux non mesurés, la tenue des connecteurs et
 les zones sans observation restent explicitement NON VÉRIFIÉS.

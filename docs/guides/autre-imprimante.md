@@ -1,6 +1,6 @@
 # Adapter à une autre imprimante
 
-La 1.0 qualifie uniquement la Kobra S1. Copier le [profil TOML](../../config/kobra-s1.toml)
+Le parcours actuel qualifie uniquement la Kobra S1. Copier le [profil TOML](../../config/kobra-s1.toml)
 dans `prive/machines/`, puis renseigner dimensions utiles, marges, pas de plaques,
 buse, slicer et limites. Sélectionner le fichier par `BENCHAB_MACHINE` et vérifier
 `uv run benchab configuration`. Ne pas modifier les profils installés.
