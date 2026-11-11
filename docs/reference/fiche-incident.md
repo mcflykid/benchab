@@ -20,7 +20,7 @@ La déclaration JSON de schéma 1 contient :
   est borné à 8 Mio ; son SHA et son analyse portent sur la même lecture protégée
   contre le remplacement du fichier. DTD, entités, identités dupliquées et champs
   ambigus sont refusés. Le rapport indique les cas absents, en échec ou ignorés.
-  Pour obtenir `file` avec pytest, exporter en famille xunit1, par exemple
+  Pour obtenir `file` avec pytest, exporter en famille `xunit1`, par exemple
   `python -m pytest tests/test_fiche_incident.py -o junit_family=xunit1 --junitxml=prive/rapports/tests.xml`.
   Les rapports pytest par défaut peuvent omettre `file` ; ces cas ne sont pas
   rapprochés par `classname` seul et sont rapportés comme manquants.
