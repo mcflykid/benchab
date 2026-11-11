@@ -885,3 +885,46 @@ def test_restauration_noms_dans_copie_preserve_native_et_membres(tmp_path):
     with pytest.raises(FileExistsError):
         trancher.restaurer_noms(source, ["Autre nom"], destination=sortie)
     assert sortie.read_bytes() == preuve and source.read_bytes() == avant
+
+
+@pytest.mark.parametrize("copie_neuve", [False, True])
+def test_restauration_refuse_octet_altere_apres_publication(tmp_path, monkeypatch, copie_neuve):
+    """Même avec une taille et un mtime conservés, l’empreinte finale doit être exacte."""
+    import os
+
+    from benchab.qualite import ecritures
+
+    source = entree_3mf(tmp_path / "native.3mf")
+    with ZipFile(source, "a") as archive:
+        archive.comment = b"natif"
+    cible = tmp_path / "restauree.3mf" if copie_neuve else source
+
+    def alterer(path):
+        info = path.stat()
+        donnees = path.read_bytes()
+        assert donnees.endswith(b"natif")
+        path.write_bytes(donnees[:-1] + b"x")
+        os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns))
+
+    if copie_neuve:
+        renommer = ecritures.renommer_exclusif
+
+        def publication(temporaire, destination):
+            renommer(temporaire, destination)
+            alterer(Path(destination))
+
+        monkeypatch.setattr(ecritures, "renommer_exclusif", publication)
+    else:
+        remplacer = Path.replace
+
+        def remplacement(temporaire, destination):
+            resultat = remplacer(temporaire, destination)
+            if Path(destination) == source:
+                alterer(source)
+            return resultat
+
+        monkeypatch.setattr(Path, "replace", remplacement)
+
+    with pytest.raises(ValueError, match="(?i)copie publi|empreinte"):
+        trancher.restaurer_noms(source, ["Nom restauré"], **({"destination": cible} if copie_neuve else {}))
+    assert cible.read_bytes().endswith(b"natix")

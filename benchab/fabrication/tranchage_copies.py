@@ -282,11 +282,11 @@ def _identite_source(chemin):
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
-def _verifier_noms_restaures(chemin, empreintes, noms):
+def _verifier_noms_restaures(chemin, empreintes, noms, commentaire):
     """Relit les CRC et l’empreinte de chaque membre avant publication."""
     membre_modele = "Metadata/model_settings.config"
     with Archive3MF(chemin, taille_max_xml=_BUDGET_XML_OCTETS) as archive:
-        if archive.noms() != tuple(empreintes):
+        if archive.noms() != tuple(empreintes) or archive.commentaire != commentaire:
             raise ValueError("Réouverture du 3MF restauré invalide.")
         modele = None
         for membre, attendu in empreintes.items():
@@ -309,8 +309,8 @@ def _verifier_noms_restaures(chemin, empreintes, noms):
             obtenus.append(champs[0].get("value"))
         if obtenus != noms:
             raise ValueError("Noms de plaques différents après réouverture.")
-        archive.verifier_source(chemin)
-    return obtenus
+        empreinte_archive = archive.sha256()
+    return obtenus, empreinte_archive
 
 
 def restaurer_noms(chemin, noms, *, destination=None, empreinte_source=None):
@@ -324,6 +324,7 @@ def restaurer_noms(chemin, noms, *, destination=None, empreinte_source=None):
     """
     from benchab.chemins import sans_lien
     from benchab.qualite.ecritures import destination_neuve, renommer_exclusif
+    from benchab.qualite.empreintes import sha256_fichier
 
     chemin = sans_lien(chemin, strict=True)
     cible = destination_neuve(destination) if destination is not None else chemin
@@ -363,8 +364,9 @@ def restaurer_noms(chemin, noms, *, destination=None, empreinte_source=None):
             temporaire = Path(nom)
             os.close(fd)
             empreintes = {}
+            commentaire = entree.commentaire
             with ZipFile(temporaire, "w") as sortie:
-                sortie.comment = entree.commentaire
+                sortie.comment = commentaire
                 for membre in entree.noms():
                     info = entree.information(membre)
                     calcul = hashlib.sha256()
@@ -379,7 +381,7 @@ def restaurer_noms(chemin, noms, *, destination=None, empreinte_source=None):
                                 ecriture.write(bloc)
                     empreintes[membre] = calcul.hexdigest()
             identite_copie = _identite_source(temporaire)
-            obtenus = _verifier_noms_restaures(temporaire, empreintes, noms)
+            obtenus, empreinte_copie = _verifier_noms_restaures(temporaire, empreintes, noms, commentaire)
             integrite_3mf.verifier(chemin, temporaire, permis)
             entree.verifier_source(chemin)
         if _identite_source(chemin) != identite:
@@ -390,7 +392,8 @@ def restaurer_noms(chemin, noms, *, destination=None, empreinte_source=None):
             temporaire.replace(cible)
         else:
             renommer_exclusif(temporaire, cible)
-        if _identite_source(cible)[:4] != identite_copie[:4]:
+        # Le renommage peut changer ctime ; relire tous les octets publiés.
+        if _identite_source(cible)[:4] != identite_copie[:4] or sha256_fichier(cible) != empreinte_copie:
             raise ValueError("La copie publiée ne correspond plus à la réouverture contrôlée.")
         return {"noms": obtenus, "reouverture": "PASS", "membres_verifies": len(empreintes)}
     finally:
