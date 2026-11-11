@@ -2,6 +2,15 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.25.0 — 2026-11-11
+
+- Matière : relie une déclaration de pesée à un retour, une plaque, un
+  membre G-code et un index explicite. La variation déclarée reste distincte
+  de l’estimation du slicer ; aucun stock n’est imputé (suite de #77).
+- Rapports : le plan de consommation peut afficher un résumé qui renvoie
+  au JSON intégral enregistré dans l’atelier privé. Le statut et les motifs
+  sont conservés (suite de #35).
+
 ## 1.24.0 — 2026-11-11
 
 - CAO : accepte une ouverture traversante explicitement cotée, droite

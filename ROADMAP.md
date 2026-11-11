@@ -406,7 +406,16 @@ peut vérifier, sur demande, les conditions littérales observées pour
 les styles de support normal. Les cas hors de ce contexte ne sont pas
 qualifiés et le résultat ne prédit pas le retrait (#80, #89).
 
-## Prochaine version : 1.25.0
+## Version 1.25.0 — pesée déclarée et rapport de consommation
+
+Une déclaration de pesée peut être reliée à une plaque d’un retour et à
+un index explicite dans son G-code. La variation déclarée, l’estimation
+du slicer et la consommation physique restent distinctes. Aucun stock
+n’est imputé ; l’exécution et la correspondance avec l’outil physique
+ne sont pas établies (#77). Le résumé de consommation conserve les motifs
+et la référence au rapport intégral publié dans l’atelier (#35).
+
+## Prochaine version : 1.26.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
