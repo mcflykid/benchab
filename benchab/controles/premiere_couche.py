@@ -463,7 +463,9 @@ def main(argv=None):
 
     try:
         options = (opt("--ilot-max", 3.0), opt("--creux-max", 150.0), opt("--pas", 0.1))
-        res = {f"plaque {k}": controler(g, *options, arcs_planaires=arcs_planaires) for k, g in gcodes(a[0])}
+        # L'appel historique garde la même signature lorsque l'option est absente.
+        options_arcs = {"arcs_planaires": True} if arcs_planaires else {}
+        res = {f"plaque {k}": controler(g, *options, **options_arcs) for k, g in gcodes(a[0])}
     except (OSError, ValueError, BadZipFile) as erreur:
         print(f"NON VÉRIFIÉ {a[0]} : {erreur}", file=sys.stderr)
         return 2
