@@ -75,7 +75,7 @@ ROUTES_NAMESPACE = {
         "alias": {"photo": "rendu_photo"},
         "modules_prives": frozenset({
             "maillage_avance", "rendu_photo", "inspection_scene", "assemblage_dossier",
-            "visionneuse", "serveur", "apercu_gcode", "commentaires",
+            "visionneuse", "serveur", "apercu_gcode", "commentaires", "retour_photo_assiste",
         }),
     },
     "machine": {
@@ -359,7 +359,7 @@ def parser():
     for nom in ("importer", "geometrie", "reparer", "maillage-avance", "echange-blender", "placement"):
         imports.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
     visualisation = commandes.add_parser("visualisation").add_subparsers(dest="action", required=True)
-    for nom in ("photo", "inspection-scene", "assemblage-dossier", "visionneuse", "serveur",
+    for nom in ("photo", "retour-photo", "inspection-scene", "assemblage-dossier", "visionneuse", "serveur",
                 "apercu-gcode", "commentaires"):
         visualisation.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
     references = commandes.add_parser("references").add_subparsers(dest="action", required=True)
@@ -975,6 +975,7 @@ def main(argv=None):
             "entretien",
             "consommation-retour",
             "coutures",
+            "retour-photo",
         }
         for i in range(len(argv) - 1)
     ) or any(
@@ -1124,6 +1125,16 @@ def main(argv=None):
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
             print(f"BENCHAB : remplacement de maillage refusé : {erreur}", file=sys.stderr)
             return 1
+    if arguments.commande == "visualisation" and arguments.action == "retour-photo":
+        from types import SimpleNamespace
+
+        # Import photo et confirmation ne créent ni base SQLite ni mesure automatique.
+        base_ephemere = SimpleNamespace(prive=atelier_prive(arguments.prive))
+        try:
+            return _deleguer_namespace(arguments, base_ephemere)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
+            print(f"BENCHAB : retour photo refusé : {erreur}", file=sys.stderr)
+            return 2
     mesure = Mesure()
     base = None
     code = 1

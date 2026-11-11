@@ -27,7 +27,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `controle ecarts-profils-3mf` | Compare les réglages 3MF aux profils explicitement fournis ; rapport privé |
 | `controle publication`, `frontiere`, `typographie` | Dépôt partageable |
 | `qualite niveau1`, `niveau3`, `incrementiel`, `resume`, `tout`, `hooks`, `archives`, `comparer-fabrication` | Qualité logicielle et impact des tests |
-| `visualisation visionneuse`, `serveur`, `apercu-gcode`, `commentaires`, `photo`, `inspection-scene`, `assemblage-dossier` | Inspection commune |
+| `visualisation visionneuse`, `serveur`, `apercu-gcode`, `commentaires`, `photo`, `retour-photo`, `inspection-scene`, `assemblage-dossier` | Inspection commune et suggestion privée de retour |
 | `atelier diagnostic --projet NOM`, `tests-impact` | Capacités et navigation |
 | `references verifier`, `analyser`, `contours` | Références liées aux preuves |
 | `connaissances memoire`, `etudes`, `bobine`, `pdf` | Savoir, mesures et lecture PDF textuelle optionnelle |
