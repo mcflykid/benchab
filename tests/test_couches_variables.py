@@ -262,3 +262,15 @@ class PublicationProfilsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_resume_hauteurs_refuse_deux_graphies_du_meme_numero(tmp_path):
+    """Une plaque ne doit pas compter deux fois dans le résumé."""
+    import pytest
+
+    source = tmp_path / "ambigu.3mf"
+    with zipfile.ZipFile(source, "w") as archive:
+        for numero in ("1", "01"):
+            archive.writestr(f"Metadata/plate_{numero}.gcode", ";HEIGHT:0.2\n")
+    with pytest.raises(ValueError, match="plaque dupliqué"):
+        couches.hauteurs_gcode(source)
