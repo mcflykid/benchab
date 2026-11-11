@@ -24,8 +24,12 @@ Le contrôle d’envoi accepte en option le champ `buse.diametre_mm` (nombre en
 mm) dans la déclaration. Ce bloc active la comparaison avec le diamètre de
 buse typé du 3MF et, si les valeurs HRC sont présentes, la comparaison de
 `nozzle_hrc` à `required_nozzle_HRC` pour chaque filament utilisé. Un diamètre
-différent ou une dureté déclarée sous l’exigence donne `WARN` ; les données
-absentes ou ambiguës donnent `NON VÉRIFIÉ`. Sans ce bloc, les anciens rapports
+différent ou une dureté embarquée sous l’exigence donne `WARN` ; les données
+absentes ou ambiguës donnent `NON VÉRIFIÉ`. Le bloc doit contenir uniquement un
+`diametre_mm` numérique strictement positif ; un bloc nul ou malformé rend tous
+les contrôles de buse `NON VÉRIFIÉ`. La forme typée de `nozzle_diameter` a été
+relue le 2026-11-11 ; la date générale du dictionnaire reste celle de sa collecte.
+Sans ce bloc, les anciens rapports
 gardent leurs contrôles et leur forme. Ces comparaisons portent sur les valeurs
 des fichiers ; elles ne mesurent pas le matériel monté et n’établissent aucune
 compatibilité physique.

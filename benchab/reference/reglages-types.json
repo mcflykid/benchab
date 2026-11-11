@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "slicer": "Anycubic Slicer Next 2.0.0.3",
-  "date_releve": "2026-11-11",
+  "date_releve": "2026-11-05",
   "definitions": {
     "type": {
       "formes": [
@@ -1471,7 +1471,8 @@
       ],
       "type": "diametre_buse",
       "longueur": "buse_unique",
-      "unite": "mm"
+      "unite": "mm",
+      "lecture_seule": true
     },
     "default_print_profile": {
       "formes": [

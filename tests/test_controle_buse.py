@@ -17,9 +17,9 @@ def test_buse_compare_diametre_declare_et_hrc_par_filament():
 
     par_nom = {r["controle"]: r for r in resultats}
     assert par_nom["diamètre de buse déclaré"]["statut"] == "PASS"
-    assert par_nom["HRC buse déclarée vs exigence (filament 1)"]["statut"] == "PASS"
-    assert par_nom["HRC buse déclarée vs exigence (filament 2)"]["statut"] == "WARN"
-    assert "compatibilité physique" in par_nom["HRC buse déclarée vs exigence (filament 2)"]["detail"]
+    assert par_nom["HRC buse du profil 3MF vs exigence (filament 1)"]["statut"] == "PASS"
+    assert par_nom["HRC buse du profil 3MF vs exigence (filament 2)"]["statut"] == "WARN"
+    assert "compatibilité physique" in par_nom["HRC buse du profil 3MF vs exigence (filament 2)"]["detail"]
 
 
 def test_buse_donnees_absentes_ou_ambigues_non_verifiees():
@@ -52,6 +52,18 @@ def test_declaration_buse_non_numerique_reste_non_verifiee():
             {"nozzle_diameter": ["0.4"]}, {"buse": {"diametre_mm": valeur}}, []
         )
         assert resultat[0]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_contrat_buse_nul_ou_malforme_ne_peut_pas_valider_hrc():
+    """Un contrat explicitement malformé rend chaque contrôle de buse NON VÉRIFIÉ."""
+    parametres = {
+        "filament_settings_id": ["PLA-A"], "nozzle_diameter": ["0.4"],
+        "nozzle_hrc": "50", "required_nozzle_HRC": ["40"],
+    }
+    for contrat in (None, 0, {}, {"diametre_mm": 0}, {"diametre_mm": 0.4, "autre": 1}):
+        resultats = controle_buse.controler(parametres, {"buse": contrat}, [1])
+        assert len(resultats) == 2
+        assert all(r["statut"] == "NON VÉRIFIÉ" for r in resultats)
 
 
 def test_dictionnaire_type_la_buse_et_ses_unites():

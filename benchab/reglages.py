@@ -264,8 +264,12 @@ class Reglages(dict):
         self.contexte = dict(contexte if contexte is not None else getattr(donnees, "contexte", {}))
 
     def __setitem__(self, cle, valeur):
+        """Affecte un réglage natif ; refuse changement de clé en lecture seule ou cardinalité invalide."""
         d = definition(cle, valeur=dict.get(self, cle, valeur))
         cible = definition(cle, valeur=valeur)
+        lecture_seule = d.get("lecture_seule") or cible.get("lecture_seule")
+        if lecture_seule and (cle not in self or dict.__getitem__(self, cle) != valeur):
+            raise ValueError("Réglage en lecture seule : transformation interdite : " + cle)
         if (d["type"] == "inconnu" or cible["type"] == "inconnu") and (
             cle not in self or dict.__getitem__(self, cle) != valeur
         ):
@@ -299,7 +303,11 @@ class Reglages(dict):
         return resultat
 
     def __delitem__(self, cle):
-        if definition(cle, valeur=self[cle])["type"] == "inconnu":
+        """Supprime une clé modifiable ; les réglages inconnus et en lecture seule sont conservés."""
+        d = definition(cle, valeur=self[cle])
+        if d.get("lecture_seule"):
+            raise ValueError("Réglage en lecture seule : suppression interdite : " + cle)
+        if d["type"] == "inconnu":
             raise ValueError("Réglage de type inconnu NON VÉRIFIÉ : suppression interdite : " + cle)
         dict.__delitem__(self, cle)
 
@@ -377,7 +385,16 @@ def encoder(donnees, **options):
                 definition(cle, valeur=origine)["type"] == "inconnu"
                 or definition(cle, valeur=cible)["type"] == "inconnu"
             )
-            if inconnu and (cle not in donnees or cle not in donnees.original or donnees[cle] != donnees.original[cle]):
+            lecture_seule = definition(cle, valeur=origine).get("lecture_seule") or definition(
+                cle, valeur=cible
+            ).get("lecture_seule")
+            modifiee = (
+                cle not in donnees or cle not in donnees.original
+                or donnees[cle] != donnees.original[cle]
+            )
+            if lecture_seule and modifiee:
+                raise ValueError("Réglage en lecture seule modifié : " + cle)
+            if inconnu and modifiee:
                 raise ValueError("Réglage inconnu modifié : " + cle)
             if cle in donnees and _mode_origine_non_verifie(cle, donnees, donnees[cle]):
                 raise ValueError("Vecteur machine d'origine NON VÉRIFIÉ : mutation imbriquée interdite : " + cle)

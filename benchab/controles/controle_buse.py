@@ -11,7 +11,7 @@ def _nombre_positif(valeur):
         return None
     try:
         nombre = float(valeur)
-    except ValueError:
+    except (OverflowError, ValueError):
         return None
     return nombre if math.isfinite(nombre) and nombre > 0 else None
 
@@ -31,6 +31,12 @@ def controler(parametres, declaration, extrudeurs):
     if not isinstance(declaration, dict) or "buse" not in declaration:
         return []
     contrat = declaration.get("buse")
+    contrat_valide = (
+        type(contrat) is dict
+        and set(contrat) == {"diametre_mm"}
+        and type(contrat.get("diametre_mm")) in (int, float)
+        and _nombre_positif(contrat.get("diametre_mm")) is not None
+    )
     resultats = []
 
     diametre = None
@@ -43,14 +49,14 @@ def controler(parametres, declaration, extrudeurs):
     except (TypeError, ValueError):
         pass
     declare = None
-    if isinstance(contrat, dict):
+    if contrat_valide:
         valeur_declaree = contrat.get("diametre_mm")
         if not isinstance(valeur_declaree, bool) and isinstance(valeur_declaree, (int, float)):
             declare = _nombre_positif(valeur_declaree)
-    if diametre is None or declare is None:
+    if not contrat_valide or diametre is None or declare is None:
         resultats.append(_resultat(
             "diamètre de buse déclaré", "NON VÉRIFIÉ",
-            "Diamètre unique typé du 3MF ou valeur déclarée absente, invalide ou ambiguë.",
+            "Contrat buse absent ou malformé, ou diamètre unique typé du 3MF indisponible ou ambigu.",
             "3MF: nozzle_diameter ; déclaration: buse.diametre_mm (mm)",
         ))
     else:
@@ -73,7 +79,7 @@ def controler(parametres, declaration, extrudeurs):
     identites = parametres.get("filament_settings_id")
     exigences = parametres.get("required_nozzle_HRC")
     for extrudeur in extrudeurs:
-        nom = f"HRC buse déclarée vs exigence (filament {extrudeur})"
+        nom = f"HRC buse du profil 3MF vs exigence (filament {extrudeur})"
         indice = extrudeur - 1 if type(extrudeur) is int and extrudeur > 0 else None
         exigence = None
         if (indice is not None and isinstance(identites, list) and indice < len(identites)
@@ -84,16 +90,17 @@ def controler(parametres, declaration, extrudeurs):
                 parametres, "required_nozzle_HRC", indice, lecteur="index_exact"
             )
             exigence = _nombre_positif(brute) if isinstance(brute, str) else None
-        if exigence is None or buse_hrc is None:
+        if not contrat_valide or exigence is None or buse_hrc is None:
             resultats.append(_resultat(
-                nom, "NON VÉRIFIÉ", "Exigence HRC ou dureté de buse déclarée absente, nulle ou ambiguë.",
+                nom, "NON VÉRIFIÉ",
+                "Contrat invalide, exigence HRC ou dureté de buse embarquée absente, nulle ou ambiguë.",
                 "3MF typé: required_nozzle_HRC[filament] et nozzle_hrc (HRC)",
             ))
         else:
             ok = buse_hrc >= exigence
             resultats.append(_resultat(
                 nom, "PASS" if ok else "WARN",
-                f"Buse déclarée {buse_hrc:g} HRC ; exigence embarquée {exigence:g} HRC. "
+                f"Buse embarquée au profil 3MF {buse_hrc:g} HRC ; exigence embarquée {exigence:g} HRC. "
                 "La valeur ne mesure ni la buse montée ni sa compatibilité physique.",
                 "3MF typé: nozzle_hrc et required_nozzle_HRC (HRC)",
             ))

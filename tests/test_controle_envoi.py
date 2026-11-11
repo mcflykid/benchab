@@ -98,7 +98,7 @@ class ControleEnvoi(unittest.TestCase):
 
         controles = {ligne["controle"]: ligne for ligne in rapport["resultats"]}
         self.assertEqual(controles["diamètre de buse déclaré"]["statut"], "PASS")
-        self.assertEqual(controles["HRC buse déclarée vs exigence (filament 1)"]["statut"], "PASS")
+        self.assertEqual(controles["HRC buse du profil 3MF vs exigence (filament 1)"]["statut"], "PASS")
 
 
 if __name__ == "__main__":
