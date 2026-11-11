@@ -1,6 +1,6 @@
 """Connecteurs géométriques du lot 6B ; aucun n'est validé physiquement.
 
-Le jeu est radial dans le catalogue historique et latéral par face pour les clips.
+Le jeu demandé est radial pour le catalogue historique et latéral pour les clips.
 Sans mesure applicable, le haut de la plage du témoin de jeux est une hypothèse.
 """
 
@@ -34,7 +34,7 @@ _CLIPS = {"clip-languette", "clip-double"}
 def politique_jeu(options):
     """Renvoie le jeu nominal en mm et sa provenance ; aucun ajustement physique n’est déduit.
 
-    Pour un clip, une mesure déclarée de même famille et bobine prévaut.
+    Pour un clip, une mesure déclarée de même famille et bobine fixe la cote nominale, sans preuve U32.
     Sans mesure, le haut de la plage sourcée reste NON MESURÉ.
     """
     type_ = options.get("type")
@@ -46,8 +46,10 @@ def politique_jeu(options):
             raise ValueError(f"Une mesure exige nature={nature} et une référence physique explicite")
         if clip and (
             mesure.get("connecteur") != type_
-            or not isinstance(mesure.get("reference"), str) or not mesure["reference"].strip()
-            or not isinstance(mesure.get("bobine"), str) or not mesure["bobine"].strip()
+            or not isinstance(mesure.get("reference"), str)
+            or not mesure["reference"].strip()
+            or not isinstance(mesure.get("bobine"), str)
+            or not mesure["bobine"].strip()
         ):
             raise ValueError("La mesure d’un clip exige le même connecteur et une bobine explicite")
         if mesure.get("bobine") and mesure["bobine"] != options.get("bobine"):
@@ -156,6 +158,12 @@ def _clip_nominal(type_, rayon, longueur, jeu, paroi):
         "epaisseur_nominale_mm": epaisseur,
         "course_laterale_nominale_mm": debord,
         "epaulement_nominal_mm": debord - jeu,
+        # Les cotes de chaque gorge précèdent l’union avec la poche et l’autre logement.
+        "gorge_nominale_avant_union_mm": {
+            "jeu_exterieur": jeu,
+            "degagement_interieur": jeu + debord,
+            "jeu_y_par_face": jeu,
+        },
         "insertion_reelle": "NON VÉRIFIÉ",
         "limite": "Une déformation est nécessaire à l’insertion ; aucune force, tenue ou fatigue ne sont calculées.",
     }
@@ -363,15 +371,22 @@ def appliquer(original, parties, coupe, options=None):
         },
         {"controle": "Interférences au réassemblage", "statut": bilan["statut"]},
         {
-            "controle": "Jeu latéral de conception par face" if clip else "Jeu radial de conception",
+            "controle": "Dimensions de gorge nominales",
+            "statut": "PASS",
+            "cotes_avant_union_mm": outils_clip[4]["gorge_nominale_avant_union_mm"],
+        }
+        if outils_clip
+        else {
+            "controle": "Jeu radial de conception",
             "statut": "PASS",
             "minimum_mm": jeu,
             "maximum_mm": jeu / 0.85 if type_.startswith("cheville-") else jeu,
         },
         {
             "controle": "Qualification du jeu",
-            "statut": "WARN" if provenance["statut"] == "NON MESURÉ" else "PASS",
+            "statut": "WARN" if provenance["statut"] == "NON MESURÉ" else "NON VÉRIFIÉ" if clip else "PASS",
             "provenance": provenance,
+            **({"detail": "Le jeu déclaré dimensionne le clip sans preuve U32 vérifiée."} if clip else {}),
         },
         {
             "controle": "Orientation du connecteur",
@@ -398,7 +413,7 @@ def appliquer(original, parties, coupe, options=None):
         "type": type_,
         "libelle": CATALOGUE[type_],
         **dimensions,
-        **({"jeu_lateral_par_face_mm": jeu, "clip": outils_clip[4]} if outils_clip else {"jeu_radial_mm": jeu}),
+        **({"jeu_lateral_demande_mm": jeu, "clip": outils_clip[4]} if outils_clip else {"jeu_radial_mm": jeu}),
         "position_mm": point.tolist(),
         "axe": n.tolist(),
         "efforts": efforts,

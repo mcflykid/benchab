@@ -63,13 +63,15 @@ depuis le G-code. Le catalogue de fixations reste suivi dans #27.
 Les choix `clip-languette` et `clip-double` ajoutent, sur une coupe plane,
 une languette à rampe ou deux languettes opposées et leurs logements.
 Le plan doit choisir la forme explicitement. Le contrôle compare
-l’encombrement fermé, le jeu latéral par face, la course nominale des
-languettes et la matière autour de la gorge. Il ne valide ni la force
+l’encombrement fermé et la matière autour de la gorge. Le rapport sépare
+le jeu demandé, le dégagement vers l’intérieur et les autres cotes
+nominales de chaque gorge avant union des volumes. Il ne valide ni la force
 d’insertion, ni la retenue, ni la fatigue (#29).
 
 Pour un jeu issu d’un témoin, déclarer dans `mesure_jeu` la convention
 `lateral_par_face`, `valeur_mm`, `reference`, le même `connecteur` et
 la même `bobine` que dans les options du connecteur. Sinon, le haut de la
 plage de l’éprouvette ou de la plage explicitement sourcée reste NON MESURÉ.
+La qualification du jeu déclaré reste NON VÉRIFIÉE sans preuve U32 contrôlée.
 Une mesure sur une cheville ronde ne qualifie pas un clip. Le placement
 interactif des clips reste suivi dans #31.

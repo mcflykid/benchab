@@ -97,19 +97,41 @@ def test_clips_ont_un_logement_et_une_epaule_sans_validation_physique(forme, lan
     assert rapport["clip"]["nombre_languettes"] == langues
     assert rapport["clip"]["epaulement_nominal_mm"] > 0
     assert rapport["clip"]["insertion_reelle"] == "NON VÉRIFIÉ"
-    assert rapport["jeu_lateral_par_face_mm"] == max(C.JEUX)
+    assert rapport["jeu_lateral_demande_mm"] == max(C.JEUX)
     assert rapport["reassemblage"]["statut"] == "PASS"
     assert corps["dessous"].bounds[1, 2] > 5
     assert corps["dessus"].volume < parties["dessus"].volume
 
 
+def test_gorge_clip_annonce_les_deux_degagements_mesures_dans_sa_section():
+    """Sous l'épaulement, la coupe du volume révèle le dégagement intérieur."""
+    male, femelle, _, _, rapport = C._clip_nominal("clip-languette", 3.0, 12.0, 0.4, 1.2)
+    b_male, b_femelle = (
+        C._vers_trimesh(volume).section(plane_origin=[0, 0, 1], plane_normal=[0, 0, 1]).bounds
+        for volume in (male, femelle)
+    )
+    cotes = rapport["gorge_nominale_avant_union_mm"]
+    assert cotes == pytest.approx(
+        {
+            "jeu_exterieur": b_femelle[1, 0] - b_male[1, 0],
+            "degagement_interieur": b_male[0, 0] - b_femelle[0, 0],
+            "jeu_y_par_face": b_femelle[1, 1] - b_male[1, 1],
+        }
+    )
+    assert cotes == pytest.approx({"jeu_exterieur": 0.4, "degagement_interieur": 1.6, "jeu_y_par_face": 0.4})
+
+
 def test_clip_ne_reutilise_pas_un_jeu_mesure_sur_une_autre_famille():
     """Un jeu déclaré n'est prioritaire que pour le connecteur et la bobine annoncés."""
     options = {
-        "type": "clip-languette", "bobine": "FIXTURE",
+        "type": "clip-languette",
+        "bobine": "FIXTURE",
         "mesure_jeu": {
-            "valeur_mm": 0.3, "nature": "lateral_par_face", "reference": "témoin synthétique",
-            "bobine": "FIXTURE", "connecteur": "clip-double",
+            "valeur_mm": 0.3,
+            "nature": "lateral_par_face",
+            "reference": "témoin synthétique",
+            "bobine": "FIXTURE",
+            "connecteur": "clip-double",
         },
     }
     with pytest.raises(ValueError, match="connecteur"):
@@ -118,6 +140,14 @@ def test_clip_ne_reutilise_pas_un_jeu_mesure_sur_une_autre_famille():
     jeu, provenance = C.politique_jeu(options)
     assert jeu == 0.3
     assert provenance["reference"] == "témoin synthétique"
+    original = trimesh.creation.box((40, 40, 40))
+    parties, _ = G.couper(original, COUPE)
+    _, _, rapport = C.appliquer(original, parties, COUPE, options)
+    controles = {c["controle"]: c for c in rapport["controles"]}
+    assert controles["Qualification du jeu"]["statut"] == "NON VÉRIFIÉ"
+    assert controles["Dimensions de gorge nominales"]["statut"] == "PASS"
+    assert rapport["jeu_lateral_demande_mm"] == 0.3
+    assert rapport["clip"]["insertion_reelle"] == "NON VÉRIFIÉ"
 
 
 def test_clip_double_refuse_si_son_epaule_ne_depasse_pas_le_jeu():
