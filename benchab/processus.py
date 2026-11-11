@@ -37,10 +37,12 @@ class Resultat:
 
     @property
     def ok(self):
+        """Indique si le code de contrôle est nul ; ne relance aucun processus."""
         return self.code_controle == 0
 
     @property
     def execution(self):
+        """Rend PASS pour une fin observée avec code de sortie, sinon ERREUR_EXECUTION."""
         return (
             "PASS"
             if self.raison == "TERMINE" and self.returncode is not None and self.returncode >= 0
@@ -49,6 +51,7 @@ class Resultat:
 
     @property
     def resultat(self):
+        """Rend PASS, FAIL ou NON_VERIFIE selon le contrôle et la fin observée."""
         return "PASS" if self.ok else "FAIL" if self.execution == "PASS" else "NON_VERIFIE"
 
 

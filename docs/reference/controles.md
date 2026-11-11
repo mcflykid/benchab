@@ -105,6 +105,14 @@ altéré est conservé et signalé. Un ancien tableau seul ne devient jamais cel
 d’un contrôle interrompu. Les destinations liées, les collisions avec les
 entrées et les préparations figées sont refusées avant publication.
 
+
+Le contrôle `premiere-couche` accepte `--json RAPPORT --resume` pour afficher
+cinq plaques prioritaires et jusqu’à cinq défauts par plaque. Le résumé
+signale les omissions et donne le chemin du rapport neuf. Un diagnostic long
+est tronqué à l’écran ; son texte intégral et sa plaque restent dans le JSON.
+Avec `--detail`, l’affichage reproduit le rapport complet. Sans ces options,
+l’affichage historique est conservé (suite de #35).
+
 ## Contrôles privés d’un projet L
 
 Les fichiers `src/controles/*.py` exposent `verifier(projet)` et renvoient un

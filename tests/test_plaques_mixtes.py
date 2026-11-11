@@ -110,6 +110,20 @@ class PlaquesMixtesTests(unittest.TestCase):
         rapport = json.loads(rapport_path.read_text(encoding="utf-8")) if rapport_path.is_file() else {}
         return code, rapport
 
+    def test_crc_du_membre_non_consomme_reste_requis(self):
+        """Le contexte lit les réglages typés sans ignorer le CRC des autres membres."""
+        base = self.projet / "preparations/P01/base.3mf"
+        with zipfile.ZipFile(base, "a", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("Metadata/notes.txt", b"preuve d'atelier synthetique")
+        brut = base.read_bytes().replace(b"preuve d'atelier synthetique", b"preuve d'atelier remplacee!!")
+        self.assertEqual(len(brut), base.stat().st_size)
+        base.write_bytes(brut)
+        with patch.object(plaques_mixtes.anycubic, "resultats") as resultats:
+            with self.assertRaisesRegex((ValueError, zipfile.BadZipFile), "corrompue|Bad CRC"):
+                plaques_mixtes.pieces_projet(self.base.prive, "essai")
+            resultats.assert_not_called()
+        self.assertEqual(base.read_bytes(), brut)
+
     def test_reference_protegee_par_chemin_ou_hash_exclue(self):
         for mode in ("path", "hash"):
             with self.subTest(mode=mode):

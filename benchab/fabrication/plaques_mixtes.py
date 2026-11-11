@@ -10,6 +10,7 @@ from pathlib import Path
 import trimesh
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.fabrication import anycubic
 from benchab.fabrication.planning import plaques_pretes
 from benchab.projets.protections import protections
@@ -105,12 +106,15 @@ def pieces_projet(prive: str | Path, nom: str) -> tuple[dict | None, str | None]
         return None, f"{fiche.get('id', fiche_path.parent.name)} déjà envoyée"
     plaques_path = _fichier_prive(racine, fiche["plaques_3mf"]["fichier"])
     tranche_path = _fichier_prive(racine, fiche["tranche_3mf"]["fichier"])
-    with zipfile.ZipFile(plaques_path) as archive:
-        noms = archive.namelist()
+    with Archive3MF(plaques_path) as archive:
         membre = "Metadata/project_settings.config"
-        if noms.count(membre) != 1 or len(noms) != len(set(noms)) or archive.testzip():
+        noms = archive.noms()
+        if membre not in noms:
             raise ValueError("Archive de réglages absente, dupliquée ou corrompue.")
-        reglages = schema_reglages.decoder(archive.read(membre))
+        reglages = archive.reglages(membre)
+        # U36 conserve la preuve du paquet complet ; chaque membre ne consomme son budget qu’une fois.
+        archive.verifier(membres=(nom for nom in noms if nom != membre))
+        archive.verifier_source(plaques_path)
     placement_path = _fichier_prive(racine, projet / "preuves/placement.json")
     placement = json.loads(placement_path.read_text(encoding="utf-8"))
     if not isinstance(placement, dict) or not isinstance(placement.get("objects"), list):

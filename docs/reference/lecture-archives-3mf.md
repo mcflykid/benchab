@@ -92,3 +92,12 @@ par comparaison ; les empreintes complètes avant publication protègent les
 entrées. Un membre jusqu’à 64 Mio conserve son diagnostic détaillé. Au-delà,
 ses octets sont comparés par empreinte en flux : un écart reste bloquant et
 son détail est NON VÉRIFIÉ. Une vignette reste un élément documentaire.
+
+La sélection des plaques mixtes (U36) lit les réglages avec le dictionnaire
+typé et contrôle aussi le CRC des membres non utilisés. Elle continue de
+filtrer les pièces protégées par nom, chemin et empreinte ; la lecture ne
+modifie ni préparation, ni profil, ni réglage (suite de #122).
+
+L’éprouvette de jeux vérifie la source de ses réglages typés avant de créer
+une pièce ou de lancer le moteur. La préparation neuve et le lancement
+continuent d’utiliser les contrôles propres au témoin.

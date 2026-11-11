@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, est_temporaire, sans_lien
 from benchab.fabrication import anycubic
 from benchab.fabrication.trancher import trancher_fichier
@@ -111,9 +111,10 @@ def trancher(sortie, base_3mf, filament=1, nominal=NOMINAL, borgne=False):
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé. Le résultat
     conserve le profil explicite comme provenance du fichier source neuf (docs/reference/integrite-3mf.md)."""
     out = _autoriser_sortie(sortie)
-    base_3mf = Path(base_3mf).resolve(strict=True)
-    with zipfile.ZipFile(base_3mf) as archive:
-        settings = schema_reglages.decoder(archive.read("Metadata/project_settings.config"))
+    with Archive3MF(base_3mf) as archive:
+        # Lire le profil exact avant de créer le témoin ou de lancer le moteur (#122).
+        settings = archive.reglages()
+        archive.verifier_source(base_3mf)
     if not isinstance(filament, int) or isinstance(filament, bool) or filament < 1:
         raise ValueError("Numéro de filament positif requis")
     pieces, rapport = generer(out, nominal, borgne)
