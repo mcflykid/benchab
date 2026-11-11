@@ -226,7 +226,10 @@ def revoir(tranche, envoi, revue_p, faits_p):
 
 
 def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
-    """Écrit les JSON de revue liés par SHA-256 ; en mode neuf, refuse toute collision, sans valider physiquement."""
+    """Écrit les JSON de revue liés par SHA-256, dont les mesures en mm si fournies.
+
+    En mode neuf, refuse toute collision ; aucune validation physique ni correction des mesures déclarées.
+    """
     fp = Path(faits_p)
     rp = Path(revue_p)
     faits = (
@@ -266,6 +269,8 @@ def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
         "auteur": "revue_locale.py (critères déclarés) ; décisions humaines conservées",
         "zones": dict(sorted(zones.items())),
     }
+    if "mesures_recul_recouvrement" in res:
+        doc["mesures_recul_recouvrement"] = res["mesures_recul_recouvrement"]
     revue = (json.dumps(doc, ensure_ascii=False, indent=0) + "\n").encode("utf-8")
     if sorties_neuves:
         # PublicationNeuve revalide et lie les sorties exclusivement : une course ne peut écraser un voisin.

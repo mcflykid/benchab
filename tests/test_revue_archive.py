@@ -284,3 +284,49 @@ def test_sans_revue_source_le_parcours_donne_un_etat_neutre_explicite(tmp_path, 
 
     assert voisine.read_bytes() == octets_voisins
     assert archive.read_bytes() == b"archive temoin"
+
+
+def test_archive_recalcule_une_mesure_humaine_contradictoire(tmp_path):
+    """La revue neuve garde la mesure d'origine et son FAIL numérique malgré la décision humaine."""
+    from zipfile import ZipFile
+
+    from benchab.controles.zones_locales import analyser_gcode
+
+    gcode = (
+        "G90\nM83\n;LAYER_CHANGE\n;WIDTH:0.4\n;TYPE:Bridge\n"
+        "G1 X0 Y0 F1200\nG1 X10 Y0 E1\n;LAYER_CHANGE\n;WIDTH:0.4\n"
+        ";TYPE:Overhang wall\nG1 X0 Y0.3 F1200\nG1 X10 Y0.3 E1\n"
+    ).encode()
+    archive = tmp_path / "tranche.3mf"
+    with ZipFile(archive, "w") as z:
+        z.writestr("Metadata/project_settings.config", '{"filament_settings_id":["PLA"]}')
+        z.writestr("Metadata/model_settings.config", "<config/>")
+        z.writestr("Metadata/plate_1.gcode", gcode)
+    zone = analyser_gcode(gcode.decode())["zones"][0]["id"]
+    preuve = tmp_path / "preuve.txt"
+    preuve.write_text("preuve humaine", encoding="utf-8")
+    mesure = {
+        "zone_id": zone, "plaque": 1, "gcode_sha256": hashlib.sha256(gcode).hexdigest(),
+        "ligne_source": 7, "couche_source": 0, "ligne_cible": 12, "couche_cible": 1,
+        "axe_local": [0, 1], "valeur_declaree_mm": 0.1, "tolerance_mm": 0.001,
+    }
+    revue = tmp_path / "humaine.json"
+    revue.write_text(json.dumps({
+        "tranche_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(), "geometrie_sha256": None,
+        "zones": {zone: {
+            "decision": "justifie", "justification": "historique", "derniere_couche_verifiee": True,
+            "preuves": [{"fichier": preuve.name, "sha256": hashlib.sha256(preuve.read_bytes()).hexdigest()}],
+        }},
+        "mesures_recul_recouvrement": [mesure],
+    }), encoding="utf-8")
+    original = revue.read_bytes()
+    declaration = tmp_path / "envoi.json"
+    declaration.write_text('{"filaments": {}}', encoding="utf-8")
+    rapport = revue_archive.executer(
+        archive, declaration, sortie=tmp_path / "final.json", prive=tmp_path, revue_source=revue,
+    )
+    derivee = json.loads(Path(rapport["revue"]).read_text(encoding="utf-8"))
+    assert derivee["mesures_recul_recouvrement"] == [mesure]
+    resultats = rapport["rapport_final"]["zones_locales"]["mesures_recul_recouvrement"]
+    assert resultats[0]["statut"] == "FAIL"
+    assert revue.read_bytes() == original

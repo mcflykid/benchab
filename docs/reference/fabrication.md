@@ -51,8 +51,11 @@ Une revue source peut être fournie avec `--revue-source`; elle doit porter les
 empreintes actuelles de l’archive et de la géométrie, et se trouver dans le
 même dossier que la sortie afin de préserver les chemins relatifs de ses
 preuves. Une revue périmée est refusée sans la réécrire. Les décisions humaines
-et leurs preuves sont conservées quand ces empreintes concordent. Les zones
-restantes non revues gardent un statut NON VÉRIFIÉ. Ce parcours ne valide pas
+et leurs preuves sont conservées quand ces empreintes concordent. Les mesures
+déclarées de recul et de recouvrement sont recopiées à l’identique puis recalculées
+par le contrôle final ; une contradiction reste bloquante. Les décisions
+hors des zones courantes restent dans la revue originale et sont signalées
+dans le rapport. Les zones restantes non revues gardent un statut NON VÉRIFIÉ. Ce parcours ne valide pas
 physiquement la pièce et n’envoie aucune commande à la machine.
 # Chaîne commune des projets
 

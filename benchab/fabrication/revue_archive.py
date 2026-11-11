@@ -1,6 +1,7 @@
 """Parcours public de revue et contrôle final d’une archive déjà tranchée."""
 
 import argparse
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -39,12 +40,21 @@ def executer(archive, declaration, *, sortie, prive, revue_source=None, geometri
 
     entrees = [archive, declaration, *([geometrie] if geometrie else []), *([reference] if reference else [])]
     source = None
+    sha_revue_lue = None
     if revue_source:
         entrees.append(revue_source)
-        source = json.loads(revue_source.read_text(encoding="utf-8"))
+        budget_revue = 8 * 1024 * 1024
+        with revue_source.open("rb") as flux:
+            octets_revue = flux.read(budget_revue + 1)
+        if len(octets_revue) > budget_revue:
+            raise ValueError("Revue source supérieure à 8 Mio.")
+        sha_revue_lue = hashlib.sha256(octets_revue).hexdigest()
+        source = json.loads(octets_revue)
         entrees.extend(_verifier_preuves_revue(source, revue_source, prive))
     valider_chemins(entrees, [initial, revue, faits, sortie])
     empreintes = {str(chemin): sha256_fichier(chemin) for chemin in entrees}
+    if revue_source and empreintes[str(revue_source)] != sha_revue_lue:
+        raise ValueError("La revue source a changé après sa lecture.")
     # Une revue explicitement absente dans un répertoire temporaire privé empêche
     # le contrôle historique de reprendre le fichier voisin par défaut.
     with tempfile.TemporaryDirectory(prefix="benchab-revue-neutre-") as temporaire_prive:
@@ -73,6 +83,16 @@ def executer(archive, declaration, *, sortie, prive, revue_source=None, geometri
     )
     if revue_source and sha256_fichier(revue_source) != empreintes[str(revue_source)]:
         raise ValueError("La revue source a changé pendant la lecture ; aucune nouvelle revue publiée.")
+    hors_zones = []
+    if source is not None:
+        # Le recalcul du contrôle final doit encore voir les mesures déclarées (#111).
+        if "mesures_recul_recouvrement" in source:
+            resultat_revue["mesures_recul_recouvrement"] = source["mesures_recul_recouvrement"]
+        ids_zones = {zone["id"] for zone in env["zones"]}
+        hors_zones = sorted(
+            nom for nom, decision in source["zones"].items()
+            if nom not in ids_zones and isinstance(decision, dict) and not decision.get("automatique")
+        )
     revue_locale.ecrire(resultat_revue, revue, faits, sorties_neuves=True)
     controle_final = envoi.controler(
         archive,
@@ -102,6 +122,7 @@ def executer(archive, declaration, *, sortie, prive, revue_source=None, geometri
             "decisions_conservees": len(resultat_revue["gardees"]),
             "justifiees_automatiquement": len(resultat_revue["auto"]),
             "a_revoir": len(resultat_revue["reste"]),
+            "decisions_hors_zones": hors_zones,
         },
     }
     ecrire_json_neuf(sortie, rapport, entrees=[*entrees, initial, revue, faits])
