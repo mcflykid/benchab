@@ -94,7 +94,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Géométrie et 3MF | #105 : placement traçable ; #110 : intention de couverture Z ; #112 : remplacement ciblé ; #113 : échanges indexés de découpe |
+| Géométrie et 3MF | #105 : placement traçable ; #112 : remplacement ciblé |
 | Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages/inserts ; #29 : clips ; #31 : placement dans la visionneuse |
 | Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
@@ -120,11 +120,11 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 
 ### 5. Entretenir le code et organiser l’apprentissage
 
-- #18 : répartiteur CLI ; #19 : coût des transactions ; #23 : modules trop longs.
+- #19 : coût des transactions ; #23 : modules trop longs.
 - #127 puis #69 : rattrapage des annotations et types ; #68 : finition et ACE.
 - #35 : rapports courts et détaillés, avec progression déjà apportée par le diagnostic.
-- #39 regroupe le savoir et la cohérence des réglages ; #75 suit la vitrine publique.
-- #114 : lecture PDF optionnelle des guides, sans dépendance imposée à tous les usages.
+- #39 regroupe le savoir et la cohérence des réglages. La vitrine locale (#75)
+  et la lecture textuelle PDF optionnelle (#114) restent séparées du corpus.
 - #119 regroupe le diagnostic, la réparation conservatrice et l’apprentissage des
   incidents. Le plan passif signale les vues privées absentes ou divergentes.
   Une vue canonique peut être régénérée explicitement, après contrôle du plan et

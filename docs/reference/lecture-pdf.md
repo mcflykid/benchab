@@ -11,7 +11,7 @@ Cette fonction utilise l’extra optionnel `pypdf` :
 
 ```sh
 uv sync --locked --extra pdf
-uv run benchab connaissances pdf prive/guides/guide.pdf --page 2 --page 3
+uv run --locked --extra pdf benchab connaissances pdf prive/guides/guide.pdf --page 2 --page 3
 ```
 
 Le paquet n’est pas nécessaire aux autres commandes BENCHAB. Si l’extra manque,

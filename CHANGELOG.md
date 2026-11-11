@@ -5,14 +5,15 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 ## À venir — 1.5.0
 
 - Guide : relie les premiers essais d’une machine ou d’une bobine aux témoins, aux températures, aux mesures d’ajustement et au retour d’impression (#74).
+- Savoir : génère hors ligne une vitrine du corpus public, par matière, réglage, défaut, entretien et code, avec statuts et portées (#75).
+- Connaissances : lit les PDF textuels page par page avec l’extra optionnel, les empreintes et les limites explicites (#114).
+- Découpe : export NPZ indexé en mm et relecture brute comparée, sans fusion ni profil d’impression (#113).
+- Fabrication : contrôle la couverture Z déclarée et rend visibles la hauteur de base, les matrices et les décalages (#110).
+- CLI : centralise les délégations homogènes et utilise la table commune des codes de statut sans changer les commandes ni leurs options (#18).
+- Envoi : résumé des diagnostics et rapport complet privé facultatif, en conservant les codes historiques (suite de #35).
 - Qualité : complète les annotations du module commun d’empreintes, sans changer ses résultats (suite de #127).
-
 - Visionneuse : l’index et les flux G-code des supports partagent le contexte 3MF et conservent le cache par empreinte (suite de #122).
 - Atelier : propose un candidat privé de SHA exact pour un lien de vue cassé, avec ambiguïtés explicites et sans réparation automatique (suite de #119).
-- Fabrication : compare les plages Z à une intention déclarée pour un objet et une instance dont le repère est qualifié (suite de #110).
-- Envoi : résumé des diagnostics et rapport complet privé facultatif, en conservant les codes historiques (suite de #35).
-
-- CLI : centralise les délégations homogènes et utilise la table commune des codes de statut sans changer les commandes ni leurs options (#18).
 
 ## 1.4.0 — 2026-11-11
 
