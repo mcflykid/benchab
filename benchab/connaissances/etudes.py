@@ -133,7 +133,8 @@ def proposer(donnees, instantane):
 
 def main(argv=None, *, racine=None):
     """Affiche les études de l’atelier choisi ; unités/statuts des sources conservés, aucune validation
-    physique inférée."""
+    physique inférée.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--racine", type=Path, default=atelier_prive(racine))
     p.add_argument("--instantane", type=Path, help="JSON explicite, aucune consultation réseau implicite")

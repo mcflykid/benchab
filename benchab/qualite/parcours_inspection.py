@@ -11,7 +11,8 @@ from benchab.qualite.reception import dossier, url_locale
 
 def parcourir(url, sortie):
     """Teste les interactions d’une fixture locale (pixels, s) ; renvoie ses mesures ou lève sur FAIL,
-    sans commande machine."""
+    sans commande machine.
+    """
     url = url_locale(url)
     sortie = dossier(sortie)
     result = {"url": url}

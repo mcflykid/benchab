@@ -144,10 +144,22 @@ Un code de découverte pytest 5 reste FAIL. La RSS par étape est une somme de R
 du groupe échantillonnée, pas un pic d'allocation exact ; les maxima du processus
 appelant et de ses enfants cumulés sont présentés séparément.
 
-La CI exécute `ruff check --select D10 benchab` sur tout le paquet pour
-vérifier la présence des docstrings publiques. La garde des portées
+Avec `benchab controle complet --resume`, l’affichage donne le verdict
+global, le chemin du JSON complet et le statut et le journal de chaque
+étape. Le rapport privé conserve les diagnostics et les mesures. La
+commande renvoie le même code avec ou sans résumé (#35).
+
+La CI exécute `ruff check --select D10,D202,D204,D209,D300 benchab`.
+`D10` vérifie la présence des docstrings publiques. La garde des portées
 modifiées contrôle aussi les annotations des fonctions et classes touchées.
 La relecture vérifie les unités, statuts et invariants annoncés par le texte.
+
+Les quatre règles de forme portent sur les lignes vides, la fermeture
+des docstrings multilignes et les guillemets doubles. Le rattrapage de ces
+règles a gardé les textes normalisés et le code identiques. Les couples
+`D203` / `D211` et `D212` / `D213` proposent des formes incompatibles
+au sein de chaque couple. Leur choix et l’adaptation des règles de style
+rédactionnel aux textes français restent suivis dans #127.
 
 `benchab qualite syntaxe-privee PROJET` vérifie les scripts Python actifs de
 `prive/projets/PROJET` hors dépendances et archives de projet, sans les exécuter ni créer de `.pyc`. Un script illisible

@@ -158,7 +158,8 @@ def empreinte_geometrie(mesh, max_faces=3_000_000):
 
 def charger_reglages_reference(path):
     """Lit les réglages plats d'un 3MF explicitement choisi, sans profil installé. Réglages en unités
-    natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
+    natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
+    """
     path = Path(path)
     avant = sha256_fichier(path)
     valeurs = schema_reglages.lire_3mf(path)

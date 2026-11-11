@@ -365,6 +365,24 @@ def executer(
     return rapport
 
 
+def resumer(rapport):
+    """Retourne les verdicts d’audit et les chemins vers le détail et ses journaux.
+
+    Le rapport complet reste publié avec ses diagnostics, durées en secondes
+    et mesures de mémoire en Kio. Les statuts et le code sont recopiés.
+    """
+    return {
+        "statut": rapport["statut"],
+        "code": rapport["code"],
+        "rapport": rapport["rapport"],
+        "validation_physique": rapport["validation_physique"],
+        "etapes": [
+            {cle: etape[cle] for cle in ("etape", "statut", "journal")}
+            for etape in rapport["etapes"]
+        ],
+    }
+
+
 def main(argv=None):
     """Point d'entrée de contrôle ; chemins privés explicites, durées s/RSS KiB et codes PASS/WARN/FAIL/NON VÉRIFIÉ."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -374,6 +392,7 @@ def main(argv=None):
     parser.add_argument("--profil-canonique", type=Path)
     parser.add_argument("--index-filament", type=int)
     parser.add_argument("--declaration-envoi", type=Path)
+    parser.add_argument("--resume", action="store_true", help="Affichage court avec lien au rapport complet")
     args = parser.parse_args(argv)
     rapport = executer(
         args.racine,
@@ -383,7 +402,7 @@ def main(argv=None):
         index_filament=args.index_filament,
         declaration_envoi=args.declaration_envoi,
     )
-    print(json.dumps(rapport, ensure_ascii=False, indent=2))
+    print(json.dumps(resumer(rapport) if args.resume else rapport, ensure_ascii=False, indent=2))
     return rapport["code"]
 
 

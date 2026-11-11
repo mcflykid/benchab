@@ -335,3 +335,52 @@ def test_option_position_sans_source_ne_plante_pas(capsys):
 
     assert couches_courtes.main(["--qualifier-position-enveloppes"]) == 2
     assert "STL" in capsys.readouterr().out
+
+
+def test_resume_cli_conserve_la_preuve_et_le_verdict(tmp_path, capsys, atelier_initialise):
+    """Le résumé indique la même revue et laisse les îlots détaillés dans le rapport neuf."""
+    from benchab.cli import main
+    from benchab.qualite.empreintes import sha256_fichier
+
+    source = tmp_path / "modele.stl"
+    box((2, 2, 3), (0, 0, 1.5)).export(source)
+    sha = sha256_fichier(source)
+    prive = atelier_initialise
+    rapport = prive / "îlots contrôlés.json"
+    commande = ["--prive", str(prive), "controle", "couches-courtes", str(source), ".2", "40", "2"]
+
+    assert main(commande) == 2
+    detail = json.loads(capsys.readouterr().out)
+    assert main([*commande, "--resume", "--json", str(rapport)]) == 2
+    resume = json.loads(capsys.readouterr().out)
+    preuve = json.loads(rapport.read_bytes())
+    assert preuve["ilots_isoles"] == detail["ilots_isoles"]
+    assert resume["nombre_ilots"] == len(preuve["ilots_isoles"]) == 1
+    assert resume["code"] == preuve["code"] == 2
+    assert resume["statut"] == preuve["statut"] == "REVUE LOCALE REQUISE"
+    assert resume["source_sha256"] == preuve["source_sha256"] == sha256_fichier(source) == sha
+    assert resume["rapport"] == str(rapport)
+    assert "ilots_isoles" not in resume
+    ilot = preuve["ilots_isoles"][0]
+    assert resume["premiers_ilots"] == [{
+        "centre_xy_mm": ilot["centre_xy_mm"], "z_mm": [ilot["de_z"], ilot["a_z"]], "motifs": ilot["motifs"],
+    }]
+    assert resume["ilots_omis"] == 0
+
+    assert main([*commande, "--resume", "--sortie", str(rapport)]) == 2
+    refus = capsys.readouterr()
+    assert refus.out == ""
+    assert "Sortie existante" in refus.err
+    assert json.loads(rapport.read_bytes()) == preuve
+
+
+def test_resume_sans_rapport_refuse_avant_lecture(capsys, monkeypatch):
+    """Exige une preuve durable avant le calcul d’un résumé."""
+    from benchab.controles import couches_courtes
+
+    def interdire_lecture(*args, **kwargs):
+        raise AssertionError("lecture du STL avant validation du rapport")
+
+    monkeypatch.setattr(couches_courtes, "analyse", interdire_lecture)
+    assert couches_courtes.main(["modele.stl", "--resume"]) == 2
+    assert "--resume exige --sortie" in capsys.readouterr().err

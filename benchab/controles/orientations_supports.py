@@ -255,7 +255,8 @@ def etudier(m, appui_min=150.0, plateau=None, garder=25, efforts=None, seuil=0.5
 def trancher(cands, profil, reglages_support):
     """cands : [(nom, mesh posé)] ; profil : 3MF dont on reprend project_settings ; renvoie la masse,
     le temps et la masse de support par plaque. Réglages en unités natives (mm, s, °C, %) lus via le
-    dictionnaire typé ; aucun réglage inconnu transformé. Le 3MF neuf porte ce profil explicite comme provenance."""
+    dictionnaire typé ; aucun réglage inconnu transformé. Le 3MF neuf porte ce profil explicite comme provenance.
+    """
     with Archive3MF(profil) as archive:
         st = archive.reglages()
     st.update(reglages_support)

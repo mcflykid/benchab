@@ -21,7 +21,8 @@ from benchab.qualite.reception import url_locale
 
 def parcours(page, sortie, port, v1=False, v2=False, inspection=False, atelier=False):
     """Teste les interactions d’une fixture locale (pixels, s) ; renvoie ses mesures ou lève sur FAIL,
-    sans commande machine."""
+    sans commande machine.
+    """
     if str(page).startswith(("http:", "https:")):
         page = url_locale(str(page))
     sortie = dossier_reception(sortie)

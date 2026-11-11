@@ -11,9 +11,12 @@ l’empreinte de la source.
 | Continuité, capacités, comparaison 3MF, purge, écarts Z des supports, rejeux G-code | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Entretien, consommation d’un retour, plan de réparation | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Débit U25, `surplombs-connexes` | `--resume --sortie RAPPORT.json` | Remplacer `--resume` par `--detail` |
+| Couches courtes | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
+| Paquet 3MF | `--resume --sortie RAPPORT.json` | Lire le JSON écrit ou retirer les deux options |
 | Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
 | Première couche | `--resume --json RAPPORT.json` | Remplacer `--resume` par `--detail` |
 | Coutures | `--sortie DOSSIER_NEUF` | Ajouter `--detail` |
+| Contrôle complet | `--resume` | Retirer `--resume` ou lire le rapport déjà écrit |
 
 Choisissez une destination neuve dans `prive/rapports/`. Les options
 d’entrée restent propres à chaque commande : voir les

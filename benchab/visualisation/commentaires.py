@@ -2,7 +2,8 @@
 
 Usage : ``python -m benchab.visualisation.commentaires lister`` ou
 ``python -m benchab.visualisation.commentaires repondre <fichier> <id> <texte>``.
-Les écritures sont atomiques et limitées à BENCHAB_PRIVE."""
+Les écritures sont atomiques et limitées à BENCHAB_PRIVE.
+"""
 
 import argparse
 import datetime

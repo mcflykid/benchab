@@ -20,13 +20,14 @@ BUDGETS = {
 
 
 def produit(m, v):
-    "Multiplie matrice 4×4 et vecteur ; renvoie les coordonnées dans les unités d’entrée, sans statut ni écriture."
+    """Multiplie matrice 4×4 et vecteur ; renvoie les coordonnées dans les unités d’entrée, sans statut ni écriture."""
     return [sum(m[j * 4 + i] * v[j] for j in range(4)) for i in range(4)]
 
 
 def parcourir(base, sortie):
     """Teste les interactions d’une fixture locale (pixels, s) ; renvoie ses mesures ou lève sur FAIL,
-    sans commande machine."""
+    sans commande machine.
+    """
     sortie = dossier(sortie)
     result = {}
     erreurs = []

@@ -32,6 +32,7 @@ def axes_homing(texte):
 
 class Interpreter:
     """Suit les états modaux XYZ et E en mm et le débit nominal, sans simuler le firmware."""
+
     def __init__(self, tool=None, *, error_limit=None):
         """Initialise les états en mm ; budget de diagnostics facultatif, aucune commande machine."""
         if error_limit is not None and (type(error_limit) is not int or error_limit < 1):

@@ -334,7 +334,8 @@ def _verifier_resultats(resultats, nombre):
 def eprouvette(sortie, tranches, base_3mf, densites=(15, 20, 25, 30, 35, 40)):
     """Compare des densités et variantes géométriques dans un seul tranchage. Réglages en unités
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé. Le profil
-    explicite reste la provenance du fichier neuf (docs/reference/integrite-3mf.md)."""
+    explicite reste la provenance du fichier neuf (docs/reference/integrite-3mf.md).
+    """
     from benchab.chemins import atelier_prive, est_temporaire, sans_lien
 
     out, tr = sans_lien(sortie), sans_lien(tranches)

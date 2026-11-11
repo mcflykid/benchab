@@ -3,7 +3,7 @@
 Inspection bornée des ZIP/3MF, sans extraction ni qualification d'impression.
 
 Adaptation locale de RUVYKO/core/ruvyko_core/packet.py (30/10/2026).
-Provenance, plafonds et limites : PAQUETS-3MF.md. Aucun accès à RUVYKO à l'exécution.
+Voir docs/reference/integrite-3mf.md pour les budgets. Aucun accès à RUVYKO à l’exécution.
 
 
 """
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from benchab import reglages
-from benchab.qualite.ecritures import PublicationNeuve, valider_chemins
+from benchab.qualite.ecritures import PublicationNeuve, destination_rapport_optionnel, valider_chemins
 
 PROJECT_SETTINGS = "Metadata/project_settings.config"
 _CHUNK = 64 * 1024
@@ -36,6 +36,7 @@ _CHUNK = 64 * 1024
 @dataclass(frozen=True)
 class PacketLimits:
     """Budgets de lecture ZIP/JSON : tailles en octets, nombres de membres et profondeur sans unité."""
+
     archive_bytes: int = 64 * 1024 * 1024
     member_bytes: int = 64 * 1024 * 1024
     total_bytes: int = 256 * 1024 * 1024
@@ -59,6 +60,7 @@ DEFAULT_LIMITS = PacketLimits()
 @dataclass(frozen=True)
 class PacketMember:
     """Identité d’un membre contrôlé : tailles en octets, CRC32 et SHA-256, sans interprétation métier."""
+
     name: str
     size: int
     compressed_size: int
@@ -70,6 +72,7 @@ class PacketMember:
 @dataclass(frozen=True)
 class ProjectSettings:
     """Nom, empreinte et clés du membre de réglages, sans mutation de leur valeur."""
+
     member: str
     sha256: str
     keys: tuple[str, ...]
@@ -78,6 +81,7 @@ class ProjectSettings:
 @dataclass(frozen=True)
 class PacketReport:
     """Résultat structurel du paquet : taille en octets, inventaire et CRC, sans verdict d’envoi."""
+
     archive_sha256: str
     archive_size: int
     members: tuple[PacketMember, ...]
@@ -312,15 +316,17 @@ def inspect_packet(path: Path, *, limits: PacketLimits = DEFAULT_LIMITS) -> Pack
     )
 
 
-def main(argv=None):
+def main(argv=None, *, prive=None):
     """Inspecte un paquet 3MF en lecture seule, affiche le rapport ou publie un JSON neuf.
 
     Budgets CLI en Mio, Kio ou compte selon le champ. Code 0 pour inspection
-    terminée, 2 si refus ; aucun verdict physique ou autorisation d’envoi.
+    terminée, 2 si refus. Le résumé exige un rapport complet neuf dans
+    l’atelier privé. Aucun verdict physique ou autorisation d’envoi.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
-    parser.add_argument("--json", type=Path, help="Rapport neuf, sans écrasement ; sinon sortie standard")
+    parser.add_argument("--sortie", "--json", type=Path, help="Rapport neuf, sans écrasement")
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     fields = [
         ("archive-mio", "archive_bytes", 1024**2),
         ("membre-mio", "member_bytes", 1024**2),
@@ -333,17 +339,21 @@ def main(argv=None):
     ]
     for option, field, scale in fields:
         parser.add_argument(
-            "--" + option, type=int, default=None, help="Budget explicite ; voir PAQUETS-3MF.md pour le plafond"
+            "--" + option, type=int, default=None,
+            help="Budget explicite. Plafonds dans docs/reference/integrite-3mf.md.",
         )
     args = parser.parse_args(argv)
     try:
+        cible = args.sortie
+        if args.resume:
+            cible = destination_rapport_optionnel(cible, resume=True, nom="du paquet 3MF", prive=prive)
         values = vars(DEFAULT_LIMITS).copy()
         for option, field, scale in fields:
             value = getattr(args, option.replace("-", "_"))
             if value is not None:
                 values[field] = value * scale
         limits = PacketLimits(**values)
-        outputs = [args.json] if args.json else []
+        outputs = [cible] if cible is not None else []
         with PublicationNeuve([args.source], outputs) as publication:
             report = asdict(inspect_packet(args.source, limits=limits))
             report.update(
@@ -354,11 +364,21 @@ def main(argv=None):
                 limits=asdict(limits),
             )
             serialized = json.dumps(report, ensure_ascii=True, allow_nan=False, indent=2) + "\n"
-            if args.json:
-                publication.temporaire(args.json).write_text(serialized, encoding="utf-8")
+            if cible is not None:
+                publication.temporaire(cible).write_text(serialized, encoding="utf-8")
                 publication.publier()
             else:
                 print(serialized, end="")
+        if args.resume:
+            # L’inventaire par membre reste dans le JSON intégral (#35).
+            resume = {
+                "statut": report["statut"], "archive_sha256": report["archive_sha256"],
+                "archive_size": report["archive_size"], "crc_verified": report["crc_verified"],
+                "nombre_membres": len(report["members"]), "nombre_membres_gcode": len(report["gcode_members"]),
+                "ready_to_send": report["ready_to_send"], "physically_validated": report["physically_validated"],
+                "rapport": str(cible),
+            }
+            print(json.dumps(resume, ensure_ascii=False, separators=(",", ":")))
         return 0
     except (OSError, ValueError) as error:
         print("Inspection refusée : " + str(error), file=sys.stderr)

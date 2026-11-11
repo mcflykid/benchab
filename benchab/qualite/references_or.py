@@ -73,7 +73,8 @@ def relever(chemin):
 
 def verifier(prive, *, reference=None):
     """Compare le manifeste fixe aux fichiers privés ;
-    PASS/FAIL/NON VÉRIFIÉ, aucune création ni réécriture de référence."""
+    PASS/FAIL/NON VÉRIFIÉ, aucune création ni réécriture de référence.
+    """
     prive = _sans_lien(Path(prive).absolute()).resolve()
     manifeste = prive / "references-or/manifest.json"
     if not manifeste.is_file():

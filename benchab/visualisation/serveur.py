@@ -12,7 +12,8 @@ Commentaires : GET /__commentaires?page=<chemin de la page> lit, POST /__comment
 <dossier de la page>/commentaires.json (chemin vérifié : page .html sous la racine ; écriture atomique ;
 réponses des assistants
 conservées par fusion). Écoute seulement 127.0.0.1. Réponses de l'assistant : ``python -m
-benchab.visualisation.commentaires``."""
+benchab.visualisation.commentaires``.
+"""
 
 import hashlib
 import http.server
@@ -61,7 +62,8 @@ def fichier_commentaires(page, racine=None):
 def fusionner(anciens, nouveaux, supprimes=()):
     """La page envoie sa liste ; les réponses écrites entre-temps par l'outil commentaires sont
     conservées : réponses réunies (sans doublon), statut le plus récent. Une absence conserve le
-    commentaire ; seuls les identifiants dans supprimes le retirent."""
+    commentaire ; seuls les identifiants dans supprimes le retirent.
+    """
     par_id = {c.get("id"): c for c in anciens}
     for c in nouveaux:
         a = par_id.get(c.get("id"))
@@ -80,6 +82,7 @@ def fusionner(anciens, nouveaux, supprimes=()):
 
 class Gestion(http.server.SimpleHTTPRequestHandler):
     """Traite les requêtes locales et statuts HTTP ; ne publie pas les secrets et ne commande jamais l’imprimante."""
+
     def __init__(self, *a, **k):
         """Fixe le répertoire de service à la racine privée du serveur HTTP."""
         self.racine = atelier_prive(getattr(a[2], "racine", RACINE))
@@ -546,6 +549,7 @@ class Serveur(http.server.ThreadingHTTPServer):
 
     Le lanceur CLI utilise 127.0.0.1. Le serveur ne commande pas la machine.
     """
+
     request_queue_size = 32
 
     def __init__(self, address, handler=Gestion, racine=None):

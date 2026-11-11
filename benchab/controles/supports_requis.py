@@ -134,7 +134,8 @@ def _publier_gcodes(source, dossier, fichiers):
 def mesurer(src, regl=None, seuil=1.0, garder=None):
     """Tranche une copie de src avec regl (dict de clés) et renvoie le rapport (dict). src n'est jamais
     modifié. Réglages en unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage
-    inconnu transformé."""
+    inconnu transformé.
+    """
     from benchab import integrite_3mf
 
     regl = dict(PAR_DEFAUT if regl is None else regl)

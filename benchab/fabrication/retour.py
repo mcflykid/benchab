@@ -190,7 +190,8 @@ def journal(projet, ident, fiche, *, prive):
 
 def main(argv=None, *, base=None):
     """Enregistre un retour dans la base existante ; faits/statuts déclarés conservés, aucune preuve physique
-    inventée."""
+    inventée.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prive", type=Path)
     parser.add_argument("--projet", type=Path, required=True)

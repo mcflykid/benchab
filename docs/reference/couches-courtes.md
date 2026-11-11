@@ -109,6 +109,13 @@ deux coupes (5 répétitions, médiane), le balayage complet de référence a ex
 garantie de temps pour des maillages réels ; il vérifie surtout que les îlots
 disjoints ne provoquent plus une intersection exacte pour chaque paire.
 
-La commande affiche le JSON complet sur la sortie standard. Le code de
-sortie vaut 0 sans îlot signalé et 2 avec des îlots. Le résumé avec
-rapport privé est suivi dans l’issue #35.
+La commande affiche le JSON complet sur la sortie standard. Avec
+`--resume --sortie RAPPORT.json`, elle enregistre d’abord le détail dans
+l’atelier privé et affiche le nombre d’îlots, le SHA-256 de la source et
+les trois premiers îlots dans l’ordre Z puis XY. Chaque îlot affiché donne
+son centre XY et son intervalle Z en mm, ainsi que les motifs du signalement.
+Le résumé précise combien d’îlots supplémentaires figurent dans le JSON.
+
+Le code de sortie vaut 0 sans îlot signalé et 2 avec des îlots. Un refus de
+lecture ou d’écriture donne aussi le code 2, avec son diagnostic sur stderr.
+`--json` est un alias de `--sortie`. Une destination existante est conservée.

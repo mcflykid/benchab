@@ -109,7 +109,8 @@ def generer(sortie, nominal=NOMINAL, borgne=False):
 def trancher(sortie, base_3mf, filament=1, nominal=NOMINAL, borgne=False):
     """Prépare et tranche le témoin avec l'unique lanceur BENCHAB, en usage témoin. Réglages en unités
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé. Le résultat
-    conserve le profil explicite comme provenance du fichier source neuf (docs/reference/integrite-3mf.md)."""
+    conserve le profil explicite comme provenance du fichier source neuf (docs/reference/integrite-3mf.md).
+    """
     out = _autoriser_sortie(sortie)
     with Archive3MF(base_3mf) as archive:
         # Lire le profil exact avant de créer le témoin ou de lancer le moteur (#122).

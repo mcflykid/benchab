@@ -125,10 +125,12 @@ def _b64(a):
 
 class Visionneuse:
     """Prépare des vues de géométries (unités de scène) ; aucune source ou réglage d’impression modifié."""
+
     def __init__(self, titre, sous_titre="", note="", axe_haut="Z", vue_initiale=(1.0, -1.4, 0.9), source=None):
         """axe_haut : axe vertical du repère du projet ('Z' ou 'Y').
         vue_initiale : direction (repère du projet) d'où la caméra regarde le centre au chargement.
-        source : dictionnaire libre affiché en pied de page (manifeste, empreinte, date des contrôles…)."""
+        source : dictionnaire libre affiché en pied de page (manifeste, empreinte, date des contrôles…).
+        """
         self.titre, self.sous_titre, self.note, self.axe_haut = titre, sous_titre, note, axe_haut.upper()
         self.vue_initiale = list(map(float, vue_initiale))
         self.source = source or {}
@@ -220,7 +222,8 @@ class Visionneuse:
 
     def mecanisme(self, ident, libelle, valeurs, poses, unite="", etat=None, defaut=0):
         """valeurs : suite des positions échantillonnées. poses(v) -> {nom_pièce: matrice 4×4, ou None pour masquer}.
-        Les pièces absentes du dictionnaire gardent leur pose de base. etat(v) -> texte affiché (facultatif)."""
+        Les pièces absentes du dictionnaire gardent leur pose de base. etat(v) -> texte affiché (facultatif).
+        """
         valeurs = list(valeurs)
         frames = [poses(v) for v in valeurs]
         noms = sorted({n for f in frames for n in f})
@@ -321,7 +324,6 @@ class Visionneuse:
         Un contexte 3MF fourni doit rester ouvert et correspondre exactement à `tranche`.
         Les budgets sont conservés ; aucune modification de source ni validation physique.
         """
-
         pl = placement if isinstance(placement, dict) else json.loads(Path(placement).read_text())
         C = Path(candidats)
         objets = pl.get("objects", [])

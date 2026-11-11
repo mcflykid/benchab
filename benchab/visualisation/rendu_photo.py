@@ -260,7 +260,8 @@ def inspecter_scene(fichier, *, prive, sortie=None, blender=None, delai=600, mm_
 
 def main(argv=None, *, prive=None):
     """Lance une simulation/inspection privée (mm, pixels, s) ; codes CLI conservés, aucune validation
-    physique inférée."""
+    physique inférée.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("spec", type=Path)
     parser.add_argument("--blender", type=Path)

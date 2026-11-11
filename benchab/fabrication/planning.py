@@ -197,7 +197,8 @@ def rendre(plaques: list[dict], heures_max: float) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     """Affiche un planning privé (s) ; aucune machine ni base initialisée implicitement, estimations sans
-    essai physique."""
+    essai physique.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prive", type=Path, required=True, help="Racine privée BENCHAB")
     parser.add_argument("--projets", type=Path, required=True, help="Dossier projets dans l’espace privé BENCHAB")

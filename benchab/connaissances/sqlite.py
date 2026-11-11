@@ -288,7 +288,8 @@ def reprendre_registre(root, donnees):
 
 def sauver(root, donnees):
     """Sauve une projection dans la base existante ; unités/statuts conservés, aucune initialisation ni
-    archive réécrite."""
+    archive réécrite.
+    """
     base = Base(root, creer=False)
     try:
         with base.transaction() as connexion:

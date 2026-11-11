@@ -1,6 +1,7 @@
 """Exemple de visionneuse : boîte et couvercle articulé, sans fichier externe.
 
-Génération explicite : ``python -m benchab.visualisation.exemple_minimal --sortie prive/exemple.html``."""
+Génération explicite : ``python -m benchab.visualisation.exemple_minimal --sortie prive/exemple.html``.
+"""
 
 import argparse
 from pathlib import Path

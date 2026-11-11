@@ -268,7 +268,8 @@ def finish():
 
 def bore_pierces(mesh, start, direction, length, n=60):
     """True if a bore is open along its real axis: probe points along the axis must
-    all be OUTSIDE the solid. start/direction in mm / unit vector."""
+    all be OUTSIDE the solid. start/direction in mm / unit vector.
+    """
     d = np.asarray(direction, float)
     d /= np.linalg.norm(d)
     pts = np.asarray(start, float) + np.outer(np.linspace(0, length, n), d)
@@ -278,7 +279,8 @@ def bore_pierces(mesh, start, direction, length, n=60):
 def open_from(mesh, point, direction, reach=500.0):
     """True if `point` (e.g. a pocket floor center) can be reached from `direction`
     without passing through the solid, i.e. the pocket is open (a bearing/motor can
-    actually be inserted). Catches the sealed-void 'lid that is not a lid' class."""
+    actually be inserted). Catches the sealed-void 'lid that is not a lid' class.
+    """
     d = np.asarray(direction, float)
     d /= np.linalg.norm(d)
     pts = np.asarray(point, float) + np.outer(np.linspace(1e-3, reach, 120), d)
@@ -294,7 +296,8 @@ def clearance(a, b, n=600, seed=0):
 def bore_is_keyed(mesh, center, axis, radius, z, n=90):
     """True if a bore section at height z deviates from a plain circle (D-flat, key,
     spline). A perfectly round result means the 'driven' part FREEWHEELS on its
-    shaft; torque paths through plain bores have shipped to plastic twice."""
+    shaft; torque paths through plain bores have shipped to plastic twice.
+    """
     ax = np.asarray(axis, float)
     ax /= np.linalg.norm(ax)
     # two perpendicular vectors spanning the section plane

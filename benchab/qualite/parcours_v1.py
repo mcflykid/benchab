@@ -52,7 +52,8 @@ return out}
 
 def recevoir(page, url, projet, sortie):
     """Teste les interactions d’une fixture locale (pixels, s) ; renvoie ses mesures ou lève sur FAIL,
-    sans commande machine."""
+    sans commande machine.
+    """
     erreurs = []
     page.on("pageerror", lambda e: erreurs.append(str(e)))
     t = time.monotonic()

@@ -29,6 +29,8 @@ options de résumé et de détail déjà couvertes.
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
 | `controle ecart-z-supports SOURCE.3mf [--plaque N]` | [Écarts Z nominaux des dépôts autour des supports](ecart-z-supports.md), lecture seule et sans preuve physique |
 | `controle comparer-projets-3mf SOURCE CANDIDAT` | [Diagnostic en lecture seule](comparer-projets-3mf.md) des réglages, palettes et peinture littérale, sans conversion |
+| `controle paquet-3mf ARCHIVE.3mf` | [Inventaire structurel](integrite-3mf.md#inspecter-la-structure-dun-paquet) avec résumé et rapport privé en option |
+| `controle couches-courtes SOURCE.stl` | [Carte des îlots](couches-courtes.md) avec résumé des trois premiers et rapport complet en option |
 | `controle coutures` | [Contrôle et aperçu de coutures sur régions déclarées](../explications/coutures.md#contrôle-sur-des-régions-déclarées) |
 | `controle preparer-reprise-export` | [Copie vérifiée d’une table exportée absente](plan-reparation-vues.md#préparer-la-reprise-dune-table-exportée), sans l’appliquer |
 | `controle verifier-reprise-source --preuve FICHIER --sha256-preuve SHA` | Relit la preuve et la copie locales, distingue l’état de l’original sans appliquer ni rouvrir le TAR |

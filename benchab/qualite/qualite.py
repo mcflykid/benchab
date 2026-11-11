@@ -5,7 +5,8 @@ Usage : benchab qualite niveau1|niveau3|incrementiel|resume <qualite.json> [anci
 Statuts : PASS (vérifié et réussi), FAIL (bloquant), WARNING (risque), NON VÉRIFIÉ (jamais compté comme PASS).
 Rapports détaillés : <projet>/preuves/qualite/*.json ; synthèse : *.md.
 Le niveau 2 (mécanique) reste propre à chaque projet (scripts de contrôle du projet) ; le niveau 4 est l'audit final.
-Score de risque d'accroche : indicateur heuristique documenté dans README.md, jamais une prédiction."""
+Score de risque d'accroche : indicateur heuristique documenté dans README.md, jamais une prédiction.
+"""
 
 import hashlib
 import json
@@ -412,7 +413,8 @@ def score_accroche(o, cfg):
 
 def niveau3(cfg_path):
     """Exécute niveau3 avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en
-    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
+    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
+    """
     cfg, base, P = charger(cfg_path)
     R = Rapport("niveau3", cfg_path)
     t3, pl = P("tranche_3mf"), P("placement")
