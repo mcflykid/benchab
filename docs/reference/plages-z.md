@@ -51,6 +51,13 @@ pas la hauteur maximale de `zone_fine`. Le code de sortie est 0 pour PASS, 2
 pour FAIL et NON VÉRIFIÉ. Voir
 le suivi du projet : #110.
 
+Sans option de sortie, la commande conserve son rapport JSON complet dans stdout.
+`--sortie <chemin>` publie le même rapport complet dans un nouveau fichier, refuse
+toute destination existante et affiche un résumé JSON contenant le statut, les
+statuts et identifiants d’objet importants, ainsi que le chemin du rapport.
+Ajouter `--detail` à `--sortie` affiche aussi le rapport complet dans stdout.
+Le résumé ne remplace pas le rapport et ne présente aucune validation physique.
+
 Quand `Metadata/project_settings.config` contient `layer_height`, le rapport
 restitue cette hauteur de base issue des réglages projet via le dictionnaire
 typé. Elle est informative et distincte des plages variables ; une valeur

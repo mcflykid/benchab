@@ -47,7 +47,7 @@ CONTROLES_DIRECTS = {
     "purge-changements": "purge_changements",
     "plages-z": "couverture_plages_z",
 }
-CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({"appuis-gcode", "ecarts-profils-3mf"})
+CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({"appuis-gcode", "ecarts-profils-3mf", "plages-z"})
 
 # Les espaces homogènes gardent leur préfixe, leurs alias et leurs options en un seul endroit.
 ROUTES_NAMESPACE = {

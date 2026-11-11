@@ -2,7 +2,10 @@
 
 import json
 import zipfile
+from pathlib import Path
 from xml.etree import ElementTree
+
+import pytest
 
 from benchab.cli import main as main_benchab
 from benchab.controles.couverture_plages_z import analyser, main
@@ -345,7 +348,10 @@ def test_cli_imprime_rapport_json_et_code_pass(tmp_path, capsys):
     declaration = tmp_path / "intention.json"
     declaration.write_text(json.dumps({"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]}))
     assert main([str(source), str(declaration)]) == 0
-    assert json.loads(capsys.readouterr().out)["statut"] == "PASS"
+    sortie_historique = capsys.readouterr().out
+    assert json.loads(sortie_historique)["statut"] == "PASS"
+    rapport = analyser(source, declaration)
+    assert sortie_historique == json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
 
 
 def test_commande_benchab_route_le_controle_sans_slicer(tmp_path, capsys):
@@ -356,3 +362,69 @@ def test_commande_benchab_route_le_controle_sans_slicer(tmp_path, capsys):
     assert main_benchab(["--prive", str(prive), "init"]) == 0
     assert main_benchab(["--prive", str(prive), "controle", "plages-z", str(source), str(declaration)]) == 0
     assert '"statut": "PASS"' in capsys.readouterr().out
+    sortie = prive / "rapports" / "plages-z.json"
+    assert main_benchab([
+        "--prive", str(prive), "controle", "plages-z", str(source), str(declaration),
+        "--sortie", str(sortie),
+    ]) == 0
+    assert json.loads(capsys.readouterr().out)["rapport"] == str(sortie.absolute())
+    assert json.loads(sortie.read_text(encoding="utf-8"))["statut"] == "PASS"
+
+
+def test_cli_rapport_neuf_affiche_resume_court_et_detail_sur_demande(tmp_path, capsys):
+    """Le rapport complet est publié une fois ; le résumé donne le statut, les objets et son chemin."""
+    plages = "".join(
+        f'<range min_z="{i / 10}" max_z="{(i + 1) / 10}">'
+        '<option opt_key="layer_height">0.1</option></range>'
+        for i in range(100)
+    )
+    xml = f'<objects><object id="1">{plages}</object></objects>'
+    source = _cube_3mf(tmp_path / "cube-volumineux.3mf", ranges=xml)
+    declaration = tmp_path / "intention.json"
+    declaration.write_text(json.dumps({"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]}))
+    rapport_dir = Path(str(tmp_path).replace("/private/var/", "/var/", 1)) / "rapports"
+    sortie = rapport_dir / "plages-z.json"
+
+    assert main([str(source), str(declaration), "--sortie", str(sortie)]) == 0
+    resume_texte = capsys.readouterr().out
+    resume = json.loads(resume_texte)
+    complet = json.loads(sortie.read_text(encoding="utf-8"))
+    assert resume == {
+        "statut": "PASS",
+        "points_importants": [{
+            "objet_id": "1", "intention": "totale", "statut": "PASS",
+            "geometrie_z_mm": [0.0, 10.0], "intervalle_attendu_mm": [0.0, 10.0],
+        }],
+        "rapport": str(sortie.resolve()),
+    }
+    assert len(resume_texte) < len(json.dumps(complet, ensure_ascii=False, indent=2))
+    assert len(complet["objets"][0]["couverture_explicite_mm"]) == 100
+
+    detail_path = tmp_path / "rapports" / "detail.json"
+    assert main([str(source), str(declaration), "--sortie", str(detail_path), "--detail"]) == 0
+    detail = json.loads(capsys.readouterr().out)
+    assert detail["rapport"] == str(detail_path.resolve())
+    assert len(detail["objets"][0]["couverture_explicite_mm"]) == 100
+
+    ancien = sortie.read_bytes()
+    with pytest.raises(ValueError, match="Destination existante"):
+        main([str(source), str(declaration), "--sortie", str(sortie)])
+    assert sortie.read_bytes() == ancien
+
+
+def test_resume_echec_conserve_le_message_exact_et_l_identifiant_objet(tmp_path, capsys):
+    """Un échec reste attribué à l’objet dans le résumé et garde son message intégral dans le rapport."""
+    source = _cube_3mf(tmp_path / "plages-invalides.3mf", ranges="<objects>")
+    declaration = tmp_path / "intention.json"
+    declaration.write_text(json.dumps({"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]}))
+    sortie = tmp_path / "prive" / "plages-z.json"
+
+    assert main([str(source), str(declaration), "--sortie", str(sortie)]) == 2
+    resume = json.loads(capsys.readouterr().out)
+    rapport = json.loads(sortie.read_text(encoding="utf-8"))
+    assert resume["statut"] == "NON VÉRIFIÉ"
+    assert resume["points_importants"] == [{
+        "objet_id": "1", "intention": "totale", "statut": "NON VÉRIFIÉ",
+        "erreur": rapport["objets"][0]["erreur"],
+    }]
+    assert resume["points_importants"][0]["erreur"]
