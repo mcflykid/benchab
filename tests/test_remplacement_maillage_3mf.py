@@ -473,3 +473,27 @@ def test_feuille_ambigue_ou_imbriquee_refusee(tmp_path, options):
                    repere="local_objet_mm", decalage_mm=(0, 0, 0), prive=tmp_path)
     assert not sortie.exists()
     assert hashlib.sha256(source.read_bytes()).hexdigest() == avant
+
+
+def test_deplacement_non_autorise_du_build_refuse_la_copie(tmp_path, monkeypatch):
+    """Même avec un volume cible valide, une matrice d’instance modifiée empêche la publication."""
+    source, candidat, sortie = (tmp_path / n for n in ("source.3mf", "volume.npz", "sortie.3mf"))
+    _source_assemblage(source)
+    sauvegarder(candidat, trimesh.creation.box((2, 4, 6)), prive=tmp_path)
+    avant = hashlib.sha256(source.read_bytes()).hexdigest()
+    serialiser = ET.tostring
+
+    def deplacer(element, *args, **kwargs):
+        brut = serialiser(element, *args, **kwargs)
+        if kwargs.get("xml_declaration"):
+            initial = b'transform="0 1 0 -1 0 0 0 0 1 1 2 3"'
+            assert initial in brut
+            return brut.replace(initial, b'transform="0 1 0 -1 0 0 0 0 1 9 2 3"')
+        return brut
+
+    monkeypatch.setattr(ET, "tostring", deplacer)
+    with pytest.raises(ValueError, match="hors du maillage cible"):
+        remplacer(source, candidat, sortie, objet_id="3", volume_id="1", source_sha256=avant,
+                   repere="local_objet_mm", decalage_mm=(0, 0, 0), prive=tmp_path)
+    assert not sortie.exists()
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == avant
