@@ -225,6 +225,11 @@ def parser():
     )
     ecart_z.add_argument("source", type=Path, help="3MF exact à lire sans modification")
     ecart_z.add_argument("--plaque", type=int, help="Numéro de plaque si le 3MF en contient plusieurs")
+    comparaison_3mf = controle.add_parser(
+        "comparer-projets-3mf", help="Compare deux projets 3MF sans conversion ni écriture"
+    )
+    comparaison_3mf.add_argument("source", type=Path, help="Projet 3MF d’origine")
+    comparaison_3mf.add_argument("candidat", type=Path, help="Projet 3MF candidat à comparer")
     entretien = controle.add_parser("entretien", help="Bilan conditionnel depuis un historique privé explicite")
     entretien.add_argument("--historique", type=Path, required=True, help="Historique JSON privé à relire")
     entretien.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; une sortie existante est refusée")
@@ -986,6 +991,7 @@ def main(argv=None):
             "entretien",
             "consommation-retour",
             "ecart-z-supports",
+            "comparer-projets-3mf",
             "coutures",
         }
         for i in range(len(argv) - 1)
@@ -1076,6 +1082,19 @@ def main(argv=None):
             return 0
         except (OSError, ValueError, KeyError, BadZipFile, RuntimeError) as erreur:
             print(f"BENCHAB : lecture de l’écart Z refusée : {erreur}", file=sys.stderr)
+            return 2
+    if arguments.commande == "controle" and arguments.controle == "comparer-projets-3mf":
+        from zipfile import BadZipFile
+
+        from benchab.controles.comparer_projets_3mf import comparer
+        from benchab.qualite.statuts import code_statut as code_statut_comparaison
+
+        try:
+            rapport = comparer(arguments.source, arguments.candidat)
+            print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            return code_statut_comparaison(rapport["statut"])
+        except (OSError, ValueError, KeyError, RuntimeError, BadZipFile) as erreur:
+            print(f"BENCHAB : comparaison 3MF refusée : {erreur}", file=sys.stderr)
             return 2
     if arguments.commande == "controle" and arguments.controle == "entretien":
         try:
