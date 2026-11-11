@@ -31,7 +31,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `vote --preparer`, `vote DOSSIER`, `vote --etat` | [Conseil et relecture](vote.md) |
 
 Voir le format et les limites du [contrôle des plages Z](plages-z.md).
-Le placement traçable depuis une source importée est décrit dans [son contrat](placement.md#generer-depuis-un-3mf-importe-105).
+Le placement traçable depuis une source importée est décrit dans [son contrat](placement.md).
 
 Les contrôles spécialisés supplémentaires sont listés par `uv run benchab controle --help`.
 Les cibles Make des projets générés utilisent ces mêmes modules ; elles ne créent
