@@ -122,3 +122,27 @@ def test_aucun_depot_mesurable_reste_non_verifie(tmp_path):
     """L'absence de dépôt ne constitue ni un débit nul mesuré ni un PASS."""
     source, declaration = _archive(tmp_path, "G1 X1 E0")
     assert _verdicts(source, declaration) == ("NON VÉRIFIÉ",) * 3
+
+
+@pytest.mark.parametrize("alias_unique", [True, False])
+def test_u25_lie_le_membre_exact_et_refuse_les_alias(tmp_path, alias_unique):
+    """Un zéro initial ne masque ni dépassement, ni identité de plaque ambiguë."""
+    source, _ = _archive(tmp_path, "G1 X1 E1")
+    attendu = debit_gcode.analyser(source)
+    assert attendu["statut"] == "FAIL"
+    with ZipFile(source) as archive:
+        membres = {nom: archive.read(nom) for nom in archive.namelist()}
+    canonique = "Metadata/plate_1.gcode"
+    modifie = tmp_path / "alias.3mf"
+    with ZipFile(modifie, "w") as archive:
+        for nom, donnees in membres.items():
+            if nom != canonique or not alias_unique:
+                archive.writestr(nom, donnees)
+        archive.writestr("Metadata/plate_01.gcode", membres[canonique])
+    avant = modifie.read_bytes()
+    if alias_unique:
+        assert debit_gcode.analyser(modifie) == {**attendu, "fichier": modifie.name}
+    else:
+        with pytest.raises(ValueError, match="[Aa]mbigu|[Dd]upliqu"):
+            debit_gcode.analyser(modifie)
+    assert modifie.read_bytes() == avant

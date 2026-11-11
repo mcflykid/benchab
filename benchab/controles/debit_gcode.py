@@ -19,7 +19,7 @@ from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode import debit
-from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
 from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 from benchab.qualite.statuts import code_statut
 
@@ -30,10 +30,18 @@ def positive(value):
 
 
 def analyser(path, overrides=None, attendus=None):
-    """Exécute analyser avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en
-    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
+    """Contrôle U25 par objet et outil, depuis le membre exact de chaque plaque.
+
+    Reçoit un 3MF tranché, des plafonds optionnels en mm³/s et les objets
+    attendus par plaque. Retourne mesures et statut PASS, FAIL ou NON VÉRIFIÉ ;
+    des membres ambigus sont refusés. Les réglages passent par le dictionnaire
+    typé et ni l’archive ni ses réglages ne sont modifiés.
+    """
     with Archive3MF(path) as z:
         membres = z.noms()
+        # U25 doit mesurer les octets de la plaque identifiée, même si son nom
+        # comporte un zéro initial (docs/reference/debit.md).
+        gc = dict(plaques_gcode_archive(z))
         st = z.reglages()
         caps = {str(i + 1): positive(v) for i, v in enumerate(st.get("filament_max_volumetric_speed", []))}
         if overrides is not None:
@@ -53,20 +61,16 @@ def analyser(path, overrides=None, attendus=None):
             if len(valeurs) != 1 or not valeurs[0] or not re.fullmatch(r"[0-9]+", valeurs[0]):
                 # U25 exige l'identité de la plaque avant d'interpréter son débit.
                 # Voir docs/reference/controles.md.
+                z.verifier_source(path)
                 return {
                     **res, "conforme": False, "statut": "NON VÉRIFIÉ", "code": code_statut("NON VÉRIFIÉ"),
                     "motif": f"slice_info.config : index absent, dupliqué ou invalide à la plaque XML {rang}",
                 }
             indices.append(int(valeurs[0]))
-        gc = {
-            int(re.fullmatch(r"Metadata/plate_(\d+)\.gcode", n).group(1))
-            for n in membres
-            if re.fullmatch(r"Metadata/plate_\d+\.gcode", n)
-        }
         if (
             not indices
             or len(set(indices)) != len(indices)
-            or set(indices) != gc
+            or set(indices) != gc.keys()
             or set(indices) != set(range(1, len(indices) + 1))
         ):
             raise ValueError("plaques G-code et slice_info absentes, dupliquées ou incohérentes")
@@ -88,7 +92,7 @@ def analyser(path, overrides=None, attendus=None):
                 errors.append("plafond absent ou invalide pour les filaments déclarés")
             it = Interpreter(tool=int(fil[0]) - 1 if len(fil) == 1 else None)
             samples = collections.defaultdict(list)
-            g = lire_texte_gcode_3mf(path, f"Metadata/plate_{k}.gcode", erreurs="strict")
+            g = lire_texte_gcode_3mf(path, gc[k], erreurs="strict", archive=z)
             declared = [o.get("name") for o in plate.findall("object") if o.get("skipped", "false") != "true"]
             definitions = re.findall(r"^EXCLUDE_OBJECT_DEFINE\s+NAME=(\S+)", g, re.M)
             expected = (
@@ -205,6 +209,7 @@ def analyser(path, overrides=None, attendus=None):
             and not any(p["incoherence_etablie"] for p in res["plaques"]) else "FAIL"
         )
         res["code"] = code_statut(res["statut"])
+        z.verifier_source(path)
         return res
 
 
