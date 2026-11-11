@@ -8,21 +8,26 @@ par son `objectid` dans le modèle principal de la source. Le SHA-256 attendu
 relie le choix à une archive exacte. Le repère et le décalage XYZ en mm sont
 obligatoires ; aucun recalage ni transformation n'est deviné.
 
-Le sous-cas qualifié est volontairement restreint : StartPart OPC unique,
-modèle unique, un maillage direct, une seule instance build et aucune référence
-de composant. Les références `p:path`, les composants, relations OPC de modèle,
-attributs de triangle (matériau/volume), métadonnées de mesh inconnues,
-identifiants absents ou ambigus et G-code embarqué font refuser l'opération.
-Les candidats doivent être des volumes fermés orientés vers l'extérieur. Les
-transforms de l'unique instance restent inchangés ; le décalage s'applique dans
-le repère local de l'objet avant ces transforms.
+Le StartPart OPC et le modèle doivent être uniques. Sans `--volume-id`, le
+choix désigne l’objet direct et son unique instance dans le build. Avec
+`--objet-id RACINE --volume-id FEUILLE`, le choix désigne un seul maillage
+enfant dans un assemblage Core à un niveau. Le rapport rend son rang de
+composant et l’ordinal de l’instance. La feuille doit être non partagée,
+et aucune feuille de l’assemblage ne peut être construite séparément.
+
+Les composants imbriqués, `p:path`, les relations OPC de modèle, les
+métadonnées de volume du slicer, les matériaux et les identifiants ambigus
+sont refusés dans ce sous-cas. Les candidats doivent être des volumes fermés
+orientés. Pour une feuille, le décalage s’applique dans le repère local du
+maillage ; l’ordre instance puis composant est conservé. Toutes les autres
+matrices restent inchangées.
 
 Le modèle doit utiliser le namespace Core par défaut et être encodé en UTF-8.
 Les commentaires XML, instructions de traitement, namespaces préfixés ou
 extensions inconnues sont refusés afin qu'une réécriture XML ne les supprime pas.
 Le sous-cas n'accepte que les nœuds Core explicitement compris (`model`,
 `resources`, `object`, `mesh`, `vertices`, `vertex`, `triangles`, `triangle`,
-`build`, `item` et `metadata`) et leurs attributs géométriques/structurels connus.
+`build`, `item`, `components`, `component` et `metadata`) et leurs attributs géométriques/structurels connus.
 `requiredextensions`, les propriétés de matériaux et tout autre nœud ou attribut
 Core sont refusés, même si leur contenu pourrait être recopié sans changement.
 `slice_info.config` entraîne également un refus, même si aucun G-code n'est

@@ -32,6 +32,8 @@ _ATTRIBUTS_MODELE = {
     "model": {"unit"},
     "resources": set(),
     "object": {"id", "type"},
+    "components": set(),
+    "component": {"objectid", "transform"},
     "mesh": set(),
     "vertices": set(),
     "vertex": {"x", "y", "z"},
@@ -44,7 +46,9 @@ _ATTRIBUTS_MODELE = {
 _ENFANTS_MODELE = {
     "model": {"resources", "build"},
     "resources": {"object"},
-    "object": {"mesh", "metadata"},
+    "object": {"mesh", "metadata", "components"},
+    "components": {"component"},
+    "component": set(),
     "mesh": {"vertices", "triangles"},
     "vertices": {"vertex"},
     "triangles": {"triangle"},
@@ -67,6 +71,14 @@ def _topologie(mesh: trimesh.Trimesh) -> dict:
     }
 
 
+def _cle_geometrie(identite):
+    """Identifie une feuille au sein d’une instance Core à un seul niveau de composants."""
+    return (
+        identite.get("modele_principal"), identite.get("objet_id_racine"),
+        identite.get("build_item"), identite.get("modele_maillage"), identite.get("objet_id_maillage"),
+    )
+
+
 def _geometries(scene) -> dict:
     """Indexe les maillages importés par modèle, objet et instance identifiés."""
     resultat = {}
@@ -76,11 +88,7 @@ def _geometries(scene) -> dict:
     for mesh, identite in zip(scene.geometry.values(), identites, strict=True):
         if not isinstance(identite, dict):
             raise ValueError("Identité de maillage absente dans la relecture 3MF")
-        cle = (
-            identite.get("modele_principal"),
-            identite.get("objet_id_racine"),
-            identite.get("build_item"),
-        )
+        cle = _cle_geometrie(identite)
         if cle in resultat:
             raise ValueError("Instance de maillage dupliquée ou ambiguë")
         resultat[cle] = mesh
@@ -144,8 +152,38 @@ def _valider_modele_xml(contenu: bytes) -> ET.Element:
     return racine
 
 
-def _cible_modele(source: Path, objet_id: str, sha_source: str) -> tuple[str, ET.Element, ET.Element]:
-    """Valide le seul modèle principal, son StartPart, ses références et sa cible directe."""
+def _indice_feuille(racine, objet_id, volume_id, instances):
+    """Valide une feuille directe et non partagée dans le seul assemblage Core, renvoie son rang."""
+    ns = f"{{{_NS_MODELE}}}"
+    if len(racine.findall(f"{ns}resources")) != 1 or len(racine.findall(f"{ns}build")) != 1:
+        raise ValueError("Ressources et build uniques requis pour les composants")
+    objets = racine.findall(f"{ns}resources/{ns}object")
+    identifiants = [o.get("id", "") for o in objets]
+    if len(set(identifiants)) != len(objets) or any(
+        not re.fullmatch(r"[1-9][0-9]{0,9}", identifiant) for identifiant in identifiants
+    ):
+        raise ValueError("Identifiants Core non canoniques ou ambigus pour les composants")
+    table = dict(zip(identifiants, objets, strict=True))
+    groupes = [(o.get("id"), groupe) for o in objets for groupe in o.findall(f"{ns}components")]
+    if len(groupes) != 1 or groupes[0][0] != objet_id:
+        raise ValueError("Un seul assemblage Core de premier niveau est qualifié")
+    assemblage = table[objet_id]
+    if assemblage.get("type") != "model" or assemblage.find(f"{ns}mesh") is not None:
+        raise ValueError("L’assemblage cible doit contenir des composants sans maillage propre")
+    ids = [comp.get("objectid") for comp in groupes[0][1]]
+    if volume_id not in ids or len(set(ids)) != len(ids) or any(
+        i == objet_id or i not in table or table[i].get("type") != "model"
+        or len(table[i].findall(f"{ns}mesh")) != 1 for i in ids
+    ):
+        raise ValueError("Volume absent, ambigu, partagé ou non direct dans l’assemblage")
+    if set(ids).intersection(item.get("objectid") for item in instances):
+        raise ValueError("Une feuille de l’assemblage est aussi référencée dans le build")
+    return ids.index(volume_id) + 1
+
+
+def _cible_modele(source: Path, objet_id: str, volume_id: str | None):
+    """Valide le StartPart, l’instance racine et le maillage direct ou la feuille unique."""
+    cible_id = volume_id if volume_id is not None else objet_id
     with Archive3MF(source, taille_max_xml=_MAX_XML) as archive:
         noms = archive.noms()
         modeles = [nom for nom in noms if nom.casefold().endswith(".model")]
@@ -164,6 +202,10 @@ def _cible_modele(source: Path, objet_id: str, sha_source: str) -> tuple[str, ET
             raise ValueError("Budget XML total de 128 Mio dépassé")
         if len(modeles) != 1 or "_rels/.rels" not in noms:
             raise ValueError("StartPart OPC explicite et modèle unique requis")
+        if volume_id is not None and any(
+            PurePosixPath(nom).name.casefold() == "model_settings.config" for nom in noms
+        ):
+            raise ValueError("Métadonnées de volumes slicer non qualifiées pour les composants Core")
         relations = archive.xml("_rels/.rels")
         if relations.tag != _NS_REL + "Relationships":
             raise ValueError("StartPart OPC explicite absent ou racine de relations invalide")
@@ -183,13 +225,13 @@ def _cible_modele(source: Path, objet_id: str, sha_source: str) -> tuple[str, ET
     identites = scene.metadata.get("identites_import", [])
     matches = [
         identite for identite in identites
-        if identite.get("objet_id_racine") == objet_id
+        if identite.get("objet_id_racine") == objet_id and identite.get("objet_id_maillage") == cible_id
         and identite.get("modele_maillage") == identite.get("modele_principal")
     ]
     if len(matches) != 1:
         raise ValueError("La cible doit être une seule instance directe imprimable du modèle principal")
     principal = matches[0]["modele_principal"]
-    cle = (principal, objet_id, matches[0]["build_item"])
+    cle = _cle_geometrie(matches[0])
     if cle not in geometries:
         raise ValueError("Instance cible absente de la scène relue")
 
@@ -202,7 +244,7 @@ def _cible_modele(source: Path, objet_id: str, sha_source: str) -> tuple[str, ET
                 raise ValueError("Relations OPC de modèle : le sous-cas direct ne les qualifie pas")
         racine = _valider_modele_xml(archive.lire(principal, limite_octets=_MAX_XML))
         objets = [o for o in racine.findall(f"{{{_NS_MODELE}}}resources/{{{_NS_MODELE}}}object")
-                  if o.get("id") == objet_id]
+                  if o.get("id") == cible_id]
         if len(objets) != 1:
             raise ValueError("Identifiant objet absent ou dupliqué")
         objet = objets[0]
@@ -213,16 +255,22 @@ def _cible_modele(source: Path, objet_id: str, sha_source: str) -> tuple[str, ET
         meshes = objet.findall(f"{{{_NS_MODELE}}}mesh")
         if len(meshes) != 1:
             raise ValueError("Un seul volume mesh direct est requis")
-        if next(racine.iter(f"{{{_NS_MODELE}}}component"), None) is not None:
-            raise ValueError("Composants présents : absence de partage non prouvée")
-        build = racine.find(f"{{{_NS_MODELE}}}build")
-        instances = [] if build is None else [
-            item for item in build.findall(f"{{{_NS_MODELE}}}item") if item.get("objectid") == objet_id
-        ]
-        if len(instances) != 1 or matches[0]["build_item"] != racine.findall(
-            f"{{{_NS_MODELE}}}build/{{{_NS_MODELE}}}item"
-        ).index(instances[0]) + 1:
+        items = racine.findall(f"{{{_NS_MODELE}}}build/{{{_NS_MODELE}}}item")
+        instances = [item for item in items if item.get("objectid") == objet_id]
+        if len(instances) != 1 or matches[0]["build_item"] != items.index(instances[0]) + 1:
             raise ValueError("Objet ciblé référencé plusieurs fois ou par une autre instance")
+        indice_composant = None
+        if volume_id is None:
+            if next(racine.iter(f"{{{_NS_MODELE}}}components"), None) is not None:
+                raise ValueError("Composants présents : demander une feuille explicite")
+        else:
+            indice_composant = _indice_feuille(racine, objet_id, volume_id, items)
+            trace = matches[0]["transformations"]
+            if (
+                len(trace) != 2 or trace[-1].get("type") != "composant"
+                or trace[-1].get("objet_id") != objet_id or trace[-1].get("objet_id_cible") != volume_id
+            ):
+                raise ValueError("Chemin de composant non vérifié dans la scène")
         if any(key.rsplit("}", 1)[-1] == "path" for noeud in racine.iter() for key in noeud.attrib):
             raise ValueError("Attribut path de production : seule la référence directe est qualifiée")
         mesh = meshes[0]
@@ -235,7 +283,7 @@ def _cible_modele(source: Path, objet_id: str, sha_source: str) -> tuple[str, ET
             raise ValueError("Attributs de sommet non géométriques non qualifiés")
         if any(set(noeud.attrib) != {"v1", "v2", "v3"} or len(noeud) for noeud in triangles):
             raise ValueError("Attributs de triangle (matériaux/volume) non qualifiés")
-        return principal, racine, objet
+        return principal, racine, objet, indice_composant
 
 
 def remplacer(
@@ -247,11 +295,14 @@ def remplacer(
     source_sha256: str,
     repere: str,
     decalage_mm: tuple[float, float, float],
+    volume_id: str | None = None,
     prive=None,
 ) -> dict:
-    """Remplace un objet mesh direct dans une copie 3MF neuve, sans transformer ses instances.
+    """Remplace un mesh direct ou une feuille Core dans une copie 3MF neuve.
 
-    La cible est identifiée par SHA source et object ID. Le candidat NPZ BENCHAB
+    La cible est identifiée par SHA source, objet racine et volume enfant facultatif.
+    Le volume est une feuille unique à un niveau ; aucune instance n’est transformée.
+    Le candidat NPZ BENCHAB
     est en mm dans le repère local explicite ; le décalage (x, y, z) est en mm.
     Le remplacement préserve les références et transformations du modèle. Sortie
     PASS signifie membres et géométrie recontrôlés, pas compatibilité slicer ni
@@ -266,6 +317,8 @@ def remplacer(
     _protege(sortie)
     if not isinstance(objet_id, str) or not objet_id.strip():
         raise ValueError("Identifiant objet explicite requis")
+    if volume_id is not None and (not isinstance(volume_id, str) or not re.fullmatch(r"[1-9][0-9]{0,9}", volume_id)):
+        raise ValueError("Identifiant de volume Core canonique requis")
     if repere != "local_objet_mm":
         raise ValueError("Le repère explicite qualifié est local_objet_mm")
     if (
@@ -286,14 +339,17 @@ def remplacer(
     topo_candidat = _topologie(mesh_candidat)
     if not topo_candidat["volume_oriente"]:
         raise ValueError("Le candidat doit être un volume fermé orienté vers l’extérieur")
-    principal, racine, objet = _cible_modele(source, objet_id, source_sha256)
+    cible_id = volume_id if volume_id is not None else objet_id
+    principal, racine, objet, indice_composant = _cible_modele(source, objet_id, volume_id)
     scene_avant = lire(source, max_faces=_MAX_FACES, identites=True)
     geometries_avant = _geometries(scene_avant)
     identite_cible = next(
         identite for identite in scene_avant.metadata["identites_import"]
         if identite.get("modele_principal") == principal and identite.get("objet_id_racine") == objet_id
+        and identite.get("objet_id_maillage") == cible_id
     )
-    mesh_avant = geometries_avant[(principal, objet_id, identite_cible["build_item"])]
+    cle_cible = _cle_geometrie(identite_cible)
+    mesh_avant = geometries_avant[cle_cible]
     topo_avant = _topologie(mesh_avant)
     if not topo_avant["volume_oriente"]:
         raise ValueError("Le maillage source n'est pas un volume fermé orienté qualifié")
@@ -301,7 +357,10 @@ def remplacer(
     facteur = UNITES.get(unit)
     if facteur is None:
         raise ValueError("Unité du modèle principal non qualifiée")
-    matrice = np.asarray(identite_cible["transformations"][-1]["matrice_mm"], dtype=float)
+    # Même composition instance @ composant que le lecteur, après décalage local en mm (#112).
+    matrice = np.eye(4)
+    for transformation in identite_cible["transformations"]:
+        matrice = matrice @ np.asarray(transformation["matrice_mm"], dtype=float)
     candidat_attendu = mesh_candidat.copy()
     candidat_attendu.apply_translation(decalage)
     candidat_attendu.apply_transform(matrice)
@@ -331,7 +390,7 @@ def remplacer(
         raise ValueError("Un seul volume mesh direct est requis pour la cible")
     position_mesh = list(objet).index(anciens_mesh[0])
     ET.register_namespace("", _NS_MODELE)
-    source_sans_cible = _sans_maillage(racine, objet_id)
+    source_sans_cible = _sans_maillage(racine, cible_id)
     objet[position_mesh] = nouveau_mesh
     contenu_modele = ET.tostring(racine, encoding="utf-8", xml_declaration=True)
     source_sha_verifie = sha256_fichier(source)
@@ -365,7 +424,7 @@ def remplacer(
                     if hashlib.file_digest(flux, "sha256").hexdigest() != attendu:
                         raise ValueError("Membre non ciblé altéré : " + nom)
             racine_apres = archive_apres.xml(principal)
-            if _sans_maillage(racine_apres, objet_id) != source_sans_cible:
+            if _sans_maillage(racine_apres, cible_id) != source_sans_cible:
                 raise ValueError("Un élément XML hors du maillage cible a changé")
         scene_apres = lire(temp, max_faces=_MAX_FACES, identites=True)
         geometries_apres = _geometries(scene_apres)
@@ -378,13 +437,13 @@ def remplacer(
                 raise ValueError("Empreinte géométrique non calculée pour une instance")
             attendu = (
                 sha_geometrie_attendue
-                if cle == (principal, objet_id, identite_cible["build_item"])
+                if cle == cle_cible
                 else empreinte_avant
             )
             if empreinte_apres != attendu:
                 raise ValueError("Géométrie cible ou autre instance inattendue : " + str(cle))
         topo_apres = _topologie(
-            geometries_apres[(principal, objet_id, identite_cible["build_item"])]
+            geometries_apres[cle_cible]
         )
         if not topo_apres["volume_oriente"]:
             raise ValueError("Le maillage sérialisé n'est pas un volume fermé orienté qualifié")
@@ -401,6 +460,10 @@ def remplacer(
         "sortie_sha256": sha256_fichier(sortie),
         "modele": principal,
         "objet_id": objet_id,
+        **({
+            "volume_id": volume_id, "indice_composant": indice_composant,
+            "indice_build": identite_cible["build_item"],
+        } if volume_id is not None else {}),
         "repere": repere,
         "decalage_mm": decalage.tolist(),
         "topologie_avant": topo_avant,
@@ -409,7 +472,7 @@ def remplacer(
         "quantum_geometrie_mm": 1e-5,
         "integrite_reglages": integrite["statut"],
         "membres_non_cibles_sha_identiques": len(empreintes),
-        "difference_permise": f"{principal} : géométrie locale de l'objet {objet_id} uniquement",
+        "difference_permise": f"{principal} : géométrie locale de l'objet {cible_id} uniquement",
         "validation_slicer": "NON VÉRIFIÉ",
         "validation_physique": "NON VÉRIFIÉ",
     }
@@ -417,11 +480,12 @@ def remplacer(
 
 def main(argv=None, *, base):
     """Commande CLI de remplacement explicite ; ne lance pas le slicer ni une action machine."""
-    parser = argparse.ArgumentParser(description="Remplace un maillage direct identifié dans une copie 3MF privée")
+    parser = argparse.ArgumentParser(description="Remplace un maillage direct ou un volume Core identifié")
     parser.add_argument("source", type=Path)
     parser.add_argument("candidat", type=Path, help="Maillage indexé NPZ BENCHAB en mm")
     parser.add_argument("--sortie", type=Path, required=True)
-    parser.add_argument("--objet-id", required=True)
+    parser.add_argument("--objet-id", required=True, help="Identifiant de l’objet racine du build")
+    parser.add_argument("--volume-id", help="Feuille unique d’un assemblage Core à un niveau")
     parser.add_argument("--source-sha256", required=True)
     parser.add_argument("--repere", required=True, choices=("local_objet_mm",))
     parser.add_argument("--decalage-mm", nargs=3, type=float, required=True, metavar=("X", "Y", "Z"))
@@ -432,6 +496,7 @@ def main(argv=None, *, base):
         args.candidat,
         sortie,
         objet_id=args.objet_id,
+        volume_id=args.volume_id,
         source_sha256=args.source_sha256,
         repere=args.repere,
         decalage_mm=tuple(args.decalage_mm),

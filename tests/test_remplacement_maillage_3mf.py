@@ -390,3 +390,75 @@ def test_membre_non_cible_altere_pendant_copie_refuse_la_publication(tmp_path, m
         )
     assert hashlib.sha256(source.read_bytes()).hexdigest() == avant
     assert not sortie.exists()
+
+
+def _source_assemblage(path, *, partage=False, imbrique=False, build_feuille=False, metadonnees=False):
+    """Crée deux feuilles Core dans un StartPart, avec rotations et translations en cm."""
+    racine = ET.Element(f"{{{CORE}}}model", unit="centimeter")
+    ressources = ET.SubElement(racine, f"{{{CORE}}}resources")
+    _objet(ressources, "1", trimesh.creation.box((10, 12, 14)), 10)
+    _objet(ressources, "2", trimesh.creation.box((4, 6, 8)), 10)
+    assemblage = ET.SubElement(ressources, f"{{{CORE}}}object", id="3", type="model")
+    composants = ET.SubElement(assemblage, f"{{{CORE}}}components")
+    premier = "1"
+    if imbrique:
+        autre = ET.SubElement(ressources, f"{{{CORE}}}object", id="4", type="model")
+        niveau = ET.SubElement(autre, f"{{{CORE}}}components")
+        ET.SubElement(niveau, f"{{{CORE}}}component", objectid="1")
+        premier = "4"
+    ET.SubElement(composants, f"{{{CORE}}}component", objectid=premier, transform="1 0 0 0 1 0 0 0 1 .5 .2 .3")
+    ET.SubElement(composants, f"{{{CORE}}}component", objectid="2", transform="1 0 0 0 1 0 0 0 1 2 0 0")
+    if partage:
+        ET.SubElement(composants, f"{{{CORE}}}component", objectid="1")
+    build = ET.SubElement(racine, f"{{{CORE}}}build")
+    ET.SubElement(build, f"{{{CORE}}}item", objectid="3", transform="0 1 0 -1 0 0 0 0 1 1 2 3")
+    if build_feuille:
+        ET.SubElement(build, f"{{{CORE}}}item", objectid="1")
+    ET.register_namespace("", CORE)
+    with ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+        archive.writestr("_rels/.rels", f'<Relationships xmlns="{REL}"><Relationship Id="r1" '
+                         f'Type="{REL_MODEL}" Target="/{MEMBRE}"/></Relationships>')
+        archive.writestr(MEMBRE, ET.tostring(racine, encoding="utf-8", xml_declaration=True))
+        if metadonnees:
+            archive.writestr("Metadata/model_settings.config", "<config/>")
+
+
+def test_feuille_unique_preserve_autre_volume_et_transforms(tmp_path):
+    """La feuille déclarée change, l’autre volume et les matrices restent identiques."""
+    source, candidat, sortie = (tmp_path / n for n in ("source.3mf", "volume.npz", "sortie.3mf"))
+    _source_assemblage(source)
+    sauvegarder(candidat, trimesh.creation.box((2, 4, 6)), prive=tmp_path)
+    sha_avant = hashlib.sha256(source.read_bytes()).hexdigest()
+    rapport = remplacer(source, candidat, sortie, objet_id="3", volume_id="1", source_sha256=sha_avant,
+                        repere="local_objet_mm", decalage_mm=(1, 2, 3), prive=tmp_path)
+    assert rapport["volume_id"] == "1"
+    assert rapport["indice_composant"] == rapport["indice_build"] == 1
+    assert rapport["statut"] == "PASS"
+    scene_avant, scene_apres = [lire(p, identites=True) for p in (source, sortie)]
+    assert scene_avant.metadata["identites_import"] == scene_apres.metadata["identites_import"]
+    volumes = [
+        {i["objet_id_maillage"]: m for i, m in zip(s.metadata["identites_import"], s.geometry.values(), strict=True)}
+        for s in (scene_avant, scene_apres)
+    ]
+    assert volumes[1]["1"].bounds.mean(axis=0).tolist() == pytest.approx([6, 26, 36])
+    assert volumes[1]["1"].volume == pytest.approx(48)
+    assert np.array_equal(volumes[0]["2"].vertices, volumes[1]["2"].vertices)
+    assert np.array_equal(volumes[0]["2"].faces, volumes[1]["2"].faces)
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == sha_avant
+
+
+@pytest.mark.parametrize("options", [
+    {"partage": True}, {"imbrique": True}, {"build_feuille": True}, {"metadonnees": True},
+])
+def test_feuille_ambigue_ou_imbriquee_refusee(tmp_path, options):
+    """Un composant partagé, imbriqué ou également construit n’est jamais modifié."""
+    source, candidat, sortie = (tmp_path / n for n in ("source.3mf", "volume.npz", "sortie.3mf"))
+    _source_assemblage(source, **options)
+    sauvegarder(candidat, trimesh.creation.box((2, 4, 6)), prive=tmp_path)
+    avant = hashlib.sha256(source.read_bytes()).hexdigest()
+    with pytest.raises(ValueError):
+        remplacer(source, candidat, sortie, objet_id="3", volume_id="1", source_sha256=avant,
+                   repere="local_objet_mm", decalage_mm=(0, 0, 0), prive=tmp_path)
+    assert not sortie.exists()
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == avant
