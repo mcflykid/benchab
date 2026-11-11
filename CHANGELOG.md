@@ -17,6 +17,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.3.0 — 2026-11-11
 
+- Contrôle : comparaison des réglages projet, objets, parties et plaques aux profils explicitement fournis ; écarts sensibles, provenance par clé et filiations de profils en lecture seule (#38).
 - Réglages : contexte commun des slots filament, identités et ordre conservés, variantes suffixées appariées séparément et résidus NON VÉRIFIÉS (#103).
 - Envoi : avertissements natifs par plaque, codes inconnus conservés et origine non établie signalée (#109).
 - Revue locale : mesures de recul et recouvrement recalculées depuis les lignes G-code liées ; contradiction bloquante et données manquantes explicites (#111).

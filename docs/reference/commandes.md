@@ -16,6 +16,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
 | `fabrication exportable`, `rattachements`, `envois-slicer`, `retour`, `planning` | Livrables, historique et retours |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
+| `controle ecarts-profils-3mf` | Compare les réglages 3MF aux profils explicitement fournis ; rapport privé |
 | `controle publication`, `frontiere`, `typographie` | Dépôt partageable |
 | `qualite niveau1`, `niveau3`, `incrementiel`, `resume`, `tout`, `hooks`, `archives`, `comparer-fabrication` | Qualité logicielle et impact des tests |
 | `visualisation visionneuse`, `serveur`, `apercu-gcode`, `commentaires`, `photo`, `inspection-scene`, `assemblage-dossier` | Inspection commune |
@@ -30,6 +31,9 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 Les contrôles spécialisés supplémentaires sont listés par `uv run benchab controle --help`.
 Les cibles Make des projets générés utilisent ces mêmes modules ; elles ne créent
 pas une deuxième chaîne de contrôle.
+
+La comparaison des réglages 3MF aux profils explicitement fournis est décrite dans
+[le guide des écarts de profils](ecarts-profils-3mf.md).
 
 `benchab visualisation assemblage-dossier DOSSIER --unites mm --sortie prive/vue.html`
 collecte les STL d’un dossier privé. L’ancien `assembly.json` voisin est accepté :

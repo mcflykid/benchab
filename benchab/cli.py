@@ -42,6 +42,7 @@ CONTROLES_DIRECTS = {
     "supports-requis": "supports_requis",
     "appuis-gcode": "appuis_gcode",
     "assemblage": "assemblage",
+    "ecarts-profils-3mf": "ecarts_profils_3mf",
 }
 
 
@@ -362,7 +363,11 @@ def executer(arguments, base):
             module = importlib.import_module("benchab.controles." + CONTROLES_DIRECTS[arguments.controle])
             directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
             try:
-                options = {"prive": base.prive} if arguments.controle == "appuis-gcode" else {}
+                options = (
+                    {"prive": base.prive}
+                    if arguments.controle in {"appuis-gcode", "ecarts-profils-3mf"}
+                    else {}
+                )
                 return int(module.main(directs, **options) or 0)
             except SystemExit as arret:
                 return _code_arret(arret)
