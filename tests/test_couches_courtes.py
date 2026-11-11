@@ -327,3 +327,11 @@ class CouchesCourtes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_option_position_sans_source_ne_plante_pas(capsys):
+    """Une option seule conserve le diagnostic d’absence de STL."""
+    from benchab.controles import couches_courtes
+
+    assert couches_courtes.main(["--qualifier-position-enveloppes"]) == 2
+    assert "STL" in capsys.readouterr().out

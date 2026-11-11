@@ -32,6 +32,7 @@ import sys
 import numpy as np
 import trimesh
 from shapely.affinity import affine_transform
+from shapely.errors import GEOSException
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
@@ -124,7 +125,7 @@ def _position_enveloppes_xy(polygon, enveloppes):
                 return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "frontiere_touchee"}
             if polygon.intersection(enveloppe).area > 0:
                 return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "chevauchement_enveloppe"}
-    except (AttributeError, TypeError, ValueError):
+    except (AttributeError, GEOSException, TypeError, ValueError):
         return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "geometrie_invalide"}
     if len(trous) > 1:
         return {"statut": "NON VÉRIFIÉ", "classe": "ambigue", "cause": "trous_multiples"}
@@ -356,13 +357,18 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0, *, qualifier_positions=False):
 
 
 def main(argv=None):
-    """Analyse un STL et écrit son rapport JSON sur stdout, sans préparation du maillage."""
+    """Analyse un STL en mm et affiche les îlots et leurs observations en JSON.
+
+    Reçoit le chemin source puis les seuils de couche et hauteur (mm) et
+    d’aire (mm²), et une option de position XY. Code 0 sans îlot, 2 si des
+    îlots sont signalés ou si la source manque. Aucun maillage modifié.
+    """
     args = list(sys.argv[1:] if argv is None else argv)
+    qualifier_positions = "--qualifier-position-enveloppes" in args
+    args = [arg for arg in args if arg != "--qualifier-position-enveloppes"]
     if not args:
         print(__doc__)
         return 2
-    qualifier_positions = "--qualifier-position-enveloppes" in args
-    args = [arg for arg in args if arg != "--qualifier-position-enveloppes"]
     result = analyse(args[0], *(float(value) for value in args[1:4]), qualifier_positions=qualifier_positions)
     print(json.dumps({"fichier": args[0], "ilots_isoles": result}, indent=1, ensure_ascii=False))
     return 2 if result else 0
