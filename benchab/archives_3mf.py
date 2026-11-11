@@ -231,7 +231,7 @@ class Archive3MF:
 
     @contextlib.contextmanager
     def ouvrir_flux(self, membre):
-        """Ouvre un flux non seekable limité à 64 Kio par lecture.
+        """Ouvre un flux séquentiel non repositionnable, tampon brut de 64 Kio.
 
         Le membre déclaré est réservé au budget cumulatif avant décompression :
         une lecture partielle ne permet donc pas de relire gratuitement le reste.
