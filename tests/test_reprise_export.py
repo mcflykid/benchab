@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -114,3 +115,56 @@ def test_cli_prepare_sans_ouvrir_base_ni_enregistrer_mesure(tmp_path, atelier, c
     assert (sortie / "projets.jsonl").read_bytes() == attendu
     assert (prive / "benchab.sqlite").read_bytes() == avant and not cible.exists()
     assert cli.main(arguments) == 2
+
+
+@pytest.mark.parametrize("membre", ["projets.jsonl", "preuve.json"])
+def test_course_sur_membre_publie_est_quarantaine_sans_pass(tmp_path, atelier, monkeypatch, membre):
+    """Une mutation entre hachage et renommage garde ses octets en quarantaine et refuse PASS."""
+    import benchab.qualite.reprise_export as reprise
+
+    prive, _cible, attendu = atelier
+    sortie = tmp_path / "reprise"
+    renommer = reprise.renommer_exclusif
+
+    def modifier_au_renommage(source, destination, **kwargs):
+        if Path(destination) == sortie:
+            (Path(source) / membre).write_bytes(b"modification concurrente\n")
+        return renommer(source, destination, **kwargs)
+
+    monkeypatch.setattr(reprise, "renommer_exclusif", modifier_au_renommage)
+    with pytest.raises(ValueError, match="Contenu publié illisible ou modifié"):
+        reprise.preparer(prive, "projets", sortie)
+
+    quarantaine, = tmp_path.glob(".reprise.quarantaine-*")
+    assert not sortie.exists()
+    assert (quarantaine / membre).read_bytes() == b"modification concurrente\n"
+    assert (quarantaine / "projets.jsonl").read_bytes() == (
+        b"modification concurrente\n" if membre == "projets.jsonl" else attendu
+    )
+    assert (quarantaine / "preuve.json").is_file()
+
+
+def test_destination_remplacee_apres_renommage_reste_intacte(tmp_path, atelier, monkeypatch):
+    """Une cible qui ne désigne plus le stage est refusée sans toucher au tiers."""
+    import benchab.qualite.reprise_export as reprise
+
+    prive, _cible, _attendu = atelier
+    sortie = tmp_path / "reprise"
+    detour = tmp_path / "stage-deplace"
+    renommer = reprise.renommer_exclusif
+
+    def substituer_apres_renommage(source, destination, **kwargs):
+        if Path(destination) == sortie:
+            renommer(source, detour, **kwargs)
+            sortie.mkdir()
+            (sortie / "projets.jsonl").write_bytes(b"dossier tiers\n")
+            return None
+        return renommer(source, destination, **kwargs)
+
+    monkeypatch.setattr(reprise, "renommer_exclusif", substituer_apres_renommage)
+    with pytest.raises(ValueError, match="ne désigne plus le dossier préparé"):
+        reprise.preparer(prive, "projets", sortie)
+
+    assert (sortie / "projets.jsonl").read_bytes() == b"dossier tiers\n"
+    assert (detour / "projets.jsonl").is_file()
+    assert not list(tmp_path.glob(".reprise.quarantaine-*"))

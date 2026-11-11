@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import stat
+import uuid
 from contextlib import closing, contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -102,14 +103,78 @@ def _produire(connexion, table, fichier):
     return lignes, octets, empreinte.hexdigest()
 
 
+def _identite_dossier(chemin):
+    """Retourne dev/inode d’un dossier réel, sans suivre de lien symbolique."""
+    info = chemin.lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError("Le dossier publié n’est pas un dossier régulier.")
+    return info.st_dev, info.st_ino
+
+
+@contextmanager
+def _ouvrir_dossier_epingle(chemin):
+    """Ouvre et ferme un dossier régulier sans suivre de lien symbolique."""
+    fd = os.open(chemin, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def _sha_membre(dossier_fd, nom):
+    """Hache un membre régulier relatif à un dossier épinglé, sans suivre de lien."""
+    avant = os.stat(nom, dir_fd=dossier_fd, follow_symlinks=False)
+    if not stat.S_ISREG(avant.st_mode):
+        raise ValueError("Un membre temporaire n’est pas un fichier régulier.")
+    signature = _signature_export(avant)
+    fd = os.open(nom, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dossier_fd)
+    hachage = hashlib.sha256()
+    with os.fdopen(fd, "rb") as flux:
+        if _signature_export(os.fstat(flux.fileno())) != signature:
+            raise ValueError("Un membre temporaire a changé pendant son ouverture.")
+        for bloc in iter(lambda: flux.read(1024 * 1024), b""):
+            hachage.update(bloc)
+        if _signature_export(os.fstat(flux.fileno())) != signature:
+            raise ValueError("Un membre temporaire a changé pendant sa lecture.")
+    courant = os.stat(nom, dir_fd=dossier_fd, follow_symlinks=False)
+    if _signature_export(courant) != signature:
+        raise ValueError("Un membre temporaire a été remplacé pendant sa lecture.")
+    return hachage.hexdigest()
+
+
+def _quarantiner(destination, identite_stage):
+    """Conserve en quarantaine un dossier publié altéré, seulement si son inode est le stage."""
+    if _identite_dossier(destination) != identite_stage:
+        raise ValueError("La cible ne désigne plus le dossier préparé ; aucun tiers déplacé.")
+    for _ in range(8):
+        quarantaine = destination.with_name(f".{destination.name}.quarantaine-{uuid.uuid4().hex}")
+        try:
+            renommer_exclusif(destination, quarantaine)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise ValueError("Aucun nom de quarantaine neuve disponible.")
+    if _identite_dossier(quarantaine) != identite_stage:
+        # Une course a substitué la source après le contrôle. Si la destination
+        # est toujours libre, restaurer le dossier déplacé sans écrasement.
+        try:
+            renommer_exclusif(quarantaine, destination)
+        except (FileExistsError, OSError):
+            pass
+        raise ValueError("Le dossier déplacé en quarantaine n’est pas le stage attendu.")
+    return quarantaine
+
+
 def preparer(prive, table, sortie):
     """Publie une copie neuve d’une table absente, avec preuve JSON, hors export/.
 
     Reçoit la racine privée, une table BENCHAB et un dossier de sortie absent.
     PASS signifie que le JSONL (octets, lignes) relu égale l’empreinte du
-    manifeste et le contenu d’un instantané SQLite en lecture seule.
-    ValueError ou OSError signifie refus ; aucune copie n’est appliquée,
-    aucun original ni table SQLite n’est modifié.
+    manifeste et le contenu d’un instantané SQLite en lecture seule ; le JSONL
+    et la preuve sont rehachés après renommage. Une divergence conserve le stage
+    en quarantaine et refuse le PASS. ValueError ou OSError signifie refus ;
+    aucune copie n’est appliquée, aucun original ni table SQLite n’est modifié.
     """
     if table not in TABLES:
         raise ValueError("Table d’export BENCHAB inconnue.")
@@ -146,13 +211,47 @@ def preparer(prive, table, sortie):
                 "manifeste_sha256": sha_manifeste, "version_sqlite": version,
                 "limite": "Copie vérifiée d’une seule table, non appliquée ; aucune reconstruction de base.",
             }
-            (dossier / "preuve.json").write_text(json.dumps(rapport, ensure_ascii=False, indent=2) + "\n",
-                                                 encoding="utf-8")
+            preuve = dossier / "preuve.json"
+            preuve.write_text(json.dumps(rapport, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            with _ouvrir_dossier_epingle(dossier) as stage_fd:
+                info_stage = os.fstat(stage_fd)
+                identite_stage = (info_stage.st_dev, info_stage.st_ino)
+                attendus = {membre: _sha_membre(stage_fd, membre) for membre in (nom, "preuve.json")}
             _verifier_journal(base)
             if _signature_sqlite(base) != signature_base:
                 raise ValueError("La base SQLite a changé pendant la préparation.")
             _verifier_membre_export(fd, "manifest.json", signature_manifeste)
             _absence(fd, nom)
             verifier_dossier()
-            renommer_exclusif(dossier, destination)
+            if _identite_dossier(dossier) != identite_stage:
+                raise ValueError("Le dossier temporaire a été remplacé avant publication.")
+            with _ouvrir_dossier_epingle(dossier) as stage_fd:
+                info_stage = os.fstat(stage_fd)
+                if (info_stage.st_dev, info_stage.st_ino) != identite_stage:
+                    raise ValueError("Le dossier temporaire a été remplacé avant publication.")
+                renommer_exclusif(dossier, destination)
+                if _identite_dossier(destination) != identite_stage:
+                    raise ValueError("La cible ne désigne plus le dossier préparé ; aucun tiers déplacé.")
+                try:
+                    dest_fd = os.open(destination, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                    try:
+                        identite_publiee = (os.fstat(dest_fd).st_dev, os.fstat(dest_fd).st_ino)
+                        if identite_publiee != identite_stage:
+                            raise ValueError("La cible ne désigne plus le dossier préparé ; aucun tiers déplacé.")
+                        reels = {membre: _sha_membre(dest_fd, membre) for membre in attendus}
+                    finally:
+                        os.close(dest_fd)
+                    if _identite_dossier(destination) != identite_stage:
+                        raise ValueError("La cible ne désigne plus le dossier préparé ; aucun tiers déplacé.")
+                    if reels != attendus:
+                        raise ValueError("Les SHA des fichiers publiés diffèrent du stage épinglé.")
+                except (OSError, ValueError) as erreur:
+                    if _identite_dossier(destination) != identite_stage:
+                        raise ValueError(
+                            "La cible ne désigne plus le dossier préparé ; aucun tiers déplacé."
+                        ) from erreur
+                    quarantaine = _quarantiner(destination, identite_stage)
+                    raise ValueError(
+                        f"Contenu publié illisible ou modifié ; dossier conservé en quarantaine : {quarantaine.name}"
+                    ) from erreur
     return rapport

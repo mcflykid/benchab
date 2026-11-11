@@ -100,6 +100,10 @@ La table (64 Mio maximum) est sérialisée dans le même ordre et le même forma
 que lors de l’export normal. La publication exclusive conserve le JSONL
 et `preuve.json` ensemble si le SHA-256 relu correspond au SHA déjà déclaré
 dans le manifeste. Une cible existante, liée, une source modifiée ou un SHA
-divergent donnent un refus sans dossier final. Les autres tables ne sont
+divergent donnent un refus sans dossier final. Après le renommage, les SHA du
+JSONL et de `preuve.json` sont relus depuis le dossier publié épinglé ; tout
+écart conserve le dossier sous un nom de quarantaine neuf et refuse le PASS.
+Si la cible a été remplacée par un tiers, elle reste intacte et le contrôle
+refuse la reprise. Les autres tables ne sont
 pas évaluées par cette commande. Le statut PASS qualifie une **copie non
 appliquée**, et ne dispense pas d’un contrôle de cohérence avant toute reprise.
