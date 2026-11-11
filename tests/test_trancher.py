@@ -387,6 +387,33 @@ def test_validation_machine_refuse_membre_projet_ambigu_ou_trop_grand(tmp_path, 
     assert source.read_bytes() == avant
 
 
+@pytest.mark.parametrize(
+    ("modele", "message"),
+    [("Anycubic Kobra S1 Max", "Modèle embarqué"), ("Anycubic Kobra S1 Combo", "différente entre source et copie")],
+)
+def test_validation_machine_recontrole_la_copie_reellement_destinee_au_moteur(monkeypatch, modele, message):
+    """Une copie transformée doit conserver la machine admise par le premier contrôle."""
+    with tempfile.TemporaryDirectory(prefix="benchab-copie-machine-", dir="/private/tmp") as racine:
+        dossier = Path(racine)
+        source = entree_3mf(dossier / "source.3mf")
+        travail = dossier / "travail"
+        travail.mkdir()
+        monkeypatch.setattr(trancher.tempfile, "mkdtemp", lambda **_options: str(travail))
+
+        def normalisation_divergente(_source, copie, *_args, **_options):
+            entree_3mf(copie, modele=modele)
+            return {}
+
+        def lancement_interdit(*_args, **_options):
+            raise AssertionError("Le moteur ne doit pas recevoir la copie divergente.")
+
+        monkeypatch.setattr(trancher, "normaliser", normalisation_divergente)
+        monkeypatch.setattr(trancher.subprocess, "Popen", lancement_interdit)
+        with pytest.raises(ValueError, match=message):
+            trancher._executer({"source": str(source), "destination": str(dossier / "sortie.3mf")})
+        assert not (dossier / "sortie.3mf").exists()
+
+
 def test_delai_tue_le_groupe_cree_sans_toucher_parent(tmp_path, monkeypatch):
     """Le timeout signale le seul PGID créé par le slicer et conserve wait4/CPU."""
     with tempfile.TemporaryDirectory(prefix="benchab-timeout-groupe-", dir="/private/tmp") as racine:

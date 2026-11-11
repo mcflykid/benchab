@@ -245,7 +245,7 @@ def inspecter_options(*, prive=None, mode="aide"):
 
 
 def _verifier_machine_embarquee(source):
-    """Vérifie le modèle et la buse en mm du 3MF ; retourne None ou lève ValueError.
+    """Vérifie le modèle et la buse en mm du 3MF ; retourne leurs valeurs ou lève ValueError.
 
     La lecture bornée refuse un projet ambigu. Aucun profil installé n'est lu ni aucun réglage modifié.
     """
@@ -265,6 +265,7 @@ def _verifier_machine_embarquee(source):
     buse = reglages.get("nozzle_diameter")
     if machine.get("buse_mm") != 0.4 or buse not in (["0.4"], [0.4]):
         raise ValueError("Buse embarquée différente de l’unique 0,4 mm : lancement refusé.")
+    return modele, tuple(buse)
 
 
 def _terminer_groupe_slicer(groupe, *, grace_s=0.3):
@@ -308,7 +309,7 @@ def _executer(demande):
         raise ValueError("Sortie 3MF distincte de la source exigée")
     # Le contrôle porte sur les deux champs effectivement embarqués : aucun preset
     # installé n'est résolu ou lu (docs/reference/reglages-et-integrite.md).
-    _verifier_machine_embarquee(source)
+    machine_source = _verifier_machine_embarquee(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         raise ValueError("Destination existante : aucune sortie n'est écrasée.")
@@ -322,6 +323,10 @@ def _executer(demande):
         demande.get("usage", "impression"),
         identifiants=demande.get("identifiants"),
     )
+    # Le moteur reçoit la copie, pas le chemin déjà vérifié avant la
+    # normalisation. Un modèle admis mais différent reste un écart (#186).
+    if _verifier_machine_embarquee(entree) != machine_source:
+        raise ValueError("Machine embarquée différente entre source et copie : lancement refusé.")
     from benchab.fabrication import origine_3mf
 
     executable = str(charger()["slicer"]["executable"])
