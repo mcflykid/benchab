@@ -194,8 +194,8 @@ non modifiés et les différences de réglages déclarées (#202). La
 normalisation, les noms, les hauteurs et le remplacement de maillage
 gardent leur propre déclaration d’intégrité avant/après.
 
-Deux validateurs conservent leur format de lecture spécialisé : l’import
-`paquet_3mf` examine d’abord l’index OPC sur octets bornés, et
+Deux validateurs conservent leur format de lecture spécialisé. Le contrôle
+`paquet-3mf` examine d’abord le répertoire central ZIP sur octets bornés, et
 `finition_parois` interprète un instantané mémoire immuable qui peut être
 un G-code simple. Les contrôles de qualité des paquets ZIP/TAR génériques
 conservent leurs budgets de parcours et ne chargent pas de réglages 3MF.
@@ -213,3 +213,29 @@ La synthèse écarte aussi une archive lorsque deux membres désignent le même
 numéro de plaque, même si les deux SHA figurent dans la fiche. Elle garde
 les autres sources valides et laisse un diagnostic. Une plaque unique
 `plate_01.gcode` garde son nom exact pour la comparaison à la fiche (#213).
+
+## Inspecter la structure d’un paquet
+
+`benchab controle paquet-3mf ARCHIVE.3mf` affiche le SHA-256 de l’archive,
+les empreintes des membres et les résultats des contrôles de structure et de
+CRC. L’inspection lit un instantané borné en mémoire. Elle relève les clés du
+membre exact `Metadata/project_settings.config` via le dictionnaire typé.
+Le verdict `INSPECTION_STRUCTURELLE_TERMINEE` porte sur la lecture du paquet.
+Les champs `ready_to_send` et `physically_validated` restent à `false`.
+
+| Option | Budget par défaut | Plafond |
+| --- | ---: | ---: |
+| `--archive-mio` | 64 Mio | 512 Mio |
+| `--membre-mio` | 64 Mio | 512 Mio |
+| `--total-mio` | 256 Mio | 1 024 Mio |
+| `--membres` | 256 | 8 192 |
+| `--ratio` | 200 | 1 000 |
+| `--json-kio` | 1 024 Kio | 8 192 Kio |
+| `--profondeur-json` | 32 | 64 |
+| `--noeuds-json` | 20 000 | 200 000 |
+
+Avec `--resume --sortie RAPPORT.json`, le JSON complet est écrit sous
+l’atelier privé avant l’affichage du statut, du SHA et des compteurs.
+`--json` est un alias de `--sortie`. Avec la destination seule, la commande
+écrit le rapport sans affichage. Une inspection réussie renvoie 0, un
+refus renvoie 2 avec son motif sur la sortie d’erreur.

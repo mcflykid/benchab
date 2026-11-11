@@ -3,7 +3,7 @@
 Inspection bornée des ZIP/3MF, sans extraction ni qualification d'impression.
 
 Adaptation locale de RUVYKO/core/ruvyko_core/packet.py (30/10/2026).
-Provenance, plafonds et limites : PAQUETS-3MF.md. Aucun accès à RUVYKO à l'exécution.
+Voir docs/reference/integrite-3mf.md pour les budgets. Aucun accès à RUVYKO à l’exécution.
 
 
 """
@@ -335,7 +335,7 @@ def main(argv=None, *, prive=None):
     ]
     for option, field, scale in fields:
         parser.add_argument(
-            "--" + option, type=int, default=None, help="Budget explicite ; voir PAQUETS-3MF.md pour le plafond"
+            "--" + option, type=int, default=None, help="Budget explicite. Plafonds dans docs/reference/integrite-3mf.md."
         )
     args = parser.parse_args(argv)
     try:
