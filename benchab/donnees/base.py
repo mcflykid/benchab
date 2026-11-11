@@ -181,9 +181,12 @@ class Base:
 
     def exporter(self):
         """Un export cohérent, sérialisé et vérifiable après chaque transaction réussie."""
+        from benchab.chemins import sans_lien
+
         if self.connexion.in_transaction:
             raise ValueError("Terminer la transaction avant l'export")
-        with (self.prive / "cache/export.lock").open("a") as verrou:
+        chemin_verrou = sans_lien(self.prive / "cache/export.lock", racine=self.prive)
+        with chemin_verrou.open("a") as verrou:
             fcntl.flock(verrou, fcntl.LOCK_EX)
             self.connexion.execute("BEGIN")
             try:
@@ -191,24 +194,31 @@ class Base:
             finally:
                 self.connexion.rollback()
 
+    def _lignes_canoniques(self, table):
+        """Rend les lignes JSONL dans les mêmes octets pour comparaison et publication."""
+        for ligne in self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
+            texte = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
+            yield texte.encode("utf-8")
+
     def _ecrire_table_temporaire(self, table, dossier):
         """Sérialise une table SQLite en UTF-8 JSONL temporaire ; renvoie son SHA-256 hexadécimal."""
         fd, nom = tempfile.mkstemp(prefix=f".{table}-", dir=dossier)
         try:
             empreinte = hashlib.sha256()
-            with os.fdopen(fd, "w", encoding="utf-8") as flux:
-                lignes = self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id')
-                for ligne in lignes:
-                    contenu = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
-                    flux.write(contenu)
-                    empreinte.update(contenu.encode("utf-8"))
+            with os.fdopen(fd, "wb") as flux:
+                for octets in self._lignes_canoniques(table):
+                    flux.write(octets)
+                    empreinte.update(octets)
             return Path(nom), empreinte.hexdigest()
         except BaseException:
             Path(nom).unlink(missing_ok=True)
             raise
 
     def _exporter_tables(self):
-        dossier = self.prive / "export"
+        from benchab.chemins import sans_lien
+
+        # Base peut être ouverte depuis longtemps : ne pas reprendre un dossier lié (#138).
+        dossier = sans_lien(self.prive / "export", racine=self.prive, strict=True)
         empreintes = {}
         for table in TABLES:
             cible = dossier / f"{table}.jsonl"
@@ -226,9 +236,7 @@ class Base:
                 canonique = hashlib.sha256()
                 empreinte_existante = hashlib.sha256()
                 identique = True
-                for ligne in self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
-                    contenu = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
-                    octets = contenu.encode("utf-8")
+                for octets in self._lignes_canoniques(table):
                     canonique.update(octets)
                     existants = ancien.read(len(octets))
                     empreinte_existante.update(existants)

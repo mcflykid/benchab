@@ -194,3 +194,23 @@ def test_export_refuse_un_manifeste_lie(atelier_initialise, tmp_path):
     finally:
         lien.unlink()
         base.fermer()
+
+
+def test_export_refuse_dossier_remplace_par_un_lien(atelier_initialise, tmp_path):
+    """Un atelier déjà ouvert ne publie pas dans un autre dossier lié."""
+    base = Base(atelier_initialise, creer=False)
+    dossier = base.prive / "export"
+    avant = base.prive / "export-original"
+    autre = tmp_path / "destination-temoin"
+    autre.mkdir()
+    dossier.rename(avant)
+    dossier.symlink_to(autre, target_is_directory=True)
+    try:
+        with pytest.raises(ValueError, match="Lien symbolique refusé"):
+            base.exporter()
+        assert not list(autre.iterdir())
+        assert (avant / "manifest.json").is_file()
+    finally:
+        dossier.unlink()
+        avant.rename(dossier)
+        base.fermer()

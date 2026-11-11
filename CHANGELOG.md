@@ -13,6 +13,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Installation : voie OpenSkills facultative testée dans un projet jetable (#33).
 - Données : conserve inode et octets des JSONL canoniques, répare les exports divergents depuis SQLite et publie le manifeste en dernier ; première étape de #19.
 - Qualité : un seul graphe de dépendances par lot, avec la suite complète conservée pour le code (#34).
+- Données : revalidation du répertoire d’export et du verrou avant publication, même si l’atelier est déjà ouvert (#138).
 
 ## 1.3.0 — 2026-11-11
 
