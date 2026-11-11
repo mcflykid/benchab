@@ -107,3 +107,25 @@ et la commande affiche le chemin, les cinq groupes de plus grande aire et
 le nombre d’omissions. `--detail` affiche aussi le rapport complet. Sans
 ces options, la sortie historique est conservée. Les appuis et ponts restent
 NON VÉRIFIÉS dans le résumé.
+
+### Recette sur un coupon tranché
+
+Deux archives du même coupon, tranchées hors ligne avec le même binaire ASN
+2.0.0.3, conservent le même maillage placé. La carte relève une base à
+Z = 0 mm (168 mm², visées non qualifiées au niveau du plan) et un surplomb
+horizontal de 224 mm² à Z = 14,8 mm. Les visées échantillonnées du surplomb
+sont dégagées. Les deux réglages d’interface donnent respectivement 100 et
+64 segments de rôle `Support interface`.
+
+Dans les deux archives, 61 segments de rôle `Bridge` sont déposés à Z = 15 mm.
+Leurs axes mesurent 498,446 mm, dont 460,227 mm dans la projection XY du
+surplomb ; leur dessous nominal `Z - HEIGHT` coïncide avec Z = 14,8 mm à la
+précision de la recette. Le rôle `Internal Bridge` apparaît à Z = 17 mm ;
+sa projection XY recoupe aussi le surplomb mais son altitude ne correspond
+pas à cette surface. L’altitude évite donc d’attribuer ce second parcours au
+même surplomb sur la seule superposition des axes.
+
+Cette mesure ne tient pas compte de la largeur du cordon et ne prouve ni
+un appui, ni un pont imprimable, ni un retrait. Elle illustre une comparaison
+après tranchage pour un coupon et deux réglages d’interface, sans changer la
+classification des cartes avant tranchage (#93).
