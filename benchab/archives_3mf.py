@@ -12,6 +12,21 @@ from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
 
 
+def decoder_xml(contenu, *, limite_octets):
+    """Parse des octets ou du texte XML bornés ; renvoie une racine sans DTD ni entités déclarées.
+
+    Le texte est compté en octets UTF-8. Une limite dépassée ou une déclaration
+    interdite lève ValueError ; une syntaxe invalide lève ParseError.
+    """
+    donnees = contenu.encode("utf-8") if isinstance(contenu, str) else contenu
+    if len(donnees) > limite_octets:
+        raise ValueError("budget XML dépassé")
+    # UTF-16/32 intercale des NUL dans les déclarations ASCII, sans changer leurs mots.
+    if re.search(rb"<!\s*(?:DOCTYPE|ENTITY)\b", donnees.replace(b"\x00", b""), re.IGNORECASE):
+        raise ValueError("DOCTYPE et ENTITY sont interdits dans le XML 3MF")
+    return ElementTree.fromstring(contenu)
+
+
 class _FluxBorne(io.RawIOBase):
     """Relais séquentiel borné ; ferme le membre et vérifie sa taille à EOF."""
 
@@ -268,14 +283,7 @@ class Archive3MF:
         if self._infos[membre].file_size > self.taille_max_xml:
             raise ValueError(f"budget XML dépassé : {membre}")
         donnees = self.lire(membre, limite_octets=self.taille_max_xml)
-        # UTF-16/32 sans BOM intercale des NUL ; les retirer seulement pour le scan.
-        texte = donnees.decode("latin-1").replace("\x00", "")
-        if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", texte, re.IGNORECASE):
-            raise ValueError("DOCTYPE et ENTITY sont interdits dans le XML 3MF")
-        try:
-            return ElementTree.fromstring(donnees)
-        except ElementTree.ParseError:
-            raise
+        return decoder_xml(donnees, limite_octets=self.taille_max_xml)
 
     def reglages(self, membre="Metadata/project_settings.config"):
         """Décode les réglages via leur dictionnaire typé, sans normalisation nouvelle."""

@@ -1,9 +1,11 @@
 """Différentiel exact des réglages, contrôlé après sérialisation avant toute livraison."""
 
-from xml.etree import ElementTree as ET
-from zipfile import ZipFile
+import hashlib
 
 from benchab import reglages
+from benchab.archives_3mf import Archive3MF, decoder_xml
+
+_MAX_CONFIG = 8 * 1024 * 1024
 
 
 def instantane(chemin, *, avec_types=False):
@@ -11,30 +13,18 @@ def instantane(chemin, *, avec_types=False):
 
     Sans écriture ; une chaîne de nom d'objet ne peut pas forger la portée d'une métadonnée.
     """
-    with ZipFile(chemin) as archive:
-        noms = archive.namelist()
-        if len(noms) != len(set(noms)):
-            raise ValueError("Intégrité : membres 3MF dupliqués")
-        projet = {}
-        if "Metadata/project_settings.config" in noms:
-            projet = reglages.decoder(archive.read("Metadata/project_settings.config"))
-        modele = None
-        if "Metadata/model_settings.config" in noms:
-            if archive.getinfo("Metadata/model_settings.config").file_size > 8 * 1024 * 1024:
-                raise ValueError("Intégrité : modèle de réglages trop volumineux")
-            modele = archive.read("Metadata/model_settings.config")
-        plages = None
-        if "Metadata/layer_config_ranges.xml" in noms:
-            if archive.getinfo("Metadata/layer_config_ranges.xml").file_size > 8 * 1024 * 1024:
-                raise ValueError("Intégrité : plages de couches trop volumineuses")
-            plages = archive.read("Metadata/layer_config_ranges.xml")
+    # Même garde de chemin, d'index et de budget pour les lectures avant/après (#122).
+    with Archive3MF(chemin, taille_max_xml=_MAX_CONFIG) as archive:
+        noms = set(archive.noms())
+        projet = archive.reglages() if "Metadata/project_settings.config" in noms else {}
+        modele = archive.xml("Metadata/model_settings.config") if "Metadata/model_settings.config" in noms else None
+        plages = archive.xml("Metadata/layer_config_ranges.xml") if "Metadata/layer_config_ranges.xml" in noms else None
         profil = None
-        if "Metadata/layer_heights_profile.txt" in noms:
-            import hashlib
-
-            with archive.open("Metadata/layer_heights_profile.txt") as flux:
+        membre = "Metadata/layer_heights_profile.txt"
+        if membre in noms:
+            with archive.ouvrir_flux(membre) as flux:
                 profil = hashlib.file_digest(flux, "sha256").hexdigest()
-    etat, types = instantane_config(projet, modele, plages_couches=plages, avec_types=True)
+    etat, types = _instantane_config(projet, modele, plages, True)
     if profil is not None:
         # Ce format n'est pas interprété : figer son empreinte, sans permission de le transformer
         # (docs/reference/integrite-3mf.md, profils de couches).
@@ -49,13 +39,18 @@ def instantane_config(projet, modele=None, *, plages_couches=None, avec_types=Fa
 
     Retourne l'état et facultativement ses types ; les inconnus restent NON VÉRIFIÉS.
     """
+    racine_modele = None if modele is None else decoder_xml(modele, limite_octets=_MAX_CONFIG)
+    racine_plages = None if plages_couches is None else decoder_xml(plages_couches, limite_octets=_MAX_CONFIG)
+    return _instantane_config(projet, racine_modele, racine_plages, avec_types)
+
+
+def _instantane_config(projet, root, plages_couches, avec_types):
     etat = {"projet/" + cle: valeur for cle, valeur in reglages.Reglages(projet).items()}
     types = {"projet/" + cle: reglages.definition(cle, valeur=valeur) for cle, valeur in projet.items()}
     if plages_couches is not None:
         _lire_plages(plages_couches, etat, types)
-    if modele is None:
+    if root is None:
         return (etat, types) if avec_types else etat
-    root = ET.fromstring(modele)
 
     def lire(noeud, chemin_noeud, *, partie=False):
         if partie and "subtype" in noeud.attrib:
@@ -135,8 +130,7 @@ def _structure(noeud, objets):
     }
 
 
-def _lire_plages(contenu, etat, types):
-    racine = ET.fromstring(contenu)
+def _lire_plages(racine, etat, types):
     if racine.tag != "objects":
         raise ValueError("Intégrité : racine de plages de couches inconnue")
     etat["couches/@present"] = "true"

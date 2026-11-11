@@ -14,6 +14,7 @@ from xml.etree import ElementTree as ET
 
 from benchab import integrite_3mf
 from benchab import reglages as reglages_types
+from benchab.archives_3mf import Archive3MF
 from benchab.donnees.base import Base
 from benchab.fabrication import anycubic
 from benchab.machine.configuration import charger as charger_configuration
@@ -109,24 +110,23 @@ def _digest(valeur: dict) -> str:
 
 def lire_3mf(source: str | Path):
     """Lit un 3MF et renvoie réglages typés, XML et empreintes (unités natives) ; lecture seule."""
-    fichier = Path(source)
-    with zipfile.ZipFile(fichier) as archive:
-        noms = archive.namelist()
-        if archive.testzip() or len(noms) != len(set(noms)):
-            raise ValueError("3MF corrompu ou membres dupliqués.")
+    with Archive3MF(source) as archive:
+        noms = archive.noms()
         if any(re.fullmatch(r"Metadata/plate_\d+\.gcode", nom) for nom in noms):
             raise ValueError("Une source non tranchée est requise.")
-        if noms.count(CONFIGURATION) != 1 or noms.count(OBJETS) != 1:
-            raise ValueError("Réglages de projet ou objets absents/dupliqués dans le 3MF.")
-        reglages = reglages_types.decoder(archive.read(CONFIGURATION).decode("utf-8"))
+        if CONFIGURATION not in noms or OBJETS not in noms:
+            raise ValueError("Réglages de projet ou objets absents dans le 3MF.")
+        # L'ancien contrôle ZIP relisait aussi les membres non utilisés : garder cette preuve bornée (#122).
+        archive.verifier()
+        reglages = archive.reglages(CONFIGURATION)
         # Les identités et résidus restent qualifiés par le dictionnaire commun (#103).
         reglages.contexte.update(reglages_types.contexte_filaments(reglages))
-        xml = ET.fromstring(archive.read(OBJETS))
-        geometrie = {
-            nom: hashlib.sha256(archive.read(nom)).hexdigest()
-            for nom in noms
-            if nom.startswith("3D/") or nom in ("_rels/.rels", "[Content_Types].xml")
-        }
+        xml = archive.xml(OBJETS)
+        geometrie = {}
+        for nom in noms:
+            if nom.startswith("3D/") or nom in ("_rels/.rels", "[Content_Types].xml"):
+                with archive.ouvrir_flux(nom) as flux:
+                    geometrie[nom] = hashlib.file_digest(flux, "sha256").hexdigest()
     if not geometrie or not xml.findall("object"):
         raise ValueError("Réglages, objets ou géométrie absents.")
     return reglages, xml, geometrie
@@ -276,8 +276,8 @@ def _mesurer_geometrie(source: Path) -> dict:
 
     ns = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
     mesure_archive = []
-    with zipfile.ZipFile(source) as archive:
-        modele = ET.fromstring(archive.read("3D/Objects/pieces.model"))
+    with Archive3MF(source, taille_max_xml=Archive3MF.MAX_MEMBRE_OCTETS) as archive:
+        modele = archive.xml("3D/Objects/pieces.model")
         if modele.get("unit", "millimeter") != "millimeter":
             raise ValueError("Unité de maillage 3MF non millimétrique.")
         for objet in modele.findall(f".//{ns}object"):

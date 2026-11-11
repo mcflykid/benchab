@@ -191,3 +191,60 @@ def test_renumerotation_et_placement_d_assemblage(tmp_path):
     translate = _archive_structure(tmp_path / "translate.3mf", transform="1 0 0 0 1 0 0 0 1 8 0 0")
     with pytest.raises(ValueError, match="structure/assemblage"):
         integrite_3mf.verifier(source, translate)
+
+
+@pytest.mark.parametrize(
+    "membre,contenu",
+    [
+        ("Metadata/model_settings.config", b"<!DOCTYPE config><config/>"),
+        ("Metadata/layer_config_ranges.xml", b"<!DOCTYPE objects><objects/>"),
+    ],
+)
+def test_integrite_refuse_declarations_xml(tmp_path, membre, contenu):
+    """L’intégrité refuse les déclarations XML, même si les réglages sont vides."""
+    source = tmp_path / "source.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr(membre, contenu)
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        integrite_3mf.instantane(source)
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        if membre.endswith(".xml"):
+            integrite_3mf.instantane_config({}, plages_couches=contenu)
+        else:
+            integrite_3mf.instantane_config({}, modele=contenu)
+
+
+def test_integrite_profile_opaque_emprunte_les_blocs_bornes(tmp_path):
+    """Le profil opaque conserve son SHA sur plus d'un bloc de lecture."""
+    import hashlib
+
+    source = tmp_path / "source.3mf"
+    membre = "Metadata/layer_heights_profile.txt"
+    contenu = b"0 0.2\n" * 14000
+    with ZipFile(source, "w") as archive:
+        archive.writestr(membre, contenu)
+    etat, types = integrite_3mf.instantane(source, avec_types=True)
+    cle = "membre_non_interprete/" + membre
+    assert etat[cle] == hashlib.sha256(contenu).hexdigest()
+    assert types[cle]["type"] == "inconnu"
+
+
+@pytest.mark.parametrize("lecteur", ["optimisation", "plaques", "resultats"])
+def test_lecteurs_fabrication_utilisent_le_xml_borne(tmp_path, lecteur):
+    """Les accès de fabrication refusent le même document que le contrôle d'intégrité."""
+    from benchab.fabrication import anycubic, optimisation
+
+    source = tmp_path / "source.3mf"
+    xml = (
+        b'<!DOCTYPE config><config><object id="1"/><plate><metadata key="plater_name" value="T"/>'
+        b'<metadata key="index" value="1"/><metadata key="prediction" value="1"/>'
+        b'<metadata key="weight" value="1"/></plate></config>'
+    )
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", '{"top_shell_layers":"5"}')
+        archive.writestr("Metadata/model_settings.config", xml)
+        archive.writestr("Metadata/slice_info.config", xml)
+        archive.writestr("3D/model.model", b"<model/>")
+    lire = {"optimisation": optimisation.lire_3mf, "plaques": anycubic.noms_plaques, "resultats": anycubic.resultats}
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        lire[lecteur](source)

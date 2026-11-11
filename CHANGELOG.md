@@ -13,6 +13,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Lecture 3MF : réouverture avec un index et un quota neufs, réentrée simultanée refusée (#128) ; import des modèles et réglages sur le lecteur commun (#122).
 - Import : attribution déclarée des modèles, liée à leur SHA-256 et conservée à la reprise (#36).
 - Réglages : comparaison des valeurs énumérées avec les essais du binaire ASN identifié ; les replis observés échouent et les valeurs non essayées restent NON VÉRIFIÉES (première étape de #80).
+- Lecture 3MF : intégrité avant/après, noms et résultats de plaques et optimisation utilisent les limites et le décodage communs (suite de #122).
 
 ## 1.2.0 — 2026-11-11
 

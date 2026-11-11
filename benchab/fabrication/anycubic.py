@@ -30,6 +30,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from benchab import integrite_3mf
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.fabrication.reglages import normaliser_heritages
 from benchab.fabrication.trancher import restaurer_noms, trancher_fichier
 from benchab.gcode.lecture import lire_texte_gcode_3mf, membres_gcode_3mf
@@ -154,11 +155,7 @@ def charger_reglages_reference(path):
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
     path = Path(path)
     avant = sha256_fichier(path)
-    with ZipFile(path) as archive:
-        cle = "Metadata/project_settings.config"
-        if archive.namelist().count(cle) != 1 or archive.getinfo(cle).file_size > 8 * 1024**2:
-            raise ValueError("Un unique fichier de réglages 3MF, au plus 8 Mio, est requis")
-        valeurs = schema_reglages.decoder(archive.read(cle))
+    valeurs = schema_reglages.lire_3mf(path)
     if not isinstance(valeurs, dict) or not valeurs:
         raise ValueError("Les réglages du profil 3MF doivent être un objet non vide")
     if sha256_fichier(path) != avant:
@@ -470,11 +467,12 @@ def ecrire_3mf(plaques, settings, out, cli=False, *, nommer_source=False, canoni
 
 
 def noms_plaques(path):
-    with ZipFile(path) as z:
+    """Lit les noms déclarés des plaques, sans modifier l'archive ; ambiguïté refusée."""
+    with Archive3MF(path) as z:
         cle = "Metadata/model_settings.config"
-        if z.namelist().count(cle) != 1:
-            raise ValueError("modèle de plaques absent ou dupliqué")
-        plates = E.fromstring(z.read(cle)).findall("plate")
+        if cle not in z.noms():
+            raise ValueError("modèle de plaques absent")
+        plates = z.xml(cle).findall("plate")
         if not plates:
             raise ValueError("aucune plaque source déclarée")
         names = []
@@ -547,8 +545,9 @@ def trancher(src, outdir, nom, log=None, timeout=None, attendu=None, *, usage="i
 
 
 def resultats(t3mf):
-    with ZipFile(t3mf) as z:
-        si = E.fromstring(z.read("Metadata/slice_info.config"))
+    """Lit indices, durées (s), masses (g) et avertissements, sans changer le 3MF."""
+    with Archive3MF(t3mf) as z:
+        si = z.xml("Metadata/slice_info.config")
     out = []
     for p in si.findall("plate"):
         md = {m.get("key"): m.get("value") for m in p.findall("metadata")}
