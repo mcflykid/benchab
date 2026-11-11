@@ -11,6 +11,7 @@ from benchab.machine.profil_maitre import resoudre_preset
 
 
 def cible():
+    """Retourne les noms de modèles du slicer et le diamètre de buse en mm."""
     machine = charger()["machine"]
     return set(machine["modeles_slicer"]), float(machine["buse_mm"])
 
@@ -100,6 +101,7 @@ def inventorier(source):
 
 
 def main(argv=None):
+    """Inventorie les profils compatibles et peut écrire un nouveau rapport JSON."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", required=True, type=Path)
     p.add_argument("--json", type=Path)

@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 def charger():
+    """Charge le TOML machine explicite, embarqué ou du dépôt, dans cet ordre."""
     explicite = os.environ.get("BENCHAB_MACHINE")
     if explicite:
         with Path(explicite).open("rb") as flux:

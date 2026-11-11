@@ -509,6 +509,7 @@ def empreinte_contexte(*valeurs, **noms):
 
 
 def main(argv=None):
+    """Affiche les limites déclarées du mode demandé en JSON. Renvoie 0 ou sort au code 2."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--profil", type=Path)
     p.add_argument("--configuration-id")

@@ -44,7 +44,9 @@ class CloudErreur(ValueError):
 
 
 class SansRedirection(urllib.request.HTTPRedirectHandler):
+    """Interdit au transport HTTP de suivre une redirection."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Refuse la redirection avant toute requête vers la nouvelle URL."""
         raise CloudErreur("REDIRECTION_REFUSEE")
 
 
@@ -366,7 +368,9 @@ def projeter(detail, printer_id, *, recu_a=None, origine="INSTANTANE_LOCAL_NON_A
 
 
 class CloudLecture:
+    """Lit les données Cloud autorisées d’une imprimante, sans commande machine."""
     def __init__(self, access_token, app_id, app_secret, version, *, opener=None, clock=None):
+        """Valide les identifiants et prépare un transport et une horloge injectables."""
         if not all((_secret(v) for v in (access_token, app_id, app_secret, version))):
             raise CloudErreur("CONFIGURATION_CLOUD_INCOMPLETE")
         self._access = access_token
@@ -379,9 +383,11 @@ class CloudLecture:
         self._token = None
 
     def __repr__(self):
+        """Identifie le client en masquant ses secrets."""
         return "<CloudLecture lecture seule, secrets masques>"
 
     def __reduce__(self):
+        """Refuse la sérialisation du client qui contient les identifiants."""
         raise TypeError("Client Cloud non serialisable")
 
     def _requete(self, route, *, machine=None, auth=False):
@@ -529,6 +535,7 @@ class CloudLecture:
             self._token = None
 
     def relever(self, printer_id):
+        """Relève l’imprimante demandée en lecture seule et efface le jeton temporaire de la mémoire du client."""
         wanted = _id(printer_id)
         try:
             self._authentifier()
@@ -587,6 +594,7 @@ def relever_avec_compte(machine=None, *, session=None, opener=None, identite=Non
 
 
 def main(argv=None):
+    """Consulte l’état local, un instantané ou le Cloud en lecture seule. Renvoie 0 ou 2."""
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--cloud", action="store_true")
