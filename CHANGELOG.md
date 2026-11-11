@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir — 1.7.0
+## 1.7.0 — 2026-11-11
 
 - Tests : la recette CLI de sauvegarde simule l’espace libre sans changer la
   réserve appliquée aux sauvegardes réelles (#163).

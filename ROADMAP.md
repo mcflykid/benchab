@@ -87,7 +87,23 @@ complet privé (#35) et les études utilisent le lecteur 3MF borné (#122).
 Le chantier de cohérence des réglages est clos après vérification des deux
 volets livrés et des archives sources conservées (#39).
 
-## Prochaine version : 1.7.0
+## Version 1.7.0 — preuves de qualité et contrôles d’atelier
+
+Les rapports historiques des niveaux 1 et 3 restent en place. Un rejeu différent
+est publié séparément et un résultat déjà conservé est relu sans réécriture (#160).
+Une fiche privée relie un incident à un commit et à des fichiers de test précis ;
+elle ne prouve pas leur exécution (suite de #119).
+
+Les lecteurs communs couvrent de nouveaux parcours de qualité, d’études et de
+variantes (#122). La première couche refuse les alias de plaques (#162) et les
+résumés de variantes écartent les sources liées et les totaux non finis (#165).
+Les ponts et surplombs attribués peuvent décrire une enveloppe G17 (#123).
+Le bilan d’entretien reste conditionnel aux événements et seuils déclarés (#73).
+Le résumé des surplombs (#35), les annotations communes (#127) et le découpage
+de l’audit ACE (#68) complètent le lot. Aucune de ces vérifications numériques
+ne valide une impression physique.
+
+## Prochaine version : 1.8.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -97,13 +113,14 @@ Traiter les prérequis avant les nouveaux réglages :
   contrôle Ruff D10x introduit par #37.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
-  La mesure dans une boîte et l’enveloppe du dépôt peuvent utiliser la courbe ;
-  première couche, continuité et cinématique restent à qualifier. #133 a conservé
+  La mesure dans une boîte, l’enveloppe du dépôt et la revue des ponts et
+  surplombs attribués peuvent utiliser la courbe ; la première couche, la
+  continuité et la cinématique restent à qualifier. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
-- **Fichiers et archives** : #122 poursuit la migration des lecteurs après
-  l’aperçu, la préparation, le planning, les envois et les études. #112 étudie les remplacements ciblés
-  sans altérer le reste du 3MF.
+- **Fichiers et archives** : #122 poursuit la migration après les références,
+  la qualité, les variantes et les études déjà couvertes. #112 étudie les
+  remplacements ciblés sans altérer le reste du 3MF.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
   tout en détectant les exports corrompus.
@@ -150,12 +167,14 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 - #19 : coût des transactions. Un prototype de réemploi des JSONL préserve les
   octets, mais la validation des références parcourt encore la base. Le prototype
   ne suffit pas à clore le chantier.
-- #127 : rattrapage des annotations ; #68 : suite de la finition et de l’ACE.
-- #35 : compléter les rapports courts après les parcours d’envoi et de plages Z.
-- #119 : relier les incidents corrigés à leur preuve de non-régression. Une vue
-  canonique peut être régénérée après contrôle du plan et copie vérifiée de
-  l’ancienne vue. La cible d’un lien cassé peut être recréée par copie prouvée ;
-  les originaux absents et les autres familles de reprise restent à qualifier.
+- #127 : rattraper les annotations des contrôles et lanceurs après les
+  primitives communes de lecture, de copie et de publication.
+- #35 : compléter les rapports courts après les parcours d’envoi, de plages Z
+  et de surplombs.
+- #119 : relier la fiche d’incident à sa preuve de non-régression et qualifier
+  les autres familles de reprise. Une vue canonique peut être régénérée après
+  contrôle du plan et copie vérifiée de l’ancienne vue. La cible d’un lien cassé
+  peut être recréée par copie prouvée ; un original introuvable reste NON VÉRIFIÉ.
 
 La boucle attendue est : retour sourcé → défaut reproduit → correctif → test de
 régression → contrôle et relecture → livraison. Une vue peut être régénérée depuis
