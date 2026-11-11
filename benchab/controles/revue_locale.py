@@ -32,7 +32,7 @@ from pathlib import Path
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
-from benchab.qualite.ecritures import PublicationNeuve
+from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, sortie_privee
 
 # Critères de la revue P07 (26/10/2026), seuils théoriques jusqu'aux retours d'impression ; les réviser avec date.
 CRITERES = {
@@ -225,6 +225,28 @@ def revoir(tranche, envoi, revue_p, faits_p):
     return {"env": env, "faits": faits, "auto": auto, "gardees": gardees, "reste": reste, "plaques": resume_pl}
 
 
+def _valider_sorties_application(tranche, envoi, revue_p, faits_p):
+    """Valide les deux destinations privées et leurs identités avant toute lecture de l'application.
+
+    Entrées : chemins du tranchage, de l'envoi et des deux sorties ; unités sans objet.
+    Sortie : chemins de sortie privés ou temporaires distincts par nom et inode.
+    Refuse les alias par chemin canonique ou hardlink sans modifier les décisions existantes.
+    """
+    entrees = [_sans_lien(Path(chemin)) for chemin in (tranche, envoi)]
+    sorties = [sortie_privee(Path(chemin)) for chemin in (revue_p, faits_p)]
+    for sortie in sorties:
+        for entree in entrees:
+            if sortie.resolve() == entree.resolve():
+                raise ValueError("Collision entrée/sortie : aucun tranchage ni envoi ne sera écrasé.")
+            if sortie.exists() and entree.exists() and os.path.samefile(sortie, entree):
+                raise ValueError("Collision par identité de fichier : aucune entrée ne sera écrasée.")
+    if sorties[0].resolve() == sorties[1].resolve():
+        raise ValueError("Collision entre les sorties revue et faits.")
+    if sorties[0].exists() and sorties[1].exists() and os.path.samefile(sorties[0], sorties[1]):
+        raise ValueError("Collision par identité de fichier entre les sorties revue et faits.")
+    return sorties
+
+
 def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
     """Écrit les JSON de revue liés par SHA-256, dont les mesures en mm si fournies.
 
@@ -296,6 +318,8 @@ def main(argv):
     tranche = Path(argv[0])
     revue_p = opt("--revue", "REVUE-ZONES-LOCALES.json")
     faits_p = opt("--faits", "preuves/revue-locale-faits.json")
+    if "--appliquer" in argv:
+        revue_p, faits_p = _valider_sorties_application(tranche, opt("--envoi"), revue_p, faits_p)
     res = revoir(tranche, opt("--envoi"), revue_p, faits_p)
     sortie = {
         "zones": len(res["env"]["zones"]),

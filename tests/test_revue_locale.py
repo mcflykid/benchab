@@ -1,10 +1,13 @@
 """Tests de revue_locale.py (chantier K, lot 2) : G-code synthétique, aucun fichier réel touché."""
 
 import json
+import os
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+
+import pytest
 
 from benchab.controles import revue_locale as RL
 from benchab.controles import zones_locales as ZL
@@ -114,6 +117,122 @@ class Revue(unittest.TestCase):
         self.env.write_text(json.dumps({"zones_locales": {"tranche_sha256": "autre", "zones": []}}))
         with self.assertRaises(SystemExit):
             RL.revoir(self.tr, self.env, self.d / "r.json", self.d / "f.json")
+
+
+@pytest.mark.parametrize("sortie", ["revue", "faits"])
+@pytest.mark.parametrize("entree", ["tranche", "envoi"])
+def test_cli_refuse_sortie_reliee_a_une_entree_avant_revoir(tmp_path, monkeypatch, entree, sortie):
+    """Le parcours --appliquer ne lit pas les entrées si une sortie partage leurs octets."""
+    tranche = tmp_path / "tranche.3mf"
+    envoi = tmp_path / "envoi.json"
+    tranche.write_bytes(b"archive source intacte")
+    envoi.write_bytes(b"rapport envoi intact")
+    revue = tmp_path / "revue.json"
+    faits = tmp_path / "faits.json"
+    source = tranche if entree == "tranche" else envoi
+    cible = revue if sortie == "revue" else faits
+    try:
+        os.link(source, cible)
+    except OSError as erreur:
+        pytest.skip(f"liens physiques indisponibles dans le temporaire : {erreur}")
+    avant = {p: p.read_bytes() for p in (tranche, envoi, cible)}
+
+    def interdit(*_args, **_kwargs):
+        raise AssertionError("revoir ne doit pas lire les entrées en cas de collision")
+
+    monkeypatch.setattr(RL, "revoir", interdit)
+
+    with pytest.raises(ValueError, match="[Cc]ollision"):
+        RL.main([
+            str(tranche), "--envoi", str(envoi), "--revue", str(revue),
+            "--faits", str(faits), "--appliquer",
+        ])
+
+    assert {p: p.read_bytes() for p in avant} == avant
+    assert os.path.samefile(source, cible)
+
+
+def test_cli_refuse_sorties_hardlinkees_avant_revoir(tmp_path, monkeypatch):
+    """Les chemins revue/faits doivent désigner deux fichiers différents, même par hardlink."""
+    tranche = tmp_path / "tranche.3mf"
+    envoi = tmp_path / "envoi.json"
+    tranche.write_bytes(b"archive source intacte")
+    envoi.write_bytes(b"rapport envoi intact")
+    revue = tmp_path / "revue.json"
+    faits = tmp_path / "faits.json"
+    revue.write_bytes(b"decision humaine a conserver")
+    try:
+        os.link(revue, faits)
+    except OSError as erreur:
+        pytest.skip(f"liens physiques indisponibles dans le temporaire : {erreur}")
+    avant = revue.read_bytes()
+
+    def interdit(*_args, **_kwargs):
+        raise AssertionError("revoir ne doit pas commencer sur des sorties alias")
+
+    monkeypatch.setattr(RL, "revoir", interdit)
+
+    with pytest.raises(ValueError, match="[Cc]ollision"):
+        RL.main([
+            str(tranche), "--envoi", str(envoi), "--revue", str(revue),
+            "--faits", str(faits), "--appliquer",
+        ])
+
+    assert revue.read_bytes() == avant
+    assert faits.read_bytes() == avant
+    assert os.path.samefile(revue, faits)
+
+
+def test_cli_refuse_chemin_sortie_identique_avant_revoir(tmp_path, monkeypatch):
+    """Deux sorties absentes ne peuvent pas partager le même nom canonique."""
+    tranche = tmp_path / "tranche.3mf"
+    envoi = tmp_path / "envoi.json"
+    tranche.write_bytes(b"archive source intacte")
+    envoi.write_bytes(b"rapport envoi intact")
+    sortie = tmp_path / "sortie.json"
+
+    def interdit(*_args, **_kwargs):
+        raise AssertionError("revoir ne doit pas commencer avant le contrôle des sorties")
+
+    monkeypatch.setattr(RL, "revoir", interdit)
+
+    with pytest.raises(ValueError, match="[Cc]ollision"):
+        RL.main([
+            str(tranche), "--envoi", str(envoi), "--revue", str(sortie),
+            "--faits", str(sortie), "--appliquer",
+        ])
+
+    assert not sortie.exists()
+
+
+def test_cli_refuse_sorties_dans_checkout_public_avant_revoir(tmp_path, monkeypatch):
+    """Les deux sorties d'application doivent rester privées ou dans un temporaire hors dépôt."""
+    from benchab import chemins
+
+    tranche = tmp_path / "tranche.3mf"
+    envoi = tmp_path / "envoi.json"
+    tranche.write_bytes(b"archive source intacte")
+    envoi.write_bytes(b"rapport envoi intact")
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    monkeypatch.setenv("BENCHAB_PRIVE", str(prive))
+    monkeypatch.setattr(chemins, "racine_depot", lambda: checkout)
+
+    def interdit(*_args, **_kwargs):
+        raise AssertionError("les sorties publiques doivent être refusées avant revoir")
+
+    monkeypatch.setattr(RL, "revoir", interdit)
+
+    with pytest.raises(ValueError, match="privé ou temporaire"):
+        RL.main([
+            str(tranche), "--envoi", str(envoi), "--revue", str(checkout / "revue.json"),
+            "--faits", str(prive / "faits.json"), "--appliquer",
+        ])
+
+    assert not (checkout / "revue.json").exists()
+    assert not (prive / "faits.json").exists()
 
 
 if __name__ == "__main__":
