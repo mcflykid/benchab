@@ -267,7 +267,19 @@ paliers radiaux reproduisent l’effet numérique de la densité du cœur
 (#83). Une consigne XY modifie les trajets de support du coupon concentrique
 sans changement de l’écart Z médian (#89).
 
-## Prochaine version : 1.19.0
+## Version 1.19.0 — preuves d’incident, ponts et fraisages
+
+Une fiche d’incident peut confirmer une tentative CI publique sur le commit
+exact, séparément du contenu JUnit et sans requête par défaut (#119). Les
+axes de pont sont rapprochés d’un îlot horizontal et d’une plaque déclarés,
+sans conclure à un appui (#93).
+
+Crosszag est qualifié sur le binaire ASN observé ; le repli de 2dlattice
+est signalé (#80, #81). Les fiches CAO ajoutent un fraisage conique à cotes
+déclarées ; dix STEP synthétiques concordent avec les volumes et dimensions
+attendus, sans conformité ISO ni ajustement réel déduits (#27, #32).
+
+## Prochaine version : 1.20.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -305,7 +317,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 | Lot | Travaux restant ouverts |
 | --- | --- |
 | Concevoir et assembler | #32 : couvrir d’autres opérations cotées ; #27 : filetages, autres fixations et ajustements réels ; #29 : jeux et insertion des clips à mesurer |
-| Examiner les défauts | #93 : hypothèses de pont et comparaison aux trajectoires |
+| Examiner les défauts | #93 : distinguer les hypothèses avant tranchage ; poursuivre les recettes par îlot |
 | Répartir la matière | #83 : compléter les champs de distance et cadrer les contraintes ; #82 : prouver chaque effet G-code hors du coupon qualifié |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : propriétés Core, composants et conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
