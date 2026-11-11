@@ -423,8 +423,9 @@ des mêmes octets à 0 % de remplissage sont identiques hors horodatage.
 Le slicer estime 4,91 g et 1 183 s, contre 3,79 g et 893 s pour la peau
 protégée seule à 0 %, et 3,25 g et 861 s pour le bloc natif à 15 %.
 L’enveloppe est comparable ; les géométries et le réglage natif diffèrent.
-Les avertissements du moteur restent consignés. L’épaisseur maillée et
-la tenue restent à qualifier (#87).
+Le moteur a produit les quatre sorties avec un code 0 malgré deux
+messages d’erreur de calcul des zones exclues par cas. L’épaisseur
+maillée et la tenue restent à qualifier (#87).
 
 Le plan de consommation conserve ses limites et vérifie l’envoi depuis
 le lecteur qui l’inventorie, sans hachage intégral répété (#223). Les
