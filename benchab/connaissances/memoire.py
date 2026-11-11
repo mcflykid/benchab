@@ -40,7 +40,8 @@ def sha(p):
 def charger(root):
     """Charge le registre privé SQLite ou l’ancien JSON selon l’atelier.
 
-    La voie SQLite peut reprendre le registre d’origine si l’index manque.
+    Si l’index manque, la voie native peut importer le registre d’origine
+    dans SQLite. Le fichier d’origine reste conservé.
     """
     from benchab.connaissances import sqlite
 

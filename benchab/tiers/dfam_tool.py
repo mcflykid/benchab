@@ -353,7 +353,7 @@ def _scale_hint(mesh: trimesh.Trimesh) -> dict:
 
 
 def main(argv=None) -> int:
-    """Affiche les mesures de maillage en JSON, en mm et degrés selon le champ.
+    """Affiche les mesures de maillage en JSON, en mm, mm², mm³ ou degrés.
 
     Code 0 pour un rapport complet, 2 pour un résultat partiel et 1
     pour une source illisible. Aucune décision d’impression.
