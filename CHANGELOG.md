@@ -2,6 +2,12 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir — 1.4.0
+
+- G-code : mesure analytique des arcs G17 dans les régions de remplissage, avec reprise d’extrusion et repère G92 (suite de #123).
+- Densité : verdict numérique d’effet isolé par comparaison région/témoin hors zone (suite de #82).
+- Finition : le débit d’un arc peut donner FAIL même si sa couverture géométrique reste NON VÉRIFIÉE (#133).
+
 ## 1.3.0 — 2026-11-11
 
 - Réglages : contexte commun des slots filament, identités et ordre conservés, variantes suffixées appariées séparément et résidus NON VÉRIFIÉS (#103).
