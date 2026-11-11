@@ -2,6 +2,17 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.21.0 — 2026-11-11
+
+- Rejeux : compare deux ou trois reçus privés et les G-code qu’ils
+  identifient. Les divergences du style arborescent fort sont reproduites,
+  sans attribution de cause ni adoption automatique (#208).
+- Capacités machine : hache le 3MF dans le lecteur épinglé, sans charger
+  deux fois l’archive entière par son chemin. Les rapports valides
+  et U25 conservent leurs mesures (#210).
+- Arcs G17 : rapporte une demande nominale maximale par axe, séparée
+  de la cinématique et des vitesses physiques (suite de #123).
+
 ## 1.20.0 — 2026-11-11
 
 - Reprise : prépare une copie passive d’un original déclaré dans une

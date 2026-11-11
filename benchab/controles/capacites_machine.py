@@ -65,12 +65,11 @@ def _quantile(counter, fraction):
 
 def _analyser(p3mf, maitre=None, limites_filaments=None):
     path = Path(p3mf)
-    data = path.read_bytes()
     rapport = {
         "schema": 1,
         "statut": "NON VÉRIFIÉ",
         "decision": "À revoir",
-        "entrees": {"tranche": str(path), "tranche_sha256": _sha(data), "membres": {}},
+        "entrees": {"tranche": str(path), "membres": {}},
         "plaques": [],
         "contraintes": [],
         "metriques": {},
@@ -120,6 +119,9 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
         machine = {}
         note("profil maître", "FAIL", str(exc))
     with Archive3MF(path) as archive:
+        # Empreinte et mesures portent sur la même source régulière épinglée ;
+        # ne jamais lire tout le chemin avant les gardes du ZIP (#210).
+        rapport["entrees"]["tranche_sha256"] = archive.sha256()
         archive.verifier()
         settings = archive.reglages()
         if not isinstance(settings, dict):
@@ -130,6 +132,7 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
         # Conserver le cache par SHA tout en reliant chaque membre au contexte ouvert (#174).
         members = plaques_gcode_archive(archive)
         root_v = dict.fromkeys("XYZE", 0.0)
+        arcs_projetes = {"arcs_mesures": 0, "arcs_exclus": 0, "axes_max": dict.fromkeys("XYZ")}
         root_acc = {"axes": {}, "M204": {}, "M205": {}, "SET_VELOCITY_LIMIT": {}}
         total_time = total_volume = support_volume = purge_volume = 0.0
         changes = 0
@@ -341,11 +344,22 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                     continue
                 arc = move["trajectory"] == "arc_g17_xy"
                 if arc:
+                    # Demande tangentielle à F constant, distincte du verdict
+                    # historique des vitesses et de la cinématique (#123).
+                    try:
+                        demandes = geometrie_arc.vitesses_axes_nominales_g17(move)
+                    except ValueError:
+                        arcs_projetes["arcs_exclus"] += 1
+                    else:
+                        arcs_projetes["arcs_mesures"] += 1
+                        maxima = arcs_projetes["axes_max"]
+                        for axe, demande in demandes.items():
+                            maxima[axe] = max(maxima[axe] or 0.0, demande)
                     note(
                         "trajectoire géométrique",
                         "NON VÉRIFIÉ",
-                        "vitesses et accélérations par axe exigent une cinématique courbe ; "
-                        "aucune corde n'est utilisée",
+                        "vitesses atteintes et accélérations par axe exigent une cinématique courbe ; "
+                        "la projection de F nominale ne les qualifie pas",
                         plaque=number,
                         outil=move["tool"],
                         objet=move["object"],
@@ -744,8 +758,11 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
             "accelerations_mm_s2": root_acc,
             "groupes": all_groups,
         }
-    if _sha(path.read_bytes()) != rapport["entrees"]["tranche_sha256"]:
-        raise ValueError("source modifiée pendant lecture")
+        if arcs_projetes["arcs_mesures"] or arcs_projetes["arcs_exclus"]:
+            rapport["metriques"]["vitesses_mm_s"]["projection_nominale_arcs_g17"] = {
+                **arcs_projetes,
+                "portee": "arcs G17 reconnus uniquement ; demande à F constant, pas de preuve firmware",
+            }
     statuses = {c["statut"] for c in contraintes if c["obligatoire"]}
     rapport["statut"] = (
         "FAIL"
@@ -765,7 +782,10 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
 
 def analyser(p3mf, maitre=None, limites_filaments=None):
     """
-    Façade JSON totale : une entrée illisible est NO GO, jamais un rapport vide PASS.
+    Contrôle un 3MF en lecture seule ; distances en mm, débits en mm³/s et
+    durées nominales en s. Rapporte PASS/WARN/FAIL/NON VÉRIFIÉ ; source
+    illisible ou modifiée : FAIL/NO GO. Ne change aucun réglage, et le
+    SHA-256 vient du lecteur qui analyse les membres du même fichier.
     """
     try:
         return _analyser(p3mf, maitre, limites_filaments)

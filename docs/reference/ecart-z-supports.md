@@ -82,3 +82,31 @@ les empreintes d’entrée identiques. Les 646 profils relus et la référence
 sont intacts. La variabilité observée ne suffit pas à en isoler la cause :
 la répétabilité du style reste NON VÉRIFIÉE (#208, suite de #89). Aucun
 choix de support ni verdict physique ne découle de cet essai.
+
+### Comparer deux ou trois rejeux déjà publiés
+
+`benchab controle rejeux-gcode RECU1.json RECU2.json --plaque 1`
+lit les reçus privés du lanceur et relit les archives 3MF de sortie
+identifiées par SHA-256. Les reçus doivent déclarer la même empreinte
+source et la même empreinte de copie fournie au moteur. La commande
+ne démarre pas le trancheur et n’authentifie pas les exécutions.
+Un SHA de binaire absent des reçus reste NON VÉRIFIÉ.
+
+Le rapport distingue l’égalité du G-code brut, l’égalité après exclusion
+du seul horodatage de la deuxième ligne d’un bloc d’en-tête ASN complet,
+l’égalité des dépôts de
+support et celle de leurs agrégats (segments et mm par rôle). Le code 0
+indique l’égalité hors date, 1 une divergence conservée, 2 une comparaison
+NON VÉRIFIÉE faute de preuve ou de couverture. `--sortie` peut publier
+un JSON privé neuf. Une divergence ne désigne ni une cause ni une variante
+à adopter (#208).
+
+Trois nouveaux rejeux hors ligne ont lu le même fichier `tree_strong`
+depuis le même chemin source, avec des dossiers de travail distincts.
+Deux ont donné 22 669 segments `Support` (5 557,530 mm) et un
+22 638 segments (5 551,561 mm). Les archives et reçus de chaque essai
+restent distincts. Le rapport de comparaison signale WARN ; le même
+contrôle reconnaît, sur deux archives de l’essai XY, une différence
+limitée à la date. Cela établit la variabilité dans les conditions
+observées, sans isoler sa cause ni la fréquence des résultats (#208).
+Les familles de support restent à qualifier dans #89.
