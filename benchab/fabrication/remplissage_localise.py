@@ -226,16 +226,24 @@ def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_regl
     """Compare l’effet de densité clairsemée du témoin ASN qualifié #48.
 
     Entrées : deux dictionnaires issus de la lecture 3MF, leurs G-codes, le SHA-256
-    du maillage et les deux régions nommées ``zone``/``hors_zone`` en mm. Cette
+    du maillage et les deux régions nommées ``zone``/``hors_zone`` en mm. Ces
+    éléments forment un contexte déclaré, non authentifié par cette fonction.
     portée accepte seulement le binaire ASN R1, 20→60 % de
     ``sparse_infill_density``, un motif clairsemé qualifié, le rôle ``Sparse infill``
     et une même Application. Sortie :
     longueurs en mm et verdict PASS/FAIL/NON VÉRIFIÉ à 0,1 mm. Aucun réglage,
     profil, archive ni G-code n'est modifié ; aucune tenue physique n'est déduite.
-    Les champs peau/squelette verrouillés et autres rôles restent NON VÉRIFIÉS.
+    Les réglages passent par le dictionnaire typé ; les boîtes doivent être
+    strictement disjointes, contact compris. Les champs peau/squelette verrouillés
+    et autres rôles restent NON VÉRIFIÉS.
     """
     rapport = {
         "statut": "NON VÉRIFIÉ",
+        "provenance_contexte": "DÉCLARÉ, NON AUTHENTIFIÉ",
+        "limite_provenance": (
+            "Réglages, identités, Application, binaire déclaré et G-code sont des entrées de l’appelant ; "
+            "leur origine et leur liaison au 3MF ne sont pas authentifiées ici."
+        ),
         "type_trajet": type_trajet,
         "cle_reglage": cle_reglage,
         "delta_zone_mm": None,
@@ -269,8 +277,8 @@ def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_regl
             or not re.fullmatch(r"[0-9a-f]{64}", entree["sha_modificateur"])
         ):
             return inconnu("Identité, rôle ou SHA du modificateur absent ou invalide.")
-        if not isinstance(entree.get("reglages"), dict):
-            return inconnu("Réglages 3MF illisibles.")
+        if not isinstance(entree.get("reglages"), schema_reglages.Reglages):
+            return inconnu("Réglages non fournis par le dictionnaire typé.")
     if temoin["sha_geometrie"] != variante["sha_geometrie"]:
         return inconnu("Les maillages de référence et de variante diffèrent.")
     if temoin["application"] != variante["application"]:
@@ -302,16 +310,30 @@ def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_regl
         if not valides:
             return inconnu("Une boîte de mesure est invalide ou vide.")
     zone, controle = regions["zone"], regions["hors_zone"]
-    recouvrement = (
-        zone[0] < controle[2] and controle[0] < zone[2]
-        and zone[1] < controle[3] and controle[1] < zone[3]
-        and zone[4] < controle[5] and controle[4] < zone[5]
+    separent_strictement = (
+        zone[2] < controle[0] or controle[2] < zone[0]
+        or zone[3] < controle[1] or controle[3] < zone[1]
+        or zone[5] < controle[4] or controle[5] < zone[4]
     )
-    if recouvrement:
-        return inconnu("Les boîtes zone et hors_zone se recouvrent.")
+    if not separent_strictement:
+        return inconnu("Les boîtes zone et hors_zone se recouvrent ou se touchent.")
     reglages_a, reglages_b = temoin["reglages"], variante["reglages"]
+    absent = object()
+
+    def lire_reglage(donnees, cle):
+        """Lit une clé native par son schéma ; distingue son absence d’une valeur présente à None."""
+        if cle not in donnees:
+            return absent
+        return schema_reglages.valeur_brute(donnees, cle)
+
+    try:
+        valeurs_a = {cle: lire_reglage(reglages_a, cle) for cle in reglages_a.keys()}
+        valeurs_b = {cle: lire_reglage(reglages_b, cle) for cle in reglages_b.keys()}
+    except (TypeError, ValueError) as erreur:
+        return inconnu(f"Lecture typée des réglages impossible : {str(erreur)[:180]}")
     differents = {
-        cle for cle in reglages_a.keys() | reglages_b.keys() if reglages_a.get(cle) != reglages_b.get(cle)
+        cle for cle in valeurs_a.keys() | valeurs_b.keys()
+        if valeurs_a.get(cle, absent) != valeurs_b.get(cle, absent)
     }
     if differents != {cle_reglage}:
         return inconnu("Les variantes doivent différer uniquement par le réglage annoncé.")
@@ -328,14 +350,16 @@ def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_regl
             return None
         return nombre if nombre.is_finite() else None
 
-    valeur_a = nombre_reglage(reglages_a.get(cle_reglage))
-    valeur_b = nombre_reglage(reglages_b.get(cle_reglage))
-    motif_a = reglages_a.get("sparse_infill_pattern")
-    motif_b = reglages_b.get("sparse_infill_pattern")
+    valeur_brute_a = valeurs_a.get(cle_reglage, absent)
+    valeur_brute_b = valeurs_b.get(cle_reglage, absent)
+    motif_a = valeurs_a.get("sparse_infill_pattern", absent)
+    motif_b = valeurs_b.get("sparse_infill_pattern", absent)
+    valeur_a = nombre_reglage(valeur_brute_a) if valeur_brute_a is not absent else None
+    valeur_b = nombre_reglage(valeur_brute_b) if valeur_brute_b is not absent else None
     if (
         valeur_a is None
         or valeur_b is None
-        or [reglages_a.get(cle_reglage), reglages_b.get(cle_reglage)] != list(_DENSITES_MODIFICATEUR_QUALIFIEES)
+        or [valeur_brute_a, valeur_brute_b] != list(_DENSITES_MODIFICATEUR_QUALIFIEES)
         or motif_a != motif_b
         or not isinstance(motif_a, str)
         or motif_a not in _MOTIFS_ASN_QUALIFIES
@@ -353,7 +377,7 @@ def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_regl
     return {
         **rapport,
         **effet,
-        "valeurs_reglage": [reglages_a[cle_reglage], reglages_b[cle_reglage]],
+        "valeurs_reglage": [valeur_brute_a, valeur_brute_b],
         "sha_geometrie": temoin["sha_geometrie"],
         "identifiant_modificateur": temoin["identifiant_modificateur"],
         "sha_modificateur": temoin["sha_modificateur"],

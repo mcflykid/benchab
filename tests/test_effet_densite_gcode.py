@@ -2,6 +2,7 @@
 
 import pytest
 
+from benchab import reglages as schema_reglages
 from benchab.fabrication.remplissage_localise import (
     evaluer_effet_densite,
     evaluer_effet_reglage_gcode,
@@ -35,7 +36,9 @@ def _variante(gcode, *, densite, sha_geometrie="a" * 64, application="ASN fixtur
     """Constitue un témoin synthétique dont réglages et géométrie sont explicites."""
     return {
         "gcode": gcode,
-        "reglages": {"sparse_infill_density": densite, "sparse_infill_pattern": "gyroid"},
+        "reglages": schema_reglages.Reglages(
+            {"sparse_infill_density": densite, "sparse_infill_pattern": "gyroid"}
+        ),
         "sha_geometrie": sha_geometrie,
         "application": application,
         "version_slicer": "2.0.0.3",
@@ -67,6 +70,8 @@ def test_effet_gcode_lie_une_hausse_de_reglage_a_deux_regions_equivalentes():
     rapport = evaluer_effet_reglage_gcode(temoin, variante, REGIONS, "Sparse infill", "sparse_infill_density")
 
     assert rapport["statut"] == "PASS"
+    assert rapport["provenance_contexte"] == "DÉCLARÉ, NON AUTHENTIFIÉ"
+    assert "ne sont pas authentifiées" in rapport["limite_provenance"]
     assert rapport["delta_zone_mm"] == 10
     assert rapport["delta_hors_zone_mm"] == 0
     assert rapport["valeurs_reglage"] == ["20%", "60%"]
@@ -114,6 +119,40 @@ def test_effet_reglage_refuse_des_regions_zone_et_controle_qui_se_recouvrent():
     rapport = evaluer_effet_reglage_gcode(temoin, variante, regions, "Sparse infill", "sparse_infill_density")
 
     assert rapport["statut"] == "NON VÉRIFIÉ"
+
+
+def test_effet_reglage_refuse_les_regions_qui_se_touchent():
+    """Refuse des boîtes qui partagent une face, pour éviter le double compte."""
+    temoin = _variante(_gcode(10, 10), densite="20%")
+    variante = _variante(_gcode(20, 10), densite="60%")
+    regions = {"zone": [0, 0, 30, 10, 0, 10], "hors_zone": [30, 0, 70, 10, 0, 10]}
+
+    rapport = evaluer_effet_reglage_gcode(temoin, variante, regions, "Sparse infill", "sparse_infill_density")
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+
+
+def test_effet_reglage_refuse_les_dictionnaires_non_types():
+    """Refuse un dictionnaire brut qui contourne le schéma des réglages."""
+    temoin = _variante(_gcode(10, 10), densite="20%")
+    variante = _variante(_gcode(20, 10), densite="60%")
+    variante["reglages"] = dict(variante["reglages"])
+
+    rapport = evaluer_effet_reglage_gcode(temoin, variante, REGIONS, "Sparse infill", "sparse_infill_density")
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+
+
+def test_cle_presente_avec_none_ne_se_confond_pas_avec_cle_absente():
+    """Traite une valeur présente à None comme invalide, jamais comme absente."""
+    temoin = _variante(_gcode(10, 10), densite="20%")
+    variante = _variante(_gcode(20, 10), densite="60%")
+    variante["reglages"]["top_shell_layers"] = None
+
+    rapport = evaluer_effet_reglage_gcode(temoin, variante, REGIONS, "Sparse infill", "sparse_infill_density")
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["provenance_contexte"] == "DÉCLARÉ, NON AUTHENTIFIÉ"
 
 
 def test_effet_reglage_insuffisant_ne_devient_pas_fail():

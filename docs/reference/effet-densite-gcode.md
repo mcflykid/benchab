@@ -29,8 +29,13 @@ tant que leur consommation et leur effet n’ont pas été établis (#82).
 L’API `evaluer_effet_reglage_gcode` compare deux G-codes et exige que son appelant
 fournisse les réglages et le champ Application relus dans leurs 3MF, ainsi que le
 SHA du même maillage, le rôle `modifier_part`, l’identité et le SHA du même
-modificateur, et une paire commune de régions zone/hors-zone disjointes. Elle
-refuse une mesure si ces déclarations diffèrent ou si le binaire ne correspond
+modificateur, et une paire commune de régions zone/hors-zone strictement
+disjointes (un contact de faces est refusé). Les réglages sont lus par le
+dictionnaire typé. Le rapport marque ces valeurs **DÉCLARÉES, NON AUTHENTIFIÉES** :
+la fonction vérifie leur cohérence mutuelle, mais ne prouve ni leur provenance,
+ni leur lien avec le 3MF ou le binaire réellement utilisé. Le contrôle compare
+une seule fois le dépôt `Sparse infill` dans ce contexte déclaré. Elle refuse une
+mesure si ces déclarations diffèrent ou si le binaire déclaré ne correspond
 pas à ASN R1. Le seul changement admis dans cette portée est
 `sparse_infill_density` de 20 à 60 %, avec un motif clairsemé recensé par R1 et
 le rôle `Sparse infill`. Les
