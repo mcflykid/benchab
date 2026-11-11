@@ -2,17 +2,14 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir — 1.4.0
+## 1.4.0 — 2026-11-11
 
 - Slicer : regroupe les incidents inconnus uniquement par opération et contexte vérifiable ; conserve le plafond des causes identifiées (#143).
-
-- Fabrication : parcours explicite de revue et contrôle final d’une archive déjà tranchée, sans relancer le slicer (#106).
-
+- Fabrication : revue et contrôle final d’une archive déjà tranchée, avec conservation des décisions et mesures déclarées (#106).
 - Profils : signale les écarts documentés de matière, machine et procédé, avec les sources et les contrôles manquants visibles (#41).
-
-- Envoi : distingue la compatibilité documentée par produit et génération ACE, le carton, l’entrée arrière et le format de démarrage ASN qualifié (#71).
+- Envoi : contrôle documentaire du produit, de la génération ACE, du chemin d’alimentation, du carton, de la buse et du démarrage ASN qualifié (#71).
 - Aperçu : les plaques 3MF ambiguës sont refusées ; le catalogue peut reprendre une référence valide sans modifier les sources (#140, suite de #122).
-- Contrôle d’envoi : première étape #71, HRC et diamètre de buse déclarés de façon optionnelle, sans verdict de compatibilité physique.
+- Préparation et planning : lecture 3MF commune, contrôle des CRC, des numéros de plaque et des métadonnées XML (suite de #122).
 - Provenance : registre public de signalements communautaires contextualisés et non prescriptifs (#40).
 - G-code : mesure analytique des arcs G17 dans les régions de remplissage, avec reprise d’extrusion et repère G92 (suite de #123).
 - Densité : verdict numérique d’effet isolé par comparaison région/témoin hors zone (suite de #82).

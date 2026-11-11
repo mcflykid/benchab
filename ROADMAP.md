@@ -46,29 +46,40 @@ regroupe le lecteur 3MF borné, les rapports d’envoi et d’attribution, la
 première qualification des énumérations ASN et le témoin natif multi-volumes.
 Les travaux sans preuve suffisante restent ouverts dans la milestone suivante.
 
-## Prochaine version : 1.4.0
+## Version 1.4.0 — profils, envoi et réparation
+
+Le [CHANGELOG](CHANGELOG.md#140--2026-11-11) regroupe les changements de la
+version. Les contrôles rapprochent les profils fournis, la matière déclarée,
+la buse et le démarrage ASN (#38, #41, #71). Une archive déjà tranchée peut
+être revue sans relance du slicer (#106) et une copie peut recevoir une
+provenance liée par SHA-256 (#42). Le plan de réparation et son application
+se limitent à une vue canonique explicitement choisie (suite de #119).
+
+Les tests et la lecture 3MF continuent à partager leurs garde-fous. L’aperçu
+refuse une plaque ambiguë (#140), le verrou d’export reste confiné (#138) et
+le lanceur distingue les incidents inconnus sans lever le plafond des causes
+établies (#143). Aucun verdict numérique n’atteste une impression physique.
+
+## Prochaine version : 1.5.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
 Traiter les prérequis avant les nouveaux réglages :
 
-- **Annotations** : #37 active le contrôle Ruff D10x sur les portées nouvelles
-  ou modifiées et débloque #36, #35, #34, #33 et #42. #127 suit le rattrapage
-  des portées anciennes par lots.
+- **Annotations** : #127 suit le rattrapage des portées anciennes sous le
+  contrôle Ruff D10x introduit par #37.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
   La mesure dans une boîte peut utiliser la courbe ; la couverture des autres
   contrôles demeure NON VÉRIFIÉE tant qu’elle n’est pas qualifiée. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
-- **Fichiers et archives** : #122 poursuit la migration des familles hors contrôles ;
-  #42 suit la traçabilité 3MF.
-- **Contrôle avant envoi** : #71 pour ACE/buse/démarrage, #109 pour les
-  avertissements natifs, #111 pour les mesures structurées des zones locales.
-- **Provenance et profils** : la provenance du modèle (#36), le registre des
-  signalements communautaires (#40) et la comparaison aux profils fournis
-  (#38) sont disponibles dans la candidate. #103 factorise le contexte typé
-  des listes sans réindexation implicite. Restent notamment #41 et #42.
+- **Fichiers et archives** : #122 poursuit la migration des lecteurs après
+  l’aperçu, la préparation et le planning. #112 étudie les remplacements ciblés
+  sans altérer le reste du 3MF.
+- **Données et reprise** : #119 poursuit la récupération fondée sur les
+  empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
+  tout en détectant les exports corrompus.
 
 ### 2. Qualifier le comportement réel du slicer
 
@@ -83,7 +94,6 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Préparer sans reconstruire | #106 : revue locale et contrôle final d’une archive déjà tranchée |
 | Géométrie et 3MF | #105 : placement traçable ; #110 : intention de couverture Z ; #112 : remplacement ciblé ; #113 : échanges indexés de découpe |
 | Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages/inserts ; #29 : clips ; #31 : placement dans la visionneuse |
 | Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
@@ -108,12 +118,9 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 ### 5. Entretenir le code et organiser l’apprentissage
 
 - #18 : répartiteur CLI ; #19 : coût des transactions ; #23 : modules trop longs.
-- #66 et #67 : validation des requêtes et séparation des gabarits de la visionneuse.
 - #127 puis #69 : rattrapage des annotations et types ; #68 : finition et ACE.
 - #35 : rapports courts et détaillés, avec progression déjà apportée par le diagnostic.
-- #34 : évaluation du graphe de tests d’impact ; #33 : installation optionnelle.
-- #39 regroupe le savoir et la cohérence des réglages ; #40 porte la provenance
-  des connaissances, #41 les avertissements de cohérence et #75 la vitrine publique.
+- #39 regroupe le savoir et la cohérence des réglages ; #75 suit la vitrine publique.
 - #114 : lecture PDF optionnelle des guides, sans dépendance imposée à tous les usages.
 - #119 regroupe le diagnostic, la réparation conservatrice et l’apprentissage des
   incidents. Le plan passif signale les vues privées absentes ou divergentes.
