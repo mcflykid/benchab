@@ -10,6 +10,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.5.0 — 2026-11-11
 
+- Capacités machine : vérifie l’enveloppe XYZ analytique des dépôts G17 sans corde ;
+  vitesse et accélération par axe restent NON VÉRIFIÉES (#123).
 - Preuves : les contrôles historiques publient des fichiers neufs et la routine préserve les résultats précédents à la reprise (#152).
 - Débit U25 : la sortie de rapport ne peut plus écraser un 3MF source ni une preuve existante (#151).
 - Imports : produit un placement traçable depuis un 3MF et une déclaration liée par SHA-256, sans déduire les plaques, le repère ou les réglages (#105).

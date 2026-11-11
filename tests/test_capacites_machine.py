@@ -81,6 +81,8 @@ class Capacites(unittest.TestCase):
         group = next(x for x in r["plaques"][0]["groupes"] if x["volume_depose_mm3"] > 0)
         self.assertEqual(group["longueur_max_mm"], 10)
         self.assertEqual(group["vitesse_max_mm_s"], 10)
+        volume = next(c for c in r["contraintes"] if c["controle"] == "volume XYZ déposé")
+        self.assertEqual(set(volume["detail"]), {"bornes_mm", "debut", "fin"})
 
     def test_strict_minoritaire_meme_objet(self):
         g = BASE.replace("G1 X10 E1", "G1 X990 E10") + "T1\nM104 S210\nG1 X990.1 E.1\n"
@@ -123,6 +125,62 @@ class Capacites(unittest.TestCase):
         """Une corde ne qualifie ni les vitesses par axe ni le volume d'un arc."""
         resultat = self.analyser(BASE + "G2 X20 E1 I5 F600")
         self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+
+    def test_arc_depose_hors_volume_est_fail_meme_si_sa_corde_y_reste(self):
+        """Les extrema courbes détectent le dépassement Y que masque la corde."""
+        gcode = BASE.replace("G1 X10 E1", "G3 X10 Y0 R5 E1 F600")
+
+        resultat = self.analyser(gcode, machine=dict(MACHINE, volume_mm=[10, 4, 250]))
+
+        volume = next(c for c in resultat["contraintes"] if c["controle"] == "volume XYZ déposé")
+        self.assertEqual(volume["statut"], "FAIL")
+        self.assertLess(volume["detail"]["enveloppe_xyz_mm"][1][0], 0)
+        self.assertEqual(resultat["statut"], "FAIL")
+
+    def test_arc_cw_partiellement_retracte_verifie_seulement_le_depot(self):
+        """La partie rétractée avant le dépôt n'élargit pas l'enveloppe opposable."""
+        gcode = BASE.replace("G1 X10 E1", "G1 E-3\nG2 X10 Y0 R5 E4 F600")
+
+        resultat = self.analyser(gcode, machine=dict(MACHINE, volume_mm=[10, 4, 250]))
+
+        volume = next(c for c in resultat["contraintes"] if c["controle"] == "volume XYZ déposé")
+        self.assertEqual(volume["statut"], "PASS")
+        self.assertEqual(volume["detail"]["debut_depot_fraction"], 0.75)
+        self.assertAlmostEqual(volume["detail"]["enveloppe_xyz_mm"][1][1], 5 / math.sqrt(2))
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertTrue(
+            any(
+                c["controle"] == "trajectoire géométrique" and c["statut"] == "NON VÉRIFIÉ"
+                for c in resultat["contraintes"]
+            )
+        )
+
+    def test_arc_apres_g92_utilise_le_repere_spatial_pour_le_volume(self):
+        """Le contrôle du volume garde le repère physique continu après G92 XYZ."""
+        gcode = BASE.replace(
+            "G1 X10 E1",
+            "G1 X10 Y0 F600\nG92 X0 Y0\nG2 X10 Y0 I5 J0 E1 F600",
+        )
+
+        resultat = self.analyser(gcode, machine=dict(MACHINE, volume_mm=[15, 10, 250]))
+
+        volume = next(c for c in resultat["contraintes"] if c["controle"] == "volume XYZ déposé")
+        self.assertEqual(volume["statut"], "FAIL")
+        self.assertEqual(volume["detail"]["enveloppe_xyz_mm"][0], (10.0, 20.0))
+
+    def test_tolerance_enveloppe_arc_est_limitee_a_un_micrometre(self):
+        """Le petit flottement numérique est explicite et ne masque pas un vrai dépassement."""
+        gcode = BASE.replace("G1 X10 E1", "G1 E-3\nG2 X10 Y0 R5 E4 F600")
+        ymax = 5 / math.sqrt(2)
+
+        proche = self.analyser(gcode, machine=dict(MACHINE, volume_mm=[10, ymax - 5e-7, 250]))
+        depasse = self.analyser(gcode, machine=dict(MACHINE, volume_mm=[10, ymax - 2e-6, 250]))
+
+        proche_volume = next(c for c in proche["contraintes"] if c["controle"] == "volume XYZ déposé")
+        depasse_volume = next(c for c in depasse["contraintes"] if c["controle"] == "volume XYZ déposé")
+        self.assertEqual(proche_volume["statut"], "PASS")
+        self.assertEqual(proche_volume["detail"]["tolerance_mm"], 1e-6)
+        self.assertEqual(depasse_volume["statut"], "FAIL")
 
     def test_accelerations_axes_et_categories(self):
         cmds = "M201 X10000 Y10000 Z500 E5000\nM203 X600 Y600 Z20 E40\nM204 S10000\nM205 X9 Y9\n"
