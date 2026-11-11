@@ -225,6 +225,17 @@ def _position(parties, original, coupe, options, rayon, paroi):
     return point, n, np.vstack([np.c_[_repere(n), point], [0, 0, 0, 1]])
 
 
+def _dimensions_connecteur(options):
+    """Lit les trois cotes nominales en mm pour la génération et ses gardes."""
+    dimensions = {}
+    for cle, defaut in (("diametre", 6.0), ("longueur", 12.0), ("paroi_min", 1.2)):
+        v = options.get(cle, defaut)
+        if type(v) not in (int, float) or not math.isfinite(v) or not 0.2 <= v <= 500:
+            raise ValueError(f"{cle} : nombre fini entre 0,2 et 500 mm")
+        dimensions[cle] = float(v)
+    return dimensions
+
+
 def appliquer(original, parties, coupe, options=None):
     """Ajoute un connecteur nominal à deux maillages complémentaires et rend leur contrôle.
 
@@ -264,12 +275,7 @@ def appliquer(original, parties, coupe, options=None):
         v = np.asarray(effort, float)
         if v.shape != (3,) or not np.isfinite(v).all() or np.linalg.norm(v) < 1e-9:
             raise ValueError("Chaque effort doit être une direction finie non nulle")
-    dimensions = {}
-    for cle, defaut in (("diametre", 6.0), ("longueur", 12.0), ("paroi_min", 1.2)):
-        v = options.get(cle, defaut)
-        if type(v) not in (int, float) or not math.isfinite(v) or not 0.2 <= v <= 500:
-            raise ValueError(f"{cle} : nombre fini entre 0,2 et 500 mm")
-        dimensions[cle] = float(v)
+    dimensions = _dimensions_connecteur(options)
     r, longueur, paroi = dimensions["diametre"] / 2, dimensions["longueur"], dimensions["paroi_min"]
     outils_clip = _clip_nominal(type_, r, longueur, jeu, paroi) if clip else None
     rayon_position = outils_clip[3] if outils_clip else r + jeu / 0.85
@@ -426,9 +432,114 @@ def appliquer(original, parties, coupe, options=None):
     return resultats, separes, rapport
 
 
+def _coordonnees_placement(placement):
+    """Lit des paires UV en mm ou développe une ligne ou grille de neuf points au plus."""
+    if not isinstance(placement, dict):
+        raise ValueError("Placement des clips : objet JSON requis")
+    mode = placement.get("mode")
+    if mode == "manuel":
+        if set(placement) != {"mode", "positions_uv_mm"}:
+            raise ValueError("Placement manuel : positions_uv_mm requises")
+        positions = placement["positions_uv_mm"]
+        if not isinstance(positions, list) or not 1 <= len(positions) <= 9:
+            raise ValueError("Placement manuel : une à neuf positions UV requises")
+    elif mode in ("ligne", "grille"):
+        cles = {"mode", "centre_uv_mm", "colonnes", "pas_u_mm"}
+        if mode == "grille":
+            cles |= {"lignes", "pas_v_mm"}
+        if set(placement) != cles:
+            raise ValueError("Placement en ligne ou grille : centre, nombres et pas requis")
+        centre = _paire_uv(placement["centre_uv_mm"])
+        colonnes, lignes = placement["colonnes"], placement.get("lignes", 1)
+        if (
+            type(colonnes) is not int
+            or type(lignes) is not int
+            or not 1 <= colonnes <= 9
+            or not 1 <= lignes <= 9
+            or colonnes * lignes > 9
+        ):
+            raise ValueError("Placement en ligne ou grille : neuf clips au maximum")
+        pas_u, pas_v = placement["pas_u_mm"], placement.get("pas_v_mm", 1)
+        if any(type(p) not in (int, float) or not 0 < p <= 1000 for p in (pas_u, pas_v)):
+            raise ValueError("Pas de placement : nombres entre 0 et 1000 mm")
+        positions = [
+            [centre[0] + (colonne - (colonnes - 1) / 2) * pas_u, centre[1] + (ligne - (lignes - 1) / 2) * pas_v]
+            for ligne in range(lignes)
+            for colonne in range(colonnes)
+        ]
+    else:
+        raise ValueError("Placement des clips : mode ligne, grille ou manuel requis")
+    return [_paire_uv(position) for position in positions]
+
+
+def _paire_uv(valeur):
+    """Refuse des coordonnées de plan absentes, booléennes ou hors du domaine en mm."""
+    if (
+        not isinstance(valeur, list)
+        or len(valeur) != 2
+        or any(type(x) not in (int, float) or not -10000 <= x <= 10000 for x in valeur)
+    ):
+        raise ValueError("Position UV : deux nombres finis entre -10000 et 10000 mm requis")
+    return valeur
+
+
+def _appliquer_placement_clips(original, parties, coupe, options):
+    """Place les clips en repère du plan ; les gardes des logements doivent rester disjointes."""
+    if not isinstance(options.get("type"), str) or options["type"] not in _CLIPS or coupe.get("type") != "plan":
+        raise ValueError("Le placement groupé exige un clip et une coupe plane")
+    if "position" in options or "positions" in options:
+        raise ValueError("Ne pas mélanger placement UV et positions XYZ")
+    placement = options.pop("placement")
+    positions = _coordonnees_placement(placement)
+    origine, normale = _plan({k: coupe[k] for k in ("origine", "normale")})
+    repere = _repere(normale)
+    d = _dimensions_connecteur(options)
+    jeu, _ = politique_jeu(options)
+    garde = _clip_nominal(options["type"], d["diametre"] / 2, d["longueur"], jeu, d["paroi_min"])[2]
+    x0, y0, _, x1, y1, _ = garde.bounding_box()
+    for i, (u, v) in enumerate(positions):
+        for autre_u, autre_v in positions[:i]:
+            # Toutes les gardes ont le même axe et la même hauteur dans ce repère.
+            if abs(u - autre_u) <= x1 - x0 + 1e-6 and abs(v - autre_v) <= y1 - y0 + 1e-6:
+                raise ValueError("Les gardes des clips se touchent : écarter les positions")
+    modifiees, rapports = parties, []
+    for u, v in positions:
+        point = (origine + repere @ [u, v, 0]).tolist()
+        courant = (
+            original if not rapports else _vers_trimesh(solide(modifiees["dessous"]) + solide(modifiees["dessus"]))
+        )
+        modifiees, _, rapport = appliquer(courant, modifiees, coupe, {**options, "position": point})
+        rapports.append(rapport)
+    source = solide(original)
+    union = solide(modifiees["dessous"]) + solide(modifiees["dessus"])
+    bilan = reassemblage(
+        original,
+        modifiees,
+        volume_ajoute=float((union - source).volume()),
+        volume_retire=float((source - union).volume()),
+    )
+    controles = [{**c, "joint": i + 1} for i, r in enumerate(rapports) for c in r["controles"]]
+    return (
+        modifiees,
+        {},
+        {
+            "type": options["type"],
+            "placement": {"mode": placement["mode"], "positions_uv_mm": positions},
+            "nombre_joints": len(rapports),
+            "joints": rapports,
+            "controles": controles,
+            "reassemblage": bilan,
+            "statut": "FAIL" if bilan["statut"] == "FAIL" or any(c["statut"] == "FAIL" for c in controles) else "WARN",
+            "validation_physique": False,
+        },
+    )
+
+
 def appliquer_joints(original, parties, coupe, options=None):
-    """Un connecteur par îlot de section, pour les coupes de plusieurs branches."""
+    """Place les connecteurs par îlot ou par plan UV en mm ; rapporte WARN, FAIL ou NON VÉRIFIÉ."""
     options = dict(options or {})
+    if "placement" in options:
+        return _appliquer_placement_clips(original, parties, coupe, options)
     if options.get("type") == "aucun":
         return appliquer(original, parties, coupe, options)
     origine = coupe.get(

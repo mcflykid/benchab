@@ -73,5 +73,17 @@ Pour un jeu issu d’un témoin, déclarer dans `mesure_jeu` la convention
 la même `bobine` que dans les options du connecteur. Sinon, le haut de la
 plage de l’éprouvette ou de la plage explicitement sourcée reste NON MESURÉ.
 La qualification du jeu déclaré reste NON VÉRIFIÉE sans preuve U32 contrôlée.
-Une mesure sur une cheville ronde ne qualifie pas un clip. Le placement
-interactif des clips reste suivi dans #31.
+Une mesure sur une cheville ronde ne qualifie pas un clip.
+
+Dans la visionneuse, choisir **Ligne dans le plan**, **Grille dans le plan** ou
+**Coordonnées manuelles** dans **Positions des clips**. U et V sont les axes du
+plan local, en mm depuis son origine ; pour une coupe horizontale orientée
+vers +Z, ils correspondent à X et Y. Une ligne est centrée sur les coordonnées
+saisies et avance le long de U. Une grille avance aussi le long de V. Le nombre
+total est limité à neuf clips par coupe. Pour déplacer un clip calculé, passer
+aux coordonnées manuelles puis éditer U ou V.
+
+**Recalculer et enregistrer** ouvre une nouvelle page qui conserve le plan et
+affiche les positions calculées en turquoise. L’export reste soumis au contrôle
+du réassemblage, de la paroi et du recouvrement des gardes des clips. Il
+ne qualifie pas l’insertion ni la tenue physique (#31).
