@@ -22,11 +22,60 @@ from benchab.donnees.sauvegarde import (
 from benchab.qualite.ecritures import destination_neuve, renommer_exclusif
 
 _MAX_ENTREES = 100_000
+_MAX_TAILLE_EXTENSION = 8 * 1024**2
+_MAX_ENTETES_EXTENSION = _MAX_ENTREES
+_MAX_PROFONDEUR_EXTENSION = 8
 _MAX_ARCHIVE_OCTETS = 65 * 1024**3
 _TAILLE_BLOC = 1024**2
 _MAX_CARACTERES_CHEMIN = 4096
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,47}\Z")
+
+
+class _TarInfoBorne(tarfile.TarInfo):
+    """Borne les métadonnées d’extension avant le parseur standard du tar."""
+
+    @staticmethod
+    def _compter_extension(archive):
+        nombre = getattr(archive, "_benchab_entetes_extension", 0) + 1
+        if nombre > _MAX_ENTETES_EXTENSION:
+            raise ValueError("L’archive dépasse le budget d’entêtes d’extension TAR.")
+        archive._benchab_entetes_extension = nombre
+        profondeur = getattr(archive, "_benchab_profondeur_extension", 0) + 1
+        if profondeur > _MAX_PROFONDEUR_EXTENSION:
+            raise ValueError("L’archive dépasse le budget d’imbrication des extensions TAR.")
+        archive._benchab_profondeur_extension = profondeur
+
+    def _proc_pax(self, archive):
+        """Borne un corps PAX et refuse les métadonnées sparse avant leur interprétation."""
+        self._compter_extension(archive)
+        if not 0 <= self.size <= _MAX_TAILLE_EXTENSION:
+            raise ValueError("Un entête TAR dépasse le budget de 8 Mio.")
+        position = archive.fileobj.tell()
+        corps = archive.fileobj.read(self.size)
+        if len(corps) != self.size:
+            raise tarfile.ReadError("Corps d’entête PAX tronqué")
+        if b"GNU.sparse." in corps:
+            raise ValueError("Les métadonnées TAR sparse sont refusées.")
+        archive.fileobj.seek(position)
+        try:
+            return super()._proc_pax(archive)
+        finally:
+            archive._benchab_profondeur_extension -= 1
+
+    def _proc_gnulong(self, archive):
+        """Borne le nom GNU long avant que tarfile ne lise son corps."""
+        self._compter_extension(archive)
+        if not 0 <= self.size <= _MAX_CARACTERES_CHEMIN + 1:
+            raise ValueError("Un nom long TAR dépasse le budget de 4 096 caractères.")
+        try:
+            return super()._proc_gnulong(archive)
+        finally:
+            archive._benchab_profondeur_extension -= 1
+
+    def _proc_sparse(self, archive):
+        """Refuse tout membre sparse avant collecte de ses blocs complémentaires."""
+        raise ValueError("Les membres TAR sparse sont refusés.")
 
 
 def _objet_sans_doublons(paires):
@@ -131,6 +180,8 @@ def _indexer(tar):
             raise ValueError("Entrée d’archive dupliquée : " + nom)
         if not (item.isfile() or item.isdir()):
             raise ValueError("Entrée TAR spéciale ou lien refusé : " + nom)
+        if type(item.size) is not int or item.size < 0:
+            raise ValueError("Taille TAR négative ou invalide : " + nom)
         if item.isfile():
             if item.size > MAX_MEMBER:
                 raise ValueError("Membre d’archive au-delà du budget de 4 Gio : " + nom)
@@ -220,7 +271,7 @@ def preparer(prive, archive, sha256_archive, membre, sha256_source, sortie):
 
     with _ouvrir_archive(archive, sha256_archive) as (source_archive, flux_archive, signature_archive, octets_archive):
         try:
-            with tarfile.open(fileobj=flux_archive, mode="r:") as tar:
+            with tarfile.open(fileobj=flux_archive, mode="r:", tarinfo=_TarInfoBorne) as tar:
                 index = _indexer(tar)
                 item_manifeste = index.get(MANIFEST_NAME)
                 if item_manifeste is None or not item_manifeste.isfile() or item_manifeste.size > MAX_MANIFEST:

@@ -13,7 +13,7 @@ MEMBRE = "projets/fixture/sources/original.stl"
 
 def _archive(
     path: Path, *, contenu=b"STL synthetique\n", contenu_manifeste=None, manifeste_brut=None, nom=MEMBRE,
-    entrees_supplementaires=(),
+    entrees_supplementaires=(), pax_headers=None,
 ):
     """Construit une sauvegarde tar petite et reproductible pour les tests."""
     sha = hashlib.sha256(contenu if contenu_manifeste is None else contenu_manifeste).hexdigest()
@@ -35,6 +35,8 @@ def _archive(
         ):
             info = tarfile.TarInfo(membre)
             info.size = len(donnees)
+            if membre == nom and pax_headers:
+                info.pax_headers = pax_headers
             tar.addfile(info, io.BytesIO(donnees))
     return sha
 
@@ -251,6 +253,152 @@ def test_budget_du_membre_est_verifie_avant_extraction(tmp_path, monkeypatch):
     with tarfile.open(archive, "r:") as tar:
         with pytest.raises(ValueError, match="4 Gio"):
             reprise_source._indexer(tar)
+
+
+def test_taille_entete_pax_est_bornee_avant_lecture_du_corps(tmp_path, monkeypatch):
+    """Un entête PAX surdimensionné est refusé sur sa taille déclarée, sans corps alloué."""
+    import tarfile
+
+    from benchab.donnees import reprise_source
+
+    archive = tmp_path / "pax-volumineux.tar"
+    info = tarfile.TarInfo("pax")
+    info.type = tarfile.XHDTYPE
+    info.size = 5
+    archive.write_bytes(info.tobuf() + b"court")
+    monkeypatch.setattr(reprise_source, "_MAX_TAILLE_EXTENSION", 4, raising=False)
+    sha_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="entête TAR dépasse le budget"):
+        _appel(prive, archive, sha_archive, "0" * 64, prive / "rapports" / "sortie")
+
+    assert list((prive / "rapports").iterdir()) == []
+
+
+def test_nombre_entetes_extension_est_borne_independamment_des_membres(tmp_path, monkeypatch):
+    """Les en-têtes d’extension PAX comptent dans un plafond même sans membre retourné."""
+    import tarfile
+
+    from benchab.donnees import reprise_source
+
+    archive = tmp_path / "pax-nombreux.tar"
+    with tarfile.open(archive, "w") as tar:
+        for _ in range(2):
+            info = tarfile.TarInfo("pax")
+            info.type = tarfile.XHDTYPE
+            info.size = 0
+            tar.addfile(info)
+        info = tarfile.TarInfo("fin")
+        info.size = 0
+        tar.addfile(info)
+    monkeypatch.setattr(reprise_source, "_MAX_ENTETES_EXTENSION", 1)
+    with pytest.raises(ValueError, match="entêtes d’extension"):
+        with tarfile.open(archive, "r:", tarinfo=reprise_source._TarInfoBorne) as tar:
+            reprise_source._indexer(tar)
+
+
+def test_metadata_pax_valide_du_producteur_reste_prise_en_charge(tmp_path):
+    """Les chemins longs émis en PAX restent compatibles avec les archives BENCHAB."""
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+    archive = tmp_path / "sauvegarde-pax.tar"
+    membre = "projets/fixture/sources/" + ("nom" * 35) + ".stl"
+    contenu = b"source pax\n"
+    sha_source = _archive(archive, contenu=contenu, nom=membre)
+    sha_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    resultat = _appel(prive, archive, sha_archive, sha_source, prive / "rapports" / "copie", membre)
+
+    assert resultat["statut"] == "PASS"
+    assert (prive / "rapports" / "copie" / "source" / Path(membre).name).read_bytes() == contenu
+
+
+def test_metadata_pax_sparse_refusees_avant_parseur_sparse(tmp_path):
+    """Les extensions PAX GNU sparse sont refusées avant l’analyse des segments."""
+    import io
+    import tarfile
+
+    from benchab.donnees import reprise_source
+
+    corps = b""
+    donnees = b"GNU.sparse.size=1\n"
+    longueur = len(donnees) + 3
+    while True:
+        enregistrement = str(longueur).encode() + b" " + donnees
+        if len(enregistrement) == longueur:
+            corps = enregistrement
+            break
+        longueur = len(enregistrement)
+    archive = tmp_path / "sparse.tar"
+    with tarfile.open(archive, "w") as tar:
+        extension = tarfile.TarInfo("pax")
+        extension.type = tarfile.XHDTYPE
+        extension.size = len(corps)
+        tar.addfile(extension, io.BytesIO(corps))
+        membre = tarfile.TarInfo("sparse.bin")
+        membre.size = 0
+        tar.addfile(membre)
+
+    with pytest.raises(ValueError, match="TAR sparse"):
+        with tarfile.open(archive, "r:", tarinfo=reprise_source._TarInfoBorne):
+            pytest.fail("Les métadonnées sparse doivent être refusées à l’ouverture")
+
+
+def test_membre_gnu_sparse_refuse_avant_lecture_des_blocs_etendus(tmp_path):
+    """Un indicateur sparse GNU est refusé sans parcourir ses blocs d’extension."""
+    import tarfile
+
+    from benchab.donnees import reprise_source
+
+    archive = tmp_path / "gnu-sparse.tar"
+    info = tarfile.TarInfo("sparse")
+    info.type = tarfile.GNUTYPE_SPARSE
+    info.size = 0
+    archive.write_bytes(info.tobuf())
+
+    with pytest.raises(ValueError, match="TAR sparse"):
+        with tarfile.open(archive, "r:", tarinfo=reprise_source._TarInfoBorne):
+            pytest.fail("Le type sparse doit être refusé avant son traitement")
+
+
+def test_corps_pax_tronque_refuse_sans_sortie(tmp_path):
+    """Un corps d’extension tronqué produit un refus et ne publie aucun dossier."""
+    import tarfile
+
+    archive = tmp_path / "pax-tronque.tar"
+    info = tarfile.TarInfo("pax")
+    info.type = tarfile.XHDTYPE
+    info.size = 20
+    archive.write_bytes(info.tobuf() + b"court")
+    sha_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
+    prive = tmp_path / "prive"
+    rapports = prive / "rapports"
+    rapports.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="Archive tar illisible ou incomplète"):
+        _appel(prive, archive, sha_archive, "0" * 64, rapports / "sortie")
+
+    assert list(rapports.iterdir()) == []
+
+
+def test_chemin_pax_en_contradiction_avec_le_manifeste_refuse(tmp_path):
+    """Un nom PAX effectif différent du manifeste n’est pas copié comme la source attendue."""
+    prive = tmp_path / "prive"
+    rapports = prive / "rapports"
+    rapports.mkdir(parents=True)
+    archive = tmp_path / "pax-contradictoire.tar"
+    sha_source = _archive(
+        archive,
+        pax_headers={"path": "projets/fixture/sources/autre.stl"},
+    )
+    sha_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="Inventaire et archive différents"):
+        _appel(prive, archive, sha_archive, sha_source, rapports / "sortie")
+
+    assert list(rapports.iterdir()) == []
 
 
 def test_cli_prepare_depuis_tar_ne_ouvre_pas_base(tmp_path, capsys, monkeypatch):
