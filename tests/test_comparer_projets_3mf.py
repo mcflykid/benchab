@@ -593,7 +593,14 @@ def _archive_assemblee(path, *, couleur="1", translation="1 0 0 0 1 0 0 0 1 2 0 
     ET.SubElement(build, NS + "item", objectid="2", transform="1 0 0 0 1 0 0 0 1 10 0 0")
     relations = ET.Element(NS_REL + "Relationships")
     ET.SubElement(relations, NS_REL + "Relationship", Id="rModel", Type=REL_MODELE, Target="/3D/3dmodel.model")
+    ns_types = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+    types = ET.Element(ns_types + "Types")
+    ET.SubElement(types, ns_types + "Default", Extension="rels",
+                  ContentType="application/vnd.openxmlformats-package.relationships+xml")
+    ET.SubElement(types, ns_types + "Default", Extension="model",
+                  ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml")
     with ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", ET.tostring(types))
         archive.writestr("_rels/.rels", ET.tostring(relations))
         archive.writestr("3D/3dmodel.model", ET.tostring(racine))
 
@@ -608,6 +615,14 @@ def test_assemblage_a_une_feuille_compare_la_peinture_et_le_materiau(tmp_path):
     assert resultats["peinture"]["extensions_asn_prusa"]["statut"] == "WARN"
     assert resultats["peinture"]["proprietes_standard_3mf"]["statut"] == "PASS"
     assert resultats["peinture"]["statut"] == "NON VÉRIFIÉ"
+
+    from benchab.imports3d.lecture_3mf import lire
+
+    for archive in (source, candidat):
+        scene = lire(archive, identites=True)
+        assert scene.bounds.tolist() == [[12.0, 0.0, 0.0], [13.0, 1.0, 1.0]]
+        maillage, = scene.geometry.values()
+        assert maillage.is_watertight and maillage.volume == pytest.approx(1 / 6)
     assert (source.read_bytes(), candidat.read_bytes()) == avant
 
 
