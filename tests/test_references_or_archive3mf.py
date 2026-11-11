@@ -6,6 +6,7 @@ from zipfile import ZipFile
 
 import pytest
 
+from benchab.qualite import references_or
 from benchab.qualite.references_or import relever
 
 
@@ -63,4 +64,29 @@ def test_relever_refuse_indices_de_plaque_ambigus(tmp_path):
     ])
 
     with pytest.raises(ValueError, match="numéro de plaque dupliqué"):
+        relever(source)
+
+
+def test_relever_refuse_source_changee_pendant_lecture_secondaire(tmp_path, monkeypatch):
+    """La source reste liée au premier contexte quand les réglages sont relus par une autre fonction."""
+    source = tmp_path / "mutation.3mf"
+    _archive(source, [])
+
+    def muter(chemin):
+        chemin.write_bytes(chemin.read_bytes() + b"modification concurrente")
+        return {}
+
+    monkeypatch.setattr(references_or, "instantane", muter)
+
+    with pytest.raises(ValueError, match="modifiée|différente|changé"):
+        relever(source)
+
+
+def test_relever_refuse_ligne_gcode_au_dela_du_budget(tmp_path):
+    """Une ligne G-code supérieure à un Mio est refusée sans changer le hachage des lignes courtes."""
+    source = tmp_path / "ligne-longue.3mf"
+    gcode = b"G1 X" + b"1" * (1024 * 1024) + b"\n"
+    _archive(source, [("Metadata/plate_1.gcode", gcode)])
+
+    with pytest.raises(ValueError, match="ligne G-code dépasse le budget"):
         relever(source)

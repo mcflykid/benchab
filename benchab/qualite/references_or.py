@@ -6,13 +6,15 @@ from pathlib import Path
 
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.commandes_machine import controler as commandes_machine
-from benchab.gcode.lecture import plaques_gcode_archive
+from benchab.gcode.lecture import empreinte_3mf, plaques_gcode_archive
 from benchab.integrite_3mf import instantane
 from benchab.qualite.ecritures import _sans_lien
 
+MAX_LIGNE_GCODE_OCTETS = 1024 * 1024
+
 
 def _commandes_archive(archive):
-    """Empreinte les commandes G-code par flux borné après refus des membres et indices ambigus."""
+    """Empreinte les commandes G-code par flux et ligne bornés après contrôle des index ambigus."""
     plaques = plaques_gcode_archive(archive)
     noms_plaques = {nom for _, nom in plaques}
     commandes = {}
@@ -23,7 +25,9 @@ def _commandes_archive(archive):
         digest = hashlib.sha256()
         nombre = 0
         with archive.ouvrir_flux(nom) as flux:
-            for ligne in flux:
+            while ligne := flux.readline(MAX_LIGNE_GCODE_OCTETS + 1):
+                if len(ligne) > MAX_LIGNE_GCODE_OCTETS:
+                    raise ValueError(f"ligne G-code dépasse le budget de {MAX_LIGNE_GCODE_OCTETS} octets")
                 code = ligne.split(b";", 1)[0].strip()
                 if code:
                     digest.update(code + b"\n")
@@ -34,23 +38,36 @@ def _commandes_archive(archive):
 
 def relever(chemin):
     """Relit un 3MF ;
-    renvoie SHA, réglages en unités natives et commandes sans commentaires, sans slicer ni écriture."""
+    renvoie SHA, réglages en unités natives et commandes sans commentaires, avec lignes limitées à 1 Mio.
+    Les lectures secondaires restent liées au même fichier ; aucune écriture ni slicer.
+    """
     chemin = _sans_lien(Path(chemin).absolute())
     with Archive3MF(chemin) as archive:
         commandes = _commandes_archive(archive)
-    # Ces lectures restent des contextes indépendants : instantane conserve le dictionnaire typé complet,
-    # et commandes_machine garde son cache et ses propres gardes d'empreinte (docs/reference/integrite-3mf.md).
-    with chemin.open("rb") as flux:
-        digest = hashlib.file_digest(flux, "sha256").hexdigest()
-    # Le manifeste fixe la liste historique des réglages. La structure ajoutée
-    # au différentiel de transformation reste liée au SHA intégral de l’archive.
-    # Voir docs/reference/integrite-3mf.md.
-    reglages = {cle: valeur for cle, valeur in instantane(chemin).items() if not cle.startswith("structure/")}
+        # Les consommateurs gardent leurs propres règles et cache ; le contexte d'origine épingle l'identité commune.
+        archive.verifier_source(chemin)
+        digest = empreinte_3mf(chemin)
+        archive.verifier_source(chemin)
+        reglages = {cle: valeur for cle, valeur in instantane(chemin).items() if not cle.startswith("structure/")}
+        archive.verifier_source(chemin)
+        digest_apres_reglages = empreinte_3mf(chemin)
+        archive.verifier_source(chemin)
+        if digest_apres_reglages != digest:
+            raise ValueError("Archive modifiée pendant la lecture des réglages de référence")
+        analyse = None
+        if commandes:
+            archive.verifier_source(chemin)
+            analyse = commandes_machine(chemin)
+            archive.verifier_source(chemin)
+            digest_apres_analyse = empreinte_3mf(chemin)
+            archive.verifier_source(chemin)
+            if digest_apres_analyse != digest:
+                raise ValueError("Archive modifiée pendant l'analyse des commandes de référence")
     return {
         "sha256": digest,
         "reglages": reglages,
         "commandes": commandes,
-        "analyse_demarrage": commandes_machine(chemin) if commandes else None,
+        "analyse_demarrage": analyse,
     }
 
 
