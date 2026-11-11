@@ -335,7 +335,8 @@ def main(argv=None, *, prive=None):
     ]
     for option, field, scale in fields:
         parser.add_argument(
-            "--" + option, type=int, default=None, help="Budget explicite. Plafonds dans docs/reference/integrite-3mf.md."
+            "--" + option, type=int, default=None,
+            help="Budget explicite. Plafonds dans docs/reference/integrite-3mf.md.",
         )
     args = parser.parse_args(argv)
     try:
