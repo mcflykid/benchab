@@ -188,3 +188,30 @@ def test_dix_dixiemes_atteignent_le_seuil_declare(tmp_path, capsys):
     rapport = json.loads(capsys.readouterr().out)
     assert rapport["compteurs"][0]["valeur"] == 1
     assert rapport["statut"] == "WARN"
+
+
+def test_cumul_exact_depasse_flottant_mais_garde_warn_sans_valeur_non_finie(tmp_path, capsys):
+    """Le cumul exact au-dessus de 1e308 reste WARN même si la valeur JSON ne peut être représentée."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    donnees = _historique()
+    usage = donnees["evenements"][1]
+    donnees["evenements"] = [
+        donnees["evenements"][0],
+        {**usage, "id": "usage-1", "valeur": 1e308},
+        {**usage, "id": "usage-2", "valeur": 1e308},
+    ]
+    donnees["seuils"][0]["maximum"] = 1e308
+    historique = _ecrire_historique(prive, donnees)
+
+    code = cli.main(["--prive", str(prive), "controle", "entretien", "--historique", str(historique)])
+
+    capture = capsys.readouterr()
+    texte = capture.out
+    rapport = json.loads(texte)
+    compteur = rapport["compteurs"][0]
+    assert code == 1, (capture.out, capture.err)
+    assert compteur["statut"] == "WARN"
+    assert compteur["valeur"] is None
+    assert "dépasse la plage représentable" in compteur["detail"]
+    json.dumps(rapport, allow_nan=False)

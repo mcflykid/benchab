@@ -186,13 +186,16 @@ def calculer(donnees):
         resultat["dernier_entretien"] = entretien
         valide &= entretien is not None and not erreurs
         if valide:
+            # Le verdict provient du cumul exact même si JSON ne peut pas l'afficher en flottant.
+            resultat["statut"] = "WARN" if cumul >= Fraction(str(seuil["maximum"])) else "PASS"
             try:
                 valeur = float(cumul)
             except OverflowError:
                 valeur = math.inf
             if math.isfinite(valeur):
                 resultat["valeur"] = valeur
-                resultat["statut"] = "WARN" if cumul >= Fraction(str(seuil["maximum"])) else "PASS"
+            else:
+                resultat["detail"] = "Cumul exact établi, mais dépasse la plage représentable en flottant."
         compteurs.append(resultat)
 
     statuts = {ligne["statut"] for ligne in compteurs}
