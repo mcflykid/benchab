@@ -31,5 +31,9 @@ jobs:
       - name: Contrôler les annotations publiques modifiées
         env:
           BENCHAB_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: uv run python -m benchab.qualite.annotations --base "$BENCHAB_BASE" --tete "$GITHUB_SHA" --racine .
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            BENCHAB_BASE=$(git rev-parse --verify "$GITHUB_SHA^1")
+          fi
+          uv run python -m benchab.qualite.annotations --base "$BENCHAB_BASE" --tete "$GITHUB_SHA" --racine .
       - run: uv run pytest -q

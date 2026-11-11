@@ -3,6 +3,8 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from benchab.qualite.annotations import controler
 
 
@@ -123,3 +125,36 @@ def test_base_invalide_echoue_sans_sauter(tmp_path):
         assert "Git a échoué" in str(erreur)
     else:
         raise AssertionError("Une base invalide doit échouer explicitement")
+
+
+@pytest.mark.parametrize(("avant", "apres"), [("", "@memoiser\n"), ("@memoiser\n", "")])
+def test_decorateur_modifie_qualifie_la_portee(tmp_path, avant, apres):
+    """L'ajout ou le retrait d'un décorateur modifie la définition publique."""
+    corps = "def publique():\n    return 1\n"
+    racine, base, fichier = _depot(tmp_path, '"""Module."""\n' + avant + corps)
+    tete = _terminer(racine, fichier, '"""Module."""\n' + apres + corps)
+    assert any("D103" in erreur for erreur in controler(racine, base, tete))
+
+
+def test_suppression_de_portee_nimpute_pas_la_dette_au_voisin(tmp_path):
+    """Supprimer un autre symbole ne modifie pas la fonction historique conservée."""
+    historique = "def historique():\n    return 1\n"
+    racine, base, fichier = _depot(tmp_path, historique + "\ndef retiree():\n    return 2\n")
+    tete = _terminer(racine, fichier, historique)
+    assert controler(racine, base, tete) == []
+
+
+def test_constructeur_public_modifie_exige_sa_docstring(tmp_path):
+    """Une méthode spéciale soumise à D107 ne disparaît pas du filtre AST."""
+    avant = 'class Publique:\n    """Rôle."""\n    def __init__(self):\n        self.valeur = 1\n'
+    racine, base, fichier = _depot(tmp_path, avant)
+    tete = _terminer(racine, fichier, avant.replace("= 1", "= 2"))
+    assert any("D107" in erreur for erreur in controler(racine, base, tete))
+
+
+def test_nouveau_paquet_sans_docstring_est_refuse(tmp_path):
+    """L'initialisation d'un paquet relève de D104 plutôt que D100."""
+    racine, base, _ = _depot(tmp_path, '"""Module."""\n')
+    nouveau = racine / "benchab" / "qualite" / "__init__.py"
+    tete = _terminer(racine, str(nouveau), "VALEUR = 1\n")
+    assert any("D104" in erreur for erreur in controler(racine, base, tete))

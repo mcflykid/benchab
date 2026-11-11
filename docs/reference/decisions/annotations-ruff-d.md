@@ -6,7 +6,17 @@ Activer Ruff D10x sans bloquer les 701 lacunes historiques recensées dans le co
 
 ## Décision
 
-Un contrôleur dédié reçoit deux révisions Git explicites, vérifie qu'elles sont présentes et comparables, puis calcule les fichiers Python ajoutés, modifiés, renommés ou supprimés sous `benchab/`. Il utilise `git diff` avec séparateur NUL et arguments fixes, et Ruff en JSON avec D10x sur les fichiers présents concernés. Les diagnostics ne bloquent que pour un module ajouté ou une portée publique dont la définition ou le corps comprend des lignes ajoutées/modifiées. L'AST relie lignes modifiées et portée englobante, y compris lorsque la ligne `def` n'a pas bougé. Les diagnostics au niveau module concernent les modules nouveaux. Les fichiers supprimés ne sont pas analysés ; un renommage est évalué sous son nouveau chemin.
+Un contrôleur dédié reçoit deux révisions Git explicites, exige une base
+antérieure et le code exact de HEAD, puis lit le diff NUL des fichiers Python
+sous `benchab/`. Il compare les AST par nom qualifié, indépendamment de leurs
+numéros de ligne. Une modification du corps, d'un décorateur, d'une signature
+ou d'une docstring qualifie la portée même si la ligne `def` ne bouge pas.
+Les commentaires et déplacements de lignes seuls ne changent pas l'AST.
+Supprimer une portée n'impute pas sa dette à une voisine intacte.
+
+Ruff D10x décide de la visibilité, y compris paquets, méthodes spéciales et
+constructeurs. Les nouveaux modules, les renommages et les suppressions de
+docstrings de module sont contrôlés ; les fichiers supprimés ne sont pas lus.
 
 Les anciens diagnostics Ruff D hors du périmètre différentiel ne bloquent pas. Une base absente, illisible, identique/incohérente, un diff Git inexploitable ou une erreur Ruff produit un échec explicite, jamais une réussite silencieuse. Aucun seuil numérique de dette n'est introduit.
 
@@ -16,7 +26,11 @@ Ruff D10x vérifie la présence et la forme structurelle des docstrings publique
 
 ## Portée et suites
 
-La CI compare le commit de base réel de la PR/push au HEAD. Une exécution manuelle doit fournir une base explicite ou échoue clairement. Le rattrapage des portées publiques existantes reste par lots suivis séparément ; aucune exception globale ni suppression de règles D n'est ajoutée.
+La CI compare le commit de base réel de la PR/push au HEAD. Un déclenchement
+manuel GitHub compare au premier parent ; la commande locale prend une base
+explicite. Une base introuvable fait échouer le contrôle. Le rattrapage des
+portées publiques existantes reste suivi par lots ; aucune exception globale
+ni suppression de règles D n'est ajoutée.
 
 ## Exécution
 

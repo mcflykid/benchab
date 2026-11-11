@@ -4,22 +4,21 @@ from __future__ import annotations
 
 import argparse
 import ast
-import difflib
 import json
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 
 @dataclass(frozen=True)
 class Changement:
-    """Décrit un fichier Python touché et ses lignes modifiées dans HEAD."""
+    """Décrit un fichier Python et les définitions à contrôler dans la révision HEAD."""
 
     chemin: str
-    ancien: str | None
     lignes: frozenset[int]
-    nouveau: bool
+    verifier_module: bool
 
 
 def _git(racine: Path, *arguments: str) -> bytes:
@@ -31,11 +30,52 @@ def _git(racine: Path, *arguments: str) -> bytes:
         raise ValueError(f"Git a échoué ({' '.join(arguments[:2])}) : {detail.decode(errors='replace')}") from erreur
 
 
+def _definitions(arbre):
+    """Indexe les définitions par portée et AST, indépendamment de leurs numéros de ligne."""
+    resultat = []
+
+    def parcourir(noeud, contexte):
+        if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            contexte = (*contexte, (type(noeud).__name__, noeud.name))
+            resultat.append(((contexte, ast.dump(noeud)), noeud.lineno))
+        for enfant in ast.iter_child_nodes(noeud):
+            parcourir(enfant, contexte)
+
+    parcourir(arbre, ())
+    return resultat
+
+
+def _portees_modifiees(actuel, precedent=None):
+    """Rend les lignes de définitions et le contrôle du module, sans imputer les suppressions au voisin."""
+    arbre = ast.parse(actuel)
+    if precedent is None:
+        return frozenset(ligne for _, ligne in _definitions(arbre)), True
+    ancien = ast.parse(precedent)
+    historiques = Counter(cle for cle, _ in _definitions(ancien))
+    lignes = set()
+    # Les décorateurs font partie de l'AST, même si la ligne du def ne change pas.
+    # Ruff décide ensuite de la visibilité, y compris des constructeurs D107.
+    for cle, ligne in _definitions(arbre):
+        if historiques[cle]:
+            historiques[cle] -= 1
+        else:
+            lignes.add(ligne)
+    suppression_doc_module = bool(ast.get_docstring(ancien)) and not ast.get_docstring(arbre)
+    return frozenset(lignes), suppression_doc_module
+
+
+def _revision(racine, ref):
+    """Résout une révision en SHA de commit avant de l'utiliser dans le diff."""
+    return _git(racine, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}").decode().strip()
+
+
 def _blobs(racine: Path, base: str, tete: str) -> list[Changement]:
-    """Lit le diff NUL de benchab ; bases et chemins invalides provoquent un échec."""
-    _git(racine, "cat-file", "-e", f"{base}^{{commit}}")
-    _git(racine, "cat-file", "-e", f"{tete}^{{commit}}")
-    if _git(racine, "rev-parse", "HEAD").decode().strip() != _git(racine, "rev-parse", tete).decode().strip():
+    """Lit le diff NUL de benchab ; exige une base antérieure et le code exact de HEAD."""
+    base, tete = _revision(racine, base), _revision(racine, tete)
+    if base == tete:
+        raise ValueError("La base doit précéder la révision analysée.")
+    _git(racine, "merge-base", "--is-ancestor", base, tete)
+    if _revision(racine, "HEAD") != tete or _git(racine, "diff", "--name-only", "-z", tete, "--", "benchab"):
         raise ValueError("La révision HEAD doit correspondre à la copie analysée.")
     champs = _git(racine, "diff", "--name-status", "-z", "-M", base, tete, "--", "benchab").split(b"\0")
     if champs and champs[-1] == b"":
@@ -58,36 +98,13 @@ def _blobs(racine: Path, base: str, tete: str) -> list[Changement]:
         cible = (racine / chemin).resolve()
         if not cible.is_relative_to(racine.resolve()) or not cible.is_file():
             raise ValueError(f"Chemin de changement invalide ou absent : {chemin!r}")
-        actuel = cible.read_text(encoding="utf-8").splitlines()
-        if ancien is None or statut.startswith("R"):
-            lignes = frozenset(range(1, len(actuel) + 1))
-        else:
-            precedent = _git(racine, "show", f"{base}:{ancien}").decode("utf-8").splitlines()
-            diff = difflib.SequenceMatcher(a=precedent, b=actuel, autojunk=False)
-            touchees: set[int] = set()
-            for statut_diff, _, _, debut, fin in diff.get_opcodes():
-                if statut_diff == "equal":
-                    continue
-                if fin > debut:
-                    touchees.update(range(debut + 1, fin + 1))
-                elif actuel:
-                    # Une suppression seule ancre le contrôle à la ligne voisine conservée.
-                    touchees.add(max(1, min(debut, len(actuel))))
-            lignes = frozenset(touchees)
-        resultat.append(Changement(chemin, ancien, lignes, ancien is None or statut.startswith("R")))
+        actuel = cible.read_text(encoding="utf-8")
+        precedent = None if ancien is None or statut.startswith(("R", "C")) else (
+            _git(racine, "show", f"{base}:{ancien}").decode("utf-8")
+        )
+        lignes, verifier_module = _portees_modifiees(actuel, precedent)
+        resultat.append(Changement(chemin, lignes, verifier_module))
     return resultat
-
-
-def _portees_publiques(source: str, lignes: frozenset[int]) -> set[int]:
-    """Retourne les lignes de définition publiques touchées selon leurs corps AST."""
-    arbre = ast.parse(source)
-    portees: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
-    portees.extend(
-        n
-        for n in ast.walk(arbre)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and not n.name.startswith("_")
-    )
-    return {n.lineno for n in portees if any(n.lineno <= ligne <= (n.end_lineno or n.lineno) for ligne in lignes)}
 
 
 def controler(racine: Path, base: str, tete: str) -> list[str]:
@@ -112,19 +129,20 @@ def controler(racine: Path, base: str, tete: str) -> list[str]:
         diagnostics = json.loads(resultat.stdout)
     except json.JSONDecodeError as erreur:
         raise ValueError("Ruff n'a pas renvoyé de diagnostic JSON valide.") from erreur
-    par_chemin = {racine / c.chemin: c for c in changements}
+    par_chemin = {(racine / c.chemin).resolve(): c for c in changements}
     violations: list[str] = []
     for diagnostic in diagnostics:
         chemin = Path(diagnostic["filename"]).resolve()
-        changement = next((c for p, c in par_chemin.items() if p.resolve() == chemin), None)
+        changement = par_chemin.get(chemin)
         if changement is None:
             continue
         code = diagnostic.get("code", "")
         ligne = diagnostic.get("location", {}).get("row", 0)
-        source = (racine / changement.chemin).read_text(encoding="utf-8")
-        debut_module = changement.nouveau and code == "D100"
-        portees = _portees_publiques(source, changement.lignes)
-        if (debut_module and ligne == 1) or ligne in portees:
+        if code in {"D100", "D104"}:
+            retenu = changement.verifier_module
+        else:
+            retenu = ligne in changement.lignes
+        if retenu:
             violations.append(f"{changement.chemin}:{ligne}: {code} {diagnostic.get('message', '')}")
     return violations
 
