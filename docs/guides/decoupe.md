@@ -34,7 +34,7 @@ Sur une coupe courbe, certaines vérifications de paroi restent NON VÉRIFIÉES.
 Les métriques de supports distinguent source brute, meilleure pose monobloc,
 coupe brute et pièces finales avec connecteurs ; elles ne sont pas des durées mesurées.
 
-Exporter en STL ou 3MF :
+Exporter en STL ou 3MF pour le parcours d’impression, ou en NPZ pour la relecture géométrique :
 
 ```sh
 uv run benchab conception decoupe calculer prive/projets/ma-piece/candidats/plan.json --format 3mf --sortie prive/projets/ma-piece/candidats/decoupe-v01
@@ -44,7 +44,18 @@ La destination doit être neuve et privée (ou dans `/tmp`). Le moteur refuse li
 écrasements et chemins de préparation figée Pnn. Les pièces sont posées à plat,
 les transformations inverses et les SHA sont conservés dans le rapport. Le 3MF
 est rouvert et vérifié ; il reste NON TRANCHÉ. Aucun profil d’impression n’est
-transféré implicitement. Continuer par [fabrication](../reference/fabrication.md),
-contrôle d’envoi, relecture et vote. Les accessoires ne gonflent pas le nombre de
+transféré implicitement. Avec `--format npz`, les positions en mm
+(float64) et les indices des triangles (int64) sont conservés sans fusion.
+Le rapport compare avant export et après relecture brute : sommets, faces,
+composantes, volume signé, orientation, fermeture et bornes. Il conserve les
+transformations de pose et de réassemblage. Le NPZ n’est pas un fichier à
+trancher et ne reçoit aucun profil. Le STL ne garantit pas l’indexation et sa
+relecture peut fusionner des sommets ; choisir NPZ pour examiner les écarts
+sur une découpe fine. La relecture Python
+`benchab.imports3d.maillage_indexe.lire` refuse tableaux, indices ou tailles
+invalides sans corriger la géométrie.
+
+Pour les formats destinés au slicer, continuer par
+[fabrication](../reference/fabrication.md), contrôle d’envoi, relecture et vote. Les accessoires ne gonflent pas le nombre de
 pièces demandé. Les modèles sans géométrie dans leur 3MF ne sont pas reconstruits
 depuis le G-code. Aucun clip ni catalogue ISO de fixations n’est inclus dans la 1.0.

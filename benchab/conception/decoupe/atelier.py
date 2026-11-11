@@ -16,6 +16,7 @@ from benchab.controles.orientations_supports import risque_couches
 from benchab.controles.plaques_interface import analyser as analyser_plaques
 from benchab.controles.regles import verifier_nommage
 from benchab.fabrication import anycubic
+from benchab.imports3d import maillage_indexe
 from benchab.imports3d.lecture_3mf import lire as lire_3mf
 from benchab.qualite.ecritures import PublicationNeuve, renommer_exclusif
 from benchab.qualite.empreintes import sha256_fichier
@@ -304,6 +305,34 @@ def _destination(path, prive=None):
     return path
 
 
+def _etat_topologique(maillage):
+    """Décrit la topologie indexée et la pose en mm, sans correction du maillage."""
+    return {
+        "sommets": len(maillage.vertices),
+        "faces": len(maillage.faces),
+        "composantes": maillage.body_count,
+        "volume_signe_mm3": float(maillage.volume),
+        "orientation_coherente": bool(maillage.is_winding_consistent),
+        "ferme": bool(maillage.is_watertight),
+        "bornes_mm": maillage.bounds.tolist(),
+        "repere": "pose export sur plateau, mm",
+    }
+
+
+def _relire_export_indexe(fichier, avant, *, prive):
+    """Écrit et relit la pose sans fusion ; PASS uniquement sur égalité exacte sommets et faces."""
+    maillage_indexe.sauvegarder(fichier, avant, prive=prive)
+    relu = maillage_indexe.lire(fichier)
+    if not (np.array_equal(avant.vertices, relu.vertices) and np.array_equal(avant.faces, relu.faces)):
+        raise ValueError("Réouverture NPZ différente : positions ou indices altérés.")
+    return relu, {
+        "statut": "PASS",
+        "avant_export": _etat_topologique(avant),
+        "relecture_brute": _etat_topologique(relu),
+        "fusion": "NON APPLIQUÉE",
+    }
+
+
 def exporter(resultat, sortie, format_="stl", reglages=None, *, prive=None):
     """Exporte la géométrie posée en mm ; renvoie chemin et rapport NON PRÊT sans profil 3MF explicite.
 
@@ -314,8 +343,10 @@ def exporter(resultat, sortie, format_="stl", reglages=None, *, prive=None):
 
     if resultat["rapport"]["statut"] == "FAIL":
         raise ValueError("Ajustement ou réassemblage FAIL : corriger avant export")
-    if format_ not in ("stl", "3mf"):
-        raise ValueError("Format attendu : stl ou 3mf")
+    if format_ not in ("stl", "3mf", "npz"):
+        raise ValueError("Format attendu : stl, 3mf ou npz")
+    if format_ == "npz" and reglages is not None:
+        raise ValueError("NPZ géométrique : aucun réglage d’impression ne peut y être embarqué")
     cible = _destination(sortie, prive)
     source = resultat["plan"]["source"]
     if sha256_fichier(source["fichier"]) != source["sha256"]:
@@ -344,6 +375,13 @@ def exporter(resultat, sortie, format_="stl", reglages=None, *, prive=None):
                 donnees = f"BENCHAB units=mm {nom}".encode("ascii").ljust(80, b" ")[:80] + donnees[80:]
                 (travail / (nom + ".stl")).write_bytes(donnees)
                 recharge = trimesh.load_mesh(travail / (nom + ".stl"), process=True)
+                controles_export[nom] = {"topologie_indexee": {
+                    "statut": "NON VÉRIFIÉ",
+                    "raison": "STL sans indices persistants, relu avec fusion ; exporter en NPZ pour les préserver.",
+                }}
+            elif format_ == "npz":
+                recharge, preuve = _relire_export_indexe(travail / (nom + ".npz"), plat, prive=prive)
+                controles_export[nom] = {"topologie_indexee": preuve}
             else:
                 items = [
                     {
@@ -372,7 +410,8 @@ def exporter(resultat, sortie, format_="stl", reglages=None, *, prive=None):
                 controles_export[nom] = {"U22": noms, "U20": placement, "integrite_source": controle_integrite}
                 recharge = lire_3mf(travail / (nom + ".3mf")).to_mesh()
             if not recharge.is_volume or not np.allclose(recharge.extents, plat.extents, atol=1e-4):
-                raise ValueError("Réouverture d'export non conforme : " + nom)
+                conseil = " ; essayer NPZ pour comparer la topologie brute" if format_ == "stl" else ""
+                raise ValueError("Réouverture d'export non conforme : " + nom + conseil)
         rapport = copy.deepcopy(resultat["rapport"])
         for coupe in rapport["coupes"]:
             connecteur = coupe["connecteur"]
@@ -435,6 +474,7 @@ def exporter(resultat, sortie, format_="stl", reglages=None, *, prive=None):
             reglages_impression={
                 "source": "profil fourni explicitement" if reglages else "non transférés depuis le modèle d'origine",
                 "export": (
+                    "NON PRÊT : NPZ géométrique, non destiné au slicer" if format_ == "npz" else
                     "NON PRÊT : profil explicite, tranchage et contrôle d'envoi requis" if reglages else
                     "NON PRÊT : export géométrique sans profil 3MF explicitement configuré"
                 ),

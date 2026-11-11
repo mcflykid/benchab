@@ -24,7 +24,7 @@ def main(argv=None, *, prive=None):
     calcul = commandes.add_parser("calculer")
     calcul.add_argument("plan", type=Path)
     calcul.add_argument("--sortie", type=Path, required=True)
-    calcul.add_argument("--format", choices=("stl", "3mf"), default="stl")
+    calcul.add_argument("--format", choices=("stl", "3mf", "npz"), default="stl")
     voir = commandes.add_parser("voir")
     voir.add_argument("plan", type=Path)
     voir.add_argument("--sortie", type=Path, required=True)
