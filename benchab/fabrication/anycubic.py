@@ -30,7 +30,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from benchab import integrite_3mf
 from benchab import reglages as schema_reglages
-from benchab.archives_3mf import Archive3MF
+from benchab.archives_3mf import Archive3MF, decoder_xml
 from benchab.fabrication.reglages import normaliser_heritages
 from benchab.fabrication.trancher import restaurer_noms, trancher_fichier
 from benchab.gcode.lecture import lire_texte_gcode_3mf, membres_gcode_3mf
@@ -547,7 +547,19 @@ def trancher(src, outdir, nom, log=None, timeout=None, attendu=None, *, usage="i
 def resultats(t3mf):
     """Lit indices, durées (s), masses (g) et avertissements, sans changer le 3MF."""
     with Archive3MF(t3mf) as z:
-        si = z.xml("Metadata/slice_info.config")
+        return _extraire_resultats(z.xml("Metadata/slice_info.config"))
+
+
+def resultats_xml(contenu):
+    """Lit les mêmes mesures (s, g) depuis le XML borné d'une archive déjà vérifiée.
+
+    Les octets du membre sont fournis par l'appelant ; aucun autre fichier lu
+    et aucune commande machine. Une syntaxe ou une mesure invalide est refusée.
+    """
+    return _extraire_resultats(decoder_xml(contenu, limite_octets=Archive3MF.MAX_XML_OCTETS))
+
+
+def _extraire_resultats(si):
     out = []
     for p in si.findall("plate"):
         md = {m.get("key"): m.get("value") for m in p.findall("metadata")}
