@@ -9,9 +9,10 @@ import re
 import sys
 import zipfile
 from datetime import datetime, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from benchab import reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.machine import profil_maitre as PM
 from benchab.machine.configuration import charger
 from benchab.qualite.ecritures import PublicationNeuve, valider_chemins
@@ -85,15 +86,14 @@ def _charger_contexte(source3mf, declarations, maitre, registre):
     source = _path(source3mf)
     if source.suffix.lower() != ".3mf":
         raise ValueError("Projet3MF requis.")
-    sha_source = _sha(source)
-    with zipfile.ZipFile(source) as archive:
-        infos = archive.infolist()
-        noms = [info.filename for info in infos]
-        if len(set(noms)) != len(noms) or any(
-            nom.startswith("/") or ".." in PurePosixPath(nom).parts or "\\" in nom for nom in noms
-        ):
-            raise ValueError("Archive ambiguë ou chemins non confinés.")
-        brut = reglages.lire_membre_projet(archive)
+    with Archive3MF(source, taille_max_xml=8 * 1024 * 1024) as archive:
+        membre_reglages = "Metadata/project_settings.config"
+        brut = archive.lire(membre_reglages, limite_octets=8 * 1024 * 1024)
+        # Le membre de réglages vient d’être lu en entier ; valider ici tous les
+        # autres CRC et refuser les alias avant d’associer le SHA au même FD (#122).
+        archive.verifier(membres=(nom for nom in archive.noms() if nom != membre_reglages))
+        sha_source = archive.sha256()
+        archive.verifier_source(source)
     settings = reglages.decoder(brut)
     declaration_path = _path(declarations) if isinstance(declarations, (str, Path)) else None
     sha_declarations = _sha(declaration_path) if declaration_path else None

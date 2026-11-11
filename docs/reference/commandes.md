@@ -11,6 +11,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `seance debut`, `seance fin`, `seance etat` | Verrou logique et journal |
 | `imports importer`, `geometrie`, `reparer`, `maillage-avance`, `echange-blender`, `placement` | Import, géométrie et placement explicitement déclaré |
 | `conception cad-engine`, `assistant-projet`, `variantes`, `dfam` | CAO et variantes |
+| `conception fiche-cao` | [Plan et script CAO depuis des cotes JSON](fiche-cao.md) |
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |

@@ -62,7 +62,7 @@ ROUTES_NAMESPACE = {
     "conception": {
         "prefixe": "benchab.conception.",
         "normalisation": "tirets_vers_underscore",
-        "modules_prives": frozenset({"trous", "eprouvette_trous", "vissage", "cad_engine", "decoupe"}),
+        "modules_prives": frozenset({"trous", "eprouvette_trous", "vissage", "cad_engine", "fiche_cao", "decoupe"}),
     },
     "imports": {
         "prefixe": "benchab.imports3d.",
@@ -339,6 +339,7 @@ def parser():
         "dfam",
         "vissage",
         "cad-engine",
+        "fiche-cao",
         "decoupe",
     ):
         conception.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)

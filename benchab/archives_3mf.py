@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import hashlib
 import io
 import os
 import re
@@ -316,6 +317,33 @@ class Archive3MF:
         signature = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
         if signature != self._identite or self._stat_identite() != self._identite:
             raise ValueError("Source différente ou modifiée pour le contexte 3MF ouvert")
+
+    def sha256(self, *, taille_bloc=1024 * 1024):
+        """Calcule le SHA-256 des octets du fichier déjà ouvert, sans relire son chemin.
+
+        Entrée : taille de bloc en octets, strictement positive ; sortie : 64 caractères
+        hexadécimaux. Le chemin et le descripteur doivent toujours désigner la même source
+        régulière, et le curseur ZIP est restauré ; aucun membre ni réglage n'est modifié.
+        """
+        if self._fichier is None or self._archive is None:
+            raise RuntimeError("ouvrir Archive3MF avec un bloc with")
+        if type(taille_bloc) is not int or taille_bloc <= 0:
+            raise ValueError("taille de bloc strictement positive requise")
+        self.verifier_source(self.chemin)
+        avant = self._stat_identite()
+        position = self._fichier.tell()
+        empreinte = hashlib.sha256()
+        try:
+            self._fichier.seek(0)
+            for bloc in iter(lambda: self._fichier.read(taille_bloc), b""):
+                empreinte.update(bloc)
+            apres = self._stat_identite()
+            self.verifier_source(self.chemin)
+            if avant != apres or apres != self._identite:
+                raise ValueError("archive 3MF modifiée pendant le calcul du SHA-256")
+            return empreinte.hexdigest()
+        finally:
+            self._fichier.seek(position)
 
     def information(self, membre):
         """Renvoie une copie des métadonnées ZIP validées pour recopier un membre sans réécriture annexe."""

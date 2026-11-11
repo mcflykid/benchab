@@ -22,7 +22,7 @@ from benchab.controles.controle_buse import controler as controler_buse
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.rapports import RapportCourant
 from benchab.gcode import debit
-from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
 from benchab.machine.compatibilite_ace import evaluer_alimentation
 from benchab.qualite.statuts import code_statut
 
@@ -41,7 +41,8 @@ def chemin_local(value):
 
 
 def plaques(z):
-    return sorted(int(m.group(1)) for n in z.noms() if (m := re.match(r"Metadata/plate_(\d+)\.gcode$", n)))
+    """Liste les numéros de plaques en ordre numérique, en refusant les alias ambigus."""
+    return [numero for numero, _ in plaques_gcode_archive(z)]
 
 
 def demarrage(g):
@@ -176,6 +177,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         for p in ms.findall("plate")
     }
     ref = ressources.enter_context(Archive3MF(REFF)) if REFF else None
+    membres_reference = dict(plaques_gcode_archive(ref)) if ref else {}
     res = []
     indices_absents = set()
     bed = ps.get("curr_bed_type")
@@ -188,11 +190,12 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         "3MF : project_settings.curr_bed_type",
     )
     slots = {k: ps.get(k) for k in ("ace_t_slot_vector", "ace_t_box_vector", "ace_t_nozzle_vector")}
-    liste_plaques = plaques(z)
+    membres_plaques = dict(plaques_gcode_archive(z))
+    liste_plaques = sorted(membres_plaques)
     if not liste_plaques:
         ajouter_note(res, 0, "G-code présent", "FAIL", "aucune plaque tranchée : contrôle impossible", "3MF")
     for pl in liste_plaques:
-        g = lire_texte_gcode_3mf(T3MF, f"Metadata/plate_{pl}.gcode", erreurs="ignore")
+        g = lire_texte_gcode_3mf(T3MF, membres_plaques[pl], erreurs="ignore", archive=z)
         local = ZL.analyser_gcode(g, pl)
         risques_locaux.extend(local["zones"])
         erreurs_locales.extend(local["erreurs"])
@@ -354,8 +357,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                     statut, detail, source = mesures[cle]
                     ajouter_note(res, pl, f"{libelle} (filament {e})", statut, detail, source, obligatoire=False)
         if ref:
-            rp = plaques(ref)
-            if pl not in rp:
+            if pl not in membres_reference:
                 ajouter_note(
                     res,
                     pl,
@@ -365,7 +367,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                     "3MF de référence",
                 )
                 continue
-            rg = lire_texte_gcode_3mf(REFF, f"Metadata/plate_{pl}.gcode", erreurs="ignore")
+            rg = lire_texte_gcode_3mf(REFF, membres_reference[pl], erreurs="ignore", archive=ref)
             rd = demarrage(rg)
             ecarts = {k: (rd.get(k), dem.get(k)) for k in sorted(set(rd) | set(dem)) if rd.get(k) != dem.get(k)}
             ajouter_note(
@@ -410,6 +412,9 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         statut_global = "NON VÉRIFIÉ"
     else:
         statut_global = "WARN" if any(r["statut"] != "PASS" for r in res) else "PASS"
+    z.verifier_source(T3MF)
+    if ref:
+        ref.verifier_source(REFF)
     if RAPPORT:
         try:
             rapport.publier(

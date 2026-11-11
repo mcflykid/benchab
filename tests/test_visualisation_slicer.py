@@ -3,8 +3,9 @@
 import errno
 import fcntl
 import json
+import struct
 from pathlib import Path
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 import pytest
 
@@ -73,6 +74,120 @@ def test_ouvrir_refuse_fichier_non_tranche_ou_change(tmp_path, monkeypatch):
     tranche = archive(prive / "tranche.3mf")
     with pytest.raises(ValueError, match="préparation contrôlée"):
         T.demander_ouverture(tranche, prive=prive, sha_attendu="0" * 64)
+
+
+def test_visualisation_refuse_alias_numeriques_de_plaque(tmp_path):
+    """Deux graphies pour le même numéro ne doivent pas passer pour deux plaques valides."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "alias.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config><plate/></config>")
+        archive.writestr("Metadata/plate_01.gcode", "G90\n")
+        archive.writestr("Metadata/plate_1.gcode", "G91\n")
+
+    with pytest.raises(ValueError, match="numéro de plaque dupliqué"):
+        T._fichier_visualisable(source, prive)
+
+
+def test_visualisation_accepte_une_graphie_rembourree_unique(tmp_path):
+    """Un seul G-code rembourré conserve son numéro numérique conventionnel."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "rembourree.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config><plate/></config>")
+        archive.writestr("Metadata/plate_01.gcode", "G90\n")
+
+    assert T._fichier_visualisable(source, prive) == source
+
+
+@pytest.mark.parametrize(
+    "noms_gcode",
+    [
+        ("Metadata/plate_1.gcode",),
+        ("Metadata/plate_1.gcode", "Metadata/plate_3.gcode"),
+    ],
+)
+def test_visualisation_refuse_compte_ou_indices_incoherents(tmp_path, noms_gcode):
+    """Les G-code doivent couvrir exactement les plaques XML de 1 à N."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "incoherente.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config><plate/><plate/></config>")
+        for nom in noms_gcode:
+            archive.writestr(nom, "G90\n")
+
+    with pytest.raises(ValueError, match="G-code et plaques déclarées incohérents"):
+        T._fichier_visualisable(source, prive)
+
+
+def test_visualisation_refuse_plus_de_30_gcodes(tmp_path):
+    """La limite s’applique aussi au nombre de G-code, avant l’ouverture du moteur."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "trente-et-un-gcodes.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config><plate/></config>")
+        for numero in range(1, 32):
+            archive.writestr(f"Metadata/plate_{numero}.gcode", "G90\n")
+
+    with pytest.raises(ValueError, match="entre 1 et 30 plaques"):
+        T._fichier_visualisable(source, prive)
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        '<!DOCTYPE config [<!ENTITY p "x">]><config><plate/></config>',
+        "<autre><plate/></autre>",
+    ],
+)
+def test_visualisation_exige_xml_config_protege(tmp_path, configuration):
+    """Les plate-nodes d’un XML non conforme ou à entité ne suffisent pas."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "xml-invalide.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", configuration)
+        archive.writestr("Metadata/plate_1.gcode", "G90\n")
+
+    with pytest.raises(ValueError, match="Structure des plaques absente ou invalide"):
+        T._fichier_visualisable(source, prive)
+
+
+def _corrompre_crc(path, membre_cible):
+    """Corrompt le CRC central d’un membre ciblé sans changer son contenu décompressé."""
+    brut = bytearray(path.read_bytes())
+    position = 0
+    while (position := brut.find(b"PK\x01\x02", position)) >= 0:
+        longueur_nom, longueur_extra, longueur_commentaire = struct.unpack_from("<HHH", brut, position + 28)
+        debut = position + 46
+        nom = bytes(brut[debut:debut + longueur_nom]).decode("ascii")
+        if nom == membre_cible:
+            crc = struct.unpack_from("<I", brut, position + 16)[0]
+            struct.pack_into("<I", brut, position + 16, crc ^ 1)
+            path.write_bytes(brut)
+            return
+        position = debut + longueur_nom + longueur_extra + longueur_commentaire
+    raise AssertionError(f"Membre absent : {membre_cible}")
+
+
+@pytest.mark.parametrize("membre", ["Metadata/plate_1.gcode", "Metadata/ignored.bin"])
+def test_visualisation_verifie_crc_gcode_et_membres_ignores(tmp_path, membre):
+    """La validation consomme aussi les G-code et membres non exploités jusqu’à EOF."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = prive / "crc.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config><plate/></config>")
+        archive.writestr("Metadata/plate_1.gcode", "G90\n")
+        archive.writestr("Metadata/ignored.bin", b"membre conserve")
+    _corrompre_crc(source, membre)
+
+    with pytest.raises(BadZipFile):
+        T._fichier_visualisable(source, prive)
 
 
 def test_visualisation_ne_melange_pas_les_inconnues_de_sources_distinctes(tmp_path, monkeypatch):
