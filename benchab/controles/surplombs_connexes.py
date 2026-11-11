@@ -416,7 +416,7 @@ def main(argv=None, *, prive=None):
     """Produit un JSON privé neuf depuis un STL ; unités mm déclarées par option, code 0 si mesuré.
 
     Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés, plan --plateau-z-mm optionnel.
-    Sortie : rapport JSON neuf, visées opt-in par barycentres en mm, résumé ou détail sur demande, ou JSON stdout ;
+    Sortie : rapport JSON neuf et visionneuse optionnelle, visées en mm, résumé, détail ou JSON stdout ;
     erreurs d'entrée et de sortie code 2.
     L'entrée est empreintée avant et après lecture ; une sortie reste dans l'atelier privé choisi et est neuve.
     Aucun appel de slicer, aucun réglage modifié, aucune validation physique.
@@ -432,14 +432,18 @@ def main(argv=None, *, prive=None):
         "--plateau-z-mm", type=float,
         help="Active des visées verticales ponctuelles vers un plan déclaré sous le maillage, en mm",
     )
-    parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; sans option, écrit sur stdout")
+    sorties = parser.add_mutually_exclusive_group()
+    sorties.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; sans option, écrit sur stdout")
+    sorties.add_argument("--dossier-apercu", type=Path, help="Dossier neuf pour le rapport et la visionneuse autonome")
     affichage = parser.add_mutually_exclusive_group()
     affichage.add_argument("--resume", action="store_true", help="Affiche cinq groupes au plus et le chemin du rapport")
     affichage.add_argument("--detail", action="store_true", help="Affiche aussi le rapport complet et son chemin")
     args = parser.parse_args(argv)
     try:
-        if (args.resume or args.detail) and args.sortie is None:
-            raise ValueError("--resume ou --detail exige --sortie.")
+        if (args.resume or args.detail) and args.sortie is None and args.dossier_apercu is None:
+            raise ValueError("--resume ou --detail exige --sortie ou --dossier-apercu.")
+        if args.dossier_apercu is not None and args.plateau_z_mm is None:
+            raise ValueError("--dossier-apercu exige --plateau-z-mm.")
         if not args.unite_mm:
             raise ValueError("--unite-mm est requis : STL ne porte pas d'unité déclarée.")
         if args.source.suffix.lower() != ".stl" or not args.source.is_file():
@@ -457,7 +461,13 @@ def main(argv=None, *, prive=None):
             source_sha256=empreinte,
             plateau_z_mm=args.plateau_z_mm,
         )
-        if args.sortie:
+        if args.dossier_apercu:
+            from benchab.visualisation.apercu_surplombs import publier
+
+            chemins = publier(maillage, rapport, args.dossier_apercu, prive=prive)
+            synthese = rapport if args.detail else _resume(rapport, chemins["rapport"])
+            print(json.dumps({**synthese, **chemins}, ensure_ascii=False, allow_nan=False))
+        elif args.sortie:
             sortie = sortie_privee(args.sortie, prive=prive)
             ecrire_json_neuf(sortie, rapport, entrees=[args.source])
             if args.resume:

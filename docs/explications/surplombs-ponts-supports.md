@@ -56,6 +56,13 @@ Ces rayons ne couvrent pas l'intérieur des faces ni le reste d'un groupe, et ne
 prouvent ni accessibilité d'un support, ni franchissabilité d'un pont, ni appui
 ou tenue physique. Le champ historique `acces_plateau` reste NON VÉRIFIÉ.
 
+`--dossier-apercu DOSSIER_NEUF` conserve ensemble `rapport.json` et
+`apercu.html` dans un emplacement privé ou temporaire. Ouvrir la page
+autonome et choisir une visée dans la liste : le repère situe le barycentre
+sur le STL, et indique l’îlot, le statut et l’altitude. Les points omis sont
+comptés, aucun marqueur n’est ajouté à la géométrie exportable. L’empreinte
+du maillage est celle du rapport. La page ne déduit aucun réglage.
+
 ## Choisir le support dans Slicer Next 2.0.0.3
 
 | Famille | Usage envisagé | Point à contrôler après tranchage |

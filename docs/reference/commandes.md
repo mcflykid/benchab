@@ -22,7 +22,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
 | `controle coutures` | [Contrôle et aperçu de coutures sur régions déclarées](../explications/coutures.md#contrôle-sur-des-régions-déclarées) |
 | `controle preparer-reprise-export` | [Copie vérifiée d’une table exportée absente](plan-reparation-vues.md#préparer-la-reprise-dune-table-exportée), sans l’appliquer |
-| `controle surplombs-connexes SOURCE.stl --unite-mm [--plateau-z-mm Z]` | Groupes de triangles orientés vers le bas ; visées ponctuelles opt-in vers un plan Z déclaré en mm, sans validation d’appui |
+| `controle surplombs-connexes SOURCE.stl --unite-mm [--plateau-z-mm Z [--dossier-apercu DOSSIER_NEUF]]` | Groupes de triangles orientés vers le bas ; visées ponctuelles vers un plan Z déclaré en mm et visionneuse privée en option, sans validation d’appui |
 | `controle entretien --historique FICHIER [--sortie RAPPORT]` | Bilan conditionnel depuis un historique privé explicite, sans SQLite ni action machine |
 | `controle ecarts-profils-3mf` | Compare les réglages 3MF aux profils explicitement fournis ; rapport privé |
 | `controle publication`, `frontiere`, `typographie` | Dépôt partageable |

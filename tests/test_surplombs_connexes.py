@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import struct
 
 import numpy as np
@@ -389,6 +390,44 @@ def test_cli_active_visibilite_uniquement_sur_demande_et_lie_le_sha(tmp_path):
     assert rapport["source_sha256"] == attendu
     assert rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]["statut"] == "DÉGAGÉE"
     assert rapport["groupes"][0]["acces_plateau"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_cli_apercu_des_visees_garde_le_maillage_source_et_des_marqueurs_hors_export(tmp_path, capsys):
+    """Les marqueurs sont liés au JSON et au STL exact, sans ajouter de géométrie au GLB."""
+    source = tmp_path / "coupon.stl"
+    maillage = trimesh.creation.box(extents=[2, 2, 2])
+    maillage.apply_translation([0, 0, 3])
+    maillage.export(source)
+    source_avant = source.read_bytes()
+    destination = tmp_path / "apercu"
+    arguments = [str(source), "--unite-mm", "--plateau-z-mm", "0", "--dossier-apercu", str(destination)]
+
+    assert sc.main(arguments, prive=tmp_path) == 0
+    resume = json.loads(capsys.readouterr().out)
+    rapport = json.loads((destination / "rapport.json").read_bytes())
+    page = (destination / "apercu.html").read_text(encoding="utf-8")
+    scene = json.loads(re.search(r'<script type="application/json" id="donnees">(.*?)</script>', page).group(1))
+    assert scene["source"]["sha256"] == rapport["source_sha256"] == hashlib.sha256(source_avant).hexdigest()
+    assert len(scene["pieces"]) == len(scene["modeles"]) == 1
+    marqueurs = scene["diagnostics"][0]["anomalies"]
+    assert len(marqueurs) == 2
+    echantillons = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]["echantillons"]
+    assert [m["point_modele"] for m in marqueurs] == [e["point_xyz_mm"] for e in echantillons]
+    assert {m["type"] for m in marqueurs} == {"visee_degagee"}
+    assert resume["apercu"] == str(destination / "apercu.html")
+    assert source.read_bytes() == source_avant
+    assert sc.main(arguments, prive=tmp_path) == 2
+    assert (destination / "apercu.html").read_text(encoding="utf-8") == page
+
+
+def test_cli_apercu_exige_un_plan_explicite(tmp_path, capsys):
+    """La CLI ne crée ni dossier ni approximation lorsque le plan déclaré manque."""
+    source = tmp_path / "coupon.stl"
+    trimesh.creation.box().export(source)
+    destination = tmp_path / "apercu"
+    assert sc.main([str(source), "--unite-mm", "--dossier-apercu", str(destination)], prive=tmp_path) == 2
+    assert "--plateau-z-mm" in capsys.readouterr().err
+    assert not destination.exists()
 
 
 def test_visibilite_verticale_borne_et_annonce_les_rayons_omis(monkeypatch):
