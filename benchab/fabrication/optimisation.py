@@ -116,8 +116,6 @@ def lire_3mf(source: str | Path):
             raise ValueError("Une source non tranchée est requise.")
         if CONFIGURATION not in noms or OBJETS not in noms:
             raise ValueError("Réglages de projet ou objets absents dans le 3MF.")
-        # L'ancien contrôle ZIP relisait aussi les membres non utilisés : garder cette preuve bornée (#122).
-        archive.verifier()
         reglages = archive.reglages(CONFIGURATION)
         # Les identités et résidus restent qualifiés par le dictionnaire commun (#103).
         reglages.contexte.update(reglages_types.contexte_filaments(reglages))
@@ -127,6 +125,8 @@ def lire_3mf(source: str | Path):
             if nom.startswith("3D/") or nom in ("_rels/.rels", "[Content_Types].xml"):
                 with archive.ouvrir_flux(nom) as flux:
                     geometrie[nom] = hashlib.file_digest(flux, "sha256").hexdigest()
+        # Les lectures précédentes vérifient déjà leur CRC. Contrôler le reste une seule fois (#122).
+        archive.verifier(membres=(nom for nom in noms if nom not in geometrie and nom not in (CONFIGURATION, OBJETS)))
     if not geometrie or not xml.findall("object"):
         raise ValueError("Réglages, objets ou géométrie absents.")
     return reglages, xml, geometrie

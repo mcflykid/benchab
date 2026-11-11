@@ -1,7 +1,7 @@
 """Une mutation tardive non déclarée ne peut pas devenir un fichier livré."""
 
 import json
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 import pytest
 
@@ -248,3 +248,25 @@ def test_lecteurs_fabrication_utilisent_le_xml_borne(tmp_path, lecteur):
     lire = {"optimisation": optimisation.lire_3mf, "plaques": anycubic.noms_plaques, "resultats": anycubic.resultats}
     with pytest.raises(ValueError, match="DOCTYPE"):
         lire[lecteur](source)
+
+
+def test_optimisation_ne_decompresse_pas_deux_fois(tmp_path, monkeypatch):
+    """Le quota couvre une passe, y compris les membres sans réglage."""
+    from benchab.archives_3mf import Archive3MF
+    from benchab.fabrication import optimisation
+
+    source = tmp_path / "source.3mf"
+    _archive(source)
+    with ZipFile(source, "a") as archive:
+        archive.writestr("3D/model.model", b"<model/>")
+        archive.writestr("Metadata/information.txt", b"temoin CRC")
+        budget = sum(membre.file_size for membre in archive.infolist())
+    monkeypatch.setattr(optimisation, "Archive3MF", lambda chemin: Archive3MF(chemin, taille_max_totale=budget))
+    valeurs, _, geometrie = optimisation.lire_3mf(source)
+    assert valeurs["top_shell_layers"] == "5"
+    assert "3D/model.model" in geometrie
+
+    # ZIP_STORED : simule une corruption de donnée en gardant l'index et le CRC initiaux.
+    source.write_bytes(source.read_bytes().replace(b"temoin CRC", b"temoin CRD", 1))
+    with pytest.raises(BadZipFile, match="CRC"):
+        optimisation.lire_3mf(source)

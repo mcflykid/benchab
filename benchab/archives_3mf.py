@@ -305,19 +305,12 @@ class Archive3MF:
             raise RuntimeError("ouvrir Archive3MF avec un bloc with")
         return self._infos[membre].file_size
 
-    def verifier(self):
-        """Parcourt les membres par blocs de 1 Mio pour détecter CRC et flux invalides."""
+    def verifier(self, *, membres=None):
+        """Contrôle taille/CRC des noms fournis (tous par défaut), en blocs de 64 Kio, sans extraction."""
         if self._archive is None:
             raise RuntimeError("ouvrir Archive3MF avec un bloc with")
-        for info in self._infos.values():
-            if self._octets_lus + info.file_size > self.taille_max_totale:
-                raise ValueError("budget cumulatif de lecture dépassé")
-            total = 0
-            with self._archive.open(info) as flux:
-                while bloc := flux.read(1024 * 1024):
-                    total += len(bloc)
-                    if total > min(info.file_size, self.taille_max_membre):
-                        raise ValueError(f"budget réel dépassé : {info.filename}")
-            if total != info.file_size:
-                raise ValueError(f"taille réelle incohérente : {info.filename}")
-            self._octets_lus += total
+        # Une décompression qui échoue a quand même consommé son budget de lecture.
+        for membre in self._infos if membres is None else membres:
+            with self.ouvrir_flux(membre) as flux:
+                while flux.read(_FluxBorne.TAILLE_BLOC):
+                    pass
