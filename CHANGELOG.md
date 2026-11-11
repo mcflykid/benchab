@@ -2,6 +2,10 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir — 1.5.0
+
+- Visionneuse : l’index et les flux G-code des supports partagent le contexte 3MF et conservent le cache par empreinte (suite de #122).
+
 ## 1.4.0 — 2026-11-11
 
 - Slicer : regroupe les incidents inconnus uniquement par opération et contexte vérifiable ; conserve le plafond des causes identifiées (#143).

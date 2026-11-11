@@ -306,6 +306,17 @@ class Archive3MF:
             raise RuntimeError("ouvrir Archive3MF avec un bloc with")
         return self._infos[membre].file_size
 
+    def verifier_source(self, chemin):
+        """Exige le même fichier que le contexte 3MF ouvert ; FAIL sur lien, remplacement ou mutation."""
+        from benchab.chemins import sans_lien
+
+        if self._archive is None:
+            raise RuntimeError("ouvrir Archive3MF avec un bloc with")
+        info = sans_lien(chemin, strict=True).lstat()
+        signature = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        if signature != self._identite or self._stat_identite() != self._identite:
+            raise ValueError("Source différente ou modifiée pour le contexte 3MF ouvert")
+
     def information(self, membre):
         """Renvoie une copie des métadonnées ZIP validées pour recopier un membre sans réécriture annexe."""
         if self._archive is None:

@@ -16,6 +16,39 @@ from benchab.visualisation.visionneuse import Visionneuse
 
 
 class VueImpression(unittest.TestCase):
+    def test_supports_de_deux_plaques_ouvrent_un_seul_contexte(self):
+        """Les supports des deux plaques sont lus une fois par 3MF, sans modifier l'archive."""
+        from unittest.mock import patch
+        from zipfile import ZipFile
+
+        from benchab.archives_3mf import Archive3MF
+
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t)
+            trimesh.creation.box([10, 10, 10]).export(d / "Bloc.stl")
+            objets = [{"name": "Bloc", "model": "Bloc", "plate": i, "xy_interface": [15, 25]} for i in (1, 2)]
+            tranche = d / "tranche.3mf"
+            with ZipFile(tranche, "w") as z:
+                for i in (1, 2):
+                    z.writestr(f"Metadata/plate_{i}.gcode", "M83\nG1 X10 Y10 Z.2\n;TYPE:Support\nG1 X20 E1 F600\n")
+            original = tranche.read_bytes()
+            entrer = Archive3MF.__enter__
+            ouvertures = []
+
+            def observer(archive):
+                """Compte les vraies ouvertures de la source, sans changer le lecteur."""
+                ouvertures.append(archive.chemin)
+                return entrer(archive)
+
+            v = Visionneuse("Deux plaques")
+            with patch.object(Archive3MF, "__enter__", observer):
+                v.vue_impression({"objects": objets}, d, tranche, allegement=0)
+            self.assertEqual(ouvertures, [tranche])
+            self.assertEqual(
+                [v.source[f"supports_plaque_{i}"]["segments_support_lus"] for i in (1, 2)], [1, 1]
+            )
+            self.assertEqual(tranche.read_bytes(), original)
+
     def test_budget_support_conserve_piece_plateau_et_trace_limite(self):
         from unittest.mock import patch
         from zipfile import ZipFile

@@ -45,6 +45,12 @@ Les doublons de chemin et les graphies qui donnent le même numéro de plaque
 sont refusés. L’optimisation conserve également la vérification du CRC de tous
 les membres.
 
+L’aperçu des supports peut partager le contexte déjà ouvert par le catalogue :
+l’index et les flux G-code d’une scène utilisent le même fichier. Le cache par
+empreinte reste disponible et le lecteur refuse un contexte lié à un autre
+fichier, même si le membre demandé est en cache. Le catalogue garde son plafond
+de 256 Mio par archive et de 128 Mio par G-code de support.
+
 Le XML se lit avec `xml()` : DTD et entités sont refusées en UTF-8, UTF-16 et
 UTF-32 avant ElementTree. Les réglages se lisent avec `reglages()`, qui délègue
 au dictionnaire typé existant sans ajouter de normalisation. Le contexte est
