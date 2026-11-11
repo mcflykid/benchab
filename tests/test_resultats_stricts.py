@@ -9,7 +9,45 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
+from benchab.fabrication.anycubic import resultats_xml
 from benchab.qualite import qualite as Q
+
+
+class ResultatsXml(unittest.TestCase):
+    def test_mesures_valides_conservent_ordre_et_valeurs(self):
+        """Les plaques restent dans l’ordre XML, avec leurs mesures respectives."""
+        contenu = b"""<config>
+        <plate><metadata key="index" value="2"/><metadata key="prediction" value="61"/>
+        <metadata key="weight" value="1.25"/></plate>
+        <plate><metadata key="index" value="1"/><metadata key="prediction" value="59"/>
+        <metadata key="weight" value="1.10"/><metadata key="support_used" value="0"/></plate>
+        </config>"""
+
+        resultat = resultats_xml(contenu)
+
+        self.assertEqual([plaque["index"] for plaque in resultat], [2, 1])
+        self.assertEqual([(plaque["secondes"], plaque["grammes"]) for plaque in resultat], [(61.0, 1.25), (59.0, 1.1)])
+
+    def test_cle_absente_ou_dupliquee_est_refusee(self):
+        """Une plaque n’utilise aucune valeur si ses métadonnées sont incomplètes ou ambiguës."""
+        mesures = (
+            '<metadata key="index" value="1"/>',
+            '<metadata key="prediction" value="60"/>',
+            '<metadata key="weight" value="1"/>',
+        )
+        cas = [
+            mesures[1] + mesures[2],
+            mesures[0] + mesures[2],
+            mesures[0] + mesures[1],
+            mesures[0] + mesures[0] + mesures[1] + mesures[2],
+            mesures[0] + mesures[1] + mesures[1] + mesures[2],
+            mesures[0] + mesures[1] + mesures[2] + mesures[2],
+            '<metadata value="inconnue"/>' + "".join(mesures),
+            '<metadata key="index"/>' + mesures[1] + mesures[2],
+        ]
+        for metadata in cas:
+            with self.subTest(metadata=metadata), self.assertRaises(ValueError):
+                resultats_xml(f"<config><plate>{metadata}</plate></config>".encode())
 
 
 class Resultats(unittest.TestCase):

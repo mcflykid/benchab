@@ -105,4 +105,6 @@ continuent d’utiliser les contrôles propres au témoin.
 L’éprouvette d’optimisation interne relie ses résultats aux noms exacts des
 membres de plaque dans un seul contexte borné. Un indice unique comme
 `plate_01.gcode` reste lisible ; deux graphies du même numéro sont refusées.
-Les métriques de dépôt et les opérations du lanceur sont inchangées (#169).
+Une plaque aux clés `index`, `prediction` ou `weight` absentes, répétées ou
+mal formées est refusée. Les métriques de dépôt et les opérations du lanceur
+sont inchangées (#169).

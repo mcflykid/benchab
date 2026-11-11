@@ -279,6 +279,47 @@ class Preservation(unittest.TestCase):
                 self.assertTrue(appels_ecriture[-1][1]["canonique"])
                 self.assertEqual(appels_ecriture[-1][1]["nom_source"], "eprouvette-plaques.3mf")
 
+    def test_metadonnees_ambigues_de_l_archive_refusees_par_la_commande(self):
+        """Une clé index répétée dans l’archive réelle ne publie pas de bilan d’étude."""
+        with tempfile.TemporaryDirectory(dir="/private/tmp") as td:
+            root = Path(td)
+            base = root / "base.3mf"
+            tranche = root / "fake.3mf"
+            with zipfile.ZipFile(base, "w") as z:
+                z.writestr(
+                    "Metadata/project_settings.config",
+                    json.dumps({"filament_settings_id": ["PLA fixe"], "filament_colour": ["#FFFFFF"]}),
+                )
+            with zipfile.ZipFile(tranche, "w") as z:
+                z.writestr(
+                    "Metadata/slice_info.config",
+                    '<config><plate><metadata key="index" value="1"/>'
+                    '<metadata key="index" value="2"/><metadata key="prediction" value="60"/>'
+                    '<metadata key="weight" value="1"/></plate></config>',
+                )
+                z.writestr("Metadata/plate_1.gcode", "M83\n;TYPE:Sparse infill\nG1 X10 E1 F600")
+
+            def ranger(items, *a, **k):
+                for item in items:
+                    item.update(x=0, y=0)
+
+            with (
+                patch.object(O.A, "ranger", ranger),
+                patch.object(O.A, "ecrire_3mf", return_value=base),
+                patch.object(O.A, "trancher", return_value=(tranche, 0)),
+                patch.object(O, "appliquer", return_value=(BLOC, {"statut": "WARN"})),
+                patch.object(O.RL, "volumes", return_value=([], [])),
+                redirect_stderr(stderr := io.StringIO()),
+            ):
+                code = O.main([
+                    "eprouvette", "--base", str(base), "--sortie", str(root / "sortie"),
+                    "--tranches", str(root / "tranches"), "--densites", "15",
+                ])
+
+            self.assertEqual(code, 2)
+            self.assertIn("métadonnées de plaque absentes, répétées ou mal formées", stderr.getvalue())
+            self.assertFalse((root / "sortie/eprouvette.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

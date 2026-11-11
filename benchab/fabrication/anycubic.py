@@ -562,7 +562,15 @@ def resultats_xml(contenu):
 def _extraire_resultats(si):
     out = []
     for p in si.findall("plate"):
-        md = {m.get("key"): m.get("value") for m in p.findall("metadata")}
+        md = {}
+        for meta in p.findall("metadata"):
+            cle, valeur = meta.get("key"), meta.get("value")
+            # Un dict seul écraserait les doublons et pourrait rattacher une métrique au mauvais G-code.
+            if not cle or valeur is None or cle in md:
+                raise ValueError("métadonnées de plaque absentes, répétées ou mal formées")
+            md[cle] = valeur
+        if not {"index", "prediction", "weight"}.issubset(md):
+            raise ValueError("métadonnées de plaque absentes, répétées ou mal formées")
         out.append(
             {
                 "index": int(md["index"]),
