@@ -26,10 +26,12 @@ from zipfile import BadZipFile, ZipFile
 
 from benchab import integrite_3mf
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.fabrication.tranchage_copies import chemin_temporaire as chemin_temporaire
 from benchab.fabrication.tranchage_copies import normaliser as normaliser_copie
 from benchab.fabrication.tranchage_copies import restaurer_noms as restaurer_noms
 from benchab.fabrication.tranchage_copies import sha256 as sha256
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.machine.configuration import charger
 
 ECHANGE = Path(f"/private/tmp/benchab-slicer-{os.getuid()}")
@@ -736,22 +738,32 @@ def client(arguments):
 
 
 def _fichier_visualisable(source, prive):
+    """Valide une archive tranchée privée : plaques 1–30, numéros uniques et CRC complet."""
     from benchab.qualite.ecritures import _sans_lien
 
     source = _sans_lien(Path(source).absolute())
     racines = (_prive(prive), Path("/private/tmp"))
     if not any(source.is_relative_to(r) for r in racines):
         raise ValueError("Copie privée ou temporaire exigée pour la visualisation")
-    with ZipFile(source) as archive:
-        gcodes = [n for n in archive.namelist() if n.startswith("Metadata/") and n.endswith(".gcode")]
-        if not 1 <= len(gcodes) <= 30 or archive.testzip():
+    with Archive3MF(source) as archive:
+        noms = archive.noms()
+        plaques = plaques_gcode_archive(archive)
+        if not 1 <= len(plaques) <= 30:
             raise ValueError("Visualisation : 3MF déjà tranché requis, entre 1 et 30 plaques")
         try:
-            modele = ET.fromstring(archive.read("Metadata/model_settings.config"))
-        except (KeyError, ET.ParseError) as erreur:
+            modele = archive.xml("Metadata/model_settings.config")
+        except (KeyError, ET.ParseError, ValueError) as erreur:
             raise ValueError("Structure des plaques absente ou invalide") from erreur
-        if not 1 <= len(modele.findall("plate")) <= 30:
+        if modele.tag != "config":
+            raise ValueError("Structure des plaques absente ou invalide")
+        plaques_xml = modele.findall("plate")
+        nombre_xml = len(plaques_xml)
+        if not 1 <= nombre_xml <= 30:
             raise ValueError("Visualisation : entre 1 et 30 plaques déclarées exigées")
+        indices = {numero for numero, _ in plaques}
+        if len(plaques) != nombre_xml or indices != set(range(1, nombre_xml + 1)):
+            raise ValueError("Visualisation : G-code et plaques déclarées incohérents")
+        archive.verifier(membres=(nom for nom in noms if nom != "Metadata/model_settings.config"))
     return source
 
 
