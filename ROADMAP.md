@@ -253,7 +253,21 @@ aux arcs arrondis reste NON VÉRIFIÉE. Le filetage triangulaire nominal peut
 produire un maillage extérieur ou un outil de soustraction ; les cotes ISO
 et les ajustements physiques restent ouverts (#27).
 
-## Prochaine version : 1.18.0
+## Version 1.18.0 — lectures 3MF, matériaux et densité radiale
+
+La migration des lecteurs métier sur disque est achevée ; les deux
+validateurs sur instantané conservent leur contrat spécialisé (#122).
+Les clones d’optimisation refusent un changement de source (#202), et
+les synthèses d’atelier relient le contrôle XML au fichier haché (#203).
+Les rapports et membres des clones S/M/L sont inchangés.
+
+La comparaison 3MF résout les matériaux de base Core d’un maillage direct,
+sans assimiler couleur d’affichage et filament (#43). Sur un coupon, les
+paliers radiaux reproduisent l’effet numérique de la densité du cœur
+(#83). Une consigne XY modifie les trajets de support du coupon concentrique
+sans changement de l’écart Z médian (#89).
+
+## Prochaine version : 1.19.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -270,13 +284,9 @@ Traiter les prérequis avant les nouveaux réglages :
   Les hélices en continuité et la cinématique restent à qualifier. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
-- **Fichiers et archives** : #122 poursuit la migration des lecteurs et
-  écrivains spécialisés. La normalisation, la restauration des noms
-  et le précontrôle machine utilisent le lecteur commun. Le plan d’origine
-  partage aussi la garde XML (#196). Les lectures de restauration et la
-  vérification du producteur sont traitées. Les optimisations et les lecteurs
-  des synthèses à empreinte épinglée exigent leurs propres preuves ; les
-  remplacements Core de 1.8 restent distincts.
+- **Fichiers et archives** : garder la garde commune acquise avec #122 et
+  déclarer les différences exactes pour chaque nouvelle transformation.
+  La preuve des échanges entre slicers reste distincte (#43).
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
   tout en détectant les exports corrompus.
@@ -296,6 +306,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 | --- | --- |
 | Concevoir et assembler | #32 : couvrir d’autres opérations cotées ; #27 : filetages, autres fixations et ajustements réels ; #29 : jeux et insertion des clips à mesurer |
 | Examiner les défauts | #93 : hypothèses de pont et comparaison aux trajectoires |
+| Répartir la matière | #83 : compléter les champs de distance et cadrer les contraintes ; #82 : prouver chaque effet G-code hors du coupon qualifié |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : propriétés Core, composants et conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
 
