@@ -127,3 +127,17 @@ def test_plan_ne_suit_pas_lien_parent(tmp_path):
     ligne = next(item for item in rapport["vues"] if item["cible"].startswith("vues/etats/"))
     assert ligne["statut"] == "LIEN_A_VERIFIER"
     assert all(action["cible"] != ligne["cible"] for action in rapport["actions"])
+
+
+def test_refus_cli_reste_sans_mesure(tmp_path, monkeypatch):
+    """Même une commande de plan invalide ne crée pas de mesure archivée."""
+    from benchab import cli
+
+    def interdit(*_args, **_kwargs):
+        raise AssertionError("un refus de commande passive ne doit pas être mesuré")
+
+    prive = _atelier(tmp_path)
+    monkeypatch.setattr(cli, "Base", interdit)
+    monkeypatch.setattr(cli, "Mesure", interdit)
+    code = cli.main(["--prive", str(prive), "controle", "plan-reparation", "--inconnu"])
+    assert code == 2

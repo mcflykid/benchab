@@ -894,7 +894,8 @@ def main(argv=None):
 
     argv = sys.argv[1:] if argv is None else argv
     diagnostic_seul = any(
-        argv[i] == "controle" and argv[i + 1] == "installation" for i in range(len(argv) - 1)
+        argv[i] == "controle" and argv[i + 1] in {"installation", "plan-reparation"}
+        for i in range(len(argv) - 1)
     )
     commande, sensible = commande_sans_secrets(argv)
     if sensible:
