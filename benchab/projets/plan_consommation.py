@@ -9,7 +9,9 @@ import sqlite3
 import stat
 from contextlib import closing
 from pathlib import Path
+from zipfile import BadZipFile
 
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.donnees.base import APPLICATION_ID, Base
 from benchab.fabrication import envois_slicer
@@ -19,6 +21,13 @@ from benchab.qualite.empreintes import sha256_fichier
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _PLAQUE = re.compile(r"Metadata/plate_(\d+)\.gcode\Z")
 _MAX_FICHE = 8 * 1024 * 1024
+_MAX_PREUVE_PESEE = 64 * 1024
+_MAX_LIGNE_GCODE = 1024 * 1024
+_T_EXPLICITE = re.compile(rb"[ \t]*T([0-9]{1,3})[ \t]*(?:;[^\r\n]*)?(?:\r?\n)?")
+_CHAMPS_PESEE = {
+    "schema", "retour_id", "envoi_sha256", "plaque", "membre_gcode", "gcode_sha256",
+    "index_gcode", "emplacement_declare", "bobine_id", "masse_avant_g", "masse_apres_g",
+}
 
 
 def _json_objet(texte: str) -> dict:
@@ -78,14 +87,14 @@ def _chemin_prive(prive: Path, relatif: str) -> Path:
     return chemin
 
 
-def _lire_fiche_bornee(chemin: Path) -> bytes:
-    """Lit la fiche privée régulière en 8 Mio au plus, sans suivre de lien."""
+def _lire_fiche_bornee(chemin: Path, *, limite=_MAX_FICHE) -> bytes:
+    """Lit une fiche privée régulière jusqu’à sa limite en octets, sans lien."""
     fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as flux:
         avant = os.fstat(flux.fileno())
-        if not stat.S_ISREG(avant.st_mode) or avant.st_size > _MAX_FICHE:
-            raise ValueError("fiche non régulière ou supérieure à 8 Mio")
-        contenu = flux.read(_MAX_FICHE + 1)
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size > limite:
+            raise ValueError("fiche non régulière ou au-delà de la limite de lecture")
+        contenu = flux.read(limite + 1)
         apres = os.fstat(flux.fileno())
         chemin_apres = chemin.lstat()
         signature_avant = (avant.st_dev, avant.st_ino, avant.st_size, avant.st_mtime_ns, avant.st_ctime_ns)
@@ -95,7 +104,7 @@ def _lire_fiche_bornee(chemin: Path) -> bytes:
             chemin_apres.st_mtime_ns, chemin_apres.st_ctime_ns,
         )
         if (
-            len(contenu) > _MAX_FICHE
+            len(contenu) > limite
             or signature_avant != signature_apres
             or signature_avant != signature_chemin
             or stat.S_ISLNK(chemin_apres.st_mode)
@@ -319,12 +328,102 @@ def _fichiers_auxiliaires_absents(chemin: Path) -> bool:
     return True
 
 
-def planifier_lecture(prive: Path | str | None, retour_id: str) -> dict:
+class _RefusPesee(ValueError):
+    """Motif contrôlé qui peut être affiché sans exposer les chemins ni les octets lus."""
+
+
+def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
+    """Rapproche une déclaration de pesée et les octets du membre, sans imputation."""
+    inconnu = {
+        "statut": "NON VÉRIFIÉ", "variation_declaree_g": None,
+        "imputation": False, "validation_physique": False,
+    }
+    try:
+        if preuve is None or not isinstance(sha_preuve, str) or _SHA256.fullmatch(sha_preuve) is None:
+            raise _RefusPesee("Fichier de déclaration et SHA-256 exact requis ensemble.")
+        try:
+            p = sans_lien(Path(preuve).expanduser().absolute(), racine=prive, strict=True)
+        except FileNotFoundError as erreur:
+            raise _RefusPesee("Fichier de déclaration absent.") from erreur
+        except ValueError as erreur:
+            raise _RefusPesee("Fichier de déclaration lié ou hors de l’atelier.") from erreur
+        octets = _lire_fiche_bornee(p, limite=_MAX_PREUVE_PESEE)
+        if hashlib.sha256(octets).hexdigest() != sha_preuve:
+            raise _RefusPesee("SHA-256 de la déclaration différent.")
+        d = _json_objet(octets.decode("utf-8"))
+        if set(d) != _CHAMPS_PESEE or type(d["schema"]) is not int or d["schema"] != 1:
+            raise _RefusPesee("Champs ou schéma de déclaration non reconnus.")
+        estimation = rapport.get("estimation")
+        envoi = rapport.get("envoi", {})
+        if not estimation or d["retour_id"] != rapport["retour_id"] or d["envoi_sha256"] != envoi.get("sha256"):
+            raise _RefusPesee("Retour complet et envoi identifié par le même SHA-256 requis.")
+        plaque, outil = d["plaque"], d["index_gcode"]
+        if type(plaque) is not int or plaque < 1 or type(outil) is not int or not 0 <= outil <= 999:
+            raise _RefusPesee("Numéro de plaque ou index G-code non reconnu.")
+        choix = next((p for p in estimation["plaques"] if p["numero"] == plaque), None)
+        if choix is None or choix["gcode"] != d["membre_gcode"]:
+            raise _RefusPesee("Plaque ou membre G-code différent du plan.")
+        indice = next((v for v in choix["outils"] if v["index_gcode"] == outil), None)
+        if indice is None or not indice["indice_repere_dans_envoi"]:
+            raise _RefusPesee("Index G-code absent du plan de cette plaque.")
+        for champ in ("emplacement_declare", "bobine_id"):
+            valeur = d[champ]
+            if not isinstance(valeur, str) or not valeur.strip() or len(valeur) > 120 or not valeur.isprintable():
+                raise _RefusPesee("Emplacement et identifiant de bobine explicites requis.")
+        if connexion.execute("SELECT 1 FROM bobines WHERE id=?", (d["bobine_id"],)).fetchone() is None:
+            raise _RefusPesee("Bobine déclarée introuvable dans cet atelier.")
+        avant, apres = d["masse_avant_g"], d["masse_apres_g"]
+        if any(type(v) not in (float, int) or not 0 <= v <= 1_000_000 for v in (avant, apres)) or apres > avant:
+            raise _RefusPesee("Masses déclarées incohérentes en grammes.")
+        sha_gcode = d["gcode_sha256"]
+        if not isinstance(sha_gcode, str) or _SHA256.fullmatch(sha_gcode) is None:
+            raise _RefusPesee("SHA-256 du membre G-code invalide.")
+        fichier = _chemin_prive(prive, envoi["chemin"])
+        explicite = False
+        empreinte = hashlib.sha256()
+        # Même lecture pour l’empreinte, les lignes T explicites et le CRC.
+        # Le vecteur d’estimation seul peut repérer un outil par masse positive.
+        with Archive3MF(fichier) as archive:
+            if archive.sha256() != envoi["sha256"]:
+                raise _RefusPesee("L’envoi ne correspond plus à son empreinte.")
+            with archive.ouvrir_flux(choix["gcode"]) as flux:
+                while ligne := flux.readline(_MAX_LIGNE_GCODE + 1):
+                    if len(ligne) > _MAX_LIGNE_GCODE:
+                        raise _RefusPesee("Ligne G-code au-delà du budget de lecture.")
+                    empreinte.update(ligne)
+                    selection = _T_EXPLICITE.fullmatch(ligne)
+                    if selection is not None and int(selection[1]) == outil:
+                        explicite = True
+            archive.verifier_source(fichier)
+        if empreinte.hexdigest() != sha_gcode or not explicite:
+            raise _RefusPesee("SHA du membre différent ou aucune sélection T explicite pour cet index.")
+        return {
+            **inconnu, "statut": "DÉCLARATION LIÉE",
+            "sha256_preuve": sha_preuve, "gcode_sha256": sha_gcode,
+            "plaque": plaque, "index_gcode": outil, "membre_gcode": choix["gcode"],
+            "emplacement_declare": d["emplacement_declare"], "bobine_id": d["bobine_id"],
+            "masse_avant_g": float(avant), "masse_apres_g": float(apres),
+            "variation_declaree_g": float(avant) - float(apres),
+            "estimation_slicer_g": indice["grammes_estimes"],
+            "limite": "Déclaration reliée aux octets et à une bobine connue ; aucune mesure authentifiée.",
+        }
+    except _RefusPesee as erreur:
+        return {**inconnu, "raison": str(erreur)}
+    except (BadZipFile, OSError, ValueError, TypeError, KeyError, RuntimeError, sqlite3.Error) as erreur:
+        # Les erreurs de bibliothèque peuvent contenir le chemin ou le nom d’un membre privé (#35, #77).
+        return {**inconnu, "raison": f"Déclaration ou envoi illisible ({type(erreur).__name__})."}
+
+
+def planifier_lecture(
+    prive: Path | str | None, retour_id: str, *, preuve_pesee=None, sha256_preuve=None,
+) -> dict:
     """Construit le rapport CLI depuis SQLite canonical en RO/query_only et snapshot borné.
 
     Entrées : racine privée éventuelle et identifiant de retour. Sortie JSON de code 2,
     statut NON VÉRIFIÉ (aucune consommation physique n'est établie). Ouvre seulement
     `benchab.sqlite` existant en mode ro, sans Base(), mesure, création ni écriture.
+    Un fichier de déclaration et son SHA peuvent relier une variation en g
+    à un retour et à un membre exacts, sans imputer ni valider une pesée.
     """
     try:
         racine = atelier_prive(prive).absolute()
@@ -350,9 +449,36 @@ def planifier_lecture(prive: Path | str | None, retour_id: str) -> dict:
             if identite != APPLICATION_ID or version != 1:
                 return _nv_cli(retour_id, "identité ou schéma BENCHAB non établi")
             rapport = estimer_retour_ro(racine, connexion, retour_id)
+            if preuve_pesee is not None or sha256_preuve is not None:
+                rapport["declaration_pesee"] = _lier_pesee(racine, connexion, rapport, preuve_pesee, sha256_preuve)
             if _signature_base(chemin) != signature:
                 return _nv_cli(retour_id, "base modifiée pendant le snapshot")
         rapport["code"] = 2
         return rapport
     except (OSError, ValueError, TypeError, OverflowError, sqlite3.Error) as erreur:
         return _nv_cli(str(retour_id), f"source privée indisponible : {type(erreur).__name__}")
+
+
+def resumer(rapport: dict, sortie: Path) -> dict:
+    """Résume un rapport complet déjà publié, sans réinterpréter le verdict.
+
+    Entrées : rapport de planifier_lecture et chemin JSON privé. Sortie :
+    code et statut NON VÉRIFIÉ, motifs, nombre de plaques estimées et chemin ;
+    aucun détail de masse en g, d'affectation ou de bobine n'est ajouté.
+    N'écrit rien ; conserver le rapport intégral avant cet affichage (#35).
+    """
+    estimation = rapport["estimation"]
+    resume = {
+        "statut": rapport["statut"],
+        "code": rapport["code"],
+        "rapport": str(sortie),
+        "plaques_estimees": len(estimation["plaques"]) if estimation is not None else 0,
+        "motifs": rapport["motifs"],
+    }
+    declaration = rapport.get("declaration_pesee")
+    if declaration is not None:
+        # Ne pas perdre la cause exacte du refus, sans exposer les masses de la déclaration.
+        resume["declaration_pesee"] = {
+            cle: declaration[cle] for cle in ("statut", "raison") if cle in declaration
+        }
+    return resume

@@ -17,4 +17,38 @@ lance aucune mesure d’usage.
 
 Le résultat n’établit pas que le 3MF envoyé est celui exécuté, ne relie pas un index G-code à un outil physique, à un emplacement ACE ou à une bobine, et ne transforme pas les grammes estimés en consommation réelle. Le suivi de ces preuves reste ouvert dans #77.
 
-Une étape ultérieure devra exiger une affectation explicitement confirmée et une mesure physique de la bobine. Toute future imputation devra être idempotente et enregistrer sa preuve dans la même transaction que la mise à jour du stock.
+Une imputation ultérieure devra exiger une affectation confirmée et une mesure physique de la bobine. Toute future imputation devra être idempotente et enregistrer sa preuve dans la même transaction que la mise à jour du stock.
+
+## Rapprocher une déclaration de pesée
+
+Ajouter `--preuve-pesee FICHIER --sha256-preuve SHA256` pour relire un JSON
+privé de 64 Kio au plus, au schéma 1. Il contient exactement :
+
+- `schema`, `retour_id`, `envoi_sha256`, `plaque`, `membre_gcode`,
+  `gcode_sha256` et `index_gcode` ;
+- `emplacement_declare`, `bobine_id`, `masse_avant_g` et `masse_apres_g`.
+
+L’envoi doit être celui du plan pour un retour complet réussi. Le membre
+relu doit correspondre au numéro de plaque, à son SHA exact et comporter
+une sélection `Tn` explicite de l’index déclaré. Une masse estimée positive
+ou un commentaire ne remplace pas cette sélection. La bobine doit exister
+dans l’atelier ; sa présence n’atteste pas son emplacement physique. Les
+masses sont déclarées en grammes, avec une valeur après qui ne dépasse pas
+celle d’avant.
+
+`DÉCLARATION LIÉE` signifie que les fichiers et identifiants concordent.
+La différence entre les masses déclarées est présentée séparément de
+l’estimation du slicer. Aucune pesée, affectation physique ou exécution
+n’est authentifiée, et le stock ne change pas. Le statut global et le code
+restent NON VÉRIFIÉ et 2. Sans les deux options, le rapport historique est
+conservé (#77).
+
+
+Pour un affichage court, ajouter `--resume --sortie prive/rapports/consommation.json`
+avec un nom JSON neuf dans l’atelier privé. Le résumé garde le statut, le code,
+les motifs de refus, le nombre de plaques estimées et le chemin du rapport.
+La commande écrit le JSON intégral avant d’afficher le résumé. Sans `--resume`,
+elle affiche le JSON intégral, avec ou sans copie demandée via `--sortie`.
+Un rapport existant est refusé ; le statut NON VÉRIFIÉ et le code 2 ne changent pas.
+Les motifs de refus de la déclaration n’exposent ni son chemin ni le texte
+brut d’une erreur de lecture.

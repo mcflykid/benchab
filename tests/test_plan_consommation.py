@@ -110,6 +110,162 @@ class PlanConsommation(unittest.TestCase):
         self.assertEqual(self.envoi_sha, hashlib.sha256(self.envoi.read_bytes()).hexdigest())
         self.assertEqual(sha_archive_avant, hashlib.sha256(self.archive_prive.read_bytes()).hexdigest())
 
+    def _declaration_pesee(self, **modifications):
+        """Écrit un témoin privé qui déclare la masse et l’identité du membre."""
+        membre = "Metadata/plate_1.gcode"
+        with zipfile.ZipFile(self.archive_prive) as archive:
+            sha_gcode = hashlib.sha256(archive.read(membre)).hexdigest()
+        valeurs = {
+            "schema": 1, "retour_id": self.retour_id, "envoi_sha256": self.envoi_sha,
+            "plaque": 1, "membre_gcode": membre, "gcode_sha256": sha_gcode,
+            "index_gcode": 1, "emplacement_declare": "ACE 1 emplacement 2",
+            "bobine_id": "bobine-fixture", "masse_avant_g": 100, "masse_apres_g": 88.25,
+            **modifications,
+        }
+        source = self.racine / "pesee.json"
+        octets = json.dumps(valeurs).encode()
+        source.write_bytes(octets)
+        return source, hashlib.sha256(octets).hexdigest()
+
+    def test_pesee_liee_reste_distincte_du_stock_et_du_slicer(self):
+        """Un rapprochement reproductible ne change aucune masse enregistrée."""
+        from benchab.projets.plan_consommation import planifier_lecture
+
+        preuve, sha = self._declaration_pesee()
+        avant = {p: p.read_bytes() for p in (preuve, self.archive_prive, self.racine / "benchab.sqlite")}
+        rapport = planifier_lecture(self.racine, self.retour_id, preuve_pesee=preuve, sha256_preuve=sha)
+        self.assertEqual(rapport["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(rapport["code"], 2)
+        self.assertIsNone(rapport["affectation_bobine"])
+        observation = rapport["declaration_pesee"]
+        self.assertEqual(observation["statut"], "DÉCLARATION LIÉE")
+        self.assertEqual(observation["variation_declaree_g"], 11.75)
+        self.assertEqual(observation["estimation_slicer_g"], 12.5)
+        self.assertFalse(observation["imputation"])
+        self.assertFalse(observation["validation_physique"])
+        self.assertEqual(avant, {p: p.read_bytes() for p in avant})
+
+    def test_pesee_refuse_identite_membre_outil_ou_bobine_non_etablie(self):
+        """Un décalage ne doit pas fabriquer une quantité de stock imputable."""
+        from benchab.projets.plan_consommation import planifier_lecture
+
+        for modification in (
+            {"envoi_sha256": "0" * 64}, {"gcode_sha256": "0" * 64}, {"index_gcode": 0},
+            {"bobine_id": "inconnue"}, {"masse_apres_g": 101},
+        ):
+            with self.subTest(modification=modification):
+                preuve, sha = self._declaration_pesee(**modification)
+                rapport = planifier_lecture(self.racine, self.retour_id, preuve_pesee=preuve, sha256_preuve=sha)
+                observation = rapport["declaration_pesee"]
+                self.assertEqual(observation["statut"], "NON VÉRIFIÉ")
+                self.assertFalse(observation["imputation"])
+                self.assertIsNone(observation["variation_declaree_g"])
+        preuve, _ = self._declaration_pesee()
+        rapport = planifier_lecture(self.racine, self.retour_id, preuve_pesee=preuve, sha256_preuve="0" * 64)
+        self.assertEqual(rapport["declaration_pesee"]["statut"], "NON VÉRIFIÉ")
+
+    def test_cli_ne_lie_pas_une_pesee_sur_la_seule_masse_positive(self):
+        """Une mention T dans un commentaire ne remplace pas la sélection explicite."""
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        self.envoi_sha = self._remplacer_archive_et_sha({
+            "Metadata/plate_1.gcode": "; filament used [g] = 0, 12.5\n; T1\nG1 X1 E1\n",
+        })
+        preuve, sha = self._declaration_pesee()
+        commande = ["--prive", str(self.racine), "controle", "consommation-retour", "--retour", self.retour_id]
+        sortie = StringIO()
+        with redirect_stdout(sortie):
+            code = main([*commande, "--preuve-pesee", str(preuve), "--sha256-preuve", sha])
+        self.assertEqual(code, 2)
+        rapport = json.loads(sortie.getvalue())
+        self.assertEqual(rapport["declaration_pesee"]["statut"], "NON VÉRIFIÉ")
+        self.assertIn("aucune sélection T explicite", rapport["declaration_pesee"]["raison"])
+        self.assertEqual(rapport["estimation"]["plaques"][0]["outils"][1]["grammes_estimes"], 12.5)
+
+    def test_cli_resume_conserve_le_rapport_complet_et_le_code(self):
+        """Le résumé #35 reste exploitable sans perdre le rapport ni les limites #77."""
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        preuve, sha = self._declaration_pesee()
+        commande = [
+            "--prive", str(self.racine), "controle", "consommation-retour",
+            "--retour", self.retour_id, "--preuve-pesee", str(preuve), "--sha256-preuve", sha,
+        ]
+        complet = StringIO()
+        with redirect_stdout(complet):
+            self.assertEqual(main(commande), 2)
+        cible = self.racine / "rapports/consommation.json"
+        cible.parent.mkdir(exist_ok=True)
+        court = StringIO()
+        with redirect_stdout(court):
+            self.assertEqual(main([*commande, "--resume", "--sortie", str(cible)]), 2)
+        self.assertEqual(json.loads(cible.read_text()), json.loads(complet.getvalue()))
+        resume = json.loads(court.getvalue())
+        self.assertEqual(resume["statut"], "NON VÉRIFIÉ")
+        self.assertEqual(resume["rapport"], str(cible))
+        self.assertEqual(resume["plaques_estimees"], 2)
+        self.assertEqual(resume["declaration_pesee"]["statut"], "DÉCLARATION LIÉE")
+        self.assertLess(len(court.getvalue()), len(complet.getvalue()))
+        self.assertNotIn("bobine-fixture", court.getvalue())
+
+    def test_cli_resume_ne_divulgue_pas_le_chemin_de_la_declaration_refusee(self):
+        """Les refus système et de frontière gardent le diagnostic sans chemin privé."""
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        rapports = self.racine / "rapports"
+        rapports.mkdir(exist_ok=True)
+        absent = self.racine / "declaration-privee-absente.json"
+        lien = self.racine / "declaration-privee-liee.json"
+        lien.symlink_to(absent)
+        for n, preuve in enumerate((absent, lien, self.racine.parent / "declaration-hors-atelier.json")):
+            with self.subTest(n=n):
+                sortie = StringIO()
+                complet = rapports / f"consommation-{n}.json"
+                with redirect_stdout(sortie):
+                    code = main([
+                        "--prive", str(self.racine), "controle", "consommation-retour",
+                        "--retour", self.retour_id, "--preuve-pesee", str(preuve), "--sha256-preuve", "0" * 64,
+                        "--resume", "--sortie", str(complet),
+                    ])
+                self.assertEqual(code, 2)
+                self.assertNotIn(str(preuve), sortie.getvalue())
+                self.assertNotIn(str(preuve), complet.read_text())
+                declaration = json.loads(sortie.getvalue())["declaration_pesee"]
+                self.assertEqual(declaration["statut"], "NON VÉRIFIÉ")
+                self.assertIn("déclaration", declaration["raison"].lower())
+
+    def test_cli_resume_refuse_absence_de_rapport_et_ecrasement(self):
+        """Une sortie courte sans rapport serait une perte de preuve (#35)."""
+        from contextlib import redirect_stderr, redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        commande = [
+            "--prive", str(self.racine), "controle", "consommation-retour",
+            "--retour", "inconnu", "--resume",
+        ]
+        cible = self.racine / "rapports/precedent.json"
+        cible.parent.mkdir(exist_ok=True)
+        cible.write_text("précédent")
+        for options, motif in (([], "exige --sortie"), (["--sortie", str(cible)], "Sortie existante")):
+            with self.subTest(options=options):
+                erreur, stdout = StringIO(), StringIO()
+                with redirect_stderr(erreur), redirect_stdout(stdout):
+                    self.assertEqual(main([*commande, *options]), 2)
+                self.assertIn(motif, erreur.getvalue())
+                self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(cible.read_text(), "précédent")
+
     def test_retour_interrompu_est_non_verifie_sans_masses_utilisables(self):
         """Un retour interrompu n'est jamais transformé en quantité imputable."""
         retour = json.loads(self.base.connexion.execute(

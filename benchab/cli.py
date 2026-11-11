@@ -237,6 +237,10 @@ def parser():
         "consommation-retour", help="Lit un plan numérique de filament pour un retour identifié"
     )
     consommation_retour.add_argument("--retour", required=True, help="Identifiant du retour enregistré")
+    consommation_retour.add_argument("--preuve-pesee", type=Path, help="Déclaration privée facultative")
+    consommation_retour.add_argument("--sha256-preuve", help="SHA-256 exact de la déclaration privée")
+    consommation_retour.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    consommation_retour.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     ecart_z = controle.add_parser(
         "ecart-z-supports", help="Estime les écarts Z depuis les dépôts horizontaux d’une plaque"
     )
@@ -1129,12 +1133,30 @@ def main(argv=None):
             return 2
         return code_statut(rapport["statut"])
     if arguments.commande == "controle" and arguments.controle == "consommation-retour":
-        from benchab.projets.plan_consommation import planifier_lecture
+        from benchab.projets.plan_consommation import planifier_lecture, resumer
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
-        # Le rapport reste NON VÉRIFIÉ et ne passe ni par Base() ni par Mesure (#77).
-        rapport = planifier_lecture(arguments.prive, arguments.retour)
-        print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
-        return rapport["code"]
+        try:
+            if arguments.resume and arguments.sortie is None:
+                raise ValueError("--resume exige --sortie pour conserver le rapport complet.")
+            sortie = None
+            if arguments.sortie is not None:
+                if arguments.sortie.suffix.lower() != ".json":
+                    raise ValueError("La sortie de consommation doit être un JSON neuf.")
+                sortie = destination_neuve(arguments.sortie, prive=arguments.prive, temporaire=False)
+            # La consultation reste NON VÉRIFIÉE ; seule la publication explicite écrit (#35, #77).
+            rapport = planifier_lecture(
+                arguments.prive, arguments.retour,
+                preuve_pesee=arguments.preuve_pesee, sha256_preuve=arguments.sha256_preuve,
+            )
+            if sortie is not None:
+                ecrire_json_neuf(sortie, rapport)
+            affiche = resumer(rapport, sortie) if arguments.resume else rapport
+            print(json.dumps(affiche, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            return rapport["code"]
+        except (OSError, ValueError, RuntimeError) as erreur:
+            print(f"BENCHAB : rapport de consommation refusé : {erreur}", file=sys.stderr)
+            return 2
     if arguments.commande == "controle" and arguments.controle == "ecart-z-supports":
         from zipfile import BadZipFile
 
