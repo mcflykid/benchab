@@ -1,9 +1,11 @@
 """Contrôle les plages Z d’un 3MF contre une intention explicite, sans écriture."""
 
 import argparse
+import heapq
 import json
 import math
 import posixpath
+import sys
 from pathlib import Path
 from urllib.parse import unquote
 from xml.etree import ElementTree
@@ -16,10 +18,12 @@ from benchab.archives_3mf import Archive3MF
 from benchab.chemins import sans_lien
 from benchab.imports3d.lecture_3mf import NS, UNITES
 from benchab.imports3d.lecture_3mf import lire as lire_scene
+from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
 from benchab.qualite.empreintes import sha256_fichier
 from benchab.qualite.statuts import code_statut
 
 _XML_MAX = 32 * 1024 * 1024
+_RESUME_MAX_OBJETS = 5
 _NOMS_INTENTION = {"totale", "partielle_volontaire", "zone_fine"}
 
 
@@ -451,13 +455,58 @@ def analyser(source, declaration, *, tolerance_mm=0.001):
     return rapport
 
 
-def main(argv=None):
-    """Interface de contrôle Z en mm et en lecture seule ; code 0 PASS, 2 FAIL ou NON VÉRIFIÉ."""
+def _resume(rapport, cible):
+    """Résume au plus cinq objets ; priorité aux erreurs et statuts non PASS, avec compte des omissions."""
+    objets = rapport.get("objets", [])
+    rangs = {"NON VÉRIFIÉ": 0, "FAIL": 1, "WARN": 2, "PASS": 3}
+    selection = heapq.nsmallest(
+        _RESUME_MAX_OBJETS,
+        enumerate(objets),
+        key=lambda paire: (
+            0 if paire[1].get("erreur") else 1 + rangs.get(paire[1].get("statut"), 0),
+            paire[0],
+        ),
+    )
+    comptes = {}
+    for objet in objets:
+        statut = objet.get("statut", "NON VÉRIFIÉ")
+        comptes[statut] = comptes.get(statut, 0) + 1
+    points = [
+        {
+            cle: objet[cle]
+            for cle in (
+                "objet_id", "intention", "statut", "geometrie_z_mm", "intervalle_attendu_mm",
+                "hauteur_max_mm", "erreur",
+            )
+            if cle in objet
+        }
+        for _, objet in selection
+    ]
+    resume = {
+        "statut": rapport["statut"],
+        "statuts_objets": comptes,
+        "total_objets": len(objets),
+        "objets_affiches": len(points),
+        "objets_omis": max(0, len(objets) - len(points)),
+        "points_importants": points,
+        "rapport": str(cible),
+    }
+    if not objets and rapport.get("erreur"):
+        resume["erreur"] = rapport["erreur"]
+    return resume
+
+
+def main(argv=None, *, prive=None):
+    """Contrôle Z en mm ; sortie privée, JSON historique ou rapport neuf et résumé, codes 0 PASS, 2 sinon."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Archive 3MF source, préservée")
     parser.add_argument("intention", type=Path, help="JSON d’intention explicite, unités mm")
     parser.add_argument("--tolerance-mm", type=float, default=0.001)
+    parser.add_argument("--sortie", type=Path, help="Rapport JSON complet, créé sans écrasement")
+    parser.add_argument("--detail", action="store_true", help="Affiche aussi le rapport complet avec --sortie")
     arguments = parser.parse_args(argv)
+    if arguments.detail and arguments.sortie is None:
+        parser.error("--detail exige --sortie pour conserver un rapport complet.")
     try:
         rapport = analyser(arguments.source, arguments.intention, tolerance_mm=arguments.tolerance_mm)
     except (OSError, ValueError, KeyError, TypeError, BadZipFile, ElementTree.ParseError) as erreur:
@@ -466,7 +515,20 @@ def main(argv=None):
             "erreur": str(erreur), "validation_physique": False,
             "code": code_statut("NON VÉRIFIÉ"),
         }
-    print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+    if arguments.sortie is None:
+        # Sans nouvelle option, conserver exactement le JSON stdout historique.
+        print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+    else:
+        try:
+            cible = sortie_privee(arguments.sortie, prive=prive)
+            cible = ecrire_json_neuf(cible, rapport, entrees=(arguments.source, arguments.intention))
+        except (OSError, ValueError) as erreur:
+            print(f"BENCHAB : {erreur}", file=sys.stderr)
+            return 2
+        if arguments.detail:
+            print(json.dumps({**rapport, "rapport": str(cible)}, ensure_ascii=False, indent=2, allow_nan=False))
+        else:
+            print(json.dumps(_resume(rapport, cible), ensure_ascii=False))
     return code_statut(rapport["statut"])
 
 

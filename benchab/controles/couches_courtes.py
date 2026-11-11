@@ -16,6 +16,9 @@ fins que l'échantillonnage peuvent échapper au contrôle. Les branches sont
 suivies par recouvrement XY entre couches ; leur segmentation reste indicative.
 Revoir appuis, parcours réels, débit et refroidissement dans le tranchage,
 jusqu'aux dernières couches. L'absence d'alerte ne dispense pas de cette revue.
+qualification_sections décrit uniquement les recouvrements entre coupes XY
+échantillonnées ; son statut reste NON VÉRIFIÉ pour tout appui réel après tranchage.
+Voir docs/reference/couches-courtes.md.
 
 
 """
@@ -27,6 +30,10 @@ import sys
 import numpy as np
 import trimesh
 from shapely.affinity import affine_transform
+from shapely.ops import unary_union
+from shapely.strtree import STRtree
+
+_AIRE_INTERSECTION_MIN_MM2 = 1e-9
 
 
 def _sections_xy(mesh, z):
@@ -39,7 +46,65 @@ def _sections_xy(mesh, z):
     return [affine_transform(polygon, transform) for polygon in planar.polygons_full if polygon.area > 0]
 
 
-def _rapport(track, terminal, hmin):
+def _mesurer_recouvrement_xy(polygon, polygones_precedents, *, couche, union_precedente=None):
+    """Retourne la relation et l'aire (mm²) de recouvrement entre coupes XY.
+
+    Les entrées sont des polygones exprimés en mm et l'indice de couche est sans
+    unité. La fraction est relative à l'aire du polygone courant. Les premières
+    coupes et intersections sous la précision numérique n'ont pas de fraction ;
+    aucune valeur ne constitue une preuve d'appui réel ou de contact plateau.
+    """
+    if not polygones_precedents:
+        if couche == 0:
+            return "premier_echantillon_du_maillage", None, None
+        return "sans_recouvrement_xy_echantillonne", 0.0, 0.0
+    union = union_precedente if union_precedente is not None else unary_union(polygones_precedents)
+    aire = float(polygon.intersection(union).area)
+    fraction = min(1.0, max(0.0, aire / polygon.area)) if polygon.area > 0 else None
+    if polygon.area <= _AIRE_INTERSECTION_MIN_MM2 or 0 < aire <= _AIRE_INTERSECTION_MIN_MM2:
+        return "recouvrement_non_qualifie_precision_numerique", aire, None
+    if aire == 0:
+        return "sans_recouvrement_xy_echantillonne", aire, fraction
+    if polygon.area - aire <= _AIRE_INTERSECTION_MIN_MM2:
+        return "recouvrement_complet_xy_echantillonne", aire, fraction
+    return "recouvrement_partiel_xy_echantillonne", aire, fraction
+
+
+def _relations_projection_xy(polygones_precedents, polygones_courants):
+    """Indexe les relations entre deux coupes et signale les branches projetées.
+
+    Retourne, pour chaque polygone courant, ses indices parents précédents et
+    un booléen de branche. Les intersections sont confirmées par une aire en
+    mm² strictement supérieure à ``_AIRE_INTERSECTION_MIN_MM2``.
+    """
+    parents_par_courant = [[] for _ in polygones_courants]
+    branches = [False] * len(polygones_courants)
+    if not polygones_precedents or not polygones_courants:
+        return parents_par_courant, branches
+
+    arbre = STRtree(polygones_courants)
+    enfants_par_precedent = [[] for _ in polygones_precedents]
+    for indice_precedent, precedent in enumerate(polygones_precedents):
+        candidats = arbre.query(precedent, predicate="intersects")
+        for indice_courant_brut in candidats:
+            indice_courant = int(indice_courant_brut)
+            courant = polygones_courants[indice_courant]
+            if precedent.intersection(courant).area > _AIRE_INTERSECTION_MIN_MM2:
+                parents_par_courant[indice_courant].append(indice_precedent)
+                enfants_par_precedent[indice_precedent].append(indice_courant)
+    for enfants in enfants_par_precedent:
+        if len(enfants) > 1:
+            for indice_courant in enfants:
+                branches[indice_courant] = True
+    return parents_par_courant, branches
+
+
+def _rapport(track, terminal, lh, amax, hmin):
+    """Construit le rapport historique et ses observations de coupes échantillonnées.
+
+    ``lh``, ``amax`` et ``hmin`` sont en mm et mm² selon leur nom. Le champ de
+    qualification conserve le statut NON VÉRIFIÉ pour les appuis après tranchage.
+    """
     samples = track["samples"]
     height = samples[-1]["haut"] - samples[0]["bas"]
     if height + 1e-8 < hmin and not terminal:
@@ -51,6 +116,57 @@ def _rapport(track, terminal, hmin):
         motifs.append("petit_ilot_continu")
     if terminal:
         motifs.append("petit_sommet_terminal")
+    qualifications = [sample["qualification_xy"] for sample in samples]
+    fractions = [
+        detail["fraction_recouvrement_xy"]
+        for detail in qualifications
+        if detail["fraction_recouvrement_xy"] is not None
+    ]
+    relations = {detail["relation_appui_xy"] for detail in qualifications}
+    ambiguites = []
+    if any(detail["branche_projection_xy"] or detail["fusion_projection_xy"] for detail in qualifications):
+        ambiguites.append("association_un_a_un_non_prouvee_branche_ou_fusion")
+    if "recouvrement_non_qualifie_precision_numerique" in relations:
+        ambiguites.append("recouvrement_sous_precision_numerique")
+    qualification_sections = {
+        "statut": "NON VÉRIFIÉ",
+        "candidat_pose_au_z_min_du_maillage": (
+            qualifications[0]["relation_appui_xy"] == "premier_echantillon_du_maillage"
+        ),
+        "premiere_relation_appui_xy": qualifications[0]["relation_appui_xy"],
+        "relations_appui_xy_observees": sorted({detail["relation_appui_xy"] for detail in qualifications}),
+        "fraction_recouvrement_xy_min": round(min(fractions), 6) if fractions else None,
+        "aire_recouvrement_xy_min_mm2": round(
+            min(
+                detail["aire_recouvrement_xy_mm2"]
+                for detail in qualifications
+                if detail["aire_recouvrement_xy_mm2"] is not None
+            ),
+            6,
+        ) if any(detail["aire_recouvrement_xy_mm2"] is not None for detail in qualifications) else None,
+        "branche_projection_xy": any(detail["branche_projection_xy"] for detail in qualifications),
+        "fusion_projection_xy": any(detail["fusion_projection_xy"] for detail in qualifications),
+        "association_pistes_ambigue": any(
+            detail["branche_projection_xy"] or detail["fusion_projection_xy"]
+            for detail in qualifications
+        ),
+        "ambiguites": ambiguites,
+        "cavite_section_detectee": any(detail["cavites_section"] > 0 for detail in qualifications),
+        "cavites_section_max": max(detail["cavites_section"] for detail in qualifications),
+        "sommet_terminal_echantillonne": terminal,
+        "contact_plateau_prouve": False,
+        "pas_echantillonnage_z_mm": lh,
+        "seuils_heuristiques": {
+            "aire_max_mm2": amax,
+            "hauteur_min_mm": hmin,
+            "origine": "paramètres explicites de la commande ; aucune calibration physique",
+        },
+        "aire_intersection_numerique_min_mm2": _AIRE_INTERSECTION_MIN_MM2,
+        "portee": (
+            "Sections XY aux milieux d'intervalles Z ; projection géométrique seulement. "
+            "Ne prouve ni contact plateau, ni appui réel après tranchage, ni cause physique."
+        ),
+    }
     return {
         "centre_xy_mm": tuple(round(value, 3) for value in xy),
         "de_z": round(samples[0]["z"], 3),
@@ -62,16 +178,22 @@ def _rapport(track, terminal, hmin):
         "sommet_terminal": terminal,
         "motifs": motifs,
         "repere": "STL oriente impression",
+        "qualification_sections": qualification_sections,
     }
 
 
 def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
     """
-    Liste compatible avec l'ancien contrôle ; hauteurs issues des sections.
+    Retourne les îlots géométriques et leurs observations de sections XY.
 
-        Une fin locale signifie que l'îlot n'a plus de section qui le recouvre en XY
-        à l'échantillon suivant. Ce constat géométrique ne mesure pas le temps local
-        de retour de la buse, le refroidissement ou les appuis du parcours tranché.
+    ``path`` désigne un maillage STL ; ``lh`` et ``hmin`` sont en mm, ``amax``
+    en mm². Le rapport conserve les champs historiques et ajoute
+    ``qualification_sections`` au statut NON VÉRIFIÉ pour tout appui après
+    tranchage. La fonction ne modifie ni le maillage ni les réglages.
+
+    Une fin locale signifie que l'îlot n'a plus de section qui le recouvre en XY
+    à l'échantillon suivant. Ce constat ne mesure pas le temps local de retour de
+    la buse, le refroidissement ou les appuis du parcours tranché.
 
     """
     if not all(math.isfinite(value) and value > 0 for value in (lh, amax, hmin)):
@@ -81,10 +203,11 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
         raise ValueError("maillage vide ou limites non finies")
     z0, z1 = map(float, mesh.bounds[:, 2])
     active, reports = [], []
+    polygones_precedents = []
     count = max(0, int(math.ceil((z1 - z0) / lh - 1e-9)))
 
     def finish(track, terminal):
-        report = _rapport(track, terminal, hmin)
+        report = _rapport(track, terminal, lh, amax, hmin)
         if report is not None:
             reports.append(report)
 
@@ -94,6 +217,13 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
         polygons = _sections_xy(mesh, z)
         total = sum(polygon.area for polygon in polygons)
         small = [polygon for polygon in polygons if polygon.area <= amax + 1e-8]
+        union_precedente = unary_union(polygones_precedents) if polygones_precedents else None
+        parents_par_polygone, branches_par_polygone = _relations_projection_xy(
+            polygones_precedents, polygons
+        )
+        indices_petites = [
+            index for index, polygon in enumerate(polygons) if polygon.area <= amax + 1e-8
+        ]
         # Une correspondance par recouvrement, jamais par centre arrondi. Un
         # trou vertical ou une couche vide termine la piste immédiatement.
         pairs = []
@@ -115,6 +245,11 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
         for new_index, polygon in enumerate(small):
             track = active[new_to_old[new_index]] if new_index in new_to_old else {"samples": []}
             centre = polygon.centroid
+            relation_appui, aire_recouverte, fraction_recouverte = _mesurer_recouvrement_xy(
+                polygon, polygones_precedents, couche=layer, union_precedente=union_precedente
+            )
+            parents = parents_par_polygone[indices_petites[new_index]]
+            branche = branches_par_polygone[indices_petites[new_index]]
             track["samples"].append(
                 {
                     "z": z,
@@ -123,11 +258,20 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0):
                     "aire": float(polygon.area),
                     "aire_totale": float(total),
                     "centre": (float(centre.x), float(centre.y)),
+                    "qualification_xy": {
+                        "relation_appui_xy": relation_appui,
+                        "aire_recouvrement_xy_mm2": aire_recouverte,
+                        "fraction_recouvrement_xy": fraction_recouverte,
+                        "branche_projection_xy": branche,
+                        "fusion_projection_xy": len(parents) > 1,
+                        "cavites_section": len(polygon.interiors),
+                    },
                 }
             )
             track["polygon"] = polygon
             following.append(track)
         active = following
+        polygones_precedents = polygons
     for track in active:
         finish(track, True)
     return sorted(reports, key=lambda report: (report["de_z"], report["centre_xy_mm"]))

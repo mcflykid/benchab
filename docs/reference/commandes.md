@@ -14,10 +14,11 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
-| `controle plages-z` | Compare les plages de couches d’un 3MF à une intention Z explicite, en mm, sans écriture |
+| `controle plages-z` | Compare les plages de couches d’un 3MF à une intention Z explicite, en mm ; `--sortie` donne un résumé borné et un rapport privé, `--detail` ajoute le JSON complet à stdout |
 | `fabrication exportable`, `rattachements`, `envois-slicer`, `retour`, `planning` | Livrables, historique et retours |
 | `fabrication tracer-3mf SOURCE --sortie NOM.3mf` | Copie privée avec empreinte source facultative ; conservation native NON VÉRIFIÉE |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
+| `controle surplombs-connexes SOURCE.stl --unite-mm` | Groupes de triangles orientés vers le bas ; rapport numérique sans validation d’appui |
 | `controle ecarts-profils-3mf` | Compare les réglages 3MF aux profils explicitement fournis ; rapport privé |
 | `controle publication`, `frontiere`, `typographie` | Dépôt partageable |
 | `qualite niveau1`, `niveau3`, `incrementiel`, `resume`, `tout`, `hooks`, `archives`, `comparer-fabrication` | Qualité logicielle et impact des tests |
@@ -31,6 +32,9 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `vote --preparer`, `vote DOSSIER`, `vote --etat` | [Conseil et relecture](vote.md) |
 
 Voir le format et les limites du [contrôle des plages Z](plages-z.md).
+Les limites de la cartographie STL sont décrites dans
+[Surplombs, ponts et supports](../explications/surplombs-ponts-supports.md).
+
 Le placement traçable depuis une source importée est décrit dans [son contrat](placement.md).
 
 Les contrôles spécialisés supplémentaires sont listés par `uv run benchab controle --help`.

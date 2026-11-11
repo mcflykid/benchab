@@ -1,0 +1,222 @@
+"""Contrats de la cartographie numérique avant tranchage, sans slicer ni machine."""
+
+import hashlib
+import json
+import os
+import struct
+
+import numpy as np
+import pytest
+import trimesh
+
+from benchab.cli import CONTROLES_DIRECTS
+from benchab.controles import surplombs_connexes as sc
+
+
+def test_controle_est_accessible_par_la_route_commune():
+    """La cartographie rejoint la route directe mesurée de la CLI."""
+    assert CONTROLES_DIRECTS["surplombs-connexes"] == "surplombs_connexes"
+
+
+def test_cartographie_groupe_faces_connexes_et_separe_composants():
+    """Deux triangles partageant une arête forment un groupe ; une coque disjointe garde son composant."""
+    sommets = np.array([
+        [0, 0, 2], [1, 0, 2], [1, 1, 2], [0, 1, 2],
+        [4, 0, 2], [5, 0, 2], [4.5, 1, 2],
+    ], dtype=float)
+    maillage = trimesh.Trimesh(vertices=sommets, faces=[[0, 2, 1], [0, 3, 2], [4, 6, 5]], process=False)
+
+    rapport = sc.cartographier(maillage, source="fixture.stl", unite="mm")
+
+    assert rapport["statut"] == "RENSEIGNÉE"
+    assert len(rapport["groupes"]) == 2
+    assert [g["nb_faces"] for g in rapport["groupes"]] == [2, 1]
+    assert len({g["composante_maillage"] for g in rapport["groupes"]}) == 2
+    assert rapport["groupes"][0]["aire_mm2"] == 1.0
+    assert rapport["groupes"][0]["hauteur_mm"]["min"] == 2.0
+    assert rapport["groupes"][0]["angle_surface_horizontale_deg"]["max"] == 0.0
+    assert all(g["acces_plateau"]["statut"] == "NON VÉRIFIÉ" for g in rapport["groupes"])
+    assert all(g["pont_possible"]["statut"] == "NON VÉRIFIÉ" for g in rapport["groupes"])
+
+
+def test_cartographie_garde_distincts_deux_plaques_de_surplomb():
+    """Des faces non adjacentes ne sont pas fusionnées par proximité spatiale seule."""
+    sommets = np.array([
+        [0, 0, 3], [1, 0, 3], [0, 1, 3],
+        [1.1, 0, 3], [2.1, 0, 3], [1.1, 1, 3],
+    ], dtype=float)
+    maillage = trimesh.Trimesh(vertices=sommets, faces=[[0, 2, 1], [3, 5, 4]], process=False)
+
+    rapport = sc.cartographier(maillage, source="fixture.stl", unite="mm")
+
+    assert len(rapport["groupes"]) == 2
+
+
+def test_angle_incline_et_hauteur_sont_exprimees_avec_unites():
+    """La pente du plan est donnée en degrés et l'intervalle vertical en mm."""
+    maillage = trimesh.Trimesh(
+        vertices=[[0, 0, 2], [2, 0, 2], [0, 2, 3]],
+        faces=[[0, 2, 1]],
+        process=False,
+    )
+
+    groupe = sc.cartographier(maillage, source="pente.stl", unite="mm")["groupes"][0]
+
+    assert groupe["angle_surface_horizontale_deg"]["moyenne_ponderee"] == 26.565051
+    assert groupe["hauteur_mm"]["min"] == 2.0
+    assert groupe["hauteur_mm"]["max"] == 3.0
+    assert groupe["hauteur_mm"]["etendue"] == 1.0
+
+
+def test_acces_obstrue_et_pont_geometrique_restant_non_verifies():
+    """Une face sous un obstacle et un plafond géométrique ne deviennent pas des verdicts physiques."""
+    sous_face = trimesh.Trimesh(
+        vertices=[[0, 0, 4], [2, 0, 4], [2, 2, 4], [0, 2, 4]],
+        faces=[[0, 2, 1], [0, 3, 2]],
+        process=False,
+    )
+    obstacle = trimesh.Trimesh(
+        vertices=[[1, 0, 0], [1, 2, 0], [1, 2, 3], [1, 0, 3]],
+        faces=[[0, 1, 2], [0, 2, 3]],
+        process=False,
+    )
+    scene = trimesh.util.concatenate([sous_face, obstacle])
+
+    rapport = sc.cartographier(scene, source="obstacle-fixture.stl", unite="mm")
+
+    assert len(rapport["groupes"]) == 1
+    groupe = rapport["groupes"][0]
+    assert groupe["acces_plateau"]["statut"] == "NON VÉRIFIÉ"
+    assert groupe["pont_possible"]["statut"] == "NON VÉRIFIÉ"
+    assert "aucun test" in groupe["acces_plateau"]["raison"]
+
+
+def test_cartographie_refuse_unite_non_etablie():
+    """Aucune hauteur ou aire métrique n'est publiée si l'unité du maillage manque."""
+    with np.testing.assert_raises_regex(ValueError, "unité"):
+        sc.cartographier(trimesh.creation.box(), source="piece.stl", unite=None)
+
+
+def test_cli_ecrit_json_neuf_sans_toucher_au_maillage(tmp_path, monkeypatch):
+    """Le parcours CLI écrit un rapport privé neuf, sans modifier l'entrée STL."""
+    maillage = trimesh.creation.box(extents=[2, 2, 2])
+    source = tmp_path / "fixture.stl"
+    maillage.export(source)
+    empreinte = source.read_bytes()
+    sortie = tmp_path / "rapport.json"
+
+    flux_charge = {}
+    charge_originale = sc.trimesh.load_mesh
+
+    def charger(flux, **options):
+        flux_charge["octets"] = flux.getvalue()
+        flux_charge["options"] = options
+        return charge_originale(flux, **options)
+
+    monkeypatch.setattr(sc.trimesh, "load_mesh", charger)
+    assert sc.main([str(source), "--unite-mm", "--sortie", str(sortie)]) == 0
+    rapport = json.loads(sortie.read_text())
+
+    assert rapport["statut"] == "RENSEIGNÉE"
+    assert rapport["unite"] == "mm"
+    assert flux_charge["octets"] == empreinte
+    assert flux_charge["options"] == {"file_type": "stl", "process": False}
+    assert rapport["source_sha256"] == hashlib.sha256(flux_charge["octets"]).hexdigest()
+    assert source.read_bytes() == empreinte
+
+
+def test_stl_exporte_et_relu_reconstruit_connexite_par_coordonnees_exactes(tmp_path):
+    """Le STL répète les sommets des triangles, mais garde la face plane dans un seul groupe connexe."""
+    source = tmp_path / "cube.stl"
+    trimesh.creation.box(extents=[2, 2, 2]).export(source)
+    relu = trimesh.load_mesh(source, process=False)
+    assert len(relu.vertices) == len(relu.faces) * 3
+
+    rapport = sc.cartographier(relu, source=source, unite="mm")
+
+    assert len(rapport["groupes"]) == 1
+    assert rapport["groupes"][0]["nb_faces"] == 2
+    assert rapport["topologie_maillage"]["statut"] == "RENSEIGNÉE"
+
+
+def test_topologie_signale_arete_non_manifold_et_orientation_incoherente():
+    """Les diagnostics géométriques signalent l'ambiguïté sans réorienter les triangles."""
+    adjacency, topologie = sc._adjacence_exacte(np.asarray([
+        [[0, 0, 0], [1, 0, 0], [0, 1, 1]],
+        [[0, 0, 0], [1, 0, 0], [0, -1, 1]],
+        [[0, 0, 0], [1, 0, 0], [0, 0, -1]],
+    ], dtype=float))
+
+    assert len(adjacency) == 2
+    assert topologie["aretes_non_manifold"] == 1
+    assert topologie["aretes_orientation_incoherente"] == 1
+
+
+def test_adjacence_ne_fusionne_pas_les_coordonnees_proches():
+    """Un écart même minime entre deux sommets reste une frontière, sans tolérance implicite."""
+    triangles = np.asarray([
+        [[0, 0, 1], [1, 0, 1], [0, 1, 1]],
+        [[1.0000001, 0, 1], [0, 0, 1], [1, -1, 1]],
+    ], dtype=float)
+
+    adjacency, topologie = sc._adjacence_exacte(triangles)
+
+    assert len(adjacency) == 0
+    assert topologie["aretes_ouvertes"] == 6
+
+
+def test_cli_refuse_une_source_remplacee_pendant_la_lecture(tmp_path, monkeypatch, capsys):
+    """La lecture refuse un changement d'identité du chemin observé depuis le descripteur."""
+    source = tmp_path / "fixture.stl"
+    trimesh.creation.box().export(source)
+    remplacement = tmp_path / "remplacement.stl"
+    remplacement.write_bytes(source.read_bytes())
+    lecture_originale = os.read
+    remplace = False
+
+    def lire_et_remplacer(descripteur, taille):
+        nonlocal remplace
+        octets = lecture_originale(descripteur, taille)
+        if octets and not remplace:
+            os.replace(remplacement, source)
+            remplace = True
+        return octets
+
+    monkeypatch.setattr(sc.os, "read", lire_et_remplacer)
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "a changé pendant sa lecture" in capsys.readouterr().err
+
+
+def test_cli_refuse_budget_triangles_avant_decodage(tmp_path, monkeypatch, capsys):
+    """Le budget de triangles est vérifié depuis l'en-tête binaire avant le décodage du maillage."""
+    source = tmp_path / "trop-grand.stl"
+    nombre = sc.MAX_FACES + 1
+    source.write_bytes(bytes(80) + struct.pack("<I", nombre) + bytes(50 * nombre))
+    monkeypatch.setattr(sc.trimesh, "load_mesh", lambda *_args, **_kwargs: pytest.fail("décodage prématuré"))
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "budget de 50000 triangles" in capsys.readouterr().err
+
+
+def test_cli_refuse_budget_octets_avant_lecture(tmp_path, monkeypatch, capsys):
+    """Le budget de taille est vérifié sur le descripteur avant toute lecture du contenu."""
+    source = tmp_path / "trop-lourd.stl"
+    with source.open("wb") as fichier:
+        fichier.truncate(sc.MAX_SOURCE_OCTETS + 1)
+    monkeypatch.setattr(sc.os, "read", lambda *_args: pytest.fail("lecture prématurée"))
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "budget de 67108864 octets" in capsys.readouterr().err
+
+
+def test_cli_refuse_source_lien_symbolique(tmp_path, monkeypatch, capsys):
+    """Le lecteur refuse un lien avant d'ouvrir les octets ciblés."""
+    cible = tmp_path / "cible.stl"
+    cible.write_bytes(trimesh.creation.box().export(file_type="stl"))
+    source = tmp_path / "lien.stl"
+    source.symlink_to(cible)
+    monkeypatch.setattr(sc.os, "read", lambda *_args: pytest.fail("lecture de cible liée"))
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "ne peut pas être un lien symbolique" in capsys.readouterr().err
