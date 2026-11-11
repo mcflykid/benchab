@@ -25,3 +25,18 @@ privés.
 Cette comparaison n’attribue pas d’effet à la peau, au squelette ou à un
 changement du champ Application. Ces variantes restent NON VÉRIFIÉES
 tant que leur consommation et leur effet n’ont pas été établis (#82).
+
+L’API `evaluer_effet_reglage_gcode` compare deux G-codes et exige que son appelant
+fournisse les réglages et le champ Application relus dans leurs 3MF, ainsi que le
+SHA du même maillage, le rôle `modifier_part`, l’identité et le SHA du même
+modificateur, et une paire commune de régions zone/hors-zone disjointes. Elle
+refuse une mesure si ces déclarations diffèrent ou si le binaire ne correspond
+pas à ASN R1. Le seul changement admis dans cette portée est
+`sparse_infill_density` de 20 à 60 %, avec un motif clairsemé recensé par R1 et
+le rôle `Sparse infill`. Les
+champs peau/squelette verrouillés, les surfaces internes pleines et tout autre
+réglage restent NON VÉRIFIÉS ; aucune absence de dépôt ne vaut FAIL tant que
+cette comparaison n’est pas qualifiée.
+Les longueurs sont calculées avec la tolérance déjà documentée de ±0,1 mm sur
+chaque écart affiché. La fonction ne lance pas le trancheur et ne modifie pas
+les 3MF, les profils ou le G-code.
