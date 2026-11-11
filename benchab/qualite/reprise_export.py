@@ -211,12 +211,14 @@ def preparer(prive, table, sortie):
                 "manifeste_sha256": sha_manifeste, "version_sqlite": version,
                 "limite": "Copie vérifiée d’une seule table, non appliquée ; aucune reconstruction de base.",
             }
-            preuve = dossier / "preuve.json"
-            preuve.write_text(json.dumps(rapport, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            octets_preuve = (json.dumps(rapport, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+            (dossier / "preuve.json").write_bytes(octets_preuve)
+            # L’empreinte attendue vient des octets destinés à la preuve,
+            # jamais de la première relecture du fichier en cours de publication.
+            attendus = {nom: sha, "preuve.json": hashlib.sha256(octets_preuve).hexdigest()}
             with _ouvrir_dossier_epingle(dossier) as stage_fd:
                 info_stage = os.fstat(stage_fd)
                 identite_stage = (info_stage.st_dev, info_stage.st_ino)
-                attendus = {membre: _sha_membre(stage_fd, membre) for membre in (nom, "preuve.json")}
             _verifier_journal(base)
             if _signature_sqlite(base) != signature_base:
                 raise ValueError("La base SQLite a changé pendant la préparation.")
@@ -229,6 +231,8 @@ def preparer(prive, table, sortie):
                 info_stage = os.fstat(stage_fd)
                 if (info_stage.st_dev, info_stage.st_ino) != identite_stage:
                     raise ValueError("Le dossier temporaire a été remplacé avant publication.")
+                if {membre: _sha_membre(stage_fd, membre) for membre in attendus} != attendus:
+                    raise ValueError("Les SHA du dossier temporaire diffèrent des octets attendus.")
                 renommer_exclusif(dossier, destination)
                 if _identite_dossier(destination) != identite_stage:
                     raise ValueError("La cible ne désigne plus le dossier préparé ; aucun tiers déplacé.")

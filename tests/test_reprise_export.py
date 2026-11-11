@@ -168,3 +168,29 @@ def test_destination_remplacee_apres_renommage_reste_intacte(tmp_path, atelier, 
     assert (sortie / "projets.jsonl").read_bytes() == b"dossier tiers\n"
     assert (detour / "projets.jsonl").is_file()
     assert not list(tmp_path.glob(".reprise.quarantaine-*"))
+
+
+def test_preuve_modifiee_avant_premier_hachage_est_refusee(tmp_path, atelier, monkeypatch):
+    """Le SHA attendu vient des octets prévus, jamais du fichier déjà altéré."""
+    from contextlib import contextmanager
+
+    from benchab.qualite import reprise_export as reprise
+
+    prive, cible, _ = atelier
+    sortie = tmp_path / "reprise"
+    ouvrir = reprise._ouvrir_dossier_epingle
+    premier = True
+
+    @contextmanager
+    def ouverture_alteree(dossier):
+        nonlocal premier
+        if premier:
+            premier = False
+            (dossier / "preuve.json").write_bytes(b'{"statut":"PASS","faux":true}\n')
+        with ouvrir(dossier) as fd:
+            yield fd
+
+    monkeypatch.setattr(reprise, "_ouvrir_dossier_epingle", ouverture_alteree)
+    with pytest.raises(ValueError, match="SHA|empreinte"):
+        reprise.preparer(prive, "projets", sortie)
+    assert not sortie.exists() and not cible.exists()
