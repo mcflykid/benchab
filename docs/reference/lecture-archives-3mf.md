@@ -39,7 +39,8 @@ blocs. Le même garde XML s’applique aux configurations en mémoire préparée
 les écrivains. Les lecteurs d’optimisation, de noms de plaques, de résultats du
 slicer, de préparation et de planning utilisent aussi l’index commun. La
 préparation contrôle le CRC de tous les membres dans le même contexte que les
-empreintes G-code ; le planning lit ses métadonnées de plaque avec ce lecteur.
+empreintes G-code ; le planning lit ses métadonnées de plaque en XML sécurisé
+avec un plafond explicite de 8 Mio.
 Les doublons de chemin et les graphies qui donnent le même numéro de plaque
 sont refusés. L’optimisation conserve également la vérification du CRC de tous
 les membres.
