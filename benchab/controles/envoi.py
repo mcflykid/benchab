@@ -12,10 +12,14 @@ from benchab.qualite.statuts import code_statut
 
 
 def resumer(rapport, *, maximum=5):
-    """Résume un rapport d'envoi sans détail privé ; statuts sans unité, diagnostic complet préservé."""
+    """Résume les diagnostics prioritaires et numéros de plaque, sans modifier le rapport ni ses statuts."""
     priorite = {"FAIL": 0, "NON VÉRIFIÉ": 1, "WARN": 2}
     diagnostics = [
-        {"controle": resultat.get("controle", "Contrôle sans nom"), "statut": resultat.get("statut")}
+        {
+            "controle": resultat.get("controle", "Contrôle sans nom"),
+            "statut": resultat["statut"],
+            **({"plaque": resultat["plaque"]} if type(resultat.get("plaque")) is int else {}),
+        }
         for resultat in rapport.get("resultats", [])
         if isinstance(resultat, dict) and resultat.get("statut") in priorite
     ]

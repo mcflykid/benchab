@@ -25,7 +25,7 @@ def _rapport(monkeypatch):
         "code": 2,
         "resultats": [
             {"controle": "diagnostic avertissement", "statut": "WARN", "detail": "warning privé exact"},
-            {"controle": "diagnostic échec", "statut": "FAIL", "detail": "échec exact dans /privé/projet"},
+            {"controle": "diagnostic échec", "statut": "FAIL", "plaque": 2, "detail": "échec exact dans /privé/projet"},
             {"controle": "diagnostic inconnu", "statut": "NON VÉRIFIÉ", "detail": "cause exacte privée"},
         ],
         "fichier": "/privé/projet/source.3mf",
@@ -49,6 +49,8 @@ def test_sortie_enregistre_le_complet_et_stdout_priorise_sans_details(
     stdout = capsys.readouterr().out
     resume = json.loads(stdout)
     assert code == resume["code"] == 2
+    assert resume["rapport"] == "rapports/envoi-complet.json"
+    assert resume["diagnostics_prioritaires"][0]["plaque"] == 2
     assert [diagnostic["controle"] for diagnostic in resume["diagnostics_prioritaires"]] == [
         "diagnostic échec", "diagnostic inconnu", "diagnostic avertissement",
     ]

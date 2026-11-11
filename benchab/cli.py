@@ -553,7 +553,9 @@ def executer(arguments, base):
                     ) if chemin is not None
                 ]
                 ecrire_json_neuf(sortie, rapport, entrees=entrees)
-            affichage = rapport if arguments.detail or not arguments.sortie else resumer_envoi(rapport)
+            affichage = rapport
+            if arguments.sortie and not arguments.detail:
+                affichage = {**resumer_envoi(rapport), "rapport": sortie.relative_to(base.prive).as_posix()}
             print(json.dumps(affichage, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle == "typographie":
