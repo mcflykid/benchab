@@ -11,7 +11,7 @@ l’empreinte de la source.
 | Continuité, capacités, comparaison 3MF, purge, écarts Z des supports, rejeux G-code | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Entretien, consommation d’un retour, plan de réparation | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Débit U25, `surplombs-connexes` | `--resume --sortie RAPPORT.json` | Remplacer `--resume` par `--detail` |
-| Appuis G-code, couches courtes | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
+| Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
 | Première couche | `--resume --json RAPPORT.json` | Remplacer `--resume` par `--detail` |
 | Coutures | `--sortie DOSSIER_NEUF` | Ajouter `--detail` |
 

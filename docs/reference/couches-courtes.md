@@ -109,8 +109,6 @@ deux coupes (5 répétitions, médiane), le balayage complet de référence a ex
 garantie de temps pour des maillages réels ; il vérifie surtout que les îlots
 disjoints ne provoquent plus une intersection exacte pour chaque paire.
 
-Pour limiter la sortie à l’écran, ajouter `--resume --json RAPPORT_NEUF`.
-Le résumé conserve le verdict, le SHA de la source et les compteurs agrégés ;
-le rapport privé conserve toutes les couches, les parcours et les diagnostics.
-Sans `--resume`, la sortie détaillée reste disponible. Le chemin existant
-est refusé sans remplacement.
+La commande affiche le JSON complet sur la sortie standard. Le code de
+sortie vaut 0 sans îlot signalé et 2 avec des îlots. Le résumé avec
+rapport privé est suivi dans l’issue #35.
