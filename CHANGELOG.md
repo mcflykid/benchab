@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir
+## 1.12.0 — 2026-11-11
 
 - Remplissage : un dépôt sans rôle ou l’absence de dépôt clairsemé attribué
   ne valide plus les compteurs du comparateur (#183).

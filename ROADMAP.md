@@ -161,7 +161,21 @@ JSONL absente, un candidat peut être préparé hors de l’export depuis la
 base en lecture seule. Il ne remplace aucune donnée ; sa preuve indique
 les empreintes à revérifier (#119).
 
-## Prochaine version : 1.12.0
+## Version 1.12.0 — preuves de préparation et de tranchage
+
+Le comparateur ne valide plus une mesure sans dépôt clairsemé attribué
+(#183). Le lanceur refuse un réglage machine illisible ou ambigu et
+contrôle également le modèle et la buse dans la copie qu’il remet au
+trancheur (#186, suite de #122).
+
+La visionneuse localise les visées de surplomb vers un plan déclaré,
+sans conclure à un accès global ni à un pont (#93). Le retour photo
+conserve en privé l’original, l’aperçu et la confirmation séparée (#28).
+Le motif `supportcubic` est qualifié pour le binaire et le témoin
+observés (#80, #81). Le lamage supérieur étend les fiches cotées
+avec contrôle d’interférence et volume vérifié (#27, #32).
+
+## Prochaine version : 1.13.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -178,9 +192,10 @@ Traiter les prérequis avant les nouveaux réglages :
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs et
-  écrivains spécialisés. La normalisation et la restauration des noms
-  de plaques utilisent le lecteur commun ; les autres
-  transformations d’archives du slicer exigent leurs propres preuves ; les remplacements Core de 1.8 restent distincts.
+  écrivains spécialisés. La normalisation, la restauration des noms
+  et le précontrôle machine utilisent le lecteur commun. Les autres
+  transformations du trancheur exigent leurs propres preuves ; les
+  remplacements Core de 1.8 restent distincts.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
   tout en détectant les exports corrompus.
@@ -198,8 +213,8 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Concevoir et assembler | #32 : élargir les fiches au-delà des blocs percés ; #27 : filetages et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
-| Examiner les défauts | #28 : observations photo ; #93 : îlots de surplomb, accès vertical au plan déclaré et présentation dans la visionneuse |
+| Concevoir et assembler | #32 : couvrir d’autres opérations cotées ; #27 : filetages et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
+| Examiner les défauts | #28 : comparaison de retours aux sources établies ; #93 : hypothèses de pont et comparaison aux trajectoires |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
 
