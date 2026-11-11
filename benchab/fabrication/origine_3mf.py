@@ -689,15 +689,24 @@ def restaurer(entree, natif, sortie_neuve, plan) -> dict:
         fd, nom_temp = tempfile.mkstemp(prefix=".origine-3mf-", suffix=".tmp", dir=parent)
         os.close(fd)
         temporaire = Path(nom_temp)
-        with ZipFile(moteur) as entree_zip, ZipFile(temporaire, "w") as sortie_zip:
-            for info in entree_zip.infolist():
+        with Archive3MF(
+            moteur,
+            taille_max_membre=_MAX_ARCHIVE,
+            taille_max_totale=_MAX_ARCHIVE,
+            taille_max_xml=64 * 1024 * 1024,
+        ) as entree_archive, ZipFile(temporaire, "w") as sortie_zip:
+            # Recopier les métadonnées et le commentaire d’archive depuis l’index épinglé.
+            sortie_zip.comment = entree_archive.commentaire
+            for nom in entree_archive.noms():
+                info = entree_archive.information(nom)
                 cible = sortie_zip.open(copy.copy(info), "w")
                 with cible:
-                    if info.filename == nom_settings:
+                    if nom == nom_settings:
                         cible.write(xml_restaure)
                     else:
-                        with entree_zip.open(info) as membre:
+                        with entree_archive.ouvrir_flux(nom) as membre:
                             shutil.copyfileobj(membre, cible, length=1024 * 1024)
+            entree_archive.verifier_source(moteur)
         noms_sortie, sha_sortie = _manifeste_zip(temporaire)
         if noms_sortie != noms_natifs:
             raise ValueError("Restauration a modifié la liste ou l’ordre des membres ZIP")

@@ -165,6 +165,21 @@ def test_plan_compose_translation_et_restaure_seulement_les_matrices():
             matrice = plan["liaisons"][1]["matrice_predite"]
             assert [matrice[i][3] for i in range(3)] == [20.0, 20.0, 8.0]
             natif = _native(source, racine / "natif.3mf", plan)
+            commentaire_zip = b"commentaire natif de fixture"
+            with ZipFile(natif, "a") as archive_natif:
+                archive_natif.comment = commentaire_zip
+            with ZipFile(natif) as archive_natif:
+                metadonnees_natives = {
+                    info.filename: (
+                        info.date_time,
+                        info.compress_type,
+                        info.external_attr,
+                        info.create_system,
+                        info.extra,
+                        info.comment,
+                    )
+                    for info in archive_natif.infolist()
+                }
             sortie = racine / "restaure.3mf"
             resultat = origine_3mf.restaurer(source, natif, sortie, plan)
             assert resultat["statut"] == "PASS"
@@ -172,6 +187,18 @@ def test_plan_compose_translation_et_restaure_seulement_les_matrices():
             assert resultat["membres_non_config_identiques_au_natif"] is True
             with ZipFile(natif) as archive_natif, ZipFile(sortie) as archive_sortie:
                 assert archive_natif.namelist() == archive_sortie.namelist()
+                assert archive_sortie.comment == commentaire_zip
+                assert {
+                    info.filename: (
+                        info.date_time,
+                        info.compress_type,
+                        info.external_attr,
+                        info.create_system,
+                        info.extra,
+                        info.comment,
+                    )
+                    for info in archive_sortie.infolist()
+                } == metadonnees_natives
                 for nom in archive_natif.namelist():
                     if nom != "Metadata/model_settings.config":
                         assert hashlib.sha256(archive_natif.read(nom)).digest() == hashlib.sha256(
