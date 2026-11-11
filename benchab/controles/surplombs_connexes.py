@@ -44,7 +44,10 @@ def _lire_source_stl(chemin):
     avant_chemin = source.lstat()
     if stat.S_ISLNK(avant_chemin.st_mode):
         raise ValueError("La source STL ne peut pas être un lien symbolique.")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    if not stat.S_ISREG(avant_chemin.st_mode):
+        raise ValueError("La source STL doit être un fichier ordinaire.")
+    # Un remplacement entre lstat et open ne doit jamais bloquer la lecture.
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     descripteur = os.open(source, flags)
     try:
         avant_fd = os.fstat(descripteur)
@@ -153,6 +156,8 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
         raise ValueError("L'angle maximal doit être fini, supérieur à 0 et inférieur ou égal à 90 degrés.")
     if not isinstance(maillage, trimesh.Trimesh) or len(maillage.faces) == 0:
         raise ValueError("Un maillage triangulé non vide est requis.")
+    if len(maillage.faces) > MAX_FACES:
+        raise ValueError(f"Le STL dépasse le budget de {MAX_FACES} triangles.")
     if not np.isfinite(maillage.vertices).all() or not np.isfinite(maillage.face_normals).all():
         raise ValueError("Le maillage contient des coordonnées non finies.")
     normales = np.asarray(maillage.face_normals, dtype=float)
@@ -258,7 +263,7 @@ def main(argv=None, *, prive=None):
         contenu, empreinte, nombre_faces = _lire_source_stl(args.source)
         # Le décodeur consomme le blob empreinté ; rouvrir le chemin dissocierait preuve et maillage.
         maillage = trimesh.load_mesh(io.BytesIO(contenu), file_type="stl", process=False)
-        if len(maillage.faces) != nombre_faces:
+        if not isinstance(maillage, trimesh.Trimesh) or len(maillage.faces) != nombre_faces:
             raise ValueError("Le nombre de triangles décodé diffère du contenu STL empreinté.")
         rapport = cartographier(
             maillage,
