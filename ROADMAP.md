@@ -224,7 +224,22 @@ surfaces en surplomb aux axes de pont effectivement tranchés, sans conclure
 à la tenue (#93). Treize docstrings de contrôles complètent le rattrapage
 historique (#127).
 
-## Prochaine version : 1.16.0
+## Version 1.16.0 — lecture d’origine et preuves conditionnelles
+
+Le plan d’origine lit ses modèles XML par le contexte 3MF commun et refuse
+les déclarations hors contrat (#196). Le writer et les parcours spécialisés
+restent à examiner séparément (#122).
+
+La sonde d’arcs donne une borne XY conditionnelle à partir d’un demi-pas
+déclaré. Elle ne qualifie pas le firmware et ne change ni le lecteur exact
+ni U25 (#134). Le comparateur 3MF peut garder le détail privé et afficher
+seulement les statuts, compteurs et empreintes (#35).
+
+Deux variantes natives reproduisent l’effet d’une consigne d’écart Z
+supérieur sur le coupon d’interface (#89). Les autres familles, les
+mesures de retrait et les validations physiques restent ouvertes.
+
+## Prochaine version : 1.17.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -244,8 +259,8 @@ Traiter les prérequis avant les nouveaux réglages :
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs et
   écrivains spécialisés. La normalisation, la restauration des noms
   et le précontrôle machine utilisent le lecteur commun. Le plan d’origine
-  doit encore partager la garde XML (#196). Les autres transformations du
-  trancheur exigent leurs propres preuves ; les
+  partage aussi la garde XML (#196). Les parcours de restauration et les
+  autres transformations du trancheur exigent leurs propres preuves ; les
   remplacements Core de 1.8 restent distincts.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
