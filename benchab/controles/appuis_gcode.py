@@ -660,8 +660,30 @@ def _sha256(path):
         return hashlib.file_digest(flux, "sha256").hexdigest()
 
 
+def _resumer(rapport, destination):
+    """Garde le verdict, le SHA et les compteurs agrégés, sans parcours ni coordonnées."""
+    plaques = rapport["plaques"]
+    return {
+        "statut": rapport["statut"],
+        "mode": rapport["mode"],
+        "sha256": rapport["sha256"],
+        "rapport": str(destination),
+        "plaques": len(plaques),
+        "plaques_non_verifiees": sum(p["statut"] == "NON VÉRIFIÉ" for p in plaques),
+        **{
+            cle: sum(p[cle] for p in plaques)
+            for cle in ("couches_analysees", "parcours", "avec_appui_nominal", "sans_appui_nominal")
+        },
+        "erreurs_interpreteur": sum(len(p["erreurs_interpreteur"]) for p in plaques),
+    }
+
+
 def main(argv=None, *, prive=None):
-    """Contrôle les appuis nominaux (mm) ; ``--arcs-planaires`` est opt-in et ne modifie aucun fichier."""
+    """Contrôle les appuis nominaux en mm et publie sur demande un rapport privé neuf.
+
+    Codes 0 (mesure disponible) ou 2 (refus ou NON VÉRIFIÉ) ; les sources
+    restent intactes et aucun réglage n’est modifié.
+    """
     parser = argparse.ArgumentParser(description="Mesure les appuis nominaux de parcours G-code par couche.")
     parser.add_argument("fichier", type=Path)
     parser.add_argument("--mode", choices=("local", "anterieur", "causal"), default="local")
@@ -676,8 +698,12 @@ def main(argv=None, *, prive=None):
         "--arcs-planaires", action="store_true",
         help="Échantillonne les dépôts G17 planaires exacts ; hélices restent NON VÉRIFIÉES.",
     )
-    parser.add_argument("--json", type=Path, help="Chemin privé pour enregistrer le rapport.")
+    parser.add_argument("--json", type=Path, help="Chemin privé neuf pour le rapport complet.")
+    parser.add_argument("--resume", action="store_true", help="Affiche les compteurs ; exige --json.")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    if args.resume and args.json is None:
+        print("BENCHAB : --resume exige --json pour conserver le rapport complet.", file=sys.stderr)
+        return 2
     try:
         result = analyser_fichier(
             args.fichier,
@@ -694,17 +720,15 @@ def main(argv=None, *, prive=None):
     except (OSError, BadZipFile, ValueError) as erreur:
         print(f"BENCHAB : contrôle des appuis refusé : {erreur}", file=sys.stderr)
         return 2
-    text = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+    destination = None
     if args.json:
-        prive = atelier_prive(prive)
-        destination = args.json.expanduser().resolve()
-        if not destination.is_relative_to(prive):
-            raise ValueError("le rapport personnel doit rester sous BENCHAB_PRIVE")
-        from benchab.qualite.ecritures import _sans_lien
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
-        _sans_lien(args.json.absolute())
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        with args.json.open("x") as flux:
-            flux.write(text)
-    print(text, end="")
+        destination = destination_neuve(args.json.expanduser(), prive=atelier_prive(prive), temporaire=False)
+        ecrire_json_neuf(destination, result, entrees=[args.fichier])
+    affiche = _resumer(result, destination) if args.resume else result
+    if args.resume:
+        print(json.dumps(affiche, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+    else:
+        print(json.dumps(affiche, ensure_ascii=False, indent=2, allow_nan=False))
     return 2 if result["statut"] == "NON VÉRIFIÉ" else 0

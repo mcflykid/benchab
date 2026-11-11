@@ -311,3 +311,29 @@ def test_cli_expose_uniquement_le_mode_opt_in_arcs_planaires(tmp_path, capsys):
     assert rapport["parametres"]["arcs_planaires"] is True
     assert rapport["parametres"]["budget_echantillons_arcs_max"] == 1_000_000
     assert "moitié de sa longueur" in rapport["limite"]
+
+
+def test_resume_appuis_laisse_le_detail_complet_dans_un_rapport_neuf(tmp_path, capsys):
+    """Le résumé garde les compteurs et le rapport contient toutes les lignes."""
+    import json
+
+    source = tmp_path / "fixture.3mf"
+    _ecrire_fixture_gcode_3mf(source)
+    prive = tmp_path / "atelier"
+    prive.mkdir()
+    cible = prive / "detail.json"
+    assert main([str(source)], prive=prive) == 0
+    historique = json.loads(capsys.readouterr().out)
+
+    assert main([str(source), "--resume", "--json", str(cible)], prive=prive) == 0
+    resume = json.loads(capsys.readouterr().out)
+    assert resume["rapport"] == str(cible)
+    assert resume["statut"] == historique["statut"] and resume["sha256"] == historique["sha256"]
+    assert resume["parcours"] == sum(p["parcours"] for p in historique["plaques"])
+    assert resume["plaques"] == len(historique["plaques"])
+    assert "lignes" not in resume and "par_couche" not in resume
+    assert json.loads(cible.read_bytes()) == historique
+
+    assert main([str(source), "--resume"], prive=prive) == 2
+    affiche = capsys.readouterr()
+    assert not affiche.out and "--resume exige --json" in affiche.err
