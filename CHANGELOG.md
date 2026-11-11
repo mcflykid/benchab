@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## Non publié
+## 1.15.0 — 2026-11-11
 
 - Appuis G-code : refuse les numéros de plaque homonymes avant sélection,
   conserve le cache et lie le SHA du rapport au descripteur relu (#194).

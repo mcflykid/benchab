@@ -205,7 +205,26 @@ dépôt clairsemé des variantes 20 % et 60 % (#82). Ni retrait ni rigidité ne
 sont validés par ces résultats. Les portées données, mesure et projets
 rejoignent le rattrapage D10x (#127).
 
-## Prochaine version : 1.15.0
+## Version 1.15.0 — fiches, visserie et échanges 3MF
+
+Le contrôle des appuis refuse un numéro de plaque ambigu et lie le SHA aux
+octets relus dans le contexte commun (#194). Les autres lecteurs et les
+restaurations restent à migrer par lots (#122).
+
+Les fiches cotées acceptent un disque, des perçages, des lamages et des
+poches dans une base cylindrique (#32). La découpe propose un passage de
+vis et des logements de tête et d’écrou à cotes déclarées, sans choisir
+une vis ni qualifier un filetage (#27).
+
+La comparaison 3MF détecte les différences de réglages et de palette.
+Elle compare aussi la peinture littérale des facettes lorsqu’un maillage
+direct, son ordre et le dialecte sont établis. Les propriétés Core et la
+conversion entre slicers restent ouvertes (#43). Un coupon relie des
+surfaces en surplomb aux axes de pont effectivement tranchés, sans conclure
+à la tenue (#93). Treize docstrings de contrôles complètent le rattrapage
+historique (#127).
+
+## Prochaine version : 1.16.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -224,8 +243,9 @@ Traiter les prérequis avant les nouveaux réglages :
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs et
   écrivains spécialisés. La normalisation, la restauration des noms
-  et le précontrôle machine utilisent le lecteur commun. Les autres
-  transformations du trancheur exigent leurs propres preuves ; les
+  et le précontrôle machine utilisent le lecteur commun. Le plan d’origine
+  doit encore partager la garde XML (#196). Les autres transformations du
+  trancheur exigent leurs propres preuves ; les
   remplacements Core de 1.8 restent distincts.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
@@ -244,10 +264,10 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Concevoir et assembler | #32 : couvrir d’autres opérations cotées ; #27 : filetages et intégration des logements ; #29 : jeux et insertion des clips à mesurer |
+| Concevoir et assembler | #32 : couvrir d’autres opérations cotées ; #27 : filetages, autres fixations et ajustements réels ; #29 : jeux et insertion des clips à mesurer |
 | Examiner les défauts | #93 : hypothèses de pont et comparaison aux trajectoires |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
-| Échanger | #43 : conservation des couleurs, palettes et réglages avant conversion ; #45 : export manuel de profils, décision d’usage encore requise |
+| Échanger | #43 : propriétés Core, composants et conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
 
 ### 4. Conserver les expériences à leur bon niveau de preuve
 
