@@ -19,12 +19,12 @@ from pathlib import Path
 @dataclass
 class Resultat:
     args: object
-    returncode: object
+    returncode: int | None
     code_controle: int
     raison: str
     stdout: str
     stderr: str
-    diagnostic: object
+    diagnostic: str | None
     pid: object
     duree_secondes: float
     sortie_tronquee: bool
@@ -75,7 +75,7 @@ def _actif(groupe):
 
 
 def _terminer(p, grace):
-    signaux = []
+    signaux: list[str] = []
     if not _actif(p.pid):
         return signaux
     for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -152,7 +152,7 @@ def executer(
     signaux = []
     pic = None
     echantillons = 0
-    prochaine = 0
+    prochaine: float = 0.0
     with out.open("xb") as stdout, err.open("xb") as stderr:
         os.chmod(out, 0o600)
         os.chmod(err, 0o600)
@@ -253,6 +253,6 @@ def executer(
         tronque_out or tronque_err,
     )
     if interruption is not None:
-        interruption.diagnostic = result.diagnostic
+        setattr(interruption, "diagnostic", result.diagnostic)
         raise interruption
     return result

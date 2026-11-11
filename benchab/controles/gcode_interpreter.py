@@ -52,7 +52,7 @@ class Interpreter:
         self.kind = None
         self.object = None
         self.errors = []
-        self.last_event = None
+        self.last_event: dict[str, object] | None = None
         self.line_number = 0
         self.layer = -1
         self.metadata = {}
@@ -331,8 +331,16 @@ class Interpreter:
         # L'ancien repère ne décrit plus le trajet qui suit le référencement.
         # Voir docs/reference/controles.md, contrôle de débit.
         self._apres_homing = any(self.spatial_xyz)
-        self.xyz = tuple(0.0 if a in axes else p for a, p in zip("XYZ", self.xyz))
-        self.spatial_xyz = tuple(0.0 if a in axes else p for a, p in zip("XYZ", self.spatial_xyz))
+        self.xyz = (
+            0.0 if "X" in axes else self.xyz[0],
+            0.0 if "Y" in axes else self.xyz[1],
+            0.0 if "Z" in axes else self.xyz[2],
+        )
+        self.spatial_xyz = (
+            0.0 if "X" in axes else self.spatial_xyz[0],
+            0.0 if "Y" in axes else self.spatial_xyz[1],
+            0.0 if "Z" in axes else self.spatial_xyz[2],
+        )
         return None
 
     def _parametres(self, c, op, tail):
@@ -373,8 +381,10 @@ class Interpreter:
                 raise ValueError()
         except ValueError:
             self.error("paramètre G9111 non fini/invalide")
+            assert self.last_event is not None  # feed_line initialise l'événement avant la macro.
             self.last_event.update(kind="unsupported", parameters={}, opaque=True)
             return None
+        assert self.last_event is not None  # feed_line initialise l'événement avant la macro.
         self.last_event.update(kind="macro", parameters=values, opaque=True)
         return None
 
@@ -497,6 +507,7 @@ class Interpreter:
             self._apres_homing = False
             if deposited > 0:
                 self.error("Segment d’extrusion immédiatement après G28 non vérifié")
+                assert self.last_event is not None  # L'événement de mouvement est créé avant ce contrôle.
                 self.last_event["homing_unverified"] = True
                 deposited = 0.0
         ratio = deposited / de if de > 0 else 0.0
