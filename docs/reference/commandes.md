@@ -9,7 +9,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `init`, `etat`, `configuration` | Atelier et profil machine |
 | `projet NOM --niveau S` | Projet transactionnel S/M/L |
 | `seance debut`, `seance fin`, `seance etat` | Verrou logique et journal |
-| `imports importer`, `geometrie`, `reparer`, `maillage-avance`, `echange-blender` | Import et géométrie |
+| `imports importer`, `geometrie`, `reparer`, `maillage-avance`, `echange-blender`, `placement` | Import, géométrie et placement explicitement déclaré |
 | `conception cad-engine`, `assistant-projet`, `variantes`, `dfam` | CAO et variantes |
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
@@ -31,6 +31,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `vote --preparer`, `vote DOSSIER`, `vote --etat` | [Conseil et relecture](vote.md) |
 
 Voir le format et les limites du [contrôle des plages Z](plages-z.md).
+Le placement traçable depuis une source importée est décrit dans [son contrat](placement.md).
 
 Les contrôles spécialisés supplémentaires sont listés par `uv run benchab controle --help`.
 Les cibles Make des projets générés utilisent ces mêmes modules ; elles ne créent

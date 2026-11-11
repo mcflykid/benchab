@@ -63,7 +63,7 @@ ROUTES_NAMESPACE = {
     "imports": {
         "prefixe": "benchab.imports3d.",
         "normalisation": "tirets_vers_underscore",
-        "modules_prives": frozenset({"maillage_avance"}),
+        "modules_prives": frozenset({"maillage_avance", "placement"}),
     },
     "visualisation": {
         "prefixe": "benchab.visualisation.",
@@ -328,7 +328,7 @@ def parser():
     ):
         conception.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
     imports = commandes.add_parser("imports").add_subparsers(dest="action", required=True)
-    for nom in ("importer", "geometrie", "reparer", "maillage-avance", "echange-blender"):
+    for nom in ("importer", "geometrie", "reparer", "maillage-avance", "echange-blender", "placement"):
         imports.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
     visualisation = commandes.add_parser("visualisation").add_subparsers(dest="action", required=True)
     for nom in ("photo", "inspection-scene", "assemblage-dossier", "visionneuse", "serveur",

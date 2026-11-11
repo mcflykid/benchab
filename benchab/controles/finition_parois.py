@@ -207,24 +207,9 @@ def _lire(path):
     return raw, [(path.name, raw.decode("utf-8"))], False
 
 
-def analyser(source, maitre=None, limites_filaments=None, options=None):
-    """Analyse une source G-code/3MF ; positions mm, durées s et débits mm³/s.
-
-    Renvoie PASS, WARN, FAIL ou NON VÉRIFIÉ. Les arcs ne prouvent pas la
-    couverture des parois, mais leur durée et leur débit sont analytiques.
-    Ne transforme ni archive, ni réglage, ni trajectoire ; pas de validation physique.
-    """
-    cfg = _options(options)
-    if limites_filaments is not None and (
-        not isinstance(limites_filaments, dict) or any(not isinstance(v, dict) for v in limites_filaments.values())
-    ):
-        raise ValueError("limites_filaments doit être un dictionnaire de déclarations")
-    path = Path(source)
-    raw, parts, archive = _lire(path)
-    machine = _machine(maitre)
-    if sum(len(text.splitlines()) for _, text in parts) > 200000:
-        raise ValueError("budget diagnostic dépassé : 200000 lignes")
-    report = {
+def _rapport_initial(path, raw, cfg, machine):
+    """Prépare les champs communs du rapport sans lire ni modifier une source supplémentaire."""
+    return {
         "schema_version": 1,
         "version": VERSION,
         "source": str(path.resolve()),
@@ -253,275 +238,337 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
             ),
         ],
     }
-    if archive:
-        from benchab.controles.capacites_machine import analyser as capacites
 
-        cap = capacites(path, maitre=machine, limites_filaments=limites_filaments)
-        report["controle_capacites"] = {
-            "statut": cap["statut"],
-            "decision": cap["decision"],
-            "contraintes_non_pass": [c for c in cap.get("contraintes", []) if c["statut"] != "PASS"],
-        }
-    else:
-        report["controle_capacites"] = {
+
+def _controle_capacites(path, archive, machine, limites_filaments):
+    """Retourne les contraintes de capacité sans les mélanger à la couverture des parois."""
+    if not archive:
+        return {
             "statut": "NON VÉRIFIÉ",
             "raison": "Archive, métadonnées filament et contrôles complets absents ; diagnostic brut seulement.",
         }
-    for member, text in parts:
-        it = Interpreter()
-        groups = {}
-        duration = 0.0
-        block = 0
-        layer_z = {}
-        bad_layers = set()
-        events = []
-        fan = {}
-        have_xyz = False
-        xyz_mode = False
-        layer_times = collections.Counter()
-        flows = {}
-        excluded = collections.Counter()
-        excluded_examples = []
-        for line_no, line in enumerate(text.splitlines(), 1):
-            if line.startswith(";LAYER_CHANGE"):
-                have_xyz = False
-            if re.match(r"^;\s*(spiral_mode|spiral_vase)\s*=\s*1\b", line, re.I):
-                report["couverture"]["erreurs"].append(member + ": mode vase non couvert")
-            move = it.feed_line(line)
-            ev = it.last_event
-            # Metadata ;Z suit LAYER_CHANGE, tandis que HEIGHT ne représente jamais une altitude.
-            if line.startswith(";Z:"):
-                try:
-                    layer_z[it.layer] = float(line[3:])
-                except ValueError:
-                    bad_layers.add(it.layer)
-            if ev:
-                op = ev["command"]
-                if op not in {"G0", "G1"} and len(events) < 2048:
-                    events.append({"ligne": line_no, "commande": op, "opaque": ev.get("opaque", False)})
-                if op.startswith("T") and it.tool not in range(4):
-                    report["couverture"]["erreurs"].append(f"{member}:{line_no}: outil hors ACE quatre emplacements")
-                if op in {"M82", "M83", "G90", "G91", "G21"} or op.startswith("T"):
-                    if ev["raw"].upper() != op:
-                        report["couverture"]["erreurs"].append(f"{member}:{line_no}: paramètres superflus {op}")
-                if op in {"G0", "G1", "G92", "M201", "M203", "M204", "M205"}:
-                    keys = [k.upper() for k, _ in WORDS.findall(ev["raw"][len(op) :])]
-                    if len(keys) != len(set(keys)):
-                        report["couverture"]["erreurs"].append(f"{member}:{line_no}: paramètres dupliqués {op}")
-                if op not in KNOWN and not re.fullmatch(r"T\d+", op):
-                    report["couverture"]["erreurs"].append(f"{member}:{line_no}: commande non couverte {op}")
-                if op in {"G90", "G91"}:
-                    xyz_mode = True
-                if op in {"G9111", "M600", "M0", "M1"} or op.startswith("T"):
-                    block += 1
-                if op in {"M106", "M107"}:
-                    fan[str(ev["parameters"].get("P", 0))] = ev["parameters"].get("S", 255) if op == "M106" else 0
-            if (it.kind or "") in {"Custom", "Prime tower", "Wipe tower"}:
-                block += 1
-            if not move:
-                continue
-            if any(abs(a - b) > 1e-10 for a, b in zip(move["start"], move["end"])):
-                have_xyz = True
-            if any(
-                not math.isfinite(move[k]) for k in ("length", "deposited", "deposited_length", "feed", "extrusion")
-            ):
-                raise ValueError("mouvement non fini ou trop grand")
-            speed = move["feed"] / 60
-            if speed > 0:
-                elapsed = (move["length"] or abs(move["extrusion"])) / speed
-                duration += elapsed
-                layer_times[move["layer"]] += elapsed
-            if move["deposited"] > 0 and move["deposited_length"] > 0 and speed > 0:
-                fid = str(move["tool"] + 1) if move["tool"] is not None else None
-                limit = (limites_filaments or {}).get(fid, {})
-                diameter = limit.get("diametre_mm")
-                ceiling = limit.get("plafond_mm3_s")
-                flow = flows.setdefault(
-                    str(fid),
-                    {"debit_max_mm3_s": None, "plafond_mm3_s": ceiling, "depassements": 0, "statut": "NON VÉRIFIÉ"},
-                )
-                if diameter is not None and ceiling is not None:
-                    if any(
-                        isinstance(v, bool) or not isinstance(v, (float, int)) or not math.isfinite(v) or v <= 0
-                        for v in (diameter, ceiling)
-                    ):
-                        raise ValueError("diamètre/plafond filament invalide")
-                    q = move["deposited"] * math.pi * (diameter / 2) ** 2 * speed / move["deposited_length"]
-                    flow["debit_max_mm3_s"] = max(flow["debit_max_mm3_s"] or 0, q)
-                    flow["depassements"] += int(q > ceiling + max(1e-9, ceiling * 1e-10))
-                    flow["statut"] = "FAIL" if flow["depassements"] else "PASS"
-            # Durée et débit sont analytiques même quand la couverture de paroi exige des segments (#133).
-            if move["trajectory"] == "arc_g17_xy":
-                report["couverture"]["erreurs"].append(
-                    f"{member}:{line_no}: arc analytique non couvert par la géométrie linéaire des parois"
-                )
-                continue
-            if move["deposited_length"] <= 0 or move["deposited"] <= 0 or move["type"] not in OUTER:
-                excluded[move["type"] or "non identifié"] += 1
-                if len(excluded_examples) < 128:
-                    excluded_examples.append(
-                        {
-                            "ligne": line_no,
-                            "type": move["type"],
-                            "objet": move["object"],
-                            "outil": move["tool"],
-                            "raison": "hors dépôt de paroi extérieure éligible",
-                        }
-                    )
-                continue
-            if (
-                not have_xyz
-                or not xyz_mode
-                or move["layer"] < 0
-                or it.relative_e is None
-                or it.tool is None
-                or not move["object"]
-            ):
-                report["couverture"]["erreurs"].append(f"{member}:{line_no}: identité/couche/mode incomplet")
-            z = layer_z.get(move["layer"])
-            if z is None or not math.isfinite(z):
-                bad_layers.add(move["layer"])
-                z = None
-            if z is not None and abs(move["end"][2] - z) > 1e-6:
-                report["couverture"]["erreurs"].append(f"{member}:{line_no}: altitude déposée incohérente avec Z")
-            height = move["metadata"].get("HEIGHT")
-            if height is not None and height <= 0:
-                report["couverture"]["erreurs"].append(f"{member}:{line_no}: HEIGHT non positif")
-            if abs(move["end"][2] - move["deposition_start"][2]) > 1e-8:
-                report["couverture"]["erreurs"].append(f"{member}:{line_no}: dépôt Z variable non couvert")
-            if speed <= 0:
-                report["couverture"]["erreurs"].append(f"{member}:{line_no}: F absent/non positif")
-                continue
-            key = (block, move["object"], move["tool"], move["layer"])
-            if key not in groups and len(groups) >= 20000:
-                raise ValueError("budget diagnostic dépassé : 20000 groupes de couches")
-            g = groups.setdefault(
-                key,
+    from benchab.controles.capacites_machine import analyser as capacites
+
+    cap = capacites(path, maitre=machine, limites_filaments=limites_filaments)
+    return {
+        "statut": cap["statut"],
+        "decision": cap["decision"],
+        "contraintes_non_pass": [c for c in cap.get("contraintes", []) if c["statut"] != "PASS"],
+    }
+
+
+def _etat_plaque():
+    """Crée l’état local de lecture d’une plaque, sans persistance entre plaques."""
+    return {
+        "it": Interpreter(),
+        "groups": {},
+        "duration": 0.0,
+        "block": 0,
+        "layer_z": {},
+        "bad_layers": set(),
+        "events": [],
+        "fan": {},
+        "have_xyz": False,
+        "xyz_mode": False,
+        "layer_times": collections.Counter(),
+        "flows": {},
+        "excluded": collections.Counter(),
+        "excluded_examples": [],
+        "erreurs": [],
+    }
+
+
+def _traiter_evenement(member, line_no, event, etat):
+    """Conserve les commandes opaques et les limites de grammaire dans l’ordre source."""
+    if not event:
+        return
+    op = event["command"]
+    if op not in {"G0", "G1"} and len(etat["events"]) < 2048:
+        etat["events"].append({"ligne": line_no, "commande": op, "opaque": event.get("opaque", False)})
+    if op.startswith("T") and etat["it"].tool not in range(4):
+        etat["erreurs"].append(f"{member}:{line_no}: outil hors ACE quatre emplacements")
+    if op in {"M82", "M83", "G90", "G91", "G21"} or op.startswith("T"):
+        if event["raw"].upper() != op:
+            etat["erreurs"].append(f"{member}:{line_no}: paramètres superflus {op}")
+    if op in {"G0", "G1", "G92", "M201", "M203", "M204", "M205"}:
+        keys = [k.upper() for k, _ in WORDS.findall(event["raw"][len(op) :])]
+        if len(keys) != len(set(keys)):
+            etat["erreurs"].append(f"{member}:{line_no}: paramètres dupliqués {op}")
+    if op not in KNOWN and not re.fullmatch(r"T\d+", op):
+        etat["erreurs"].append(f"{member}:{line_no}: commande non couverte {op}")
+    if op in {"G90", "G91"}:
+        etat["xyz_mode"] = True
+    if op in {"G9111", "M600", "M0", "M1"} or op.startswith("T"):
+        etat["block"] += 1
+    if op in {"M106", "M107"}:
+        etat["fan"][str(event["parameters"].get("P", 0))] = event["parameters"].get("S", 255) if op == "M106" else 0
+
+
+def _mesurer_debit(move, limites_filaments, flows, speed):
+    """Met à jour le débit volumique analytique selon les limites explicitement fournies."""
+    if move["deposited"] <= 0 or move["deposited_length"] <= 0 or speed <= 0:
+        return
+    fid = str(move["tool"] + 1) if move["tool"] is not None else None
+    limit = (limites_filaments or {}).get(fid, {})
+    diameter = limit.get("diametre_mm")
+    ceiling = limit.get("plafond_mm3_s")
+    flow = flows.setdefault(
+        str(fid),
+        {"debit_max_mm3_s": None, "plafond_mm3_s": ceiling, "depassements": 0, "statut": "NON VÉRIFIÉ"},
+    )
+    if diameter is None or ceiling is None:
+        return
+    if any(
+        isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value <= 0
+        for value in (diameter, ceiling)
+    ):
+        raise ValueError("diamètre/plafond filament invalide")
+    q = move["deposited"] * math.pi * (diameter / 2) ** 2 * speed / move["deposited_length"]
+    flow["debit_max_mm3_s"] = max(flow["debit_max_mm3_s"] or 0, q)
+    flow["depassements"] += int(q > ceiling + max(1e-9, ceiling * 1e-10))
+    flow["statut"] = "FAIL" if flow["depassements"] else "PASS"
+
+
+def _depot_eligible(member, line_no, move, etat):
+    """Enregistre les zones exclues ou les défauts de couverture d’une paroi candidate."""
+    if move["trajectory"] == "arc_g17_xy":
+        # Le débit reste mesurable ; cette géométrie linéaire ne couvre pas l’arc.
+        # Voir docs/reference/continuite-paroi.md.
+        etat["erreurs"].append(f"{member}:{line_no}: arc analytique non couvert par la géométrie linéaire des parois")
+        return False
+    if move["deposited_length"] <= 0 or move["deposited"] <= 0 or move["type"] not in OUTER:
+        etat["excluded"][move["type"] or "non identifié"] += 1
+        if len(etat["excluded_examples"]) < 128:
+            etat["excluded_examples"].append(
                 {
-                    "index": move["layer"],
-                    "z_mm": z,
-                    "hauteur_mm": move["metadata"].get("HEIGHT"),
+                    "ligne": line_no,
+                    "type": move["type"],
                     "objet": move["object"],
                     "outil": move["tool"],
-                    "troncon": block,
-                    "samples": [],
-                    "moves": [],
-                    "lignes": [],
-                    "protegee": move["layer"] < cfg["skip_first_layers"],
-                },
+                    "raison": "hors dépôt de paroi extérieure éligible",
+                }
             )
-            g["samples"].append((speed, move["deposited_length"]))
-            g["moves"].append((speed, move["deposited_length"]))
-            g["lignes"].append(line_no)
-        report["couverture"]["erreurs"].extend(f"{member}: {e}" for e in it.errors)
-        if bad_layers:
-            report["couverture"]["erreurs"].append(f"{member}: Z absent/non fini aux couches {sorted(bad_layers)}")
-        buckets = collections.defaultdict(list)
-        for g in groups.values():
-            buckets[(g["objet"], g["outil"], g["troncon"])].append(g)
-        series = []
-        for bucket in buckets.values():
-            current = None
-            last = None
-            for g in sorted(bucket, key=lambda g: g["index"]):
-                g["longueur_deposee_mm"] = sum(x[1] for x in g["samples"])
-                g["v_min_mm_s"] = min(x[0] for x in g["samples"])
-                g["v_max_mm_s"] = max(x[0] for x in g["samples"])
-                g["v_mediane_ponderee_mm_s"] = _quantile(g["samples"], 0.5)
-                g["temps_couche_nominal_s"] = layer_times[g["index"]]
-                separated = (
-                    last is None
-                    or g["index"] != last["index"] + 1
-                    or g["z_mm"] is None
-                    or last["z_mm"] is None
-                    or g["z_mm"] <= last["z_mm"]
-                    or g["protegee"] != last["protegee"]
-                )
-                if separated:
-                    current = {
-                        "plaque": member,
-                        "objet": g["objet"],
-                        "outil": g["outil"],
-                        "troncon": len(series),
-                        "couches": [],
-                    }
-                    series.append(current)
-                comparable = (
-                    last is not None
-                    and g["index"] == last["index"] + 1
-                    and g["z_mm"] is not None
-                    and last["z_mm"] is not None
-                    and g["z_mm"] > last["z_mm"]
-                )
-                g["delta_v_mm_s"] = (
-                    None if not comparable else g["v_mediane_ponderee_mm_s"] - last["v_mediane_ponderee_mm_s"]
-                )
-                g["pente_v_par_mm"] = None if not comparable else g["delta_v_mm_s"] / (g["z_mm"] - last["z_mm"])
-                current["couches"].append(g)
-                last = g
-        after = duration
-        calculation_cfg = dict(cfg)
-        calculation_cfg["max_iterations"] = min(
-            cfg["max_iterations"], max(1, 10000000 // max(1, sum(len(s["couches"]) for s in series) * cfg["fenetre"]))
-        )
-        layer_costs = collections.Counter()
-        for serie in series:
-            layers = serie["couches"]
-            speeds = [g["v_min_mm_s"] for g in layers]
-            if layers[0]["protegee"] or any(g["z_mm"] is None for g in layers):
-                targets, iterations, converged, residual = speeds, 0, True, 0.0
-            else:
-                targets, iterations, converged, residual = _proposer(
-                    speeds, [g["z_mm"] for g in layers], calculation_cfg
-                )
-            serie.update(
-                iterations=iterations,
-                converge=converged,
-                residu=residual,
-                unite_residu="mm/s" if cfg["mode"] == "gaussien" else "mm/s/mm",
+        return False
+    if (
+        not etat["have_xyz"]
+        or not etat["xyz_mode"]
+        or move["layer"] < 0
+        or etat["it"].relative_e is None
+        or etat["it"].tool is None
+        or not move["object"]
+    ):
+        etat["erreurs"].append(f"{member}:{line_no}: identité/couche/mode incomplet")
+    return True
+
+
+def _ajouter_mouvement(member, line_no, move, etat, limites_filaments):
+    """Accumule temps, débit et échantillons des mouvements analysables en mm et s."""
+    if not move:
+        return
+    if any(abs(a - b) > 1e-10 for a, b in zip(move["start"], move["end"])):
+        etat["have_xyz"] = True
+    if any(not math.isfinite(move[key]) for key in ("length", "deposited", "deposited_length", "feed", "extrusion")):
+        raise ValueError("mouvement non fini ou trop grand")
+    speed = move["feed"] / 60
+    if speed > 0:
+        elapsed = (move["length"] or abs(move["extrusion"])) / speed
+        etat["duration"] += elapsed
+        etat["layer_times"][move["layer"]] += elapsed
+    _mesurer_debit(move, limites_filaments, etat["flows"], speed)
+    # Les arcs gardent leurs mesures de temps/débit, mais ne prouvent pas la couverture.
+    if not _depot_eligible(member, line_no, move, etat):
+        return
+    z = etat["layer_z"].get(move["layer"])
+    if z is None or not math.isfinite(z):
+        etat["bad_layers"].add(move["layer"])
+        z = None
+    if z is not None and abs(move["end"][2] - z) > 1e-6:
+        etat["erreurs"].append(f"{member}:{line_no}: altitude déposée incohérente avec Z")
+    height = move["metadata"].get("HEIGHT")
+    if height is not None and height <= 0:
+        etat["erreurs"].append(f"{member}:{line_no}: HEIGHT non positif")
+    if abs(move["end"][2] - move["deposition_start"][2]) > 1e-8:
+        etat["erreurs"].append(f"{member}:{line_no}: dépôt Z variable non couvert")
+    if speed <= 0:
+        etat["erreurs"].append(f"{member}:{line_no}: F absent/non positif")
+        return
+    key = (etat["block"], move["object"], move["tool"], move["layer"])
+    groups = etat["groups"]
+    if key not in groups and len(groups) >= 20000:
+        raise ValueError("budget diagnostic dépassé : 20000 groupes de couches")
+    group = groups.setdefault(
+        key,
+        {
+            "index": move["layer"],
+            "z_mm": z,
+            "hauteur_mm": move["metadata"].get("HEIGHT"),
+            "objet": move["object"],
+            "outil": move["tool"],
+            "troncon": etat["block"],
+            "samples": [],
+            "moves": [],
+            "lignes": [],
+            "protegee": move["layer"] < etat["skip_first_layers"],
+        },
+    )
+    group["samples"].append((speed, move["deposited_length"]))
+    group["moves"].append((speed, move["deposited_length"]))
+    group["lignes"].append(line_no)
+
+
+def _scanner_plaque(member, text, cfg, limites_filaments):
+    """Lit les lignes d’une plaque et retourne ses mouvements, exclusions et erreurs."""
+    etat = _etat_plaque()
+    etat["skip_first_layers"] = cfg["skip_first_layers"]
+    for line_no, line in enumerate(text.splitlines(), 1):
+        if line.startswith(";LAYER_CHANGE"):
+            etat["have_xyz"] = False
+        if re.match(r"^;\s*(spiral_mode|spiral_vase)\s*=\s*1\b", line, re.I):
+            etat["erreurs"].append(member + ": mode vase non couvert")
+        move = etat["it"].feed_line(line)
+        event = etat["it"].last_event
+        # ;Z suit LAYER_CHANGE ; HEIGHT est une épaisseur, jamais une altitude.
+        if line.startswith(";Z:"):
+            try:
+                etat["layer_z"][etat["it"].layer] = float(line[3:])
+            except ValueError:
+                etat["bad_layers"].add(etat["it"].layer)
+        _traiter_evenement(member, line_no, event, etat)
+        if (etat["it"].kind or "") in {"Custom", "Prime tower", "Wipe tower"}:
+            etat["block"] += 1
+        _ajouter_mouvement(member, line_no, move, etat, limites_filaments)
+    etat["erreurs"].extend(f"{member}: {erreur}" for erreur in etat["it"].errors)
+    if etat["bad_layers"]:
+        etat["erreurs"].append(f"{member}: Z absent/non fini aux couches {sorted(etat['bad_layers'])}")
+    return etat
+
+
+def _series_plaque(member, groups, layer_times):
+    """Regroupe les couches consécutives par objet, outil et tronçon comme dans le rapport historique."""
+    buckets = collections.defaultdict(list)
+    for group in groups.values():
+        buckets[(group["objet"], group["outil"], group["troncon"])].append(group)
+    series = []
+    for bucket in buckets.values():
+        current = None
+        last = None
+        for group in sorted(bucket, key=lambda item: item["index"]):
+            group["longueur_deposee_mm"] = sum(item[1] for item in group["samples"])
+            group["v_min_mm_s"] = min(item[0] for item in group["samples"])
+            group["v_max_mm_s"] = max(item[0] for item in group["samples"])
+            group["v_mediane_ponderee_mm_s"] = _quantile(group["samples"], 0.5)
+            group["temps_couche_nominal_s"] = layer_times[group["index"]]
+            separated = (
+                last is None
+                or group["index"] != last["index"] + 1
+                or group["z_mm"] is None
+                or last["z_mm"] is None
+                or group["z_mm"] <= last["z_mm"]
+                or group["protegee"] != last["protegee"]
             )
-            report["proposition"]["converge"] &= converged
-            for g, target in zip(layers, targets):
-                # Proposition enveloppe uniquement : tous les segments restent <= vitesse originale.
-                g["v_cible_mm_s"] = None if g["protegee"] else target
-                g["temps_nominal_avant_s"] = sum(length / v for v, length in g["moves"])
-                g["temps_nominal_propose_s"] = sum(
-                    length / (v if g["protegee"] else min(v, target)) for v, length in g["moves"]
-                )
-                cost = g["temps_nominal_propose_s"] - g["temps_nominal_avant_s"]
-                after += cost
-                layer_costs[g["index"]] += cost
-                g["changement_brusque"] = (
-                    g["delta_v_mm_s"] is not None and abs(g["delta_v_mm_s"]) > cfg["seuil_delta_mm_s"]
-                )
-                del g["samples"]
-                del g["moves"]
-            report["series"].append(serie)
-        report["proposition"]["temps_nominal_avant_s"] += duration
-        report["proposition"]["temps_nominal_apres_s"] += after
-        report["plaques"].append(
-            {
-                "temps_couches_nominaux": [
-                    {"couche": k, "avant_s": v, "propose_s": v + layer_costs[k]} for k, v in sorted(layer_times.items())
-                ],
-                "membre": member,
-                "sha256": _sha(text.encode()),
-                "temps_nominal_avant_s": duration,
-                "temps_nominal_propose_s": after,
-                "ventilateurs_commandes_fin": fan,
-                "zones_exclues_compteurs": dict(excluded),
-                "zones_exclues_exemples": excluded_examples,
-                "commandes_exemples": events,
-                "commandes_exemples_limite": 2048,
-                "debit_strict_brut_par_outil": flows,
-                "refroidissement": {
-                    "statut": "NON VÉRIFIÉ",
-                    "raison": "Temps nominaux disponibles, température physique et ventilation locale non simulées.",
-                },
-            }
+            if separated:
+                current = {
+                    "plaque": member,
+                    "objet": group["objet"],
+                    "outil": group["outil"],
+                    "troncon": len(series),
+                    "couches": [],
+                }
+                series.append(current)
+            comparable = (
+                last is not None
+                and group["index"] == last["index"] + 1
+                and group["z_mm"] is not None
+                and last["z_mm"] is not None
+                and group["z_mm"] > last["z_mm"]
+            )
+            group["delta_v_mm_s"] = (
+                None if not comparable else group["v_mediane_ponderee_mm_s"] - last["v_mediane_ponderee_mm_s"]
+            )
+            group["pente_v_par_mm"] = None if not comparable else group["delta_v_mm_s"] / (group["z_mm"] - last["z_mm"])
+            current["couches"].append(group)
+            last = group
+    return series
+
+
+def _proposer_serie(serie, cfg, calculation_cfg, report, layer_costs, after):
+    """Construit une proposition numérique bornée sans augmenter les vitesses source."""
+    layers = serie["couches"]
+    speeds = [group["v_min_mm_s"] for group in layers]
+    if layers[0]["protegee"] or any(group["z_mm"] is None for group in layers):
+        targets, iterations, converged, residual = speeds, 0, True, 0.0
+    else:
+        targets, iterations, converged, residual = _proposer(
+            speeds, [group["z_mm"] for group in layers], calculation_cfg
         )
-    if _octets(path) != raw:
-        raise ValueError("source changée pendant analyse")
+    serie.update(
+        iterations=iterations,
+        converge=converged,
+        residu=residual,
+        unite_residu="mm/s" if cfg["mode"] == "gaussien" else "mm/s/mm",
+    )
+    report["proposition"]["converge"] &= converged
+    for group, target in zip(layers, targets):
+        group["v_cible_mm_s"] = None if group["protegee"] else target
+        group["temps_nominal_avant_s"] = sum(length / speed for speed, length in group["moves"])
+        group["temps_nominal_propose_s"] = sum(
+            length / (speed if group["protegee"] else min(speed, target)) for speed, length in group["moves"]
+        )
+        cost = group["temps_nominal_propose_s"] - group["temps_nominal_avant_s"]
+        after += cost
+        layer_costs[group["index"]] += cost
+        group["changement_brusque"] = (
+            group["delta_v_mm_s"] is not None and abs(group["delta_v_mm_s"]) > cfg["seuil_delta_mm_s"]
+        )
+        del group["samples"]
+        del group["moves"]
+    return after
+
+
+def _analyser_plaque(member, text, cfg, limites_filaments, report):
+    """Ajoute les résultats d’une plaque au rapport, en conservant leur ordre historique."""
+    etat = _scanner_plaque(member, text, cfg, limites_filaments)
+    report["couverture"]["erreurs"].extend(etat["erreurs"])
+    series = _series_plaque(member, etat["groups"], etat["layer_times"])
+    duration = etat["duration"]
+    after = duration
+    calculation_cfg = dict(cfg)
+    calculation_cfg["max_iterations"] = min(
+        cfg["max_iterations"],
+        max(1, 10000000 // max(1, sum(len(serie["couches"]) for serie in series) * cfg["fenetre"])),
+    )
+    layer_costs = collections.Counter()
+    for serie in series:
+        after = _proposer_serie(serie, cfg, calculation_cfg, report, layer_costs, after)
+        report["series"].append(serie)
+    report["proposition"]["temps_nominal_avant_s"] += duration
+    report["proposition"]["temps_nominal_apres_s"] += after
+    report["plaques"].append(
+        {
+            "temps_couches_nominaux": [
+                {"couche": key, "avant_s": value, "propose_s": value + layer_costs[key]}
+                for key, value in sorted(etat["layer_times"].items())
+            ],
+            "membre": member,
+            "sha256": _sha(text.encode()),
+            "temps_nominal_avant_s": duration,
+            "temps_nominal_propose_s": after,
+            "ventilateurs_commandes_fin": etat["fan"],
+            "zones_exclues_compteurs": dict(etat["excluded"]),
+            "zones_exclues_exemples": etat["excluded_examples"],
+            "commandes_exemples": etat["events"],
+            "commandes_exemples_limite": 2048,
+            "debit_strict_brut_par_outil": etat["flows"],
+            "refroidissement": {
+                "statut": "NON VÉRIFIÉ",
+                "raison": "Temps nominaux disponibles, température physique et ventilation locale non simulées.",
+            },
+        }
+    )
+
+
+def _finaliser_rapport(report):
+    """Déduit les statuts globaux sans effacer les sous-statuts ni les limites."""
     if not report["series"]:
         report["couverture"]["erreurs"].append("aucune paroi extérieure identifiable")
     report["couverture"]["erreurs"] = list(dict.fromkeys(report["couverture"]["erreurs"]))
@@ -529,7 +576,11 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
     if report["couverture"]["erreurs"]:
         report["raisons_refus_transformation"] += report["couverture"]["erreurs"]
     status = report["controle_capacites"]["statut"]
-    if any(f["statut"] == "FAIL" for p in report["plaques"] for f in p["debit_strict_brut_par_outil"].values()):
+    if any(
+        flow["statut"] == "FAIL"
+        for plaque in report["plaques"]
+        for flow in plaque["debit_strict_brut_par_outil"].values()
+    ):
         status = "FAIL"
     report["statut"] = (
         "FAIL"
@@ -545,6 +596,32 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
     )
     json.dumps(report, allow_nan=False)
     return report
+
+
+def analyser(source, maitre=None, limites_filaments=None, options=None):
+    """Analyse une source G-code/3MF ; positions mm, durées s et débits mm³/s.
+
+    Renvoie PASS, WARN, FAIL ou NON VÉRIFIÉ. Les arcs ne prouvent pas la
+    couverture des parois, mais leur durée et leur débit sont analytiques.
+    Ne transforme ni archive, ni réglage, ni trajectoire ; pas de validation physique.
+    """
+    cfg = _options(options)
+    if limites_filaments is not None and (
+        not isinstance(limites_filaments, dict) or any(not isinstance(v, dict) for v in limites_filaments.values())
+    ):
+        raise ValueError("limites_filaments doit être un dictionnaire de déclarations")
+    path = Path(source)
+    raw, parts, archive = _lire(path)
+    machine = _machine(maitre)
+    if sum(len(text.splitlines()) for _, text in parts) > 200000:
+        raise ValueError("budget diagnostic dépassé : 200000 lignes")
+    report = _rapport_initial(path, raw, cfg, machine)
+    report["controle_capacites"] = _controle_capacites(path, archive, machine, limites_filaments)
+    for member, text in parts:
+        _analyser_plaque(member, text, cfg, limites_filaments, report)
+    if _octets(path) != raw:
+        raise ValueError("source changée pendant analyse")
+    return _finaliser_rapport(report)
 
 
 def _neuve(path):
