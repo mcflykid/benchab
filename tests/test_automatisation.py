@@ -1,6 +1,9 @@
 """Parcours : refus sûrs, reprise vérifiable et copie de préparation figée."""
 
 import json
+import shlex
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -72,6 +75,22 @@ class Automatisation(unittest.TestCase):
             d = A.diagnostiquer(self.root, "test")
             self.assertEqual(d["references"]["statut"], "PASS")
             self.assertEqual(d["statut"], "PASS")
+
+    def test_commande_reference_relance_le_controle_sur_le_bon_atelier(self):
+        """La commande du diagnostic relit le même atelier, même avec un espace."""
+        atelier = self.root.with_name("atelier avec espaces")
+        self.root.rename(atelier)
+        (atelier / "README.md").write_text("[Source](absente.md)")
+        with patch.object(A, "environnement", return_value={"statut": "PASS"}):
+            diagnostic = A.diagnostiquer(atelier, "test")
+        erreur = next(x for x in diagnostic["references"]["erreurs"] if "absente.md" in x["cause"])
+        commande = shlex.split(erreur["action"])
+        self.assertEqual(commande[:3], ["uv", "run", "python"])
+        self.assertEqual(commande[commande.index("--root") + 1], str(atelier))
+        # Réutiliser le Python du test sans demander à uv de refaire l’installation.
+        execution = subprocess.run([sys.executable, *commande[3:]], capture_output=True, check=False)
+        self.assertEqual(execution.returncode, 1, execution.stderr.decode())
+        self.assertTrue(any("absente.md" in x for x in json.loads(execution.stdout)["errors"]))
 
     def test_document_json_trop_profond_refuse_proprement(self):
         f = self.root / "profond.json"

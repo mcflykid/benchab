@@ -11,6 +11,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -421,14 +422,13 @@ def diagnostiquer(root, nom, ident=None):
     from benchab.qualite.references import verify
 
     references = verify(root, historical=False, anchors=True, cache=True)
+    # Relancer le même contrôle sur l’atelier affiché, avec le Python du dépôt (#231).
+    commande_references = shlex.join([
+        "uv", "run", "python", "-m", "benchab.qualite.references",
+        "--root", str(Path(root).resolve()), "--sans-historique", "--ancres", "--sans-cache",
+    ])
     erreurs_references = [
-        {
-            "cause": e,
-            "action": (
-                "python3 outils/maintenance/verifier_reference.py --sans-historique -"
-                "-ancres ; corriger la source indiquée"
-            ),
-        }
+        {"cause": e, "action": commande_references}
         for e in references["errors"]
     ]
     return {
