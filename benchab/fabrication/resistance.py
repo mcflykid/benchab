@@ -267,24 +267,25 @@ def evaluer_piece(cas, usage="non_declare", reglages=None, registre=None):
 
 
 def reglages_3mf(path):
-    """Lit les réglages typés globaux/objets en unités natives ; aucun automatique inféré, aucune modification."""
-    import xml.etree.ElementTree as ET
-    import zipfile
+    """Lit les réglages globaux et par objet en unités natives depuis un 3MF indexé et borné.
 
+    Renvoie les deux dictionnaires et, si les réglages globaux sont absents,
+    une raison de correspondance non vérifiée. Aucune modification ni valeur automatique inférée.
+    """
     from benchab import reglages as schema_reglages
+    from benchab.archives_3mf import Archive3MF
 
     if not path:
         return {}, {}, "Aucun 3MF fourni : paramètres mécaniques déclaratifs seulement."
-    with zipfile.ZipFile(path) as z:
-        key = "Metadata/project_settings.config"
-        if key not in z.namelist():
+    with Archive3MF(path) as archive:
+        noms = archive.noms()
+        if "Metadata/project_settings.config" not in noms:
             return {}, {}, "Réglages du 3MF absents : correspondance non vérifiée."
-        globaux = schema_reglages.decoder(z.read(key))
-        if not isinstance(globaux, dict):
-            raise ValueError("Réglages 3MF invalides.")
+        # Les preuves par objet reposent sur un index unique et sur du XML borné (#122).
+        globaux = archive.reglages()
         objets = {}
-        if "Metadata/model_settings.config" in z.namelist():
-            xml = ET.fromstring(z.read("Metadata/model_settings.config"))
+        if "Metadata/model_settings.config" in noms:
+            xml = archive.xml("Metadata/model_settings.config")
             for obj in xml.findall(".//object"):
                 valeurs = {m.get("key"): m.get("value") for m in obj.findall("./metadata")}
                 nom = valeurs.pop("name", None)

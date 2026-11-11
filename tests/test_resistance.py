@@ -5,6 +5,9 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
+from zipfile import ZipFile
+
+import pytest
 
 from benchab.fabrication.resistance import (
     auditer_projet,
@@ -12,6 +15,7 @@ from benchab.fabrication.resistance import (
     cle_classement,
     evaluer_piece,
     fleche_ef,
+    reglages_3mf,
     section,
 )
 
@@ -236,3 +240,19 @@ class ResistanceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+def test_reglages_3mf_refuse_membres_dupliques(tmp_path):
+    """Deux membres de réglages empêchent d’associer une preuve à une valeur unique."""
+    chemin = tmp_path / "duplique.3mf"
+    with ZipFile(chemin, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", '{"wall_loops": "2"}')
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr("Metadata/project_settings.config", '{"wall_loops": "4"}')
+    avant = chemin.read_bytes()
+
+    with pytest.raises(ValueError, match="dupliqu"):
+        reglages_3mf(chemin)
+
+    assert chemin.read_bytes() == avant
