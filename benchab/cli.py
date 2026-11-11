@@ -294,6 +294,7 @@ def parser():
     continuite.add_argument("--z-max", type=float)
     continuite.add_argument("--bandes-z", type=float, help="Largeur des bandes de synthèse en mm")
     continuite.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; destination existante refusée")
+    continuite.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     continuite.add_argument("--reference", type=Path)
     continuite.add_argument("--plaque-reference", type=int)
     continuite.add_argument(
@@ -517,10 +518,12 @@ def executer(arguments, base):
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle in {"continuite-paroi", "continuite_paroi"}:
-            from benchab.controles.continuite_paroi import controler
+            from benchab.controles.continuite_paroi import controler, resumer
             from benchab.qualite.ecritures import _sans_lien, ecrire_json_neuf, sortie_durable
             from benchab.qualite.empreintes import sha256_fichier
 
+            if arguments.resume and arguments.sortie is None:
+                raise ValueError("--resume exige --sortie pour conserver le rapport complet")
             source = _sans_lien(arguments.fichier.absolute())
             empreinte_avant = sha256_fichier(source) if source.is_file() else None
             reference_source = _sans_lien(arguments.reference.absolute()) if arguments.reference else None
@@ -566,6 +569,9 @@ def executer(arguments, base):
                 _protege(sortie)
                 entrees = [source] + ([arguments.reference.absolute()] if arguments.reference else [])
                 ecrire_json_neuf(sortie, rapport, entrees=entrees)
+                if arguments.resume:
+                    print(json.dumps(resumer(rapport, sortie), ensure_ascii=False, separators=(",", ":")))
+                    return rapport["code"]
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle == "complet":

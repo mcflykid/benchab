@@ -8,7 +8,10 @@ commune calcule le premier point réellement déposé sur le cercle exact, aprè
 la dette de rétraction, sans remplacer l’arc par une corde (suite #123).
 
 La commande accepte `--sortie prive/rapports/continuite.json` pour un export
-JSON neuf, identique au rapport affiché, avec chemin source, plaque et SHA-256.
+JSON neuf, identique au rapport affiché par défaut, avec chemin source, plaque
+et SHA-256. Avec `--sortie`, `--resume` affiche le verdict, les compteurs,
+les avertissements et le chemin du rapport détaillé, sans changer le code de
+sortie ni les données publiées (suite de #35).
 Une destination existante, une entrée ou une préparation figée ne sont jamais
 écrasées. `--bandes-z 5` ajoute une synthèse par bandes de 5 mm sans retirer
 les mesures par couche ni modifier le verdict. Les bandes couvrent la fenêtre Z
