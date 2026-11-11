@@ -546,8 +546,8 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 - #19 : coût des transactions. Un prototype de réemploi des JSONL préserve les
   octets, mais la validation des références parcourt encore la base. Le prototype
   ne suffit pas à clore le chantier.
-- #127 : maintenir la vérification Ruff D10 sur tout le paquet et relire
-  les contrats des portées modifiées.
+- #127 : maintenir la vérification Ruff D10 sur tout le paquet et terminer
+  la qualification du contenu des docstrings antérieures.
 - #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
   de surplombs, de première couche, de débit, d’appuis et de continuité.
 - #119 : qualifier d’autres familles de reprise et la preuve d’exécution
@@ -586,7 +586,7 @@ restent celles des issues, même si un premier sous-cas a déjà été publié.
 | Travail restant | Preuve attendue avant clôture |
 | --- | --- |
 | #19, #119 | Mesures des transactions à plusieurs tailles, cohérence des exports et récupération rejouée sur copie, avec provenance des régressions. |
-| #35 | Inventaire des commandes à résumer, détail conservé et mesures de volume. |
+| #35, #127 | Inventaire des commandes à résumer, détail conservé et mesures de volume, puis qualification des docstrings antérieures et des règles de forme Ruff. |
 | #49, #134 | Provenance du binaire et qualification des cas d’arrondi et de lecture qui restent hors contrat. Conserver les verdicts stricts tant que la preuve manque. |
 | #80, #81, #82 | Valeurs consommées par une version identifiée du slicer, comparaisons à réglage isolé et effet mesuré dans le G-code. |
 | #89, #93 | Comparaison des supports et de leur écart Z, puis localisation des zones de surplomb avec limites documentées. |

@@ -8,9 +8,12 @@ l’empreinte de la source.
 | Contrôle | Affichage court avec rapport complet | Afficher le détail |
 | --- | --- | --- |
 | Envoi, plages Z | `--sortie RAPPORT.json` | Ajouter `--detail` |
-| Continuité, capacités, comparaison 3MF, purge, écarts Z des supports | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
+| Continuité, capacités, comparaison 3MF, purge, écarts Z des supports, rejeux G-code | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
+| Entretien, consommation d’un retour, plan de réparation | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Débit U25, `surplombs-connexes` | `--resume --sortie RAPPORT.json` | Remplacer `--resume` par `--detail` |
-| Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
+| Appuis G-code, couches courtes | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
+| Première couche | `--resume --json RAPPORT.json` | Remplacer `--resume` par `--detail` |
+| Coutures | `--sortie DOSSIER_NEUF` | Ajouter `--detail` |
 
 Choisissez une destination neuve dans `prive/rapports/`. Les options
 d’entrée restent propres à chaque commande : voir les

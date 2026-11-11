@@ -13,6 +13,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Annotations. Les fonctions et classes publiques du paquet ont passé la
   vérification de présence des docstrings Ruff D10. La CI applique ce
   contrôle à tout le paquet en plus de la garde des portées modifiées (#127).
+- Documentation. Le guide des rapports recense les options déjà disponibles
+  (#35), et la référence des commandes signale le profil ISO nominal (#27).
 
 ## 1.28.0 — 2026-11-11
 
