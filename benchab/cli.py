@@ -319,7 +319,7 @@ def parser():
     skill.add_argument("--ancien-atelier", type=Path)
     skill.add_argument("--appliquer", action="store_true")
     connaissances = commandes.add_parser("connaissances").add_subparsers(dest="action", required=True)
-    for nom in ("memoire", "etudes", "bobine", "pdf"):
+    for nom in ("memoire", "etudes", "bobine", "pdf", "incidents"):
         connaissances.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
     conception = commandes.add_parser("conception").add_subparsers(dest="action", required=True)
     for nom in (
