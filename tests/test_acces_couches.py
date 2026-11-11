@@ -9,6 +9,23 @@ from benchab.visualisation.catalogue_visuel import catalogue, couches, source_co
 
 
 class AccesCouches(unittest.TestCase):
+    def test_candidat_invalide_nempeche_pas_de_trouver_une_reference(self):
+        """L'index ambigu est écarté ; l'aperçu garde la référence explicite comme source."""
+        from zipfile import ZipFile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "projets/temoin"
+            (p / "candidats").mkdir(parents=True)
+            (p / "reference").mkdir()
+            q = {"suivi": {"references_imprimees": [{"fichiers": [{"chemin": "reference/envoi.gcode"}]}]}}
+            reference = p / "reference/envoi.gcode"
+            reference.write_text("G90\n", encoding="utf-8")
+            with ZipFile(p / "candidats/tranche.3mf", "w") as archive:
+                archive.writestr("Metadata/plate_1.gcode", "G90\n")
+                with self.assertWarns(UserWarning):
+                    archive.writestr("Metadata/plate_1.gcode", "G90\n")
+            self.assertEqual(source_couches(p, q), reference)
+
     def test_generation_sans_ecriture_et_absence(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

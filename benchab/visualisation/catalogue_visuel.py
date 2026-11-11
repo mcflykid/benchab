@@ -14,7 +14,7 @@ from zipfile import BadZipFile
 
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, sans_lien
-from benchab.gcode.lecture import membres_gcode_3mf
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.qualite.empreintes import sha256_fichier
 
 GENERATION = threading.Lock()
@@ -143,9 +143,11 @@ def source_couches(projet, q):
         if f.suffix.lower() != ".3mf":
             continue
         try:
-            if membres_gcode_3mf(f):
-                return declare(f)
-        except BadZipFile:
+            with Archive3MF(f) as archive:
+                if plaques_gcode_archive(archive):
+                    return declare(f)
+        except (BadZipFile, ValueError):
+            # Comme un ZIP illisible, un candidat ambigu est écarté ; la référence est nommée dans l'aperçu.
             continue
     return None
 

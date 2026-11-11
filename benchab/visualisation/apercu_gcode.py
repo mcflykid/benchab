@@ -32,6 +32,7 @@ import numpy as np
 
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, est_temporaire, sans_lien
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.qualite.ecritures import PublicationNeuve
 
 TYPES = [
@@ -88,14 +89,7 @@ def _parcourir_gcodes(f, taille_max_archive=None):
     options = {"taille_max_totale": taille_max_archive} if taille_max_archive is not None else {}
     with Archive3MF(f, **options) as archive:
         # L'index commun refuse les doublons et les chemins ambigus avant toute publication (#140).
-        plaques = sorted(
-            (int(match[1]), nom)
-            for nom in archive.noms()
-            if (match := re.fullmatch(r"Metadata/plate_(\d+)\.gcode", nom))
-        )
-        if len({numero for numero, _ in plaques}) != len(plaques):
-            raise ValueError("numéro de plaque dupliqué dans l'aperçu")
-        for numero, nom in plaques:
+        for numero, nom in plaques_gcode_archive(archive):
             yield numero, archive.lire(nom).decode(errors="replace")
 
 
