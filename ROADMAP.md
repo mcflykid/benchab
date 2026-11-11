@@ -469,7 +469,20 @@ oblongue à partir de deux cotes distinctes. Huit STEP témoins sont relus
 pour les deux orientations et les deux types d’ouverture. Ces contrôles
 ne qualifient pas l’ajustement physique (#32).
 
-## Prochaine version : 1.28.0
+## Version 1.28.0 — profils métriques nominaux et preuves de lecture
+
+La commande de filetage génère la vis à fond circulaire et l’outil intérieur
+à plateaux à partir du diamètre et du pas déclarés. Les témoins couvrent
+M6 × 1 et M8 × 1, le sens gauche et un jeu radial de 0,1 mm. Un contrôle
+d’interférence numérique vérifie les maillages alignés. La classe de
+tolérance et l’ajustement physique restent à qualifier (#27).
+
+L’arrondi M203 Z a été reproduit sur quatre copies avec le binaire local
+Anycubic. Le contrôle strict reste applicable. La révision exacte du
+binaire et l’effet des vecteurs courts restent à établir (#49).
+Les contrats de consultation et des pages de l’atelier sont annotés (#127).
+
+## Prochaine version : 1.29.0
 
 ### 1. Fiabiliser les fondations et les preuves
 

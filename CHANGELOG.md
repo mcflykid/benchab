@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.28.0 — 2026-11-11
+
+- Fixations : génère le profil métrique ISO nominal à partir du diamètre
+  et du pas déclarés. Le fond de la vis est arrondi et l’outil intérieur
+  exige un jeu radial déclaré. L’ajustement physique reste à vérifier (#27).
+- Réglages : documente l’arrondi M203 Z reproduit sur le binaire local
+  Anycubic 2.0.0.3 et précise la portée du code source public (#49).
+- Visualisation : documente les contrats publics de l’atelier et des
+  outils de consultation, sans changer leurs traitements (#127).
+
 ## 1.27.0 — 2026-11-11
 
 - 3MF : compare les matériaux et la peinture d’assemblages de plusieurs
