@@ -93,7 +93,8 @@ ne démarre pas le trancheur et n’authentifie pas les exécutions.
 Un SHA de binaire absent des reçus reste NON VÉRIFIÉ.
 
 Le rapport distingue l’égalité du G-code brut, l’égalité après exclusion
-du seul horodatage d’un en-tête ASN reconnu, l’égalité des dépôts de
+du seul horodatage de la deuxième ligne d’un bloc d’en-tête ASN complet,
+l’égalité des dépôts de
 support et celle de leurs agrégats (segments et mm par rôle). Le code 0
 indique l’égalité hors date, 1 une divergence conservée, 2 une comparaison
 NON VÉRIFIÉE faute de preuve ou de couverture. `--sortie` peut publier
