@@ -57,3 +57,32 @@ def test_cycle_budget_et_zip_invalide_refuses(tmp_path):
     source.write_bytes(b"archive invalide")
     with pytest.raises(ValueError, match="illisible"):
         lire(source)
+
+
+def test_modele_importe_refuse_dtd_sans_changer_archive(tmp_path):
+    """Le modèle est soumis au parseur XML commun, même si sa géométrie est valide."""
+    source = tmp_path / "modele.3mf"
+    fabriquer(source)
+    with ZipFile(source) as entree:
+        membres = {nom: entree.read(nom) for nom in entree.namelist()}
+    membres["3D/3dmodel.model"] = b"<!DOCTYPE model>" + membres["3D/3dmodel.model"]
+    with ZipFile(source, "w") as sortie:
+        for nom, valeur in membres.items():
+            sortie.writestr(nom, valeur)
+    avant = source.read_bytes()
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        lire(source)
+    assert source.read_bytes() == avant
+
+
+def test_lecture_directe_reglages_refuse_index_ambigu(tmp_path):
+    """Lire seulement les réglages ne contourne pas la validation du reste de l'index."""
+    from benchab import reglages
+
+    source = tmp_path / "reglages.3mf"
+    with pytest.warns(UserWarning, match="Duplicate name"), ZipFile(source, "w") as sortie:
+        sortie.writestr("Metadata/project_settings.config", b'{"layer_height":"0.2"}')
+        sortie.writestr("autre", b"avant")
+        sortie.writestr("autre", b"apres")
+    with pytest.raises(ValueError, match="dupliqué"):
+        reglages.lire_3mf(source)

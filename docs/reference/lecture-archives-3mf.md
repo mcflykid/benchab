@@ -23,6 +23,15 @@ Les lecteurs G-code et le contrôle de continuité utilisent ce parcours pour le
 `Metadata/plate_N.gcode`. Les caches SHA et analyse restent en place ; les membres
 mis en cache sont rendus depuis le cache borné existant.
 
+Une même instance peut être rouverte après fermeture : chaque contexte repart
+avec un index et un quota neufs. Une réentrée pendant un contexte actif échoue
+sans fermer ni modifier celui-ci.
+
+L’import de modèles applique le lecteur XML aux modèles, relations OPC et
+métadonnées d’objets. Il conserve son plafond cumulé de 512 Mio pour ces
+membres et sa limite de faces. La lecture autonome des réglages conserve son
+plafond de 8 Mio.
+
 Le XML se lit avec `xml()` : DTD et entités sont refusées en UTF-8, UTF-16 et
 UTF-32 avant ElementTree. Les réglages se lisent avec `reglages()`, qui délègue
 au dictionnaire typé existant sans ajouter de normalisation. Le contexte est

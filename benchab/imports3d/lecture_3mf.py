@@ -9,16 +9,20 @@ import posixpath
 from pathlib import PurePosixPath
 from urllib.parse import unquote
 from xml.etree import ElementTree as E
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile
 
 import numpy as np
 import trimesh
 
+from benchab.archives_3mf import Archive3MF
+
 NS = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
 UNITES = {"micron": 0.001, "millimeter": 1.0, "centimeter": 10.0, "inch": 25.4, "foot": 304.8, "meter": 1000.0}
+_MAX_XML = 512 * 1024 * 1024
 
 
 def lire(source, max_faces=3_000_000):
+    """Lit une scène 3MF en mm, bornée en faces ; refuse archive incomplète, aucune extraction ni réglage modifié."""
     try:
         return _lire(source, max_faces)
     except (E.ParseError, BadZipFile, KeyError, UnicodeError) as exc:
@@ -28,22 +32,21 @@ def lire(source, max_faces=3_000_000):
 def _lire(source, max_faces):
     modeles, resultats = {}, []
     total_faces = 0
-    with ZipFile(source) as archive:
-        noms = set(archive.namelist())
-        if len(noms) != len(archive.namelist()):
-            raise ValueError("Membres 3MF dupliqués : archive ambiguë")
+    # Les modèles géométriques gardent leur budget XML propre, sans assouplir l'index commun (#122).
+    with Archive3MF(source, taille_max_xml=_MAX_XML) as archive:
+        noms = set(archive.noms())
         if (
             sum(
-                i.file_size
-                for i in archive.infolist()
-                if i.filename.endswith((".model", ".rels")) or i.filename == "Metadata/model_settings.config"
+                archive.taille_membre(nom)
+                for nom in noms
+                if nom.endswith((".model", ".rels")) or nom == "Metadata/model_settings.config"
             )
-            > 512 * 1024 * 1024
+            > _MAX_XML
         ):
             raise ValueError("Budget XML 3MF de 512 Mio dépassé")
         types_parties, ignores = {}, []
         if "Metadata/model_settings.config" in noms:
-            config = E.fromstring(archive.read("Metadata/model_settings.config"))
+            config = archive.xml("Metadata/model_settings.config")
             for obj in config.findall("object"):
                 for part in obj.findall("part"):
                     types_parties[(obj.get("id"), part.get("id"))] = part.get("subtype", "normal_part")
@@ -57,10 +60,7 @@ def _lire(source, max_faces):
 
         def modele(nom):
             if nom not in modeles:
-                info = archive.getinfo(nom)
-                if info.file_size > 512 * 1024 * 1024:
-                    raise ValueError("Modèle XML 3MF trop volumineux")
-                root = E.fromstring(archive.read(nom))
+                root = archive.xml(nom)
                 unite = root.get("unit", "millimeter")
                 if unite not in UNITES:
                     raise ValueError("Unité 3MF inconnue")
@@ -134,7 +134,7 @@ def _lire(source, max_faces):
         # Relation OPC prioritaire, plutôt qu'une hypothèse sur la casse du nom.
         principal = None
         if "_rels/.rels" in noms:
-            rels = E.fromstring(archive.read("_rels/.rels"))
+            rels = archive.xml("_rels/.rels")
             for rel in rels:
                 if rel.get("Type", "").endswith("/3dmodel") and rel.get("TargetMode") != "External":
                     principal = chemin("racine", rel.attrib["Target"])
