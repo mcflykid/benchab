@@ -32,7 +32,7 @@ from pathlib import Path
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
-from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, sortie_privee
+from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, remplacer_texte, sortie_privee
 
 # Critères de la revue P07 (26/10/2026), seuils théoriques jusqu'aux retours d'impression ; les réviser avec date.
 CRITERES = {
@@ -303,8 +303,10 @@ def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
     else:
         # Le parcours historique réécrit sa revue explicitement choisie après avoir gardé ses décisions.
         fp.parent.mkdir(parents=True, exist_ok=True)
-        fp.write_bytes(faits)
-        rp.write_bytes(revue)
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        # Le remplacement ne suit pas une référence devenue un lien physique entre les deux validations.
+        remplacer_texte(fp, faits.decode("utf-8"))
+        remplacer_texte(rp, revue.decode("utf-8"))
 
 
 def main(argv):
@@ -318,9 +320,15 @@ def main(argv):
     tranche = Path(argv[0])
     revue_p = opt("--revue", "REVUE-ZONES-LOCALES.json")
     faits_p = opt("--faits", "preuves/revue-locale-faits.json")
-    if "--appliquer" in argv:
-        revue_p, faits_p = _valider_sorties_application(tranche, opt("--envoi"), revue_p, faits_p)
-    res = revoir(tranche, opt("--envoi"), revue_p, faits_p)
+    appliquer = "--appliquer" in argv
+    envoi = opt("--envoi")
+    try:
+        if appliquer:
+            revue_p, faits_p = _valider_sorties_application(tranche, envoi, revue_p, faits_p)
+    except (OSError, ValueError, TypeError) as erreur:
+        print(f"Revue refusée : {erreur}", file=sys.stderr)
+        return 2
+    res = revoir(tranche, envoi, revue_p, faits_p)
     sortie = {
         "zones": len(res["env"]["zones"]),
         "justifiees_automatiquement": len(res["auto"]),
@@ -328,10 +336,15 @@ def main(argv):
         "a_revoir": len(res["reste"]),
         "a_revoir_exemples": res["reste"][:15],
         "temps_couche_par_plaque": res["plaques"],
-        "ecrit": "--appliquer" in argv,
+        "ecrit": appliquer,
     }
-    if "--appliquer" in argv:
-        ecrire(res, revue_p, faits_p)
+    if appliquer:
+        try:
+            revue_p, faits_p = _valider_sorties_application(tranche, envoi, revue_p, faits_p)
+            ecrire(res, revue_p, faits_p)
+        except (OSError, ValueError) as erreur:
+            print(f"Revue refusée : {erreur}", file=sys.stderr)
+            return 2
     print(json.dumps(sortie, ensure_ascii=False, indent=1))
     return 0 if not res["reste"] else 1
 

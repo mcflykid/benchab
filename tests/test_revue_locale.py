@@ -121,7 +121,7 @@ class Revue(unittest.TestCase):
 
 @pytest.mark.parametrize("sortie", ["revue", "faits"])
 @pytest.mark.parametrize("entree", ["tranche", "envoi"])
-def test_cli_refuse_sortie_reliee_a_une_entree_avant_revoir(tmp_path, monkeypatch, entree, sortie):
+def test_cli_refuse_sortie_reliee_a_une_entree_avant_revoir(tmp_path, monkeypatch, capsys, entree, sortie):
     """Le parcours --appliquer ne lit pas les entrées si une sortie partage leurs octets."""
     tranche = tmp_path / "tranche.3mf"
     envoi = tmp_path / "envoi.json"
@@ -142,17 +142,17 @@ def test_cli_refuse_sortie_reliee_a_une_entree_avant_revoir(tmp_path, monkeypatc
 
     monkeypatch.setattr(RL, "revoir", interdit)
 
-    with pytest.raises(ValueError, match="[Cc]ollision"):
-        RL.main([
-            str(tranche), "--envoi", str(envoi), "--revue", str(revue),
-            "--faits", str(faits), "--appliquer",
-        ])
+    assert RL.main([
+        str(tranche), "--envoi", str(envoi), "--revue", str(revue),
+        "--faits", str(faits), "--appliquer",
+    ]) == 2
+    assert "collision" in capsys.readouterr().err.lower()
 
     assert {p: p.read_bytes() for p in avant} == avant
     assert os.path.samefile(source, cible)
 
 
-def test_cli_refuse_sorties_hardlinkees_avant_revoir(tmp_path, monkeypatch):
+def test_cli_refuse_sorties_hardlinkees_avant_revoir(tmp_path, monkeypatch, capsys):
     """Les chemins revue/faits doivent désigner deux fichiers différents, même par hardlink."""
     tranche = tmp_path / "tranche.3mf"
     envoi = tmp_path / "envoi.json"
@@ -172,18 +172,18 @@ def test_cli_refuse_sorties_hardlinkees_avant_revoir(tmp_path, monkeypatch):
 
     monkeypatch.setattr(RL, "revoir", interdit)
 
-    with pytest.raises(ValueError, match="[Cc]ollision"):
-        RL.main([
-            str(tranche), "--envoi", str(envoi), "--revue", str(revue),
-            "--faits", str(faits), "--appliquer",
-        ])
+    assert RL.main([
+        str(tranche), "--envoi", str(envoi), "--revue", str(revue),
+        "--faits", str(faits), "--appliquer",
+    ]) == 2
+    assert "collision" in capsys.readouterr().err.lower()
 
     assert revue.read_bytes() == avant
     assert faits.read_bytes() == avant
     assert os.path.samefile(revue, faits)
 
 
-def test_cli_refuse_chemin_sortie_identique_avant_revoir(tmp_path, monkeypatch):
+def test_cli_refuse_chemin_sortie_identique_avant_revoir(tmp_path, monkeypatch, capsys):
     """Deux sorties absentes ne peuvent pas partager le même nom canonique."""
     tranche = tmp_path / "tranche.3mf"
     envoi = tmp_path / "envoi.json"
@@ -196,16 +196,16 @@ def test_cli_refuse_chemin_sortie_identique_avant_revoir(tmp_path, monkeypatch):
 
     monkeypatch.setattr(RL, "revoir", interdit)
 
-    with pytest.raises(ValueError, match="[Cc]ollision"):
-        RL.main([
-            str(tranche), "--envoi", str(envoi), "--revue", str(sortie),
-            "--faits", str(sortie), "--appliquer",
-        ])
+    assert RL.main([
+        str(tranche), "--envoi", str(envoi), "--revue", str(sortie),
+        "--faits", str(sortie), "--appliquer",
+    ]) == 2
+    assert "collision" in capsys.readouterr().err.lower()
 
     assert not sortie.exists()
 
 
-def test_cli_refuse_sorties_dans_checkout_public_avant_revoir(tmp_path, monkeypatch):
+def test_cli_refuse_sorties_dans_checkout_public_avant_revoir(tmp_path, monkeypatch, capsys):
     """Les deux sorties d'application doivent rester privées ou dans un temporaire hors dépôt."""
     from benchab import chemins
 
@@ -225,11 +225,11 @@ def test_cli_refuse_sorties_dans_checkout_public_avant_revoir(tmp_path, monkeypa
 
     monkeypatch.setattr(RL, "revoir", interdit)
 
-    with pytest.raises(ValueError, match="privé ou temporaire"):
-        RL.main([
-            str(tranche), "--envoi", str(envoi), "--revue", str(checkout / "revue.json"),
-            "--faits", str(prive / "faits.json"), "--appliquer",
-        ])
+    assert RL.main([
+        str(tranche), "--envoi", str(envoi), "--revue", str(checkout / "revue.json"),
+        "--faits", str(prive / "faits.json"), "--appliquer",
+    ]) == 2
+    assert "privé ou temporaire" in capsys.readouterr().err.lower()
 
     assert not (checkout / "revue.json").exists()
     assert not (prive / "faits.json").exists()
