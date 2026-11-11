@@ -19,6 +19,7 @@ from scipy.spatial import cKDTree
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive
 from benchab.controles.gcode_interpreter import Interpreter
+from benchab.gcode.geometrie_arc import enveloppe_deposee_xyz
 from benchab.gcode.lecture import analyser_membre_gcode_3mf, plaques_gcode_archive
 
 PAS_DEFAUT_MM = 0.15
@@ -26,6 +27,7 @@ RECOUVREMENT_DEFAUT_MM = 0.05
 PORTEE_LIBRE_DEFAUT_MM = 10.0
 MAX_SEGMENTS = 250_000
 MAX_ECHANTILLONS = 100_000_000
+MAX_ECHANTILLONS_ARC = 1_000_000
 PIECE = {
     "Outer wall",
     "Inner wall",
@@ -71,19 +73,100 @@ def evaluer_parcours(
     pas_mm=0.15,
     sur_plateau=False,
     voisins=4,
+    distances_mm=None,
 ):
     """Évalue l'ancrage et la portée libre d'un parcours de pièce/support.
 
     Chaque parcours est évalué séparément pour éviter de relier implicitement
     deux extrusions disjointes. Les supports précédents peuvent réunir la
-    couche précédente et les parcours antérieurs déjà qualifiés.
+    couche précédente et les parcours antérieurs déjà qualifiés. L'option
+    ``distances_mm`` fournit une distance de parcours nominale par échantillon
+    (mm), avec zéro au premier point, pour préserver la longueur analytique des arcs.
     """
     c = _points(points, "parcours")
     if not math.isfinite(longueur_libre_max_mm) or longueur_libre_max_mm < 0:
         raise ValueError("longueur libre maximale finie et positive ou nulle requise")
     sources = _sources(supports_precedents)
     nuages = [s if isinstance(s, _NuageAppui) else _NuageAppui(_points(s, "supports")) for s in sources]
-    return _evaluer_nuages(c, nuages, recouvrement_min_mm, pas_mm, voisins, longueur_libre_max_mm, sur_plateau)
+    if distances_mm is not None:
+        distances_mm = np.asarray(distances_mm, dtype=float)
+        if (
+            distances_mm.shape != (len(c),) or not np.isfinite(distances_mm).all()
+            or np.any(distances_mm < 0) or distances_mm[0] != 0
+            or np.any(distances_mm[1:] > pas_mm * 1.02)
+        ):
+            raise ValueError(
+                "distances nominales (n,) en mm, finies, positives ou nulles et commençant à zéro requises"
+            )
+    return _evaluer_nuages(
+        c, nuages, recouvrement_min_mm, pas_mm, voisins, longueur_libre_max_mm,
+        sur_plateau, distances_mm,
+    )
+
+
+def _echantillonner_arc(mouvement, pas_mm):
+    """Échantillonne un dépôt G17 planaire sur le cercle exact, en millimètres.
+
+    Entrée : mouvement analytique de l'interpréteur et pas maximal XY en mm.
+    Sortie : points (X, Y, demi-largeur) exacts aux paramètres choisis et
+    distances XY de chaque intervalle, en mm. Échec : ValueError si hélice,
+    géométrie absente/invalide ou budget de 1 000 000 points dépassé.
+    """
+    if not math.isfinite(pas_mm) or pas_mm <= 0:
+        raise ValueError("pas d'échantillonnage fini strictement positif requis")
+    try:
+        arc = mouvement["arc_g17"]
+        start, end = mouvement["start"], mouvement["end"]
+        centre_x, centre_y = map(float, arc["centre_xy_mm"])
+        rayon = float(arc["rayon_mm"])
+        angle = float(arc["angle_debut_rad"])
+        balayage = float(arc["balayage_signe_rad"])
+        debut = float(arc["debut_depot_fraction"])
+        largeur = float(mouvement["metadata"]["WIDTH"])
+        longueur_deposee = float(mouvement["deposited_length"])
+    except (KeyError, TypeError, ValueError, OverflowError) as erreur:
+        raise ValueError("géométrie ou largeur d'arc G17 absente") from erreur
+    enveloppe_deposee_xyz(mouvement)
+    valeurs = (centre_x, centre_y, rayon, angle, balayage, debut, largeur, longueur_deposee)
+    if (
+        not all(math.isfinite(valeur) for valeur in valeurs)
+        or rayon <= 0 or balayage == 0 or not 0 <= debut < 1
+        or not 0 < largeur <= 10 or longueur_deposee <= 0
+        or start[2] != end[2]
+    ):
+        raise ValueError("arc hélicoïdal, arrondi ou dépôt G17 non qualifié")
+    tolerance_xy = 8 * math.ulp(max(1.0, abs(start[0]), abs(start[1]), abs(end[0]), abs(end[1]), rayon))
+    debut_calcule = (centre_x + rayon * math.cos(angle), centre_y + rayon * math.sin(angle))
+    fin_calcule = (
+        centre_x + rayon * math.cos(angle + balayage),
+        centre_y + rayon * math.sin(angle + balayage),
+    )
+    if (
+        math.dist(debut_calcule, start[:2]) > tolerance_xy
+        or math.dist(fin_calcule, end[:2]) > tolerance_xy
+    ):
+        raise ValueError("extrémités arrondies ou incohérentes avec le cercle exact")
+    longueur_cercle_deposee = rayon * abs(balayage) * (1 - debut)
+    if not math.isclose(longueur_cercle_deposee, longueur_deposee, rel_tol=1e-9, abs_tol=1e-9):
+        raise ValueError("longueur déposée incohérente avec l'arc G17")
+    ratio_pas = longueur_deposee / pas_mm
+    if not math.isfinite(ratio_pas) or ratio_pas >= MAX_ECHANTILLONS_ARC:
+        raise ValueError("budget d'échantillons d'arc dépassé (1 000 000)")
+    nombre = max(2, int(math.ceil(ratio_pas)) + 1)
+    if nombre > MAX_ECHANTILLONS_ARC:
+        raise ValueError("budget d'échantillons d'arc dépassé (1 000 000)")
+    fractions = np.linspace(debut, 1.0, nombre)
+    angles = angle + balayage * fractions
+    points = np.column_stack((
+        centre_x + rayon * np.cos(angles),
+        centre_y + rayon * np.sin(angles),
+        np.full(nombre, largeur / 2),
+    ))
+    distances = np.full(nombre, longueur_deposee / (nombre - 1))
+    distances[0] = 0.0
+    if not np.isfinite(points).all():
+        raise ValueError("échantillons d'arc hors capacité numérique")
+    return points, distances
 
 
 def _points(valeur, nom):
@@ -106,7 +189,7 @@ class _NuageAppui:
         self.arbre = cKDTree(self.points[:, :2])
 
 
-def _evaluer_nuages(cibles, nuages, seuil, pas, voisins, portee_max, sur_plateau=False):
+def _evaluer_nuages(cibles, nuages, seuil, pas, voisins, portee_max, sur_plateau=False, distances_mm=None):
     c = _points(cibles, "cibles")
     meilleur = np.full(len(c), -np.inf)
     for nuage in nuages:
@@ -118,9 +201,18 @@ def _evaluer_nuages(cibles, nuages, seuil, pas, voisins, portee_max, sur_plateau
     if sur_plateau:
         meilleur[:] = max(float(np.max(meilleur)), seuil)
     appui = meilleur >= seuil
-    longueur = _longueur_sans_appui(c[:, :2], appui, pas)
-    extremites = bool(appui[0] and appui[-1])
-    ancre = bool(sur_plateau or appui.all() or (extremites and longueur <= portee_max))
+    if distances_mm is not None:
+        marges = meilleur - seuil
+        if sur_plateau:
+            marges[:] = math.inf
+        covered = (marges[:-1] >= distances_mm[1:] / 2) & (marges[1:] >= distances_mm[1:] / 2)
+        longueur = _longueur_intervalles_non_couverts(covered, distances_mm)
+        extremites = bool(marges[0] >= 0 and marges[-1] >= 0)
+        ancre = bool(sur_plateau or covered.all() or (extremites and longueur <= portee_max))
+    else:
+        longueur = _longueur_sans_appui(c[:, :2], appui, pas)
+        extremites = bool(appui[0] and appui[-1])
+        ancre = bool(sur_plateau or appui.all() or (extremites and longueur <= portee_max))
     return {
         "points": int(len(c)),
         "points_avec_appui": int(appui.sum()),
@@ -135,10 +227,15 @@ def _evaluer_nuages(cibles, nuages, seuil, pas, voisins, portee_max, sur_plateau
     }
 
 
-def _longueur_sans_appui(xy, appui, pas):
+def _longueur_sans_appui(xy, appui, pas, distances_mm=None):
     maximum = courant = 0.0
+    if distances_mm is not None and (len(distances_mm) != len(xy) or distances_mm[0] != 0):
+        raise ValueError("distances d'échantillons incompatibles avec le parcours")
     for i in range(1, len(xy)):
-        distance = float(np.linalg.norm(xy[i] - xy[i - 1]))
+        distance = (
+            float(distances_mm[i]) if distances_mm is not None
+            else float(np.linalg.norm(xy[i] - xy[i - 1]))
+        )
         if distance > pas * 1.02:
             courant = 0.0
         elif appui[i]:
@@ -147,6 +244,28 @@ def _longueur_sans_appui(xy, appui, pas):
             courant += distance
             maximum = max(maximum, courant)
     return maximum
+
+
+def _longueur_intervalles_non_couverts(couverts, distances_mm):
+    """Cumule les longueurs exactes nominales des intervalles non couverts, en mm."""
+    maximum = courant = 0.0
+    for index, couvert in enumerate(couverts, start=1):
+        if couvert:
+            courant = 0.0
+        else:
+            courant += float(distances_mm[index])
+            maximum = max(maximum, courant)
+    return maximum
+
+
+def _continuite_echantillons(precedent, debut, pas_mm, arcs_planaires):
+    """Évite de joindre deux dépôts disjoints ; les arcs opt-in exigent la continuité machine."""
+    if arcs_planaires:
+        echelle = max(1.0, *(abs(float(v)) for v in (*precedent[:2], *debut[:2])))
+        seuil = 8 * math.ulp(echelle)
+    else:
+        seuil = pas_mm * 1.02
+    return float(np.linalg.norm(debut[:2] - precedent[:2])) <= seuil
 
 
 def analyser_lignes(
@@ -159,13 +278,19 @@ def analyser_lignes(
     types_cibles=None,
     z_min_mm=None,
     z_max_mm=None,
+    arcs_planaires=False,
 ):
     """Agrège les parcours imprimés et estime leur appui, sans interpréter le slicer.
 
     ``local`` examine n-1, ``anterieur`` ajoute les extrusions précédentes de la
     même couche, et ``causal`` n'ajoute que les parcours antérieurs qualifiés.
-    Chaque échantillon conserve la demi-largeur déclarée par le G-code.
+    Chaque échantillon conserve la demi-largeur déclarée par le G-code. Le mode
+    opt-in ``arcs_planaires`` échantillonne les dépôts G17 exacts, planaires et
+    à extrémités compatibles ; les hélices, extrémités arrondies et données
+    manquantes restent NON VÉRIFIÉES.
     """
+    if type(arcs_planaires) is not bool:
+        raise ValueError("arcs_planaires doit être booléen")
     if mode not in {"local", "anterieur", "causal"}:
         raise ValueError("mode attendu : local, anterieur ou causal")
     if not math.isfinite(pas_mm) or pas_mm <= 0:
@@ -182,6 +307,7 @@ def analyser_lignes(
     previous = None
     rows = []
     total_echantillons = 0
+    total_echantillons_arcs = 0
     total_parcours = 0
     types_cibles = set(types_cibles) if types_cibles else None
     for borne in (z_min_mm, z_max_mm):
@@ -194,7 +320,10 @@ def analyser_lignes(
         nonlocal parcours
         if parcours and parcours["segments"]:
             arr = np.concatenate(parcours["segments"], axis=0)
-            couche["parcours"].append({"type": parcours["type"], "objet": parcours["objet"], "points": arr})
+            chemin = {"type": parcours["type"], "objet": parcours["objet"], "points": arr}
+            if arcs_planaires:
+                chemin["distances_mm"] = np.concatenate(parcours["distances_mm"], axis=0)
+            couche["parcours"].append(chemin)
         parcours = None
 
     def fermer_couche():
@@ -215,6 +344,7 @@ def analyser_lignes(
                         recouvrement_min_mm=recouvrement_min_mm,
                         longueur_libre_max_mm=longueur_libre_max_mm,
                         pas_mm=pas_mm,
+                        distances_mm=path["distances_mm"] if arcs_planaires else None,
                     )
                 else:
                     result = evaluer_parcours(
@@ -224,6 +354,7 @@ def analyser_lignes(
                         longueur_libre_max_mm=longueur_libre_max_mm,
                         pas_mm=pas_mm,
                         sur_plateau=True,
+                        distances_mm=path["distances_mm"] if arcs_planaires else None,
                     )
                 if mode == "anterieur":
                     earlier.append(p)
@@ -243,6 +374,7 @@ def analyser_lignes(
                         longueur_libre_max_mm=longueur_libre_max_mm,
                         pas_mm=pas_mm,
                         sur_plateau=True,
+                        distances_mm=path["distances_mm"] if arcs_planaires else None,
                     )
                 else:
                     result = evaluer_parcours(
@@ -251,6 +383,7 @@ def analyser_lignes(
                         recouvrement_min_mm=recouvrement_min_mm,
                         longueur_libre_max_mm=longueur_libre_max_mm,
                         pas_mm=pas_mm,
+                        distances_mm=path["distances_mm"] if arcs_planaires else None,
                     )
                 if mode == "anterieur":
                     earlier.append(p)
@@ -303,10 +436,47 @@ def analyser_lignes(
         if not move:
             continue
         if move["trajectory"] == "arc_g17_xy":
-            interpreter.error("arc analytique non pris en charge par l'intersection linéaire des appuis")
+            if not arcs_planaires:
+                interpreter.error("arc analytique non pris en charge par l'intersection linéaire des appuis")
+                fermer_parcours()
+                continue
+            kind = move["type"]
+            if not move["deposited_length"] or kind not in PIECE | SUPPORTS:
+                fermer_parcours()
+                continue
+            try:
+                sample, distances = _echantillonner_arc(move, pas_mm)
+            except ValueError as erreur:
+                interpreter.error(str(erreur))
+                fermer_parcours()
+                continue
+            n = len(sample)
+            total_echantillons += n
+            total_echantillons_arcs += n
+            if total_echantillons > MAX_ECHANTILLONS:
+                raise ValueError("budget de points dépassé (100 millions)")
+            if total_echantillons_arcs > MAX_ECHANTILLONS_ARC:
+                raise ValueError("budget total d'échantillons d'arc dépassé (1 000 000)")
+            identite = (kind, move["object"])
+            suite = parcours is not None and (parcours["type"], parcours["objet"]) == identite
+            if suite:
+                precedent = parcours["segments"][-1][-1]
+                suite = _continuite_echantillons(precedent, sample[0], pas_mm, arcs_planaires)
+            if not suite:
+                fermer_parcours()
+                total_parcours += 1
+                if total_parcours > MAX_SEGMENTS:
+                    raise ValueError("budget de parcours dépassé (250 000)")
+                parcours = {"type": kind, "objet": move["object"], "segments": [], "distances_mm": []}
+            parcours["segments"].append(sample[1:] if suite else sample)
+            parcours["distances_mm"].append(distances[1:] if suite else distances)
             continue
         kind = move["type"]
         if not move["deposited_length"] or kind not in PIECE | SUPPORTS:
+            fermer_parcours()
+            continue
+        if arcs_planaires and "WIDTH" not in move["metadata"]:
+            interpreter.error("largeur de cordon G-code manquante pour le mode d'appuis G17")
             fermer_parcours()
             continue
         start = np.asarray(move["deposition_start"][:2], dtype=float)
@@ -325,18 +495,25 @@ def analyser_lignes(
             raise ValueError("budget de points dépassé (100 millions)")
         points = start + (end - start) * np.linspace(0, 1, n)[:, None]
         sample = np.column_stack((points, np.full(n, width / 2)))
+        if arcs_planaires:
+            distances = np.zeros(n)
+            distances[1:] = np.linalg.norm(np.diff(points, axis=0), axis=1)
         identite = (kind, move["object"])
         suite = parcours is not None and (parcours["type"], parcours["objet"]) == identite
         if suite:
             precedent = parcours["segments"][-1][-1]
-            suite = np.linalg.norm(sample[0, :2] - precedent[:2]) <= pas_mm * 1.02
+            suite = _continuite_echantillons(precedent, sample[0], pas_mm, arcs_planaires)
         if not suite:
             fermer_parcours()
             total_parcours += 1
             if total_parcours > MAX_SEGMENTS:
                 raise ValueError("budget de parcours dépassé (250 000)")
             parcours = {"type": kind, "objet": move["object"], "segments": []}
+            if arcs_planaires:
+                parcours["distances_mm"] = []
         parcours["segments"].append(sample[1:] if suite else sample)
+        if arcs_planaires:
+            parcours["distances_mm"].append(distances[1:] if suite else distances)
     fermer_couche()
 
     par_couche = []
@@ -378,6 +555,10 @@ def analyser_lignes(
             "pas_echantillonnage_mm": pas_mm,
             "recouvrement_min_mm": recouvrement_min_mm,
             "portee_libre_max_mm": longueur_libre_max_mm,
+            **({
+                "arcs_planaires": True,
+                "budget_echantillons_arcs_max": MAX_ECHANTILLONS_ARC,
+            } if arcs_planaires else {}),
         },
         "couches": nombre_couches,
         "couches_analysees": len(par_couche),
@@ -390,6 +571,10 @@ def analyser_lignes(
         "par_couche": par_couche,
         "erreurs_interpreteur": interpreter.errors,
         "limite": (
+            "Échantillons analytiques G17 ; chaque intervalle requiert une marge de recouvrement "
+            "d'au moins la moitié de sa longueur à chaque extrémité, sinon sa longueur entière "
+            "est comptée sans appui. Aucune simulation physique."
+            if arcs_planaires else
             "Projection nominale des cordons G-code ; aucune simulation d'affaissement, adhérence ou tenue physique."
         ),
     }
@@ -406,12 +591,14 @@ def analyser_fichier(
     z_min_mm=None,
     z_max_mm=None,
     plaques=None,
+    arcs_planaires=False,
 ):
     """Mesure les appuis nominaux en mm dans un G-code ou des plaques 3MF.
 
     Les numéros de plaque sont sans unité. Sortie PASS ou NON VÉRIFIÉ selon
     la couverture ; refuse un index ambigu même en cache. Aucun fichier ni
-    réglage n’est modifié et aucune adhérence réelle n’est déduite.
+    réglage n’est modifié et aucune adhérence réelle n’est déduite. L'option
+    ``arcs_planaires`` ne qualifie que les arcs G17 analytiques et planaires.
     """
     path = Path(chemin)
     options = {
@@ -423,6 +610,8 @@ def analyser_fichier(
         "z_min_mm": z_min_mm,
         "z_max_mm": z_max_mm,
     }
+    if arcs_planaires:
+        options["arcs_planaires"] = True
     if path.suffix.lower() == ".3mf":
         results = []
         with Archive3MF(path) as archive:
@@ -438,7 +627,9 @@ def analyser_fichier(
                 if plaques is not None and plaque not in plaques:
                     continue
                 result = analyser_membre_gcode_3mf(
-                    path, membre, options, run, version="appuis-gcode-1", archive=archive,
+                    path, membre, options, run,
+                    version="appuis-gcode-arc-1" if arcs_planaires else "appuis-gcode-1",
+                    archive=archive,
                 )
                 for row in result["lignes"]:
                     row["plaque"] = plaque
@@ -470,7 +661,7 @@ def _sha256(path):
 
 
 def main(argv=None, *, prive=None):
-    """Contrôle les appuis (mm) et affiche PASS/WARN/FAIL/NON VÉRIFIÉ ; ne modifie jamais le G-code."""
+    """Contrôle les appuis nominaux (mm) ; ``--arcs-planaires`` est opt-in et ne modifie aucun fichier."""
     parser = argparse.ArgumentParser(description="Mesure les appuis nominaux de parcours G-code par couche.")
     parser.add_argument("fichier", type=Path)
     parser.add_argument("--mode", choices=("local", "anterieur", "causal"), default="local")
@@ -481,6 +672,10 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--z-min-mm", type=float)
     parser.add_argument("--z-max-mm", type=float)
     parser.add_argument("--plaque", type=int, action="append", help="Numéro de plaque; répétable.")
+    parser.add_argument(
+        "--arcs-planaires", action="store_true",
+        help="Échantillonne les dépôts G17 planaires exacts ; hélices restent NON VÉRIFIÉES.",
+    )
     parser.add_argument("--json", type=Path, help="Chemin privé pour enregistrer le rapport.")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     try:
@@ -494,6 +689,7 @@ def main(argv=None, *, prive=None):
             z_min_mm=args.z_min_mm,
             z_max_mm=args.z_max_mm,
             plaques=set(args.plaque) if args.plaque else None,
+            arcs_planaires=args.arcs_planaires,
         )
     except (OSError, BadZipFile, ValueError) as erreur:
         print(f"BENCHAB : contrôle des appuis refusé : {erreur}", file=sys.stderr)

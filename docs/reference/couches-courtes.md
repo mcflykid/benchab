@@ -61,6 +61,20 @@ Ces observations portent sur des fichiers différents et ne se fusionnent pas
 automatiquement avec une piste STL. Aucune catégorie ne déduit une cause de
 picots ni une validation physique.
 
+Le mode `benchab controle appuis-gcode FICHIER --arcs-planaires` est opt-in.
+Il évalue des points calculés sur les arcs G17 analytiques et planaires du
+G-code, en gardant leur longueur de courbe pour la portée nominale ; il ne
+remplace pas l’arc par une corde. Une portion est comptée couverte uniquement
+si sa marge de recouvrement aux deux extrémités atteint au moins la moitié de
+sa longueur ; sinon sa longueur exacte est entièrement comptée sans appui.
+Le pas maximal et le budget global sont respectivement le `--pas-mm` fourni
+et 1 000 000 d’échantillons d’arc.
+Hélices, largeur manquante, géométrie absente et extrémité discordante au-delà
+des arrondis binaires restent `NON VÉRIFIÉ`. Les résultats portent sur les
+trajectoires et largeurs nominales ; ils ne qualifient pas le comportement du
+trancheur ou une tenue physique. Sans le drapeau, les arcs gardent le refus
+historique.
+
 ## Comparaison synthétique reproductible
 
 Le test `test_comparaison_synthetique_sections_et_appui_gcode_supporte` place
