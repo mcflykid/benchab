@@ -59,14 +59,47 @@ class Decollement(unittest.TestCase):
         self.assertEqual(resultats["Longue #1"]["statut"], "NON VÉRIFIÉ")
 
     def test_main_respecte_argv_et_conserve_les_mesures_independantes(self):
+        """Une nouvelle sortie JSON réussit et un second passage refuse l’écrasement."""
         source = self.mesh((30, 30, 10))
         rapport = self.racine / "rapport.json"
         with patch("sys.argv", ["decollement.py", "--help"]):
             self.assertEqual(D.main([str(source), "--json", str(rapport)]), 0)
         contenu = rapport.read_bytes()
-        self.assertEqual(D.main([str(source), "--json", str(rapport)]), 0)
+        self.assertEqual(D.main([str(source), "--json", str(rapport)]), 2)
         self.assertEqual(rapport.read_bytes(), contenu)
         self.assertIn(source.stem, json.loads(contenu))
+
+    def test_json_ne_peut_pas_remplacer_une_entree(self):
+        """Le rapport ne peut pas écraser son STL source."""
+        source = self.mesh((30, 30, 10))
+        avant = source.read_bytes()
+
+        code = D.main([str(source), "--json", str(source)])
+
+        self.assertEqual(code, 2)
+        self.assertEqual(source.read_bytes(), avant)
+
+    def test_sortie_json_protege_toutes_les_entrees_du_projet(self):
+        """La publication connaît l’archive, le placement et les STL effectivement lus."""
+        projet = self.racine / "projet"
+        candidats = projet / "candidats"
+        preuves = projet / "preuves"
+        candidats.mkdir(parents=True)
+        preuves.mkdir()
+        source = candidats / "plaques.3mf"
+        source.write_bytes(b"fixture 3MF")
+        maillage = candidats / "A.stl"
+        maillage.write_bytes(b"fixture STL")
+        placement = preuves / "placement.json"
+        placement.write_text(json.dumps({"objects": [{"name": "A", "model": "A"}]}), encoding="utf-8")
+        sortie = self.racine / "rapport.json"
+        avec = {"A #1": {"statut": "PASS", "recommandation": "aucune", "raison": "fixture"}}
+        with patch.object(D, "controler", return_value=(avec, 0)), patch.object(D, "ecrire_json_neuf") as ecrire:
+            code = D.main([
+                str(source), "--placement", str(placement), "--candidats", str(candidats), "--json", str(sortie),
+            ])
+        self.assertEqual(code, 0)
+        self.assertEqual(set(ecrire.call_args.kwargs["entrees"]), {source, placement, maillage})
 
 
 if __name__ == "__main__":

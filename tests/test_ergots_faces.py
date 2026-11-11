@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import trimesh as tm
 
@@ -71,6 +72,32 @@ class Ergots(unittest.TestCase):
             q.apply_translation([50, 0, 0])
             q.export(Path(d) / "B.stl")
             self.assertEqual(E.main([d]), 0)
+
+    def test_json_ne_peut_pas_remplacer_un_maillage_source(self):
+        """Le rapport ne peut pas remplacer une STL analysée."""
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "A.stl"
+            tm.creation.box([10, 10, 10]).export(source)
+            avant = source.read_bytes()
+
+            code = E.main([d, "--json", str(source)])
+
+            self.assertEqual(code, 2)
+            self.assertEqual(source.read_bytes(), avant)
+
+    def test_sortie_json_protege_les_maillages_et_le_fichier_ecarts(self):
+        """La liste protégée contient toutes les STL et les écarts lus."""
+        with tempfile.TemporaryDirectory() as d:
+            dossier = Path(d)
+            for nom in ("A.stl", "B.stl"):
+                tm.creation.box([10, 10, 10]).export(dossier / nom)
+            ecarts = dossier / "ecarts.json"
+            ecarts.write_text("{}", encoding="utf-8")
+            sortie = dossier / "rapport.json"
+            with patch.object(E, "faces_contact", return_value=[]), patch.object(E, "ecrire_json_neuf") as ecrire:
+                code = E.main([d, "--ecarts", str(ecarts), "--json", str(sortie)])
+            self.assertEqual(code, 0)
+            self.assertEqual(set(ecrire.call_args.kwargs["entrees"]), {dossier / "A.stl", dossier / "B.stl", ecarts})
 
 
 if __name__ == "__main__":

@@ -34,6 +34,8 @@ import trimesh as tm
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
+
 
 def faces_contact(a, b, contact=0.6, aire_min=100.0):
     """
@@ -107,9 +109,24 @@ def main(a):
     def opt(k, d):
         return float(a[a.index(k) + 1]) if k in a else d
 
+    sortie = None
+    try:
+        if "--json" in a:
+            sortie = destination_neuve(a[a.index("--json") + 1])
+    except (OSError, ValueError, IndexError) as erreur:
+        print("Sortie JSON refusée : " + str(erreur), file=sys.stderr)
+        return 2
+
     contact, aire_min, mini = opt("--contact", 0.6), opt("--aire-min", 100.0), int(opt("--minimum", 2))
-    ecarts = json.loads(Path(a[a.index("--ecarts") + 1]).read_text()) if "--ecarts" in a else {}
-    pieces = {f.stem: tm.load_mesh(f) for f in sorted(Path(a[0]).glob("*.stl"))}
+    chemin_ecarts = Path(a[a.index("--ecarts") + 1]) if "--ecarts" in a else None
+    fichiers = sorted(Path(a[0]).glob("*.stl"))
+    entrees = [*fichiers, *([chemin_ecarts] if chemin_ecarts is not None else [])]
+    try:
+        ecarts = json.loads(chemin_ecarts.read_text(encoding="utf-8")) if chemin_ecarts is not None else {}
+        pieces = {f.stem: tm.load_mesh(f) for f in fichiers}
+    except (OSError, ValueError, json.JSONDecodeError) as erreur:
+        print("Contrôle refusé : " + str(erreur), file=sys.stderr)
+        return 2
     res = {"dossier": a[0], "minimum": mini, "faces": []}
     noms = list(pieces)
     for i, x in enumerate(noms):
@@ -145,8 +162,12 @@ def main(a):
             else ("PASS" if res["faces"] else "NON APPLICABLE")
         )
     )
-    if "--json" in a:
-        Path(a[a.index("--json") + 1]).write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+    if sortie is not None:
+        try:
+            ecrire_json_neuf(sortie, res, entrees=entrees)
+        except (OSError, ValueError) as erreur:
+            print("Sortie JSON refusée : " + str(erreur), file=sys.stderr)
+            return 2
     return 1 if res["statut"] == "FAIL" else 0
 
 
