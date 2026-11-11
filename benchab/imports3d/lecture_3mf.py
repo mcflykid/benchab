@@ -6,6 +6,7 @@ Aucune extraction ni ouverture d'une ressource extérieure à l'archive.
 """
 
 import posixpath
+from functools import lru_cache
 from pathlib import PurePosixPath
 from urllib.parse import unquote
 from xml.etree import ElementTree as E
@@ -66,6 +67,7 @@ def _lire(source, max_faces, *, identites=False):
                 raise ValueError("Composant 3MF absent ou hors archive")
             return p
 
+        @lru_cache(maxsize=256)
         def relations(nom):
             """Lit les relations OPC d’une partie ; les cibles restent dans l’index ZIP vérifié."""
             dossier, base = posixpath.split(nom)
@@ -88,6 +90,7 @@ def _lire(source, max_faces, *, identites=False):
                 resultat.append((relation.get("Type", ""), mode, cible))
             return resultat
 
+        @lru_cache(maxsize=2048)
         def verifier_relation_partie(source_modele, cible_modele):
             """Exige le lien OPC interne qui fonde un p:path Production."""
             # p:path désigne une partie liée, pas seulement un nom présent dans le ZIP.
@@ -260,8 +263,6 @@ def _lire(source, max_faces, *, identites=False):
             raise ValueError("StartPart OPC absent")
         if principal is None:
             repli = [n for n in sorted(noms) if n.lower() == "3d/3dmodel.model"]
-            if identites and len(repli) > 1:
-                raise ValueError("Modèles principaux de repli ambigus")
             principal = repli[0] if repli else None
         if principal is None:
             raise ValueError("Modèle principal 3MF absent")

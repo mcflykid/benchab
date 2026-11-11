@@ -470,5 +470,3 @@ def test_cli_ecrit_le_rapport_neuf_dans_le_prive(atelier_initialise, tmp_path, c
     assert code == console["code"] == 0
     assert placement["objects"][0]["source_instance"]["build_item"] == 1
     assert console["placement"] == placement
-
-
