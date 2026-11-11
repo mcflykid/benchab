@@ -43,9 +43,9 @@ class Apercu(unittest.TestCase):
         from importlib.resources import files
 
         ressources = files("benchab.visualisation").joinpath("ressources")
-        script_2d = ressources.joinpath("apercu_gcode_2d.js").read_text()
-        script_3d = ressources.joinpath("apercu_gcode_3d.js").read_text()
-        brut = Path(A.__file__).with_suffix(".html").read_text()
+        script_2d = ressources.joinpath("apercu-gcode-2d.js").read_text()
+        script_3d = ressources.joinpath("apercu-gcode-3d.js").read_text()
+        brut = ressources.joinpath("apercu-gcode.html").read_text()
         self.assertIn("__SCRIPT_2D__", brut)
         self.assertIn("__SCRIPT_3D__", brut)
         self.assertGreater(len(script_2d.splitlines()), 20)
@@ -119,12 +119,12 @@ class Apercu(unittest.TestCase):
             self.assertEqual(json.loads(donnees)["titre"], titre)
         import subprocess
 
-        source_js = files("benchab.visualisation").joinpath("ressources/apercu_gcode_2d.js").read_text()
+        source_js = files("benchab.visualisation").joinpath("ressources/apercu-gcode-2d.js").read_text()
         script = re.search(r"const echapper = (.*?);\nconst D =", source_js, re.S).group(1)
         js = "const echapper = " + script + '; process.stdout.write(echapper("<img onerror=1>&"));'
         resultat = subprocess.run(["node", "-e", js], capture_output=True, text=True, check=True)
         self.assertEqual(resultat.stdout, "&lt;img onerror=1&gt;&amp;")
-        script_3d = files("benchab.visualisation").joinpath("ressources/apercu_gcode_3d.js").read_text()
+        script_3d = files("benchab.visualisation").joinpath("ressources/apercu-gcode-3d.js").read_text()
         self.assertIn("echapper(a.texte)", script_3d)
         self.assertIn("echapper(", source_js)
 

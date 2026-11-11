@@ -240,10 +240,10 @@ def page(f, sortie, defauts=None, titre=None, zones=None, colonnes=None):
 # Les scripts restent inline dans le document final ; hors_ligne intègre l’import map et ses modules.
 _RESSOURCES = files("benchab.visualisation").joinpath("ressources")
 GABARIT = (
-    Path(__file__).with_suffix(".html")
+    _RESSOURCES.joinpath("apercu-gcode.html")
     .read_text(encoding="utf-8")
-    .replace("__SCRIPT_2D__", _RESSOURCES.joinpath("apercu_gcode_2d.js").read_text(encoding="utf-8"))
-    .replace("__SCRIPT_3D__", _RESSOURCES.joinpath("apercu_gcode_3d.js").read_text(encoding="utf-8"))
+    .replace("__SCRIPT_2D__", _RESSOURCES.joinpath("apercu-gcode-2d.js").read_text(encoding="utf-8"))
+    .replace("__SCRIPT_3D__", _RESSOURCES.joinpath("apercu-gcode-3d.js").read_text(encoding="utf-8"))
 )
 
 

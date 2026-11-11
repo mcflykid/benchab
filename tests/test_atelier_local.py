@@ -112,7 +112,7 @@ class Atelier(unittest.TestCase):
         dossier = files("benchab.visualisation")
         cloud_html = dossier.joinpath("ressources/cloud.html").read_text()
         cloud_js = dossier.joinpath("ressources/cloud.js").read_text()
-        apercu_html = dossier.joinpath("apercu_gcode.html").read_text()
+        apercu_html = dossier.joinpath("ressources/apercu-gcode.html").read_text()
         page_cloud = page(self.root, {"vue": "cloud"}).decode()
         for action in (
             'id="cloud-account-button"',

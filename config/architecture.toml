@@ -42,16 +42,6 @@ preuve_fichier = "benchab/reference/licences.json"
 preuve_sha256 = "11dc9b9757f2c418c1d4218188af76bf6be58a325a505386cf9b7e3344af9167"
 consommateur = "benchab/qualite/edition.py"
 
-[[exceptions]]
-chemin = "benchab/visualisation/apercu_gcode.html"
-regle = "Nom de gabarit référencé par le producteur de l'aperçu"
-raison = "Le producteur charge ce fichier HTML adjacent au module Python"
-contrainte = "Conserver le nom exact obtenu par Path.with_suffix"
-duree = "Tant que le producteur de l'aperçu garde ce chemin"
-preuve_fichier = "benchab/visualisation/apercu_gcode.py"
-preuve_sha256 = "653569a034b2e153ad12f0b466107e600a6035bdbb3e345aa5858b8891d8f7ac"
-consommateur = "benchab/visualisation/apercu_gcode.py"
-
 [[ressources]]
 racine = "benchab/visualisation/vendor/three-0.160.0"
 regle = "Arborescence upstream Three.js conservée telle que publiée"
