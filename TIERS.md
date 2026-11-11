@@ -32,6 +32,7 @@ les licences duales cryptography et packaging, la branche Apache-2.0 est retenue
 | Distribution | Version | Licence retenue |
 | --- | --- | --- |
 | anytree | 2.13.0 | Apache-2.0 |
+| ast-serialize | 0.13.1 | MIT |
 | asttokens | 3.0.2 | Apache-2.0 |
 | bd-materials | 0.2.5 | Apache-2.0 |
 | benchab | dynamique | GPL-3.0-or-later |
@@ -63,6 +64,7 @@ les licences duales cryptography et packaging, la branche Apache-2.0 est retenue
 | joblib | 1.6.0 | BSD-3-Clause |
 | kiwisolver | 1.5.1 | BSD-3-Clause |
 | lib3mf | 2.5.0 | BSD-3-Clause |
+| librt | 0.16.0 | MIT |
 | manifold3d | 3.5.4 | Apache-2.0 |
 | mapbox-earcut | 2.1.0 | ISC |
 | marshmallow | 3.26.2 | MIT |
@@ -70,6 +72,7 @@ les licences duales cryptography et packaging, la branche Apache-2.0 est retenue
 | matplotlib-inline | 0.2.2 | BSD-3-Clause |
 | meshoptimizer | 0.2.30a0 | MIT |
 | mpmath | 1.3.0 | BSD-3-Clause |
+| mypy | 2.4.1 | MIT |
 | mypy-extensions | 1.2.0 | MIT |
 | narwhals | 2.28.0 | MIT |
 | networkx | 3.7 | BSD-3-Clause |

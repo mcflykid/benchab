@@ -4,9 +4,17 @@
 uv sync --locked
 uv run pytest -q
 uv run ruff check .
+uv run --locked --group typage python -m mypy
 uv run benchab controle typographie docs
 uv run benchab controle publication
 ```
+
+La CI vérifie les types des frontières communes (chemins, réglages, processus,
+interpréteur G-code et base). Elle analyse aussi le corps des fonctions sans
+signature complète. Les erreurs des modules importés hors périmètre restent
+hors du lot, et les dépendances sans annotations ne sont pas assimilées à une
+preuve de typage. Le groupe `typage` est réservé à la vérification et n’est pas
+une dépendance d’exécution.
 
 Les tests construisent leurs propres fixtures et isolent l’atelier privé.
 Ils bloquent aussi par défaut les résolutions DNS et connexions externes avant
