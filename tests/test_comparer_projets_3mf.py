@@ -404,3 +404,31 @@ def test_cli_archive_illisible_est_refuse_sans_traceback(tmp_path, capsys):
     assert sortie.out == ""
     assert "comparaison 3MF refusée" in sortie.err
     assert "Traceback" not in sortie.err
+
+
+def test_cli_resume_conserve_le_rapport_complet_et_les_sources(tmp_path, capsys):
+    """Une sortie courte garde le chemin et les écarts sans perdre le rapport détaillé."""
+    from benchab import cli
+
+    source, candidat = (tmp_path / f"{nom}.3mf" for nom in ("source", "candidate"))
+    _archive(source, {"top_shell_layers": "3", "vendor_inconnu": "A"})
+    _archive(candidat, {"top_shell_layers": "5", "vendor_inconnu": "B"})
+    avant = (source.read_bytes(), candidat.read_bytes())
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    sortie = prive / "rapport.json"
+    commande = ["--prive", str(prive), "controle", "comparer-projets-3mf", str(source), str(candidat)]
+    assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 2
+    resultat = capsys.readouterr()
+    assert not resultat.err
+    court = json.loads(resultat.out)
+    complet = json.loads(sortie.read_bytes())
+    assert court["rapport"] == str(sortie)
+    assert court["reglages"]["differences"] == len(complet["reglages"]["differences"])
+    assert court["reglages"]["non_verifies"] == len(complet["reglages"]["non_verifies"])
+    assert court["statut"] == complet["statut"] == "NON VÉRIFIÉ"
+    assert "vendor_inconnu" not in resultat.out and "vendor_inconnu" in sortie.read_text()
+    assert (source.read_bytes(), candidat.read_bytes()) == avant
+    empreinte = sortie.read_bytes()
+    assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 2
+    assert capsys.readouterr().err and sortie.read_bytes() == empreinte
