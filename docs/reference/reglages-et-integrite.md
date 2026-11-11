@@ -76,7 +76,7 @@ remplace pas `get_at`. Le contrôle des commandes machine utilise l'indice du
 mode déclaré et la lecture `get_at` demandée, puis compare aux limites
 configurées ; un M203 X780 attendu à 600 reste FAIL.
 
-Le [générateur automatique public Anycubic à la révision 6103ed8](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/GCode.cpp#L2856-L2873)
+Le [générateur automatique public Anycubic à la révision 6103ed8](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/GCode.cpp#L3095-L3110)
 arrondit la première valeur pour M203 dans ses branches Marlin et RepRap.
 Sur quatre copies de témoin Kobra S1 en format Klipper, le binaire local
 2.0.0.3 identifié par son SHA a produit pour Z les valeurs 7, 7, 8 et
