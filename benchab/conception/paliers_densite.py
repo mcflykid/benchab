@@ -193,7 +193,7 @@ def modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers, *
         raise ValueError("Plan : une face extérieure avec toute la pièce du côté intérieur est requise")
     direction = normale.tolist()
     opposee = (-normale).tolist()
-    return _assembler(
+    volumes, rapport = _assembler(
         base, volume_base, normalises, lambda d: base.trim_by_plane(direction, altitude - d),
         prefixe="palier-plan", nom_distance="profondeur", volume_min_mm3=volume_min_mm3,
         # Deux coupes planes évitent les faces résiduelles d’une
@@ -204,3 +204,15 @@ def modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers, *
         },
         limite="Tranches parallèles au plan déclaré ; aucun effet G-code ni tenue physique établis.",
     )
+
+    for region, palier in zip(volumes, rapport["paliers"][:len(volumes)], strict=True):
+        profondeurs = altitude - np.asarray(region["mesh"].vertices) @ normale
+        if (
+            profondeurs.min() < palier["profondeur_min_mm"] - tolerance_mm
+            or profondeurs.max() > palier["profondeur_max_mm"] + tolerance_mm
+        ):
+            return [], {
+                **rapport, "statut": "NON VÉRIFIÉ",
+                "raison": "Sommet d’un modificateur au-delà des plans de son palier",
+            }
+    return volumes, rapport
