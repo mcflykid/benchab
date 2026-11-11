@@ -15,6 +15,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
   sortie native et vérifie tous les octets publiés (#182).
 - Annotations : documente les fonctions de fabrication historiques,
   sans modifier leur comportement (suite de #127).
+- Tests : fixe les instants simulés pour vérifier le stockage et la reprise
+  des durées sans dépendre de l’horloge de la CI (#185).
 
 ## 1.10.0 — 2026-11-11
 
