@@ -3,8 +3,10 @@
 import tempfile
 import unittest
 from pathlib import Path
-from zipfile import ZipFile
+from unittest.mock import patch
+from zipfile import ZipFile, ZipInfo
 
+from benchab.qualite import comparer_fabrication as comparateur
 from benchab.qualite.comparer_fabrication import comparer, main
 
 
@@ -93,6 +95,28 @@ class ComparaisonTests(unittest.TestCase):
                 archive.writestr("Metadata/project_settings.config", f'{{"speed": {speed}}}')
         rapport = comparer(self.a, self.b, self.out)
         self.assertEqual(rapport["verdicts"]["fabrication"], "FAIL")
+
+    def test_3mf_majuscule_compare_les_membres_comme_le_suffixe_minuscule(self):
+        """Deux ZIP 3MF aux mêmes membres ne diffèrent que par le conteneur."""
+        for dossier, annee in ((self.a, 2020), (self.b, 2021)):
+            with ZipFile(dossier / "piece.3MF", "w") as archive:
+                archive.writestr(ZipInfo("Metadata/plate_1.gcode", (annee, 1, 1, 0, 0, 0)), b"G1 X1")
+        rapport = comparer(self.a, self.b, self.out)
+        self.assertEqual(rapport["verdicts"]["fabrication"], "PASS")
+        self.assertEqual(rapport["verdicts"]["fabrication_identite_binaire"], "FAIL")
+        self.assertEqual(len(rapport["identite_binaire"]["differents_contenu_identique"]), 1)
+
+    def test_membre_hors_budget_reste_un_ecart_sans_detail_invente(self):
+        """Un écart volumineux reste bloquant, avec ses empreintes et son détail non examiné."""
+        for dossier, remplissage in ((self.a, b"a"), (self.b, b"b")):
+            with ZipFile(dossier / "piece.3mf", "w") as archive:
+                archive.writestr("Metadata/plate_1.gcode", remplissage * 64)
+        with patch.object(comparateur, "MAX_DETAILS_MEMBRE_OCTETS", 16, create=True):
+            rapport = comparer(self.a, self.b, self.out)
+        self.assertEqual(rapport["verdicts"]["fabrication"], "FAIL")
+        ecart, = rapport["fabrication"]["ecarts"][0]["membres"]
+        self.assertEqual(ecart["detail"], "NON VÉRIFIÉ")
+        self.assertNotEqual(ecart["sha256_attendu"], ecart["sha256_obtenu"])
 
     def test_duplicate_zip_refused(self):
         for directory in (self.a, self.b):

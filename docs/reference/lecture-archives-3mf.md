@@ -75,3 +75,11 @@ des réglages. `finition_parois` analyse un instantané déjà borné à 64 Mio 
 son parcours mémoire protégé ; `paquet_3mf` valide des octets fournis et garde
 son propre validateur mémoire borné. Les écritures ZIP en mode `w` ou `a` ne
 sont pas concernées.
+
+La comparaison de reconstruction vérifie les CRC, y compris pour un membre
+présent d’un seul côté ou deux archives binaires identiques. Les suffixes
+`.3mf` et `.3MF` suivent le même parcours. Chaque archive est ouverte une fois
+par comparaison ; les empreintes complètes avant publication protègent les
+entrées. Un membre jusqu’à 64 Mio conserve son diagnostic détaillé. Au-delà,
+ses octets sont comparés par empreinte en flux : un écart reste bloquant et
+son détail est NON VÉRIFIÉ. Une vignette reste un élément documentaire.
