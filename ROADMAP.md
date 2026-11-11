@@ -279,7 +279,24 @@ est signalé (#80, #81). Les fiches CAO ajoutent un fraisage conique à cotes
 déclarées ; dix STEP synthétiques concordent avec les volumes et dimensions
 attendus, sans conformité ISO ni ajustement réel déduits (#27, #32).
 
-## Prochaine version : 1.20.0
+## Version 1.20.0 — reprise d’original et études de procédé
+
+La préparation d’une copie depuis un TAR lie l’archive, le manifeste et
+le membre à des empreintes déclarées, puis relit la sortie privée. Elle
+n’applique pas la copie à l’atelier et ne reconstruit pas un projet (#119).
+
+Les paliers de densité sont définis depuis une face extérieure contrôlée ;
+un coupon tranché mesure l’effet local sans prouver une résistance (#83).
+La paroi supplémentaire alternée est qualifiée sur le binaire observé
+(#80, #81). Les deux trajets du style arborescent fort sont conservés
+séparément et sa répétabilité reste NON VÉRIFIÉE (#89, #208).
+
+Le rapport de continuité peut être affiché en résumé avec la version complète
+conservée (#35) ; sa documentation distingue les modes d’analyse des arcs
+(#123). Trois contrats de contrôle sont annotés sans changement de comportement
+(#127).
+
+## Prochaine version : 1.21.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -311,6 +328,8 @@ G-code des modificateurs #82, puis les variantes de supports #89.
 La [qualification native #48](docs/reference/integrite-3mf.md#qualification-native-dun-modificateur-48)
 couvre une sonde multi-volumes. #49 garde le lot des 32 archives historiques aux
 réglages ambigus. Les essais natifs conservent leurs conditions d’application.
+#208 suit la variabilité des supports à entrée identique : comparer la
+stabilité des mesures séparément de l’égalité des trajets.
 
 ### 3. Compléter les parcours de préparation
 
@@ -348,11 +367,12 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 - #127 : rattraper les annotations des contrôles et lanceurs après les
   primitives communes de lecture, de copie et de publication.
 - #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
-  de surplombs, de première couche et de débit.
+  de surplombs, de première couche, de débit, d’appuis et de continuité.
 - #119 : qualifier d’autres familles de reprise et la preuve d’exécution
   au-delà du contenu déclaré d’un rapport JUnit. Une vue canonique peut être régénérée après
   contrôle du plan et copie vérifiée de l’ancienne vue. La cible d’un lien cassé
-  peut être recréée par copie prouvée ; un original introuvable reste NON VÉRIFIÉ.
+  peut être recréée par copie prouvée. Un original documenté dans un TAR
+  peut être préparé séparément ; un original introuvable reste NON VÉRIFIÉ.
 
 La boucle attendue est : retour sourcé → défaut reproduit → correctif → test de
 régression → contrôle et relecture → livraison. Une vue peut être régénérée depuis
