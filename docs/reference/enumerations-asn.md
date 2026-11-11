@@ -27,6 +27,7 @@ Les rapports et fichiers de recette restent dans l’atelier privé.
 | `internal_solid_infill_pattern` | `rectilinear`, `monotonic` | Trajectoires de remplissage plein interne distinctes. |
 | `top_surface_pattern` | `monotonicline`, `rectilinear` | Trajectoires de surface supérieure distinctes. |
 | `bottom_surface_pattern` | `monotonic`, `rectilinear` | Trajectoires de surface inférieure distinctes. |
+| `alternate_extra_wall` | `0`, `1` | Sur le témoin S, 540 → 576 segments de paroi interne ; paroi externe inchangée. |
 | `wall_sequence` | `inner wall/outer wall`, `outer wall/inner wall`, `inner-outer-inner wall` | Ordres de dépôt des parois distincts. |
 
 Avec `zig-zag`, le moteur a sorti `zigzag` et les mêmes trajectoires qu’avec
@@ -145,3 +146,14 @@ ce binaire ; aucune valeur équivalente ou autre version n’est supposée.
 Les sources et les 646 profils relus sont intacts. L’angle, le décalage
 et les champs de peau et squelette ne sont pas qualifiés par ces essais
 (#80, #81). La durée et la masse sont des estimations du fichier.
+
+### Paroi supplémentaire alternée
+
+Sur le binaire identifié ci-dessus, les copies du témoin S tranchées avec
+`alternate_extra_wall=0` et `1` diffèrent par cette seule clé, avant et
+après tranchage. La longueur de paroi interne passe de 4 296,59 à
+5 274,25 mm ; la paroi extérieure reste à 2 337,17 mm. Les estimations passent
+de 313 à 316 s et de 2,37 à 2,48 g. Le rejeu à `1` donne les mêmes
+trajets de dépôt et estimations ; les 646 profils relus et l’archive
+d’origine gardent leurs empreintes. Ce constat ne qualifie pas les autres
+valeurs, ni la résistance, ni les dimensions de la pièce imprimée.
