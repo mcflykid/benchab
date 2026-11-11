@@ -501,3 +501,20 @@ def test_core_refuse_alias_indices_gradients_et_defauts_absents(tmp_path, groupe
     _archive_peinte(candidat)
     core = comparer(source, candidat)["peinture"]["proprietes_standard_3mf"]
     assert core["statut"] == "NON VÉRIFIÉ" and core["differences"] == []
+
+
+def test_core_herite_index_objet_avec_groupe_de_facette_explicite(tmp_path):
+    """Un pid de facette remplace le groupe et conserve l’index par défaut sans p1."""
+    source, candidat = tmp_path / "source.3mf", tmp_path / "candidat.3mf"
+    groupes = (("2", [("Structure", "#112233")]), ("3", [("Interface", "#AABBCC")]))
+    objet = {"pid": "2", "pindex": "0"}
+    _archive_peinte(
+        source, groupes_materiau=groupes, proprietes_objet=objet,
+        proprietes_facettes=({"pid": "3", "p2": "0", "p3": "0"}, {}),
+    )
+    _archive_peinte(
+        candidat, groupes_materiau=groupes, proprietes_objet=objet,
+        proprietes_facettes=({"pid": "3", "p1": "0"}, {}),
+    )
+    core = comparer(source, candidat)["peinture"]["proprietes_standard_3mf"]
+    assert core["statut"] == "PASS" and core["differences"] == []

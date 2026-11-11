@@ -78,8 +78,7 @@ def resoudre(racine, ressources, proprietes_objet, proprietes_facettes):
         defaut = lire(pid_objet, indice_objet)
         materiaux = []
         for attributs in proprietes_facettes:
-            if "p1" not in attributs and any(k in attributs for k in ("pid", "p2", "p3")):
-                raise ValueError("Attributs de facette Core incomplets pour une attribution sans ambiguïté.")
+            # Le groupe et l’index héritent indépendamment selon Core 1.3 §4.1.4.1.
             pid = _indice(attributs["pid"], identifiant=True) if "pid" in attributs else pid_objet
             indice = _indice(attributs["p1"]) if "p1" in attributs else indice_objet
             # Core 1.3 §4.1.4.1 ne définit pas de gradient pour basematerials.
