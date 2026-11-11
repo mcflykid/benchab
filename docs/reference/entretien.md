@@ -39,3 +39,9 @@ L'issue #73 reste ouverte : aucun historique d'exploitation réel, aucun lien
 de provenance spécifique aux compteurs et aucun intervalle fabricant par
 modèle/firmware n'ont encore été qualifiés. Les recommandations de maintenance
 ne sont donc pas intégrées comme seuils par défaut.
+
+Avec `--resume --sortie prive/rapports/entretien.json`, la commande enregistre
+d’abord le bilan complet, puis affiche le statut et le nombre de compteurs
+par verdict. Les événements, seuils, unités, identifiants et motifs détaillés
+restent dans le JSON privé. Le résumé garde le code de sortie habituel ;
+sans option, le bilan complet est affiché. La destination doit être neuve.

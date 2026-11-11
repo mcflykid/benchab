@@ -299,6 +299,24 @@ class PlanConsommation(unittest.TestCase):
         self.assertIsNone(resultat["estimation"])
         self.assertIn("association d’envoi absente ou ambiguë", resultat["motifs"])
 
+    def test_plan_ouvre_une_fois_l_archive_associee(self):
+        """L’inventaire valide le SHA dans le lecteur qui extrait les masses (#223)."""
+        import os
+        from unittest.mock import patch
+
+        ouvrir = os.open
+        ouvertures = []
+
+        def compter(chemin, *args, **options):
+            if isinstance(chemin, (str, Path)) and Path(chemin) == self.archive_prive:
+                ouvertures.append(chemin)
+            return ouvrir(chemin, *args, **options)
+
+        with patch.object(os, "open", compter):
+            resultat = estimer_retour(self.base, self.retour_id)
+        self.assertEqual(len(ouvertures), 1)
+        self.assertEqual(resultat["estimation"]["plaques"][0]["outils"][1]["grammes_estimes"], 12.5)
+
     def test_envoi_modifie_apres_association_ne_fournit_pas_d_estimation(self):
         """Un changement d'octets après l'association invalide son SHA enregistré."""
         chemin = self.racine / self.chemin_envoi

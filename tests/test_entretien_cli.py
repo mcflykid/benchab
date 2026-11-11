@@ -215,3 +215,19 @@ def test_cumul_exact_depasse_flottant_mais_garde_warn_sans_valeur_non_finie(tmp_
     assert compteur["valeur"] is None
     assert "dépasse la plage représentable" in compteur["detail"]
     json.dumps(rapport, allow_nan=False)
+
+
+def test_resume_entretien_garde_le_warn_et_le_rapport_complet(tmp_path, capsys):
+    """Le bilan court garde son statut, sans exposer l'historique détaillé."""
+    historique = _ecrire_historique(tmp_path)
+    commande = ["--prive", str(tmp_path), "controle", "entretien", "--historique", str(historique)]
+    assert cli.main(commande) == 1
+    ancien = capsys.readouterr().out
+    sortie = tmp_path / "bilan.json"
+    assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 1
+    court = capsys.readouterr().out
+    resume = json.loads(court)
+    assert resume["compteurs_par_statut"] == {"WARN": 1}
+    assert resume["statut"] == "WARN" and resume["rapport"] == str(sortie)
+    assert json.loads(ancien) == json.loads(sortie.read_text())
+    assert len(court) < len(ancien) and "u-1" not in court

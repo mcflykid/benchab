@@ -8,6 +8,12 @@ La compensation du slicer et la résistance physique restent des vérifications 
 
 
 def chanfrein_base(solide, c=0.5):
+    """Applique un chanfrein de largeur c en mm aux arêtes au Z minimal.
+
+    Entrée : solide CAO en mm. Sortie : solide et rapport, PASS si le noyau
+    réussit, NON APPLICABLE sans arête admissible, WARN en cas d'échec.
+    Les deux derniers cas rendent le solide initial, sans résultat partiel.
+    """
     from build123d import GeomType, chamfer
 
     z0 = solide.bounding_box().min.Z
@@ -27,7 +33,11 @@ def chanfrein_base(solide, c=0.5):
 
 
 def aretes_rentrantes(solide, axe=None):
-    """Arête entre deux faces dont la seconde part devant la normale de la première."""
+    """Liste les arêtes rentrantes entre deux faces d'un solide en mm.
+
+    L'axe Z ne retient que les arêtes quasi verticales. Le classement se fait
+    sur les normales des faces ; il ne modifie ni le solide ni ses réglages.
+    """
     out = []
     for e in solide.edges():
         fs = [f for f in solide.faces() if any(e.is_same(x) for x in f.edges())]
@@ -49,6 +59,12 @@ def aretes_rentrantes(solide, axe=None):
 
 
 def conges_interieurs(solide, r=1.0, axe=None):
+    """Arrondit les arêtes rentrantes avec un rayon r en mm.
+
+    Entrées : solide CAO en mm et axe éventuel, Z pour les seules arêtes
+    quasi verticales. Sortie : solide et rapport PASS si le noyau réussit,
+    NON APPLICABLE sans arête admissible, WARN avec le solide initial en cas d'échec.
+    """
     from build123d import fillet
 
     ar = aretes_rentrantes(solide, axe)

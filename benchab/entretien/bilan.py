@@ -9,7 +9,7 @@ import json
 import math
 import os
 import stat
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from fractions import Fraction
 from pathlib import Path
@@ -288,3 +288,21 @@ def code(rapport):
     from benchab.qualite.statuts import code_statut
 
     return code_statut(rapport["statut"])
+
+
+def resumer(rapport, sortie):
+    """Résume le bilan conservé en JSON privé sans exposer les événements.
+
+    Entrées : bilan de bilan_fichier (valeurs en g, h ou unité déclarée) et
+    chemin du rapport complet. Sortie : PASS/WARN/NON VÉRIFIÉ, code et
+    compteurs par statut ; les détails et erreurs restent dans le rapport.
+    Ne modifie ni fichier ni machine.
+    """
+    return {
+        "statut": rapport["statut"],
+        "code": code(rapport),
+        "rapport": str(sortie),
+        "compteurs_par_statut": dict(Counter(c["statut"] for c in rapport["compteurs"])),
+        "diagnostics_dans_rapport": len(rapport["erreurs"]),
+        "validation_physique": rapport["validation_physique"],
+    }

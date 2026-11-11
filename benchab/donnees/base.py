@@ -82,6 +82,37 @@ def _export_identique(path, attendu):
         flux.close()
 
 
+def _export_sha_identique(path, attendu, octets):
+    """Compare un export au SHA attendu issu d'un instantané SQLite identifié."""
+    flux, signature = _ouvrir_export(path)
+    if flux is None:
+        return False, None
+    try:
+        identique = False
+        if signature[3] == octets:
+            empreinte = hashlib.sha256()
+            restant = octets
+            while restant:
+                bloc = flux.read(min(1024 * 1024, restant))
+                if not bloc:
+                    break
+                empreinte.update(bloc)
+                restant -= len(bloc)
+            identique = not restant and not flux.read(1) and empreinte.hexdigest() == attendu
+        if _signature_export(os.fstat(flux.fileno())) != signature:
+            raise ValueError("Export modifié pendant sa vérification")
+        _verifier_export_inchange(path, signature)
+        return identique, signature
+    finally:
+        flux.close()
+
+
+def _ligne_jsonl(donnees):
+    """Sérialise une ligne une fois, pour validation et empreinte du même JSONL."""
+    texte = json.dumps(donnees, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
+    return texte.encode("utf-8")
+
+
 def lignes_export(connexion, table):
     """Produit les lignes JSONL canoniques d’une table BENCHAB, en octets UTF-8.
 
@@ -91,8 +122,7 @@ def lignes_export(connexion, table):
     if table not in TABLES:
         raise ValueError("Table d’export BENCHAB inconnue.")
     for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
-        texte = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
-        yield texte.encode("utf-8")
+        yield _ligne_jsonl(dict(ligne))
 
 
 class Base:
@@ -106,6 +136,7 @@ class Base:
         from benchab.chemins import atelier_prive
 
         self.prive = atelier_prive(prive)
+        self._export_attendu = None
         chemin = self.prive / "benchab.sqlite"
         if chemin.is_symlink():
             raise ValueError("Une base liée est refusée.")
@@ -175,15 +206,28 @@ class Base:
 
     @contextmanager
     def transaction(self):
-        """Valide les données et leurs références durables avant le commit, puis exporte."""
+        """Fournit la connexion SQLite, valide toutes les lignes et publie les exports.
+
+        Les références durables sont contrôlées avant le commit. Les SHA
+        calculés sur cet instantané, en octets JSONL, ne sont réemployés
+        que pendant l'export immédiat et sur la même version de données.
+        Une exception dans le bloc garde le rollback SQLite habituel.
+        """
         from benchab.qualite.ecritures import verifier_references_durables
 
+        attendu = {}
         with self.connexion:
             yield self.connexion
+            # Sans transaction SQLite active, plusieurs SELECT peuvent voir des instantanés différents (#19).
+            version = self._version_export() if self.connexion.in_transaction else None
             for table in TABLES:
-                for ligne in self.connexion.execute(f'SELECT * FROM "{table}"'):
+                empreinte, octets = hashlib.sha256(), 0
+                for ligne in self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
                     donnees = dict(ligne)
-                    json.dumps(donnees, allow_nan=False)
+                    canonique = _ligne_jsonl(donnees)
+                    if version is not None:
+                        empreinte.update(canonique)
+                        octets += len(canonique)
                     for cle, valeur in donnees.items():
                         if not isinstance(valeur, str):
                             continue
@@ -193,10 +237,35 @@ class Base:
                             except ValueError:
                                 pass
                         verifier_references_durables(valeur, self.prive)
-        self.exporter()
+                if version is not None:
+                    attendu[table] = (empreinte.hexdigest(), octets)
+        self._export_attendu = (version, attendu) if version is not None else None
+        try:
+            self.exporter()
+        finally:
+            self._export_attendu = None
+
+    def _version_export(self):
+        """Épingle l'instantané puis relève les compteurs utiles sur la même connexion."""
+        self.connexion.execute("SELECT count(*) FROM main.sqlite_schema").fetchone()
+        # data_version ne signale que les commits d'autres connexions. Le
+        # total_changes protège le réemploi en cas d'écriture locale intercalée (#19).
+        return (
+            self.connexion.total_changes,
+            self.connexion.execute("PRAGMA main.data_version").fetchone()[0],
+            self.connexion.execute("PRAGMA main.schema_version").fetchone()[0],
+            self.connexion.execute("PRAGMA main.user_version").fetchone()[0],
+        )
 
     def exporter(self):
-        """Un export cohérent, sérialisé et vérifiable après chaque transaction réussie."""
+        """Publie les JSONL cohérents et le manifeste, sans écrire dans SQLite.
+
+        Les exports conformes gardent leurs octets et leur inode. En
+        l’absence d’empreintes de transaction encore qualifiées, compare
+        toute la sérialisation. Réserve brièvement le verrou SQLite d’écriture
+        pendant la publication, y compris en WAL. Refuse une connexion en
+        lecture seule ou un contexte SQLite déjà ouvert.
+        """
         from benchab.chemins import sans_lien
         from benchab.qualite.ecritures import ouvrir_verrou
 
@@ -213,7 +282,10 @@ class Base:
                     os.fstat(verrou), os.stat("export.lock", dir_fd=dossier, follow_symlinks=False)
                 ):
                     raise ValueError("Verrou d'export remplacé pendant son ouverture")
-                self.connexion.execute("BEGIN")
+                # En WAL, un snapshot de lecture seul n'empêche pas un autre
+                # auteur de committer avant le manifeste. Réserver l'écriture
+                # pendant la publication, sans changer de ligne (docs/reference/donnees.md, #226).
+                self.connexion.execute("BEGIN IMMEDIATE")
                 try:
                     self._exporter_tables()
                 finally:
@@ -247,8 +319,20 @@ class Base:
         # Base peut être ouverte depuis longtemps : ne pas reprendre un dossier lié (#138).
         dossier = sans_lien(self.prive / "export", racine=self.prive, strict=True)
         empreintes = {}
+        attendu = None
+        if self._export_attendu is not None:
+            version, vues = self._export_attendu
+            if version == self._version_export():
+                attendu = vues
         for table in TABLES:
             cible = dossier / f"{table}.jsonl"
+            if attendu is not None:
+                sha, octets = attendu[table]
+                identique, signature = _export_sha_identique(cible, sha, octets)
+                empreintes[table] = sha
+                if not identique:
+                    self._publier_table(table, dossier, cible, signature, sha)
+                continue
             ancien, signature = _ouvrir_export(cible)
             if ancien is None:
                 temporaire, empreintes[table] = self._ecrire_table_temporaire(table, dossier)
@@ -281,14 +365,7 @@ class Base:
             if identique and empreinte_existante.hexdigest() == empreintes[table]:
                 continue
             # Une table divergente seule est rescannée pour produire son temporaire canonique.
-            temporaire, empreinte_temporaire = self._ecrire_table_temporaire(table, dossier)
-            try:
-                if empreinte_temporaire != empreintes[table]:
-                    raise ValueError("Table SQLite modifiée pendant l’export")
-                _verifier_export_inchange(cible, signature)
-                temporaire.replace(cible)
-            finally:
-                temporaire.unlink(missing_ok=True)
+            self._publier_table(table, dossier, cible, signature, empreintes[table])
         manifeste = {
             "schema": self.connexion.execute("PRAGMA user_version").fetchone()[0],
             "tables": list(TABLES),
@@ -307,3 +384,15 @@ class Base:
             Path(nom).replace(fichier_manifeste)
         finally:
             Path(nom).unlink(missing_ok=True)
+
+
+    def _publier_table(self, table, dossier, cible, signature, attendu):
+        """Relit une table divergente dans l'instantané avant de remplacer son export."""
+        temporaire, empreinte = self._ecrire_table_temporaire(table, dossier)
+        try:
+            if empreinte != attendu:
+                raise ValueError("Table SQLite modifiée pendant l’export")
+            _verifier_export_inchange(cible, signature)
+            temporaire.replace(cible)
+        finally:
+            temporaire.unlink(missing_ok=True)

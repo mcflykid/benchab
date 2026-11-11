@@ -29,6 +29,12 @@ def chemin_table(chemin=None):
 
 
 def table(chemin=None):
+    """Lit la table de compensation du chemin choisi ou copie la théorie.
+
+    Sortie : dictionnaire, cotes et ajouts en mm, angles en degrés.
+    Si le fichier est absent, les valeurs restent théoriques. Aucun
+    étalonnage ni écriture n’est effectué.
+    """
     path = chemin_table(chemin)
     return json.loads(path.read_text()) if path.is_file() else copy.deepcopy(THEORIE)
 
@@ -56,6 +62,12 @@ def goutte_2d(d, angle=None, ajout=None, *, table_path=None):
 
 
 def goutte_maillage(d, longueur, axe="X", centre=(0, 0, 0), **k):
+    """Extrude le profil goutte en maillage centré sur l’axe X ou Y.
+
+    Entrées : diamètre d, longueur et centre en mm ; options du profil
+    dont l’angle en degrés. Sortie : maillage Trimesh en mm, sans écriture
+    ni preuve d’ajustement imprimé.
+    """
     import trimesh
 
     m = trimesh.creation.extrude_polygon(goutte_2d(d, **k), longueur)
@@ -70,6 +82,11 @@ def goutte_maillage(d, longueur, axe="X", centre=(0, 0, 0), **k):
 
 
 def goutte_build123d(d, longueur, **k):
+    """Extrude le profil goutte dans le plan XZ, de part et d’autre.
+
+    Entrées : diamètre et longueur en mm et options du profil. Sortie :
+    solide build123d en mm, sans export ni validation physique.
+    """
     from build123d import Plane, Polyline, extrude, make_face
 
     pts = list(goutte_2d(d, **k).exterior.coords)

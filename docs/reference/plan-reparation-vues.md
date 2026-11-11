@@ -83,6 +83,20 @@ rendu actuel de SQLite ; l'origine historique et la pertinence de la candidate
 restent **NON VÉRIFIÉES**. Un échec après la preuve garde celle-ci comme trace et
 ne revendique pas une réparation.
 
+Pour garder le diagnostic complet tout en réduisant l’affichage :
+
+```sh
+benchab --prive /chemin/atelier controle plan-reparation   --resume --sortie /chemin/atelier/rapports/plan.json
+```
+
+La destination doit être un JSON privé neuf. Le plan complet est enregistré
+avant l’affichage du résumé. Celui-ci garde le verdict, le code de sortie,
+les compteurs de vues et de propositions, et le motif d’indisponibilité s’il
+existe. Il ne contient ni les identifiants des candidats ni leurs empreintes.
+Sans option, la sortie historique reste le JSON complet. Aucun mode du plan
+n’applique de réparation.
+
+
 ## Préparer la reprise d’une table exportée
 
 Une table JSONL absente peut être recalculée dans un **dossier neuf** distinct
@@ -188,3 +202,30 @@ VÉRIFIÉ si son chemin ou sa lecture est hors contrat. Le code 2 refuse une
 preuve ou une copie illisible, liée ou altérée. La commande ne rouvre pas
 le TAR, ne crée ni original ni base, et ne donne pas d’accord de restauration
 (#119).
+
+### Appliquer une reprise à un seul original manquant
+
+Après vérification, confirmer séparément le chemin exact de l’original et
+son SHA-256 de référence. Ne pas reprendre aveuglément ces valeurs depuis
+la preuve candidate ; les comparer au relevé de provenance de l’original.
+
+```sh
+benchab --prive /chemin/atelier controle appliquer-reprise-source \
+  --preuve /chemin/atelier/rapports/reprise-source/preuve.json \
+  --sha256-preuve SHA256_PREUVE \
+  --membre projets/SLUG/sources/FICHIER --sha256-source SHA256_SOURCE
+```
+
+Le dossier `sources/` doit déjà exister, sans lien symbolique dans le chemin.
+Le fichier doit manquer. Un fichier déjà présent, même identique, est refusé.
+La copie est relue dans un fichier temporaire puis publiée de façon exclusive
+dans le dossier source. Le SHA du fichier publié est relu. Une collision,
+une différence d’empreinte ou un chemin remplacé refuse l’application.
+Ne pas déplacer le dossier source pendant l’opération. Si son déplacement
+concurrent est constaté après publication, le résultat est refusé et le fichier
+reste dans le dossier ouvert pour diagnostic, sans suppression automatique.
+
+Le code 0 confirme qu’un seul fichier a été publié puis relu. Le code 2 refuse
+une preuve ou une application non vérifiée. La preuve CANDIDAT, le TAR, la
+copie, les préparations et la base restent intacts. Le contrôle local ne
+certifie pas l’origine historique du TAR et ne reconstruit pas un projet.

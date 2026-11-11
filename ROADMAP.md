@@ -415,7 +415,48 @@ n’est imputé ; l’exécution et la correspondance avec l’outil physique
 ne sont pas établies (#77). Le résumé de consommation conserve les motifs
 et la référence au rapport intégral publié dans l’atelier (#35).
 
-## Prochaine version : 1.26.0
+## Version 1.26.0 — témoins, reprise et fiabilité de l’atelier
+
+Sur un coupon de 24 × 16 × 16 mm avec cellule de 8 mm, le gyroïde modélisé
+donne un STL fermé dont la zone protégée est préservée. Deux tranchages
+des mêmes octets à 0 % de remplissage sont identiques hors horodatage.
+Le slicer estime 4,91 g et 1 183 s, contre 3,79 g et 893 s pour la peau
+protégée seule à 0 %, et 3,25 g et 861 s pour le bloc natif à 15 %.
+L’enveloppe est comparable ; les géométries et le réglage natif diffèrent.
+Le moteur a produit les quatre sorties avec un code 0 malgré deux
+messages d’erreur de calcul des zones exclues par cas. L’épaisseur
+maillée et la tenue restent à qualifier (#87).
+
+Le plan de consommation conserve ses limites et vérifie l’envoi depuis
+le lecteur qui l’inventorie, sans hachage intégral répété (#223). Les
+annotations CAO et de finition sont précisées (#127).
+
+### Reprise, rapports privés et export SQLite
+
+Après préparation et vérification d’une copie, une commande distincte
+peut recréer un seul original absent dans son dossier source existant.
+Le membre et son SHA sont confirmés séparément ; aucun fichier présent
+n’est remplacé. Le parcours a été rejoué dans un atelier jetable (#119).
+
+Le plan de réparation peut donner un résumé et conserver son JSON
+intégral. Sur un atelier de contrôle de 19 vues, la sortie passe de
+6 509 à 268 octets et le plan enregistré est identique. Le résumé
+d’une comparaison de trois rejeux passe de 3 314 à 380 octets, verdict
+WARN conservé et rapport intégral identique. Le bilan d’entretien peut
+également conserver le détail dans le JSON privé (#35, #73).
+Les rapports de variantes et le témoin gyroïde partagent une publication
+privée de dossiers neufs. Trois comparaisons synthétiques conservent
+leurs rapports et modèles à l’identique (#225).
+
+L’export réserve l’écriture SQLite pendant la publication du manifeste,
+y compris en mode WAL (#226). Les SHA d’un instantané validé sont
+réemployés quand les compteurs de la connexion concordent encore.
+Sur deux séries inversées de copies d’atelier, les médianes sont passées
+de 95–96 à 76–77 ms, avec des exports identiques. La validation des
+références parcourt encore toutes les lignes (#19). Les contrats de
+quatre modules de conception sont documentés (#127).
+
+## Prochaine version : 1.27.0
 
 ### 1. Fiabiliser les fondations et les preuves
 

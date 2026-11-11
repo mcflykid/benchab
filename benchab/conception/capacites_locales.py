@@ -22,6 +22,11 @@ ALIASES = {"PIL": "pillow", "yaml": "pyyaml"}
 
 
 def cad_python():
+    """Renvoie le chemin du Python qui exécute BENCHAB.
+
+    La préférence BENCHAB_CAD_PYTHON ne peut désigner un autre chemin :
+    ValueError sur divergence. Ne lance aucun interpréteur.
+    """
     explicite = os.environ.get("BENCHAB_CAD_PYTHON")
     if explicite and Path(explicite).expanduser().absolute() != Path(sys.executable).absolute():
         raise ValueError("Python unique : BENCHAB_CAD_PYTHON extérieur refusé")
@@ -164,6 +169,11 @@ def versions(interp, modules):
 
 
 def verrous():
+    """Lit les versions épinglées dans uv.lock, sans lancer de synchronisation.
+
+    Sortie : dictionnaire des noms normalisés et versions, sans unité ;
+    dictionnaire vide si le verrou local est absent.
+    """
     path = R / "uv.lock"
     if not path.is_file():
         return {}
@@ -176,6 +186,11 @@ def verrous():
 
 
 def programme(nom):
+    """Recherche un exécutable local sans le lancer.
+
+    Entrée : nom ou chemin absolu. Sortie : chemin ou None ; la recherche
+    par nom consulte PATH puis l’emplacement macOS connu de Blender.
+    """
     p = Path(nom)
     if p.is_absolute():
         return str(p) if p.is_file() and os.access(p, os.X_OK) else None
@@ -208,6 +223,10 @@ def importer(interp, modules, delai=60):
 
 
 def verifier_vendor():
+    """Relit le paquet local de visualisation sans réseau ni installation.
+
+    Sortie : booléen et message (version de three.js ou diagnostic borné).
+    """
     try:
         from benchab.visualisation import hors_ligne
 

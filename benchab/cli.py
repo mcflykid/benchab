@@ -197,12 +197,14 @@ def parser():
     installation.add_argument("--espace-minimum-mio", type=int, default=1024)
     installation.add_argument("--detail", action="store_true", help="Inclut les preuves et chemins privés dans stdout")
     plan_reparation = controle.add_parser(
-        "plan-reparation", help="Compare les vues privées et prépare un plan sans écriture"
+        "plan-reparation", help="Compare les vues privées sans appliquer de réparation"
     )
     plan_reparation.add_argument(
         "--candidat-lien", action="append", default=[], metavar="CHEMIN",
         help="Candidat privé relatif ; propose un lien uniquement si un SHA unique correspond au rendu SQLite",
     )
+    plan_reparation.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    plan_reparation.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     reprise_export = controle.add_parser(
         "preparer-reprise-export", help="Prépare la copie vérifiée d’un export absent, sans l’appliquer"
     )
@@ -221,6 +223,13 @@ def parser():
     )
     verifier_reprise.add_argument("--preuve", type=Path, required=True, help="preuve.json privée à relire")
     verifier_reprise.add_argument("--sha256-preuve", required=True, help="SHA-256 exact du fichier de preuve")
+    appliquer_source = controle.add_parser(
+        "appliquer-reprise-source", help="Recrée un original manquant depuis une copie vérifiée et déclarée"
+    )
+    appliquer_source.add_argument("--preuve", type=Path, required=True, help="preuve.json privée à relire")
+    appliquer_source.add_argument("--sha256-preuve", required=True, help="SHA-256 exact des octets de preuve.json")
+    appliquer_source.add_argument("--membre", required=True, help="Chemin source confirmé dans le projet")
+    appliquer_source.add_argument("--sha256-source", required=True, help="SHA-256 source confirmé séparément")
     appliquer_reprise = controle.add_parser(
         "appliquer-reprise-export", help="Applique une table absente depuis une preuve CANDIDAT explicite"
     )
@@ -257,6 +266,7 @@ def parser():
     rejeux.add_argument("recus", nargs="+", type=Path, help="Deux ou trois reçus JSON privés")
     rejeux.add_argument("--plaque", required=True, type=int, help="Numéro exact de la plaque")
     rejeux.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    rejeux.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     comparaison_3mf = controle.add_parser(
         "comparer-projets-3mf", help="Compare deux projets 3MF sans modifier les archives"
     )
@@ -267,6 +277,7 @@ def parser():
     entretien = controle.add_parser("entretien", help="Bilan conditionnel depuis un historique privé explicite")
     entretien.add_argument("--historique", type=Path, required=True, help="Historique JSON privé à relire")
     entretien.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; une sortie existante est refusée")
+    entretien.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     appliquer_vue = controle.add_parser(
         "appliquer-reparation-vue", help="Applique une seule vue privée depuis un plan explicite"
     )
@@ -406,6 +417,15 @@ def parser():
         "decoupe",
     ):
         conception.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    gyroide = conception.add_parser("gyroide-temoin", help="Construit un témoin numérique sans tranchage")
+    gyroide.add_argument("--dimensions-mm", type=float, nargs=3, required=True, help="Cotes XYZ de l’enveloppe")
+    gyroide.add_argument("--paroi-mm", type=float, required=True, help="Épaisseur de la peau")
+    gyroide.add_argument("--cellule-mm", type=float, required=True, help="Période du réseau")
+    gyroide.add_argument("--seuil", type=float, required=True, help="Demi-largeur du niveau implicite, sans unité")
+    gyroide.add_argument("--pas-mm", type=float, required=True, help="Pas nominal de maillage")
+    gyroide.add_argument("--protection-mm", type=float, nargs=6, action="append", default=[],
+                         help="Boîte préservée : Xmin Ymin Zmin Xmax Ymax Zmax ; répétable")
+    gyroide.add_argument("--sortie", type=Path, required=True, help="Dossier privé neuf")
     imports = commandes.add_parser("imports").add_subparsers(dest="action", required=True)
     for nom in ("importer", "geometrie", "reparer", "maillage-avance", "echange-blender", "placement"):
         imports.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
@@ -1029,6 +1049,7 @@ def main(argv=None):
             "preparer-reprise-export",
             "preparer-reprise-source",
             "verifier-reprise-source",
+            "appliquer-reprise-source",
             "appliquer-reprise-export",
             "appliquer-reparation-vue",
             "entretien",
@@ -1044,7 +1065,9 @@ def main(argv=None):
         argv[i] == "visualisation" and argv[i + 1] == "retour-photo"
         for i in range(len(argv) - 1)
     ) or any(
-        argv[i] == "fabrication" and argv[i + 1] == "remplacer-maillage"
+        (argv[i], argv[i + 1]) in {
+            ("fabrication", "remplacer-maillage"), ("conception", "gyroide-temoin"), ("conception", "variantes"),
+        }
         for i in range(len(argv) - 1)
     )
     commande, sensible = commande_sans_secrets(argv)
@@ -1066,12 +1089,24 @@ def main(argv=None):
     if "--help" in argv or "-h" in argv:
         return _aide_deleguee(arguments)
     if arguments.commande == "controle" and arguments.controle == "plan-reparation":
-        from benchab.qualite.plan_reparation import planifier
+        from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
+        from benchab.qualite.plan_reparation import planifier, resumer
 
-        # Comme le diagnostic d'installation, ce plan reste hors Base() et hors mesure (#119).
-        rapport = planifier(atelier_prive(arguments.prive), candidats=arguments.candidat_lien)
-        print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
-        return rapport["code"]
+        try:
+            atelier = atelier_prive(arguments.prive)
+            sortie = destination_rapport_optionnel(
+                arguments.sortie, resume=arguments.resume, nom="du plan de réparation", prive=atelier,
+            )
+            # Le calcul reste hors Base() et hors mesure ; seul le rapport demandé est écrit (#35, #119).
+            rapport = planifier(atelier, candidats=arguments.candidat_lien)
+            if sortie is not None:
+                ecrire_json_neuf(sortie, rapport)
+            affiche = resumer(rapport, sortie) if arguments.resume else rapport
+            print(json.dumps(affiche, ensure_ascii=False, separators=(",", ":")))
+            return rapport["code"]
+        except (OSError, ValueError, RuntimeError) as erreur:
+            print(f"BENCHAB : plan de réparation refusé : {erreur}", file=sys.stderr)
+            return 2
     if arguments.commande == "controle" and arguments.controle == "preparer-reprise-export":
         from benchab.qualite.reprise_export import preparer
 
@@ -1108,6 +1143,19 @@ def main(argv=None):
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
+    if arguments.commande == "controle" and arguments.controle == "appliquer-reprise-source":
+        from benchab.donnees.reprise_source import appliquer_copie
+
+        # La restauration d'un seul fichier exige le membre et son SHA indépendants de la preuve (#119).
+        try:
+            rapport = appliquer_copie(
+                arguments.prive, arguments.preuve, arguments.sha256_preuve, arguments.membre, arguments.sha256_source,
+            )
+        except (OSError, ValueError) as erreur:
+            print(f"BENCHAB : application de reprise source refusée : {erreur}", file=sys.stderr)
+            return 2
+        print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+        return 0
     if arguments.commande == "controle" and arguments.controle == "appliquer-reprise-export":
         from benchab.qualite.reprise_export import appliquer
 
@@ -1134,16 +1182,12 @@ def main(argv=None):
         return code_statut(rapport["statut"])
     if arguments.commande == "controle" and arguments.controle == "consommation-retour":
         from benchab.projets.plan_consommation import planifier_lecture, resumer
-        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
+        from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
 
         try:
-            if arguments.resume and arguments.sortie is None:
-                raise ValueError("--resume exige --sortie pour conserver le rapport complet.")
-            sortie = None
-            if arguments.sortie is not None:
-                if arguments.sortie.suffix.lower() != ".json":
-                    raise ValueError("La sortie de consommation doit être un JSON neuf.")
-                sortie = destination_neuve(arguments.sortie, prive=arguments.prive, temporaire=False)
+            sortie = destination_rapport_optionnel(
+                arguments.sortie, resume=arguments.resume, nom="de consommation", prive=arguments.prive,
+            )
             # La consultation reste NON VÉRIFIÉE ; seule la publication explicite écrit (#35, #77).
             rapport = planifier_lecture(
                 arguments.prive, arguments.retour,
@@ -1213,20 +1257,21 @@ def main(argv=None):
             print(f"BENCHAB : contrôle des capacités refusé : {erreur}", file=sys.stderr)
             return 2
     if arguments.commande == "controle" and arguments.controle == "rejeux-gcode":
-        from benchab.controles.rejeux_gcode import comparer
-        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
+        from benchab.controles.rejeux_gcode import comparer, resumer
+        from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
 
         # Des rapports archivés sont lus sans Base() ni démarrage du moteur (#208).
         try:
+            sortie = destination_rapport_optionnel(
+                arguments.sortie, resume=arguments.resume, nom="de comparaison", prive=arguments.prive,
+            )
             rapport = comparer(arguments.prive, arguments.recus, plaque=arguments.plaque)
-            if arguments.sortie is not None:
-                if arguments.sortie.suffix.lower() != ".json":
-                    raise ValueError("La sortie de comparaison doit être un fichier JSON neuf.")
-                cible = destination_neuve(
-                    arguments.sortie.absolute(), prive=atelier_prive(arguments.prive), temporaire=False,
-                )
-                ecrire_json_neuf(cible, rapport, entrees=arguments.recus)
-            print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+            if sortie is not None:
+                ecrire_json_neuf(sortie, rapport, entrees=arguments.recus)
+            if arguments.resume:
+                print(json.dumps(resumer(rapport, sortie), ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            else:
+                print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
             return rapport["code"]
         except (OSError, ValueError) as erreur:
             print(f"BENCHAB : comparaison de rejeux refusée : {erreur}", file=sys.stderr)
@@ -1254,14 +1299,21 @@ def main(argv=None):
             return 2
     if arguments.commande == "controle" and arguments.controle == "entretien":
         try:
-            from benchab.entretien.bilan import bilan_fichier, code
-            from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
+            from benchab.entretien.bilan import bilan_fichier, code, resumer
+            from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
 
-            rapport = bilan_fichier(arguments.historique, atelier_prive(arguments.prive))
-            if arguments.sortie:
-                sortie = destination_neuve(arguments.sortie, prive=atelier_prive(arguments.prive), temporaire=False)
+            atelier = atelier_prive(arguments.prive)
+            sortie = destination_rapport_optionnel(
+                arguments.sortie, resume=arguments.resume, nom="d’entretien", prive=atelier,
+            )
+            rapport = bilan_fichier(arguments.historique, atelier)
+            if sortie is not None:
                 ecrire_json_neuf(sortie, rapport, entrees=[arguments.historique])
-            print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+            # Les événements et leurs identifiants restent dans le rapport intégral (#35, #73).
+            if arguments.resume:
+                print(json.dumps(resumer(rapport, sortie), ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            else:
+                print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
             return code(rapport)
         except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as erreur:
             print(f"BENCHAB : bilan d'entretien refusé : {erreur}", file=sys.stderr)
@@ -1326,6 +1378,26 @@ def main(argv=None):
             return rapport["code"]
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
             print(f"BENCHAB : {erreur}", file=sys.stderr)
+            return 2
+    if arguments.commande == "conception" and arguments.action == "variantes":
+        from benchab.conception.variantes import main as comparer_variantes
+
+        # Comparer les modèles et écrire le rapport demandé ne requiert pas SQLite (#225).
+        return _deleguer(comparer_variantes, arguments.arguments, options={"prive": arguments.prive})
+    if arguments.commande == "conception" and arguments.action == "gyroide-temoin":
+        from benchab.conception.gyroide_temoin import publier_coupon
+
+        # Étude indépendante de la base, du moteur de tranchage et de la machine (#87).
+        protections = [(zone[:3], zone[3:]) for zone in arguments.protection_mm]
+        try:
+            rapport = publier_coupon(
+                arguments.sortie, arguments.dimensions_mm, arguments.paroi_mm, arguments.cellule_mm,
+                arguments.seuil, arguments.pas_mm, protections=protections, prive=arguments.prive,
+            )
+            print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))
+            return 0
+        except (OSError, ValueError, RuntimeError) as erreur:
+            print(f"BENCHAB : témoin gyroïde refusé : {erreur}", file=sys.stderr)
             return 2
     if arguments.commande == "fabrication" and arguments.action == "remplacer-maillage":
         from types import SimpleNamespace

@@ -81,6 +81,15 @@ class Envois(unittest.TestCase):
         self.assertEqual(rapport["octets"], p.stat().st_size)
         self.assertEqual(E.sha(p), avant)
 
+    def test_sha_attendu_identique_ou_refuse_avant_les_membres(self):
+        """Une association divergente ne lit ni réglages ni G-code (#223)."""
+        p = envoi(self.src, "1023-1809-Temoin.gcode.3mf")
+        avant = E.lire(p)
+        self.assertEqual(E.lire(p, sha256_attendu=avant["sha256"]), avant)
+        with patch.object(E.Archive3MF, "reglages", side_effect=AssertionError("membres ouverts")):
+            with self.assertRaisesRegex(ValueError, "empreinte"):
+                E.lire(p, sha256_attendu="0" * 64)
+
     def test_variante_hs_differente_ambigue_seulement_sans_type_de_buse(self):
         self.assertTrue(
             E.lire(envoi(self.src, "1023-1809-Pomme.gcode.3mf", temp="210", hs="220"))["temperature_ambigue"]

@@ -131,3 +131,22 @@ def test_date_hors_d_un_en_tete_complet_ne_disparait_pas(tmp_path, entete):
     assert r["statut"] == "WARN"
     assert r["gcode_hors_date_identique"] is False
     assert all(not m["date_asn_normalisee"] for m in r["rejeux"])
+
+
+def test_resume_rejeux_non_verifies_ne_recopie_pas_le_chemin_refuse(tmp_path, capsys):
+    """Le chemin privé du reçu absent reste dans le rapport intégral."""
+    from benchab import cli
+
+    absent = tmp_path / "recu-prive-absent.json"
+    autre = tmp_path / "second.json"
+    commande = ["--prive", str(tmp_path), "controle", "rejeux-gcode", str(absent), str(autre), "--plaque", "1"]
+    assert cli.main(commande) == 2
+    historique = json.loads(capsys.readouterr().out)
+    sortie = tmp_path / "rejeux.json"
+    assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 2
+    court = capsys.readouterr().out
+    resume = json.loads(court)
+    assert resume["statut"] == "NON VÉRIFIÉ" and resume["code"] == 2
+    assert resume["diagnostic_dans_rapport"] is True and resume["rapport"] == str(sortie)
+    assert "recu-prive-absent.json" not in court
+    assert json.loads(sortie.read_text()) == historique

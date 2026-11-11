@@ -2,6 +2,30 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.26.0 — 2026-11-11
+
+- Reprise : recrée sur demande un seul fichier source absent depuis une
+  copie candidate vérifiée, avec chemin et SHA de référence confirmés
+  séparément. Refuse tout remplacement et relit le fichier publié (#119).
+- Rapports : propose un résumé du plan de réparation après enregistrement
+  de son JSON complet. Les rejeux G-code et l’entretien gardent également
+  le verdict et la référence au rapport intégral (#35, #73).
+- Variantes : refuse les sorties hors atelier. JSON et Markdown sont
+  publiés ensemble, sans ouvrir SQLite ; le témoin gyroïde utilise la
+  même publication privée (#225).
+- SQLite : réserve la publication du manifeste contre les écritures WAL
+  concurrentes. Réutilise les SHA d’un instantané de transaction encore
+  valide, sans alléger le contrôle des références (#226, suite de #19).
+- Annotations : précise les contrats des variantes, compensations de trous,
+  outils DfAM et capacités locales sans modifier leurs calculs (#127).
+- Conception : produit le STL et le rapport d’un témoin gyroïde confiné
+  à une enveloppe cotée et à des protections déclarées (suite de #87).
+  Le contrôle de géométrie ne qualifie pas la tenue physique.
+- Consommation : le même lecteur 3MF valide le SHA attendu et inventorie
+  l’envoi. Les rapports des témoins S, M et L restent identiques (#223).
+- Annotations : précise les contrats des outils CAO et de finition
+  sans changer leurs calculs (suite de #127).
+
 ## 1.25.0 — 2026-11-11
 
 - Matière : relie une déclaration de pesée à un retour, une plaque, un

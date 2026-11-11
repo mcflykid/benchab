@@ -19,6 +19,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from benchab.qualite.empreintes import sha256_fichier as _sha
 
@@ -68,6 +69,23 @@ def destination_neuve(chemin, *, prive=None, temporaire=True):
     if cible.exists():
         raise FileExistsError("Sortie existante ; aucune version précédente écrasée")
     return cible
+
+
+def destination_rapport_optionnel(sortie, *, resume, nom, prive=None):
+    """Valide la destination d'un rapport complet avant un éventuel résumé.
+
+    Entrées : chemin ou None, indicateur de résumé, nom du rapport et atelier
+    privé, sans unité. Sortie : Path d'un JSON privé neuf, ou None pour un
+    rapport complet sur stdout. ValueError sur un résumé sans preuve durable ;
+    aucun fichier n'est créé ou réservé ici (#35).
+    """
+    if sortie is None:
+        if resume:
+            raise ValueError("--resume exige --sortie pour conserver le rapport complet.")
+        return None
+    if Path(sortie).suffix.lower() != ".json":
+        raise ValueError(f"La sortie {nom} doit être un JSON neuf.")
+    return destination_neuve(sortie, prive=prive, temporaire=False)
 
 
 def verifier_references_durables(valeur, prive, *, champ=None):
@@ -397,6 +415,85 @@ def renommer_exclusif(source, destination, *, src_dir_fd=None, dst_dir_fd=None):
     if code:
         err = ctypes.get_errno()
         raise OSError(err, os.strerror(err), str(destination))
+
+
+def publier_dossier_neuf(chemin, fichiers, *, prive=None):
+    """Publie ensemble des fichiers privés dans un dossier neuf épinglé.
+
+    Entrées : destination privée dont le parent existe, dict nom simple →
+    octets, et atelier. Sortie : Path absolu publié. Refuse tout lien,
+    parent remplacé ou collision ; aucune écriture dans un fichier existant.
+    En cas de déplacement concurrent après publication, refuse le résultat
+    et laisse le lot visible pour diagnostic (#225).
+    """
+    if not isinstance(fichiers, dict) or not fichiers:
+        raise ValueError("Un lot de fichiers privés non vide est requis.")
+    for nom, contenu in fichiers.items():
+        if not isinstance(nom, str) or not nom or nom in (".", "..") or any(c in nom for c in "/\\\0"):
+            raise ValueError("Chaque fichier doit avoir un nom simple.")
+        if not isinstance(contenu, bytes):
+            raise ValueError("Le contenu du lot doit être fourni en octets.")
+    cible = destination_neuve(chemin, prive=prive, temporaire=False)
+    flags_dossier = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd_parent = os.open(cible.parent, flags_dossier)
+
+    def verifier_parent():
+        """Vérifie le chemin privé sans lien avant toute étape de publication."""
+        actuel = sortie_durable(cible, prive=prive).parent.lstat()
+        if not os.path.samestat(actuel, os.fstat(fd_parent)):
+            raise ValueError("Le parent privé a changé pendant la publication.")
+
+    try:
+        verifier_parent()
+        stage = ".publication-dossier-" + uuid4().hex
+        os.mkdir(stage, 0o700, dir_fd=fd_parent)
+        identite_stage = os.stat(stage, dir_fd=fd_parent, follow_symlinks=False)
+        fd_stage = None
+        crees = {}
+        publie = False
+        try:
+            fd_stage = os.open(stage, flags_dossier, dir_fd=fd_parent)
+            if not os.path.samestat(identite_stage, os.fstat(fd_stage)):
+                raise ValueError("Le dossier de travail a été remplacé.")
+            verifier_parent()
+            for nom, contenu in fichiers.items():
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+                fd = os.open(nom, flags, 0o600, dir_fd=fd_stage)
+                with os.fdopen(fd, "wb") as flux:
+                    crees[nom] = os.fstat(flux.fileno())
+                    flux.write(contenu)
+                    flux.flush()
+                    os.fsync(flux.fileno())
+            verifier_parent()
+            if not os.path.samestat(identite_stage, os.stat(stage, dir_fd=fd_parent, follow_symlinks=False)):
+                raise ValueError("Le dossier de travail a changé avant publication.")
+            renommer_exclusif(stage, cible.name, src_dir_fd=fd_parent, dst_dir_fd=fd_parent)
+            publie = True
+            verifier_parent()
+            if not os.path.samestat(identite_stage, os.stat(cible.name, dir_fd=fd_parent, follow_symlinks=False)):
+                raise ValueError("Le dossier publié a changé ; laissé en place pour diagnostic.")
+        finally:
+            if fd_stage is not None:
+                try:
+                    if not publie:
+                        for nom, identite in crees.items():
+                            try:
+                                actuel = os.stat(nom, dir_fd=fd_stage, follow_symlinks=False)
+                                if os.path.samestat(identite, actuel):
+                                    os.unlink(nom, dir_fd=fd_stage)
+                            except FileNotFoundError:
+                                pass
+                finally:
+                    os.close(fd_stage)
+            if not publie:
+                try:
+                    if os.path.samestat(identite_stage, os.stat(stage, dir_fd=fd_parent, follow_symlinks=False)):
+                        os.rmdir(stage, dir_fd=fd_parent)
+                except FileNotFoundError:
+                    pass
+    finally:
+        os.close(fd_parent)
+    return cible
 
 
 class TransactionVues:
