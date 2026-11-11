@@ -25,6 +25,7 @@ Voir docs/reference/couches-courtes.md.
 
 """
 
+import argparse
 import json
 import math
 import sys
@@ -35,6 +36,9 @@ from shapely.affinity import affine_transform
 from shapely.errors import GEOSException
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
+
+from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
+from benchab.qualite.empreintes import sha256_fichier
 
 _AIRE_INTERSECTION_MIN_MM2 = 1e-9
 
@@ -356,22 +360,59 @@ def analyse(path, lh=0.2, amax=40.0, hmin=2.0, *, qualifier_positions=False):
     return sorted(reports, key=lambda report: (report["de_z"], report["centre_xy_mm"]))
 
 
-def main(argv=None):
+def main(argv=None, *, prive=None):
     """Analyse un STL en mm et affiche les îlots et leurs observations en JSON.
 
     Reçoit le chemin source puis les seuils de couche et hauteur (mm) et
     d’aire (mm²), et une option de position XY. Code 0 sans îlot, 2 si des
-    îlots sont signalés ou si la source manque. Aucun maillage modifié.
+    îlots sont signalés ou si la lecture ou l’écriture est refusée.
+    Le résumé exige un JSON complet neuf dans l’atelier privé. Le maillage
+    source est conservé.
     """
-    args = list(sys.argv[1:] if argv is None else argv)
-    qualifier_positions = "--qualifier-position-enveloppes" in args
-    args = [arg for arg in args if arg != "--qualifier-position-enveloppes"]
-    if not args:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", nargs="?", help="STL en mm")
+    parser.add_argument("hauteur_couche", nargs="?", type=float, default=0.2)
+    parser.add_argument("aire_max", nargs="?", type=float, default=40.0)
+    parser.add_argument("hauteur_min", nargs="?", type=float, default=2.0)
+    parser.add_argument("--qualifier-position-enveloppes", action="store_true")
+    parser.add_argument("--sortie", "--json", help="Rapport JSON privé neuf")
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
+    args = parser.parse_intermixed_args(argv)
+    if args.source is None:
         print(__doc__)
         return 2
-    result = analyse(args[0], *(float(value) for value in args[1:4]), qualifier_positions=qualifier_positions)
-    print(json.dumps({"fichier": args[0], "ilots_isoles": result}, indent=1, ensure_ascii=False))
-    return 2 if result else 0
+
+    try:
+        cible = destination_rapport_optionnel(args.sortie, resume=args.resume, nom="des îlots", prive=prive)
+        empreinte = sha256_fichier(args.source) if cible is not None else None
+        ilots = analyse(
+            args.source, args.hauteur_couche, args.aire_max, args.hauteur_min,
+            qualifier_positions=args.qualifier_position_enveloppes,
+        )
+        rapport = {"fichier": args.source, "ilots_isoles": ilots}
+        code = 2 if ilots else 0
+        if cible is not None:
+            # Une mesure publiée doit rester liée aux octets du STL relu (#35).
+            if sha256_fichier(args.source) != empreinte:
+                raise ValueError("Le STL a changé pendant l’analyse.")
+            rapport.update(
+                statut="REVUE LOCALE REQUISE" if ilots else "AUCUN ÎLOT SIGNALÉ",
+                code=code,
+                source_sha256=empreinte,
+            )
+            ecrire_json_neuf(cible, rapport, entrees=[args.source])
+    except (OSError, ValueError, GEOSException) as erreur:
+        print(f"BENCHAB : contrôle des couches courtes refusé : {erreur}", file=sys.stderr)
+        return 2
+
+    affichage = rapport
+    if args.resume:
+        affichage = {
+            "statut": rapport["statut"], "code": code, "source_sha256": empreinte,
+            "nombre_ilots": len(ilots), "rapport": str(cible),
+        }
+    print(json.dumps(affichage, indent=1, ensure_ascii=False))
+    return code
 
 
 if __name__ == "__main__":

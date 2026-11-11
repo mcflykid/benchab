@@ -17,7 +17,7 @@ def test_controle_mesure_transmet_les_arguments_et_le_code(tmp_path, monkeypatch
         assert options == (
             {"prive": tmp_path / "prive"}
             if nom in {
-                "appuis-gcode", "ecarts-profils-3mf", "plages-z", "surplombs-connexes",
+                "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "plages-z", "surplombs-connexes",
                 "ponts-surplombs", "purge-changements",
             }
             else {}
