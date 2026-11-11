@@ -235,6 +235,7 @@ def test_envoi_preserve_statut_global_non_verifie_et_fail_dominant(tmp_path):
         "identifiants de filaments définitifs",
         "continuité paroi extérieure",
         "commandes machine au démarrage",
+        "avertissements natifs du slicer",
     }
     assert resultat["resultats"][1]["statut"] == "NON VÉRIFIÉ"
     assert resultat["resultats"][2]["statut"] == "NON VÉRIFIÉ"

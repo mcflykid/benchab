@@ -17,6 +17,7 @@ import math
 from pathlib import Path
 
 from benchab.controles.gcode_interpreter import Interpreter
+from benchab.controles.mesures_zones import verifier_mesures_declarees
 
 NUM = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 PIECE = {
@@ -39,6 +40,12 @@ def sha(path):
 
 
 def analyser_gcode(g, plaque=1):
+    """Détecte les zones Bridge/Overhang et leurs bbox XY/Z en mm depuis le G-code.
+
+    Renvoie les segments, leur plaque et objet déclaré avec les erreurs de
+    couverture; les arcs restent non vérifiés et aucune preuve physique n'est
+    produite. L'analyse ne modifie ni G-code ni réglage.
+    """
     it = Interpreter()
     x = y = z = 0.0
     feed = 0.0
@@ -46,6 +53,7 @@ def analyser_gcode(g, plaque=1):
     active = False
     purge = False
     zone = None
+    objets_zone = set()
     zones = []
     erreurs = []
     depots = 0
@@ -54,9 +62,15 @@ def analyser_gcode(g, plaque=1):
         nonlocal zone
         if zone:
             zone["bbox_xy_mm"] = [round(v, 3) for v in zone["bbox_xy_mm"]]
+            # L'identifiant historique rattache des avis humains figés. Ajouter
+            # le contexte de mesure après son calcul, sans redécouper la zone (#111).
             zone["id"] = hashlib.sha256(json.dumps(zone, sort_keys=True).encode()).hexdigest()[:16]
+            zone["objet"] = next(iter(objets_zone)) if len(objets_zone) == 1 else None
+            if len(objets_zone) > 1:
+                zone["objet_ambigu"] = True
             zones.append(zone)
             zone = None
+            objets_zone.clear()
 
     for line in g.splitlines():
         move = it.feed_line(line)
@@ -113,6 +127,7 @@ def analyser_gcode(g, plaque=1):
                             "vitesse_max_mm_s": feed / 60,
                         }
                     b = zone["bbox_xy_mm"]
+                    objets_zone.add(move["object"])
                     zone["bbox_xy_mm"] = [min(b[0], x, nx), min(b[1], y, ny), max(b[2], x, nx), max(b[3], y, ny)]
                     zone["z_min_mm"] = min(zone["z_min_mm"], nz)
                     zone["z_max_mm"] = max(zone["z_max_mm"], nz)
@@ -135,8 +150,13 @@ def analyser_gcode(g, plaque=1):
 
 
 def evaluer(zones, erreurs, tranche, geometrie=None, revue=None):
-    """
-    Bloque les risques non revus ; aucun acquittement automatique de WARN.
+    """Évalue l’acquittement des zones et des preuves liées aux empreintes.
+
+    Les distances sont en mm, les sources sont identifiées par SHA-256 et les
+    statuts globaux sont PASS ou FAIL. Toute preuve manquante ou mesure NON
+    VÉRIFIÉE laisse la zone non revue; une contradiction mesurée reste bloquante.
+    Les décisions humaines sont lues sans les modifier et aucun résultat ne
+    constitue une validation physique.
     """
     zones = list(zones)
     erreurs = list(erreurs)
@@ -178,15 +198,40 @@ def evaluer(zones, erreurs, tranche, geometrie=None, revue=None):
     if revue and Path(revue).exists():
         try:
             doc = json.loads(Path(revue).read_text())
+            if not isinstance(doc, dict) or not isinstance(doc.get("zones", {}), dict):
+                raise ValueError("Objet de revue et dictionnaire des zones requis")
         except (OSError, ValueError):
+            doc = {}
             erreurs.append("revue locale illisible")
     valide = all(doc.get(k) == v for k, v in signature.items())
+    declarations = doc.get("mesures_recul_recouvrement", []) if valide else []
+    mesures = (
+        verifier_mesures_declarees(tranche, zones, declarations)
+        if valide and "mesures_recul_recouvrement" in doc
+        else []
+    )
+    erreurs.extend(
+        f"mesure recul/recouvrement {r.get('zone_id', '?')} : contradiction"
+        for r in mesures
+        if r.get("statut") == "FAIL"
+    )
+    non_mesurees = [r.get("zone_id", "?") for r in mesures if r.get("statut") == "NON VÉRIFIÉ"]
+    ids_zones = {zone.get("id") for zone in zones}
+    if any(r.get("statut") == "NON VÉRIFIÉ" and r.get("zone_id") not in ids_zones for r in mesures):
+        non_mesurees.extend(ids_zones)
+    erreurs.extend(
+        f"mesure recul/recouvrement sans zone valide : {r.get('erreur', 'déclaration invalide')}"
+        for r in mesures
+        if r.get("statut") == "NON VÉRIFIÉ" and r.get("zone_id") not in ids_zones
+    )
     non_revues = []
     for zone in zones:
         avis = doc.get("zones", {}).get(zone["id"], {}) if valide else {}
+        if not isinstance(avis, dict):
+            avis = {}
         preuves = avis.get("preuves", [])
-        preuves_ok = bool(preuves)
-        for preuve in preuves:
+        preuves_ok = isinstance(preuves, list) and bool(preuves)
+        for preuve in preuves if preuves_ok else ():
             try:
                 preuves_ok &= sha(base / preuve["fichier"]) == preuve["sha256"]
             except (OSError, KeyError, TypeError):
@@ -196,12 +241,14 @@ def evaluer(zones, erreurs, tranche, geometrie=None, revue=None):
             and str(avis.get("justification", "")).strip()
             and avis.get("derniere_couche_verifiee") is True
             and preuves_ok
+            and zone["id"] not in non_mesurees
         ):
             non_revues.append(zone["id"])
     return {
         "statut": "FAIL" if erreurs or non_revues else "PASS",
         **signature,
         "zones": zones,
+        "mesures_recul_recouvrement": mesures,
         "non_revues": non_revues,
         "erreurs": erreurs,
         "limite": (

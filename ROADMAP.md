@@ -45,6 +45,8 @@ preuves restent privés et ne sont pas réécrits par cette version.
 
 Traiter les prérequis avant les nouveaux réglages :
 
+- **Annotations** : #37 débloque #36, #35, #34, #33 et #42. Mettre à jour les
+  annotations des modules modifiés au fil des lots, puis activer le contrôle Ruff prévu.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
 - **Fichiers et archives** : #122 poursuit la migration des familles hors contrôles ;
@@ -70,7 +72,7 @@ aux réglages ambigus. Un test synthétique ne remplace pas cette qualification.
 | Préparer sans reconstruire | #106 : revue locale et contrôle final d’une archive déjà tranchée |
 | Géométrie et 3MF | #105 : placement traçable ; #110 : intention de couverture Z ; #112 : remplacement ciblé ; #113 : échanges indexés de découpe |
 | Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages/inserts ; #29 : clips ; #31 : placement dans la visionneuse |
-| Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb |
+| Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien ; #74 : premiers essais guidés |
 | Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
 

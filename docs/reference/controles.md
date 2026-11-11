@@ -8,6 +8,9 @@ Un statut global ne supprime pas les détails et les zones restant à vérifier.
 Les options `--declaration`, `--geometrie`, `--revue-locale` et `--reference`
 rattachent leurs preuves. `--relation-reference` distingue même source de modèle,
 seulement même machine/filament, et relation inconnue.
+Le rapport conserve les [avertissements natifs du slicer](avertissements-slicer.md),
+y compris les codes inconnus et les origines non vérifiées. Seul le verdict
+global PASS active `conforme_numerique` ; le statut historique reste séparé.
 Les constantes et critères vérifiables sont reliés dans [les règles](regles.md).
 Le [contrat commun du débit U25](debit.md) compare chaque dépassement établi
 au plafond déclaré ; le percentile 99 reste informatif.
@@ -100,3 +103,7 @@ immédiat après référencement en cours de trajectoire est exclu et signalé.
 Pour `controle regles`, les résultats évalués et `hors_portee` sont séparés.
 Les règles hors portée ne comptent pas dans le code global. Une donnée
 manquante dans un contrôle exécutable garde le code NON VÉRIFIÉ.
+
+Les mesures de recul/recouvrement déclarées pour une revue de zone suivent le
+contrat explicité dans [mesures locales de recul et recouvrement](mesures-recul-recouvrement.md).
+Elles sont recalculées depuis les membres G-code de plaque avant acquittement.

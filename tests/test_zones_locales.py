@@ -52,12 +52,14 @@ class ZonesLocales(unittest.TestCase):
             proof.write_text("appuis et parcours examines")
             review = p / "revue.json"
             zones = analyser_gcode(BASE + ";TYPE:Bridge\nG1 X22 E.2")["zones"]
+            # Identifiant publié avant l'ajout des mesures : la revue existante reste valable.
+            self.assertEqual(zones[0]["id"], "11447dedfd4477af")
             self.assertEqual(evaluer(zones, [], g)["statut"], "FAIL")
             doc = {
                 "tranche_sha256": sha(g),
                 "geometrie_sha256": None,
                 "zones": {
-                    zones[0]["id"]: {
+                    "11447dedfd4477af": {
                         "decision": "justifie",
                         "justification": "Cas de test uniquement",
                         "derniere_couche_verifiee": True,
@@ -71,6 +73,28 @@ class ZonesLocales(unittest.TestCase):
             self.assertEqual(evaluer(zones, [], g, revue=review)["statut"], "FAIL")
             g.write_bytes(b"change")
             self.assertEqual(evaluer(zones, [], g, revue=review)["statut"], "FAIL")
+
+    def test_changement_objet_ne_redecoupe_pas_identite_historique(self):
+        """Le nouveau contexte distingue l'ambiguïté sans changer l'ancien groupe ni sa clé."""
+        g = BASE + (
+            ";TYPE:Bridge\nEXCLUDE_OBJECT_START NAME=a\nG1 X22 E.2\nEXCLUDE_OBJECT_END NAME=a\n"
+            "EXCLUDE_OBJECT_START NAME=b\nG1 X24 E.2\nEXCLUDE_OBJECT_END NAME=b\n"
+        )
+        zones = analyser_gcode(g)["zones"]
+        self.assertEqual([(z["id"], z["segments"]) for z in zones], [("3abb901d288de2f8", 2)])
+        self.assertTrue(zones[0]["objet_ambigu"])
+
+    def test_document_revue_non_objet_bloque_sans_exception(self):
+        """Un JSON valide mais hors schéma ne devient pas un acquittement ni un plantage."""
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t)
+            tranche = p / "tranche.3mf"
+            tranche.write_bytes(b"fixture")
+            revue = p / "revue.json"
+            revue.write_text("[]", encoding="utf-8")
+            resultat = evaluer([], [], tranche, revue=revue)
+            self.assertEqual(resultat["statut"], "FAIL")
+            self.assertTrue(resultat["erreurs"])
 
     def test_geometrie_avertie_ou_absente_bloque(self):
         with tempfile.TemporaryDirectory() as t:

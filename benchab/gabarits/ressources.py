@@ -369,17 +369,17 @@ def main(argv=None):
                 "filament_max_volumetric_speed": [str(f["debit_max"]) for f in filaments]}
     # Les valeurs viennent des filaments explicitement choisis, jamais d'une
     # réduction de vecteurs machine (docs/reference/integrite-3mf.md).
-    contexte = {"nombre_filaments_declares": len(filaments),
-        "correspondances_filaments": {cle: [f["settings_id"] for f in filaments]
-            for cle, valeur in surcharges.items()
-            if isinstance(valeur, list) and schema_reglages.definition(cle)["type"] == "liste_filament"}}
+    contexte = schema_reglages.contexte_filaments(surcharges, consommateur="cli")
     settings = schema_reglages.Reglages(base_settings, contexte=contexte)
     settings.update(surcharges)
     for cle in ("nozzle_temperature", "nozzle_temperature_initial_layer", "textured_plate_temp", "textured_plate_temp_initial_layer", "filament_max_volumetric_speed", *REGLAGES):
         for suffixe in ("_BRASS", "_HS"):
             if cle + suffixe in base_settings:
-                if schema_reglages.definition(cle + suffixe)["type"] == "liste_filament":
-                    settings.contexte["correspondances_filaments"][cle + suffixe] = [f["settings_id"] for f in filaments]
+                contexte_suffixe = schema_reglages.contexte_filaments(
+                    {"filament_settings_id": [f["settings_id"] for f in filaments],
+                     cle + suffixe: settings[cle]}, consommateur="cli")
+                settings.contexte["correspondances_filaments"].update(
+                    contexte_suffixe["correspondances_filaments"])
                 settings[cle + suffixe] = settings[cle]
     # Le schéma commun est aussi lu par la routine, pas seulement par le slicer
     # (docs/reference/controles.md, disposition réelle).
