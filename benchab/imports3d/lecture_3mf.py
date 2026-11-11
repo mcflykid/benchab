@@ -19,6 +19,7 @@ from benchab.archives_3mf import Archive3MF
 NS = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
 PROD = "{http://schemas.microsoft.com/3dmanufacturing/production/2015/06}"
 REL_MODELE = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
+NS_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 UNITES = {"micron": 0.001, "millimeter": 1.0, "centimeter": 10.0, "inch": 25.4, "foot": 304.8, "meter": 1000.0}
 _MAX_XML = 512 * 1024 * 1024
 
@@ -26,8 +27,9 @@ _MAX_XML = 512 * 1024 * 1024
 def lire(source, max_faces=3_000_000, *, identites=False):
     """Lit une scène 3MF en mm, bornée en faces ; optionnellement conserve identifiants et transforms source.
 
-    `identites=True` refuse les liens OPC/Production ambigus. Aucune donnée de réglage
-    n’est lue ni modifiée et aucun membre n’est extrait sur disque.
+    `identites=True` exige un StartPart OPC unique et les relations de partie qui
+    justifient chaque `p:path` ; le mode générique garde ses replis historiques.
+    Aucun réglage n’est lu ni modifié et aucun membre n’est extrait sur disque.
     """
     try:
         return _lire(source, max_faces, identites=identites)
@@ -63,6 +65,40 @@ def _lire(source, max_faces, *, identites=False):
             if p.startswith("../") or p not in noms:
                 raise ValueError("Composant 3MF absent ou hors archive")
             return p
+
+        def relations(nom):
+            """Lit les relations OPC d’une partie ; les cibles restent dans l’index ZIP vérifié."""
+            dossier, base = posixpath.split(nom)
+            nom_rels = posixpath.join(dossier, "_rels", base + ".rels")
+            if nom_rels not in noms:
+                return []
+            racine_rels = archive.xml(nom_rels)
+            if racine_rels.tag != NS_REL + "Relationships":
+                raise ValueError("Racine de relations OPC invalide : " + nom_rels)
+            resultat, identifiants = [], set()
+            for relation in racine_rels:
+                if relation.tag != NS_REL + "Relationship":
+                    raise ValueError("Entrée de relations OPC inconnue : " + nom_rels)
+                identifiant = relation.get("Id")
+                cible = relation.get("Target")
+                mode = relation.get("TargetMode", "Internal")
+                if not identifiant or identifiant in identifiants or not cible or mode not in {"Internal", "External"}:
+                    raise ValueError("Relation OPC mal formée : " + nom_rels)
+                identifiants.add(identifiant)
+                resultat.append((relation.get("Type", ""), mode, cible))
+            return resultat
+
+        def verifier_relation_partie(source_modele, cible_modele):
+            """Exige le lien OPC interne qui fonde un p:path Production."""
+            # p:path désigne une partie liée, pas seulement un nom présent dans le ZIP.
+            correspondances = []
+            for type_relation, mode, cible in relations(source_modele):
+                if type_relation != REL_MODELE or mode != "Internal":
+                    continue
+                if chemin(source_modele, cible) == cible_modele:
+                    correspondances.append(cible)
+            if len(correspondances) != 1:
+                raise ValueError("Relation OPC du modèle source au p:path cible absente ou ambiguë")
 
         def modele(nom):
             if nom not in modeles:
@@ -164,6 +200,8 @@ def _lire(source, max_faces, *, identites=False):
             for component in obj.findall(NS + "components/" + NS + "component"):
                 path = chemin_element(component)
                 enfant = chemin(nom, path) if path else nom
+                if identites and path:
+                    verifier_relation_partie(nom, enfant)
                 if modele(enfant)[2] != facteur:
                     raise ValueError("Unités mixtes entre modèles 3MF : conversion explicite requise")
                 matrice_composant = matrice(component, facteur)
@@ -186,17 +224,40 @@ def _lire(source, max_faces, *, identites=False):
         principal = None
         if "_rels/.rels" in noms:
             rels = archive.xml("_rels/.rels")
-            candidats = [rel for rel in rels if rel.get("Type", "").endswith("/3dmodel")]
-            internes = [rel for rel in candidats if rel.get("TargetMode") != "External"]
-            if identites and candidats and (
-                len(candidats) != 1 or len(internes) != 1 or candidats[0].get("Type") != REL_MODELE
-                or candidats[0].get("TargetMode", "Internal") != "Internal"
-            ):
-                raise ValueError("Relations OPC du modèle principal ambiguës")
-            for rel in internes:
-                if rel.get("Type", "").endswith("/3dmodel"):
-                    principal = chemin("racine", rel.attrib["Target"])
-                    break
+            if identites:
+                # Une preuve d’identité ne peut pas remplacer le StartPart OPC par le repli historique.
+                if rels.tag != NS_REL + "Relationships":
+                    raise ValueError("StartPart OPC absent ou relation racine invalide")
+                relations_racine, identifiants = [], set()
+                for relation in rels:
+                    if relation.tag != NS_REL + "Relationship":
+                        raise ValueError("Entrée de relation racine OPC inconnue")
+                    identifiant = relation.get("Id")
+                    cible = relation.get("Target")
+                    mode = relation.get("TargetMode", "Internal")
+                    type_relation = relation.get("Type", "")
+                    if (
+                        not identifiant or identifiant in identifiants or not cible
+                        or mode not in {"Internal", "External"}
+                    ):
+                        raise ValueError("Relation racine OPC mal formée")
+                    identifiants.add(identifiant)
+                    if type_relation.endswith("/3dmodel"):
+                        relations_racine.append((type_relation, mode, cible))
+                if (
+                    len(relations_racine) != 1
+                    or relations_racine[0][0] != REL_MODELE
+                    or relations_racine[0][1] != "Internal"
+                ):
+                    raise ValueError("StartPart OPC absent ou ambigu")
+                principal = chemin("racine", relations_racine[0][2])
+            else:
+                for rel in rels:
+                    if rel.get("Type", "").endswith("/3dmodel") and rel.get("TargetMode") != "External":
+                        principal = chemin("racine", rel.attrib["Target"])
+                        break
+        elif identites:
+            raise ValueError("StartPart OPC absent")
         if principal is None:
             repli = [n for n in sorted(noms) if n.lower() == "3d/3dmodel.model"]
             if identites and len(repli) > 1:
@@ -211,6 +272,8 @@ def _lire(source, max_faces, *, identites=False):
                 continue
             path = chemin_element(item, build=True)
             modele_item = chemin(principal, path) if path else principal
+            if identites and path:
+                verifier_relation_partie(principal, modele_item)
             if identites and modele(modele_item)[2] != facteur:
                 raise ValueError("Unités mixtes entre modèles 3MF : conversion explicite requise")
             matrice_item = matrice(item, facteur)

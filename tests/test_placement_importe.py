@@ -12,6 +12,8 @@ from benchab.qualite.empreintes import sha256_fichier
 
 NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 PROD = "http://schemas.microsoft.com/3dmanufacturing/production/2015/06"
+REL = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
+PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 
 def _modele(path, items, *, composant=False, unite="millimeter"):
@@ -52,11 +54,21 @@ def _source(path, *, items=None, composant=False, unite="millimeter"):
     items = items or [{"objectid": "1", "transform": "1 0 0 0 1 0 0 0 1 5 6 0"}]
     with ZipFile(path, "w") as archive:
         archive.writestr("3D/3dmodel.model", _modele(path, items, composant=composant, unite=unite))
+        archive.writestr(
+            "_rels/.rels",
+            f'<Relationships xmlns="{PKG_REL}"><Relationship Id="r0" Type="{REL}" '
+            'Target="/3D/3dmodel.model"/></Relationships>',
+        )
         if composant:
             racine = ET.Element(f"{{{NS}}}model", unit=unite)
             ressources = ET.SubElement(racine, f"{{{NS}}}resources")
             _maillage(ET.SubElement(ressources, f"{{{NS}}}object", id="1", type="model"))
             archive.writestr("3D/Objects/piece.model", ET.tostring(racine, encoding="utf-8"))
+            archive.writestr(
+                "3D/_rels/3dmodel.model.rels",
+                f'<Relationships xmlns="{PKG_REL}"><Relationship Id="r1" Type="{REL}" '
+                'Target="/3D/Objects/piece.model"/></Relationships>',
+            )
     return path
 
 
@@ -97,6 +109,31 @@ def test_identites_et_traces_sont_optionnelles_pour_les_lecteurs_generiques(tmp_
 
     assert "identites_import" not in scene_generique.metadata
     assert len(scene_tracee.metadata["identites_import"]) == 1
+
+
+def test_placement_qualifie_un_3mf_genere_par_le_producteur_benchab(tmp_path):
+    """Vérifie le StartPart et la relation .model.rels émis par le producteur, sans trancheur."""
+    import trimesh
+
+    from benchab.fabrication.anycubic import ecrire_3mf
+
+    source = tmp_path / "producteur-benchab.3mf"
+    maillage = trimesh.creation.box((10, 10, 10))
+    maillage.apply_translation((5, 5, 5))
+    plaque = [{"name": "Plaque A", "items": [{
+        "name": "Pièce", "mesh": maillage, "x": 3, "y": 4, "extruder": 1,
+    }]}]
+    ecrire_3mf(plaque, {"filament_colour": ["#000000"], "top_shell_layers": "5"}, source)
+    declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Pièce"}], [
+        {"index": 1, "name": "Plaque A"},
+    ])
+
+    rapport = generer(source, declaration)
+
+    assert rapport["statut"] == "PASS", rapport["raisons"]
+    trace = rapport["placement"]["objects"][0]["transformations"][0]["etapes"]
+    assert trace[0]["modele"] == "3D/3dmodel.model"
+    assert trace[1]["modele_cible"] == "3D/Objects/pieces.model"
 
 
 def test_composant_interne_transforme_est_trace_sans_a_platir_la_source(tmp_path):
@@ -156,24 +193,64 @@ def test_liaison_absente_donne_un_placement_indetermine_sans_origine_inventee(tm
 def test_placement_refuse_plusieurs_relations_de_modele_principal(tmp_path):
     source = _source(tmp_path / "ambigu.3mf")
     # Deux cibles internes candidates : l’ordre du ZIP ne peut choisir le repère.
-    with ZipFile(source, "a") as archive:
-        archive.writestr(
+    temporaire = tmp_path / "ambigu-relations.3mf"
+    with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+        for info in entree.infolist():
+            if info.filename != "_rels/.rels":
+                sortie.writestr(info, entree.read(info.filename))
+        sortie.writestr(
             "_rels/.rels",
-            b'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            b'<Relationship Id="r1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" '
-            b'Target="/3D/3dmodel.model"/>'
-            b'<Relationship Id="r2" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" '
-            b'Target="/Autre.model"/>'
-            b'</Relationships>',
+            f'<Relationships xmlns="{PKG_REL}"><Relationship Id="r1" Type="{REL}" '
+            'Target="/3D/3dmodel.model"/><Relationship Id="r2" '
+            f'Type="{REL}" Target="/Autre.model"/></Relationships>',
         )
-        archive.writestr("Autre.model", _modele(source, [{"objectid": "1"}]))
+        sortie.writestr("Autre.model", _modele(source, [{"objectid": "1"}]))
+    source = temporaire
     declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Objet"}])
 
     rapport = generer(source, declaration)
 
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["placement"] is None
-    assert "relation" in rapport["raisons"][0].lower()
+    assert "startpart" in rapport["raisons"][0].lower()
+
+
+def test_placement_refuse_modele_principal_sans_startpart_opc(tmp_path):
+    source = _source(tmp_path / "sans-startpart.3mf")
+    temporaire = tmp_path / "sans-startpart-reconstruit.3mf"
+    with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+        for info in entree.infolist():
+            if info.filename != "_rels/.rels":
+                sortie.writestr(info, entree.read(info.filename))
+    declaration = _declaration(temporaire, [{"build_item": 1, "plate": 1, "name": "Objet"}])
+
+    rapport = generer(temporaire, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "StartPart" in rapport["raisons"][0]
+    assert lire_3mf(temporaire).extents.tolist() == [10.0, 10.0, 10.0]
+
+
+def test_placement_refuse_p_path_sans_relation_opc_du_modele_source(tmp_path):
+    source = _source(
+        tmp_path / "sans-relation-part.3mf",
+        items=[{"objectid": "20", "transform": "1 0 0 0 1 0 0 0 1 1 2 0"}],
+        composant=True,
+    )
+    temporaire = tmp_path / "sans-relation-part-reconstruit.3mf"
+    with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+        for info in entree.infolist():
+            if info.filename != "3D/_rels/3dmodel.model.rels":
+                sortie.writestr(info, entree.read(info.filename))
+    declaration = _declaration(temporaire, [{"build_item": 1, "plate": 1, "name": "Assemblage"}])
+
+    rapport = generer(temporaire, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "relation opc" in rapport["raisons"][0].lower()
+    assert lire_3mf(temporaire).extents.tolist() == [10.0, 10.0, 10.0]
 
 
 def test_placement_refuse_p_path_inconnu_ou_multiple(tmp_path):
@@ -272,23 +349,25 @@ def test_placement_refuse_path_non_qualifie_sur_build_item(tmp_path):
 
 
 def test_placement_refuse_mode_opc_inconnu_et_replis_de_casse_ambigus(tmp_path):
-    """Le placement exige une racine unique que le format permet de résoudre."""
-    for cas in ("mode-opc", "repli-casse"):
+    """Le placement exige une relation racine OPC au mode interne défini."""
+    for cas in ("mode-opc", "mode-externe"):
         source = _source(tmp_path / f"{cas}.3mf")
-        with ZipFile(source, "a") as archive:
-            if cas == "mode-opc":
-                archive.writestr(
-                    "_rels/.rels",
-                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-                    '<Relationship Id="r" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" '
-                    'Target="/3D/3dmodel.model" TargetMode="Inconnu"/></Relationships>',
-                )
-            else:
-                archive.writestr("3d/3DMODEL.MODEL", archive.read("3D/3dmodel.model"))
+        temporaire = tmp_path / f"{cas}-reconstruit.3mf"
+        mode = "Inconnu" if cas == "mode-opc" else "External"
+        with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+            for info in entree.infolist():
+                if info.filename != "_rels/.rels":
+                    sortie.writestr(info, entree.read(info.filename))
+            sortie.writestr(
+                "_rels/.rels",
+                f'<Relationships xmlns="{PKG_REL}"><Relationship Id="r" Type="{REL}" '
+                f'Target="/3D/3dmodel.model" TargetMode="{mode}"/></Relationships>',
+            )
+        source = temporaire
         declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Objet"}])
         rapport = generer(source, declaration)
         assert rapport["placement"] is None
-        assert "ambigu" in rapport["raisons"][0].lower()
+        assert "opc" in rapport["raisons"][0].lower()
         assert lire_3mf(source).extents.tolist() == [10.0, 10.0, 10.0]
 
 
@@ -307,8 +386,17 @@ def test_placement_refuse_unite_differente_sur_cible_du_build_item(tmp_path):
     source = _source(tmp_path / "build-unites-mixtes.3mf", items=[
         {"objectid": "1", f"{{{PROD}}}path": "/3D/alt.model"},
     ])
-    with ZipFile(source, "a") as archive:
-        archive.writestr("3D/alt.model", _modele(source, [{"objectid": "1"}], unite="inch"))
+    temporaire = tmp_path / "build-unites-mixtes-reconstruit.3mf"
+    with ZipFile(source) as entree, ZipFile(temporaire, "w") as sortie:
+        for info in entree.infolist():
+            sortie.writestr(info, entree.read(info.filename))
+        sortie.writestr("3D/alt.model", _modele(source, [{"objectid": "1"}], unite="inch"))
+        sortie.writestr(
+            "3D/_rels/3dmodel.model.rels",
+            f'<Relationships xmlns="{PKG_REL}"><Relationship Id="r" Type="{REL}" '
+            'Target="/3D/alt.model"/></Relationships>',
+        )
+    source = temporaire
     declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Objet"}])
     rapport = generer(source, declaration)
     assert rapport["statut"] == "NON VÉRIFIÉ"

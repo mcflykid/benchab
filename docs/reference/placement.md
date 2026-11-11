@@ -78,3 +78,10 @@ doivent fournir toutes les affectations explicitement : le format natif de
 chaque trancheur n’est pas encore interprété automatiquement. Aucun G-code ni
 réglage d’impression n’est lu ; la sortie ne constitue pas une disposition
 tranchée ni une validation physique.
+
+Le parcours avec identités exige aussi un StartPart OPC interne, unique et
+résolu depuis `_rels/.rels`. Chaque `p:path` Production doit correspondre à une
+relation OPC interne du fichier `.model` source vers le même modèle cible.
+L’absence ou l’ambiguïté de ces relations produit `NON VÉRIFIÉ`. Le lecteur de
+scène générique conserve son comportement historique et n’utilise pas ces
+relations comme preuve d’identité.
