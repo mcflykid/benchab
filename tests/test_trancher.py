@@ -532,12 +532,93 @@ def test_inspection_options_utilise_le_lanceur_isole(tmp_path, monkeypatch):
     monkeypatch.setattr(processus, "executer", faux)
     rapport = lanceur.inspecter_options(prive=tmp_path)
     assert rapport["statut"] == "PASS"
+    assert rapport["mode"] == "aide"
     cmd, options = appels[0]
     assert cmd[-1] == "--help" and "--slice" not in cmd
     assert options["delai"] == 30 and options["conserver_capture"]
     assert Path(rapport["journal"]).read_text() == "options FFF fixture\n"
     assert Path(cmd[cmd.index("--datadir") + 1]).is_dir()
     assert all(Path(options["env"][cle]).is_relative_to("/private/tmp") for cle in ("HOME", "TMPDIR", "XDG_CACHE_HOME"))
+
+
+def test_plafond_inconnus_separe_sha_source_et_mode_inspection(tmp_path):
+    """Les inconnues ne se regroupent qu’avec une même opération et un même contexte explicite."""
+    from benchab.fabrication.trancher import _verifier_limite_causes
+
+    prive = tmp_path / "prive"
+    dossiers = [prive / "mesures/tranchages", prive / "mesures/options-slicer"]
+    for dossier in dossiers:
+        dossier.mkdir(parents=True)
+
+    def incident(dossier, nom, *, code, source=None, mode=None):
+        rapport = {"code": code, "diagnostic": {"cause": "inconnue"}}
+        if source:
+            rapport["source_sha256"] = source
+        if mode:
+            rapport["mode"] = mode
+        (dossier / nom).write_text(json.dumps(rapport), encoding="utf-8")
+
+    source_a, source_b = "a" * 64, "b" * 64
+    for indice, code in enumerate((250, -11)):
+        incident(dossiers[0], f"a-{indice}.json", code=code, source=source_a)
+    incident(dossiers[1], "aide-0.json", code=1, mode="aide")
+    _verifier_limite_causes(prive, operation="tranchage", source_sha256=source_a)
+    _verifier_limite_causes(prive, operation="tranchage", source_sha256=source_b)
+    _verifier_limite_causes(prive, operation="options-slicer", mode="aide")
+
+    incident(dossiers[0], "a-2.json", code=250, source=source_a)
+    with pytest.raises(ValueError, match="Trois essais"):
+        _verifier_limite_causes(prive, operation="tranchage", source_sha256=source_a)
+    for indice in range(1, 3):
+        incident(dossiers[1], f"aide-{indice}.json", code=1, mode="aide")
+    historiques = {chemin: chemin.read_bytes() for dossier in dossiers for chemin in dossier.glob("*.json")}
+    with pytest.raises(ValueError, match="Trois essais"):
+        _verifier_limite_causes(prive, operation="options-slicer", mode="aide")
+    _verifier_limite_causes(prive, operation="options-slicer", mode="defauts")
+    assert all(chemin.read_bytes() == octets for chemin, octets in historiques.items())
+
+
+def test_plafond_conserve_groupes_connus_et_ignore_inconnues_sans_contexte(tmp_path):
+    """Les groupes de causes établies restent communs ; une vieille inconnue sans contexte n’est pas agrégée."""
+    from benchab.fabrication.trancher import _verifier_limite_causes
+
+    prive = tmp_path / "prive"
+    dossier = prive / "mesures/tranchages"
+    dossier.mkdir(parents=True)
+    inconnue = {"code": 250, "diagnostic": {"cause": "inconnue"}}
+    for indice in range(3):
+        (dossier / f"ancien-{indice}.json").write_text(json.dumps(inconnue), encoding="utf-8")
+    _verifier_limite_causes(prive, operation="tranchage", source_sha256="c" * 64)
+
+    for indice, cause in enumerate(("filaments_cnt", "expand_plate_extruders", "filaments_cnt")):
+        (dossier / f"cause-{indice}.json").write_text(
+            json.dumps({"diagnostic": {"cause": cause}}), encoding="utf-8"
+        )
+    historiques = {chemin: chemin.read_bytes() for chemin in dossier.glob("*.json")}
+    with pytest.raises(ValueError, match="Trois essais"):
+        _verifier_limite_causes(prive, operation="tranchage", source_sha256="c" * 64)
+    assert all(chemin.read_bytes() == octets for chemin, octets in historiques.items())
+
+
+@pytest.mark.parametrize("forme", ["lien", "volumineux"])
+def test_garde_refuse_historique_non_ordinaire_ou_hors_borne(tmp_path, forme):
+    """La garde refuse un lien ou un rapport supérieur à 8 Mio avant de l’analyser."""
+    from benchab.fabrication.trancher import _verifier_limite_causes
+
+    dossier = tmp_path / "prive/mesures/tranchages"
+    dossier.mkdir(parents=True)
+    rapport = dossier / "incident.json"
+    if forme == "lien":
+        cible = tmp_path / "cible.json"
+        cible.write_text('{"diagnostic":{"cause":"autre"}}', encoding="utf-8")
+        rapport.symlink_to(cible)
+    else:
+        rapport.touch()
+        with rapport.open("r+b") as fichier:
+            fichier.truncate(8 * 1024**2 + 1)
+
+    with pytest.raises(ValueError, match="Rapport d'incident invalide"):
+        _verifier_limite_causes(tmp_path / "prive", operation="tranchage", source_sha256="c" * 64)
 
 
 @pytest.mark.parametrize("destination_existante", [False, True])

@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.4.0
 
+- Slicer : regroupe les incidents inconnus uniquement par opération et contexte vérifiable ; conserve le plafond des causes identifiées (#143).
+
 - Fabrication : parcours explicite de revue et contrôle final d’une archive déjà tranchée, sans relancer le slicer (#106).
 
 - Profils : signale les écarts documentés de matière, machine et procédé, avec les sources et les contrôles manquants visibles (#41).
