@@ -211,6 +211,8 @@ def _observer_ci_github(reference, revision, depot_local):
         return _ci_non_verifiee(run_id, tentative, "job rattaché à un autre run")
     if type(job.get("run_attempt")) is not int or job.get("run_attempt") != tentative:
         return _ci_non_verifiee(run_id, tentative, "job rattaché à une autre tentative")
+    if job.get("head_sha") != revision or job.get("head_branch") != "main":
+        return _ci_non_verifiee(run_id, tentative, "SHA ou branche du job non concordant")
     if job.get("name") != "tests" or job.get("status") != "completed" or job.get("conclusion") != "success":
         return _ci_non_verifiee(run_id, tentative, "job tests non terminé avec succès")
     etapes = job.get("steps")

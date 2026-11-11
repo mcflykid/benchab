@@ -396,12 +396,14 @@ def _github_run(revision):
     }
 
 
-def _github_jobs():
+def _github_jobs(revision):
     return {
         "total_count": 1,
         "jobs": [{
             "run_id": 43048027734,
             "run_attempt": 1,
+            "head_sha": revision,
+            "head_branch": "main",
             "name": "tests",
             "status": "completed",
             "conclusion": "success",
@@ -417,7 +419,7 @@ def test_ci_github_est_opt_in_et_garde_un_sous_statut_separe(incident, monkeypat
     def get_public(url):
         appels.append(url)
         if url.endswith("/jobs?per_page=20"):
-            return _github_jobs()
+            return _github_jobs(declaration["revision"])
         return _github_run(declaration["revision"])
 
     monkeypatch.setattr(incidents, "_get_github_public", get_public)
@@ -462,7 +464,7 @@ def test_ci_github_non_concordante_reste_non_verifiee(incident, monkeypatch, cha
     run[champ] = valeur
     monkeypatch.setattr(
         incidents, "_get_github_public",
-        lambda url: _github_jobs() if url.endswith("/jobs?per_page=20") else run,
+        lambda url: _github_jobs(declaration["revision"]) if url.endswith("/jobs?per_page=20") else run,
     )
 
     resultat = incidents.fiche(declaration, depot=depot, prive=prive, ci_github="43048027734/1")
@@ -471,10 +473,12 @@ def test_ci_github_non_concordante_reste_non_verifiee(incident, monkeypatch, cha
     assert resultat["execution"]["statut"] == "NON VÉRIFIÉ"
 
 
-@pytest.mark.parametrize("modification", ["deux_jobs", "autre_run", "autre_tentative", "etape_echouee"])
+@pytest.mark.parametrize("modification", [
+    "deux_jobs", "autre_run", "autre_tentative", "autre_sha", "autre_branche", "etape_echouee",
+])
 def test_ci_github_job_non_conforme_reste_non_verifie(incident, monkeypatch, modification):
     depot, prive, declaration, _, _ = incident
-    jobs = _github_jobs()
+    jobs = _github_jobs(declaration["revision"])
     if modification == "deux_jobs":
         jobs["total_count"] = 2
         jobs["jobs"].append(dict(jobs["jobs"][0]))
@@ -482,6 +486,10 @@ def test_ci_github_job_non_conforme_reste_non_verifie(incident, monkeypatch, mod
         jobs["jobs"][0]["run_id"] += 1
     elif modification == "autre_tentative":
         jobs["jobs"][0]["run_attempt"] += 1
+    elif modification == "autre_sha":
+        jobs["jobs"][0]["head_sha"] = "0" * 40
+    elif modification == "autre_branche":
+        jobs["jobs"][0]["head_branch"] = "candidate"
     else:
         jobs["jobs"][0]["steps"][0]["conclusion"] = "failure"
     monkeypatch.setattr(
@@ -501,7 +509,10 @@ def test_ci_github_cli_transmet_option_et_resultat(incident, monkeypatch, capsys
     base.fermer()
     monkeypatch.setattr(
         incidents, "_get_github_public",
-        lambda url: _github_jobs() if url.endswith("/jobs?per_page=20") else _github_run(declaration["revision"]),
+        lambda url: (
+            _github_jobs(declaration["revision"])
+            if url.endswith("/jobs?per_page=20") else _github_run(declaration["revision"])
+        ),
     )
     fichier = prive / "declaration.json"
     fichier.write_text(json.dumps(declaration), encoding="utf-8")
