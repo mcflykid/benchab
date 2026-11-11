@@ -72,3 +72,10 @@ du rôle `Support interface` diffèrent du témoin. Les deux essais
 `concentric` donnent la même empreinte de trajectoires. Les autres valeurs,
 styles, matériaux, la mesure d’écart Z et le retrait physique restent hors
 de ce résultat (#80 et #89). Aucun réglage n’est adopté automatiquement.
+
+Le moteur a terminé avec un code nul, mais chaque journal natif contient
+les mêmes cinq lignes d’erreur de calcul des zones de placement et des
+triangles d’exclusion. L’interpréteur G-code n’a relevé aucune erreur dans
+les trois sorties. La qualification porte sur la comparaison des motifs
+dans les fichiers obtenus ; ces messages n’établissent pas la fiabilité
+générale du moteur pour ce coupon.
