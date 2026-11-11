@@ -555,3 +555,77 @@ def test_placement_different_ou_matrice_non_qualifiee(tmp_path, matrice):
     assert comparer(source, candidat)["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
     if matrice != "1 0 0 0 1 0 0 0 1 11 -2.5 0":
         assert comparer(candidat, candidat)["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+
+
+def _archive_assemblee(path, *, couleur="1", translation="1 0 0 0 1 0 0 0 1 2 0 0", variante=None):
+    """Construit un tétraèdre Core à feuille unique dans le même StartPart."""
+    from benchab.imports3d.lecture_3mf import NS, NS_REL, REL_MODELE
+
+    racine = ET.Element(NS + "model", unit="millimeter")
+    ressources = ET.SubElement(racine, NS + "resources")
+    groupe = ET.SubElement(ressources, NS + "basematerials", id="3")
+    ET.SubElement(groupe, NS + "base", name="PLA", displaycolor="#123456")
+    feuille = ET.SubElement(ressources, NS + "object", id="1", type="model", pid="3", pindex="0")
+    mesh = ET.SubElement(feuille, NS + "mesh")
+    sommets = ET.SubElement(mesh, NS + "vertices")
+    for x, y, z in (("0", "0", "0"), ("1", "0", "0"), ("0", "1", "0"), ("0", "0", "1")):
+        ET.SubElement(sommets, NS + "vertex", x=x, y=y, z=z)
+    faces = ET.SubElement(mesh, NS + "triangles")
+    for i, indices in enumerate(((0, 2, 1), (0, 1, 3), (0, 3, 2), (1, 2, 3))):
+        face = ET.SubElement(faces, NS + "triangle", dict(zip(("v1", "v2", "v3"), map(str, indices), strict=True)))
+        if i == 0 and couleur is not None:
+            face.set("paint_color", couleur)
+    parent = ET.SubElement(ressources, NS + "object", id="2", type="model")
+    composants = ET.SubElement(parent, NS + "components")
+    composant = ET.SubElement(composants, NS + "component", objectid="1", transform=translation)
+    if variante == "p:path":
+        composant.set("{http://schemas.microsoft.com/3dmanufacturing/production/2015/06}path", "/3D/objet.model")
+    elif variante == "propriete-parent":
+        parent.set("pid", "3")
+        parent.set("pindex", "0")
+    elif variante == "cycle":
+        composant.set("objectid", "2")
+    elif variante == "membre-repete":
+        ET.SubElement(composants, NS + "component", objectid="1")
+    elif variante == "ressource-ambigue":
+        groupe.set("id", "1")
+    build = ET.SubElement(racine, NS + "build")
+    ET.SubElement(build, NS + "item", objectid="2", transform="1 0 0 0 1 0 0 0 1 10 0 0")
+    relations = ET.Element(NS_REL + "Relationships")
+    ET.SubElement(relations, NS_REL + "Relationship", Id="rModel", Type=REL_MODELE, Target="/3D/3dmodel.model")
+    with ZipFile(path, "w") as archive:
+        archive.writestr("_rels/.rels", ET.tostring(relations))
+        archive.writestr("3D/3dmodel.model", ET.tostring(racine))
+
+
+def test_assemblage_a_une_feuille_compare_la_peinture_et_le_materiau(tmp_path):
+    """La même feuille garde ses matériaux et expose sa peinture perdue."""
+    source, candidat = tmp_path / "a.3mf", tmp_path / "b.3mf"
+    _archive_assemblee(source)
+    _archive_assemblee(candidat, couleur=None)
+    avant = source.read_bytes(), candidat.read_bytes()
+    resultats = comparer(source, candidat)
+    assert resultats["peinture"]["extensions_asn_prusa"]["statut"] == "WARN"
+    assert resultats["peinture"]["proprietes_standard_3mf"]["statut"] == "PASS"
+    assert resultats["peinture"]["statut"] == "NON VÉRIFIÉ"
+    assert (source.read_bytes(), candidat.read_bytes()) == avant
+
+
+@pytest.mark.parametrize("variante", ["p:path", "propriete-parent", "cycle", "membre-repete", "ressource-ambigue"])
+def test_assemblage_hors_sous_cas_reste_non_verifie(tmp_path, variante):
+    """Une source ambiguë n’est pas qualifiée, même comparée à elle-même."""
+    source = tmp_path / "source.3mf"
+    _archive_assemblee(source, variante=variante)
+    rapport = comparer(source, source)["peinture"]
+    assert rapport["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["proprietes_standard_3mf"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_translation_differente_de_la_feuille_refuse_la_correspondance(tmp_path):
+    """Deux maillages identiques ne suffisent pas si le composant se déplace."""
+    source, candidat = tmp_path / "a.3mf", tmp_path / "b.3mf"
+    _archive_assemblee(source)
+    _archive_assemblee(candidat, translation="1 0 0 0 1 0 0 0 1 3 0 0")
+    rapport = comparer(source, candidat)["peinture"]
+    assert rapport["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["proprietes_standard_3mf"]["statut"] == "NON VÉRIFIÉ"

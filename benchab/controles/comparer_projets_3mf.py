@@ -52,8 +52,49 @@ def _lire(chemin):
     return (dict(donnees) if donnees is not None else None, empreinte, peinture)
 
 
+def _composant_core_unique(racine, ressources, objets, item):
+    """Identifie une feuille Core locale et sa translation, en unités du modèle."""
+    if (
+        len(objets) != 2 or len(ressources) > 4096 or racine.get("requiredextensions", "").strip()
+        or set(item.attrib) - {"objectid", "transform", "printable"} or len(item)
+    ):
+        return None
+    feuille, parent = objets
+    # Core §4 et §4.2.1 : la feuille précède sa référence et le parent ne
+    # porte aucun matériau. Les ressources partagent le même espace d’ID.
+    ids = set()
+    for ressource in ressources:
+        ident = ressource.get("id", "")
+        if (
+            ressource.tag not in {NS_CORE + "object", NS_CORE + "basematerials"}
+            or re.fullmatch(r"[1-9][0-9]{0,9}", ident) is None
+            or int(ident) >= 2**31 or ident in ids
+        ):
+            return None
+        ids.add(ident)
+    if (
+        parent.get("id") != item.get("objectid") or set(parent.attrib) - {"id", "type"}
+        or len(parent) != 1 or parent[0].tag != NS_CORE + "components"
+        or set(feuille.attrib) - {"id", "type", "pid", "pindex"}
+        or len(feuille) != 1 or feuille[0].tag != NS_CORE + "mesh"
+    ):
+        return None
+    composants = parent[0]
+    if composants.attrib or len(composants) != 1:
+        return None
+    composant = composants[0]
+    translation = composant.get("transform")
+    if (
+        composant.tag != NS_CORE + "component" or set(composant.attrib) - {"objectid", "transform"}
+        or len(composant) or composant.get("objectid") != feuille.get("id")
+        or not _translation_directe_qualifiee(translation)
+    ):
+        return None
+    return feuille, {"parent_id": parent.get("id"), "transform_composant": translation}
+
+
 def _lire_peinture_directe(archive):
-    """Lit uniquement un modèle OPC direct à objet/maillage unique ; refuse composants et alias."""
+    """Lit les facettes d’un maillage Core direct ou d’une unique feuille locale."""
     noms = set(archive.noms())
     relation_root = "_rels/.rels"
     inconnu = {"statut": "NON VÉRIFIÉ", "raison": "StartPart OPC et maillage direct non qualifiés."}
@@ -100,9 +141,17 @@ def _lire_peinture_directe(archive):
     ressources, construction = ressources_xml[0], constructions[0]
     objets = ressources.findall(NS_CORE + "object")
     items = construction.findall(NS_CORE + "item")
-    if unite not in _UNITES_3MF or len(objets) != 1 or len(items) != 1:
+    if unite not in _UNITES_3MF or len(items) != 1 or len(objets) not in (1, 2):
         return {**inconnu, "raison": "Unité, cardinalité des objets ou ordre du build non qualifié."}
-    objet, item = objets[0], items[0]
+    item = items[0]
+    assemblage = None
+    if len(objets) == 2:
+        choix = _composant_core_unique(racine, ressources, objets, item)
+        if choix is None:
+            return {**inconnu, "raison": "Assemblage hors du sous-cas Core à une feuille locale."}
+        objet, assemblage = choix
+    else:
+        objet = objets[0]
     ident = objet.get("id")
     proprietes_objet = {
         cle: objet.get(cle) for cle in ("pid", "pindex") if cle in objet.attrib
@@ -110,7 +159,7 @@ def _lire_peinture_directe(archive):
     attributs_path = [cle for cle in item.attrib if cle.rsplit("}", 1)[-1] == "path"]
     transform = item.get("transform")
     if (
-        not ident or item.get("objectid") != ident or item.get("printable", "1") != "1"
+        not ident or (assemblage is None and item.get("objectid") != ident) or item.get("printable", "1") != "1"
         or attributs_path or objet.get("type") != "model"
         or objet.find(NS_CORE + "components") is not None
     ):
@@ -176,6 +225,7 @@ def _lire_peinture_directe(archive):
         "identite": {
             "partie_opc": modele, "objet_id": ident, "unite": unite,
             "transform": transform, "build_index": 1,
+            **({"assemblage": assemblage} if assemblage is not None else {}),
         },
         "coordonnees": coordonnees,
         "facettes": faces,
@@ -251,7 +301,7 @@ def _comparer_core(source, candidat):
         "differences": [],
     }
     if any(p["statut"] != "PASS" for p in (source, candidat)):
-        return {**resultat, "raison": "StartPart ou maillage direct hors du sous-cas qualifié."}
+        return {**resultat, "raison": "StartPart ou maillage hors du sous-cas qualifié."}
     if any(source[cle] != candidat[cle] for cle in ("identite", "coordonnees", "facettes")):
         return {**resultat, "raison": "Identité, coordonnées ou ordre des facettes différents."}
     if avant["statut"] != "PASS" or apres["statut"] != "PASS":
