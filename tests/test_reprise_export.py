@@ -217,3 +217,141 @@ def test_preuve_modifiee_avant_premier_hachage_est_refusee(tmp_path, atelier, mo
     with pytest.raises(ValueError, match="SHA|empreinte"):
         reprise.preparer(prive, "projets", sortie)
     assert not sortie.exists() and not cible.exists()
+
+
+def _candidat(prive, tmp_path):
+    """Construit une preuve privée CANDIDAT dans le temporaire du test."""
+    from benchab.qualite.reprise_export import preparer
+
+    sortie = tmp_path / "candidat"
+    preparer(prive, "projets", sortie)
+    preuve = sortie / "preuve.json"
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    return sortie, preuve, sha
+
+
+def test_appliquer_copie_uniquement_table_absente_et_garde_candidat(tmp_path, atelier):
+    """Appliquer publie une copie exclusive, garde la preuve et laisse SQLite identique."""
+    from benchab.qualite.reprise_export import appliquer
+
+    prive, cible, attendu = atelier
+    candidat, preuve, sha_preuve = _candidat(prive, tmp_path)
+    base_avant = (prive / "benchab.sqlite").read_bytes()
+    candidat_avant = {p.name: p.read_bytes() for p in candidat.iterdir()}
+
+    rapport = appliquer(prive, preuve, sha_preuve)
+
+    assert rapport["statut"] == "PASS" and rapport["applique"] is True
+    assert cible.read_bytes() == attendu
+    assert {p.name: p.read_bytes() for p in candidat.iterdir()} == candidat_avant
+    assert (prive / "benchab.sqlite").read_bytes() == base_avant
+    with pytest.raises(ValueError, match="absente"):
+        appliquer(prive, preuve, sha_preuve)
+
+
+def test_appliquer_refuse_sha_preuve_ou_copie_falsifie(tmp_path, atelier):
+    """Ni le JSON candidat ni son SHA déclaré ne peuvent être substitués."""
+    from benchab.qualite.reprise_export import appliquer
+
+    prive, cible, _ = atelier
+    _candidat(prive, tmp_path)
+    preuve = tmp_path / "candidat/preuve.json"
+    with pytest.raises(ValueError, match="SHA.*preuve"):
+        appliquer(prive, preuve, "0" * 64)
+    preuve_data = json.loads(preuve.read_bytes())
+    preuve_data["sha256_attendu"] = "0" * 64
+    preuve.write_text(json.dumps(preuve_data))
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="(?i)preuve|empreinte"):
+        appliquer(prive, preuve, sha)
+    assert not cible.exists()
+
+
+def test_appliquer_refuse_si_manifeste_ou_base_a_change(tmp_path, atelier):
+    """La preuve n’est applicable que contre le manifeste et le snapshot identiques."""
+    from benchab.qualite.reprise_export import appliquer
+
+    prive, cible, _ = atelier
+    _candidat(prive, tmp_path)
+    preuve = tmp_path / "candidat/preuve.json"
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    manifeste = prive / "export/manifest.json"
+    manifeste.write_bytes(manifeste.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="manifeste"):
+        appliquer(prive, preuve, sha)
+    assert not cible.exists()
+
+
+def test_appliquer_refuse_si_snapshot_sqlite_a_change(tmp_path, atelier):
+    """Une mutation SQLite postérieure au candidat ne passe pas via son ancien manifeste."""
+    from benchab.qualite.reprise_export import appliquer
+
+    prive, cible, _ = atelier
+    _candidat(prive, tmp_path)
+    preuve = tmp_path / "candidat/preuve.json"
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    with sqlite3.connect(prive / "benchab.sqlite") as connexion:
+        connexion.execute("UPDATE projets SET nom=? WHERE id=?", ("modifié", "fixture"))
+        connexion.commit()
+    with pytest.raises(ValueError, match="manifeste|SQLite|sérialisation"):
+        appliquer(prive, preuve, sha)
+    assert not cible.exists()
+
+
+def test_appliquer_refuse_arrivee_concurrente_sans_ecraser(tmp_path, atelier, monkeypatch):
+    """Un fichier arrivé avant le lien exclusif reste intact."""
+    import benchab.qualite.reprise_export as reprise
+
+    prive, cible, _ = atelier
+    _candidat(prive, tmp_path)
+    preuve = tmp_path / "candidat/preuve.json"
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    lier = reprise._lier_exclusif
+
+    def arriver_avant(source_fd, source, export_fd, destination):
+        import os
+
+        cible_fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600, dir_fd=export_fd)
+        os.write(cible_fd, b"tiers\n")
+        os.close(cible_fd)
+        return lier(source_fd, source, export_fd, destination)
+
+    monkeypatch.setattr(reprise, "_lier_exclusif", arriver_avant)
+    with pytest.raises((FileExistsError, ValueError)):
+        reprise.appliquer(prive, preuve, sha)
+    assert cible.read_bytes() == b"tiers\n"
+
+
+def test_appliquer_course_postpublication_conserve_la_cible(tmp_path, atelier, monkeypatch):
+    """Une altération après publication échoue sans supprimer ni déplacer le fichier."""
+    import benchab.qualite.reprise_export as reprise
+
+    prive, cible, _ = atelier
+    _candidat(prive, tmp_path)
+    preuve = tmp_path / "candidat/preuve.json"
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    lier = reprise._lier_exclusif
+
+    def modifier_apres_lien(source_fd, source, export_fd, destination):
+        lier(source_fd, source, export_fd, destination)
+        cible.write_bytes("altération concurrente\n".encode())
+
+    monkeypatch.setattr(reprise, "_lier_exclusif", modifier_apres_lien)
+    with pytest.raises(ValueError, match="(?i)après publication|sha|cible publiée"):
+        reprise.appliquer(prive, preuve, sha)
+    assert cible.read_bytes() == "altération concurrente\n".encode()
+
+
+def test_cli_appliquer_est_diagnostic_sans_base_ni_mesure(tmp_path, atelier, capsys, monkeypatch):
+    """La commande explicite n’ouvre pas Base() et ne journalise pas une mesure."""
+    from benchab import cli
+
+    prive, cible, attendu = atelier
+    candidat, preuve, sha = _candidat(prive, tmp_path)
+    monkeypatch.setattr(cli, "Base", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("Base()")))
+    arguments = ["--prive", str(prive), "controle", "appliquer-reprise-export",
+                 "--preuve", str(preuve), "--sha256-preuve", sha]
+    assert cli.main(arguments) == 0
+    assert json.loads(capsys.readouterr().out)["statut"] == "PASS"
+    assert cible.read_bytes() == attendu
+    assert (candidat / "preuve.json").is_file()

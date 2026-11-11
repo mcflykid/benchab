@@ -204,6 +204,11 @@ def parser():
     )
     reprise_export.add_argument("--table", required=True, help="Table canonique BENCHAB à recopier")
     reprise_export.add_argument("--sortie", type=Path, required=True, help="Dossier neuf, hors export")
+    appliquer_reprise = controle.add_parser(
+        "appliquer-reprise-export", help="Applique une table absente depuis une preuve CANDIDAT explicite"
+    )
+    appliquer_reprise.add_argument("--preuve", type=Path, required=True, help="preuve.json CANDIDAT à relire")
+    appliquer_reprise.add_argument("--sha256-preuve", required=True, help="SHA-256 exact des octets de preuve.json")
     coutures = controle.add_parser(
         "coutures", help="Contrôle les coutures de paroi sur les régions visibles ou cachées déclarées"
     )
@@ -959,8 +964,8 @@ def _mesurer_refus(argv, commande, code):
 def main(argv=None):
     """Distribue les commandes, codes CLI et durées s, sans autorisation machine implicite.
 
-    Les plans de réparation et de consommation, la copie d’export et le contrôle
-    des coutures ne créent ni atelier ni mesure. --help/--version restent sans
+    Les plans de réparation et de consommation, la copie/application d’export
+    et le contrôle des coutures ne créent ni atelier ni mesure. --help/--version restent sans
     effet ; seul init crée un atelier CLI absent (docs/reference/chemins-et-atelier.md).
     """
     from benchab.chemins import atelier_prive
@@ -971,6 +976,7 @@ def main(argv=None):
             "installation",
             "plan-reparation",
             "preparer-reprise-export",
+            "appliquer-reprise-export",
             "appliquer-reparation-vue",
             "entretien",
             "consommation-retour",
@@ -1017,6 +1023,17 @@ def main(argv=None):
             rapport = preparer(arguments.prive, arguments.table, arguments.sortie)
         except (OSError, ValueError, sqlite3.Error) as erreur:
             print(f"BENCHAB : préparation de reprise refusée : {erreur}", file=sys.stderr)
+            return 2
+        print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+        return 0
+    if arguments.commande == "controle" and arguments.controle == "appliquer-reprise-export":
+        from benchab.qualite.reprise_export import appliquer
+
+        # Un candidat fourni et son SHA exact sont requis ; aucune mesure ni Base() n’est ouverte.
+        try:
+            rapport = appliquer(arguments.prive, arguments.preuve, arguments.sha256_preuve)
+        except (OSError, ValueError, sqlite3.Error) as erreur:
+            print(f"BENCHAB : application de reprise refusée : {erreur}", file=sys.stderr)
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
