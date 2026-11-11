@@ -26,6 +26,7 @@ import math
 import re
 import sys
 import zipfile
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -234,7 +235,14 @@ def page(f, sortie, defauts=None, titre=None, zones=None, colonnes=None):
         return {"fichier": str(sortie), "octets": len(html), "plaques": [(p["n"], len(p["couches"])) for p in plaques]}
 
 
-GABARIT = Path(__file__).with_suffix(".html").read_text()
+# Les scripts restent inline dans le document final ; hors_ligne intègre l’import map et ses modules.
+_RESSOURCES = files("benchab.visualisation").joinpath("ressources")
+GABARIT = (
+    Path(__file__).with_suffix(".html")
+    .read_text(encoding="utf-8")
+    .replace("__SCRIPT_2D__", _RESSOURCES.joinpath("apercu_gcode_2d.js").read_text(encoding="utf-8"))
+    .replace("__SCRIPT_3D__", _RESSOURCES.joinpath("apercu_gcode_3d.js").read_text(encoding="utf-8"))
+)
 
 
 def main(argv=None, *, prive=None):

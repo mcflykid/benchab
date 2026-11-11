@@ -127,7 +127,8 @@ class Atelier(unittest.TestCase):
         for route in ('fetch("/__cloud_lecture"', 'demande.compte=true', 'demande.session_slicer=true'):
             self.assertIn(route, cloud_js)
         self.assertIn('fetch("/__cloud_lecture"', page_cloud)
-        self.assertIn("const D=", apercu_html)
+        self.assertIn("__SCRIPT_2D__", apercu_html)
+        self.assertIn("__SCRIPT_3D__", apercu_html)
 
     def test_cloud_compte_prioritaire_sans_motdepasse_compte_dans_page(self):
         """Montre la commande BENCHAB actuelle sans lire le compte ni contacter le Cloud ; aucun statut physique."""
