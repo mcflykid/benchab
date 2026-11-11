@@ -2,33 +2,44 @@
 
 import hashlib
 import json
-import re
 from pathlib import Path
-from zipfile import ZipFile
 
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.commandes_machine import controler as commandes_machine
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.integrite_3mf import instantane
 from benchab.qualite.ecritures import _sans_lien
+
+
+def _commandes_archive(archive):
+    """Empreinte les commandes G-code par flux borné après refus des membres et indices ambigus."""
+    plaques = plaques_gcode_archive(archive)
+    noms_plaques = {nom for _, nom in plaques}
+    commandes = {}
+    # Conserver l'ordre ZIP historique tout en validant les index via la table commune des plaques.
+    for nom in archive.noms():
+        if nom not in noms_plaques:
+            continue
+        digest = hashlib.sha256()
+        nombre = 0
+        with archive.ouvrir_flux(nom) as flux:
+            for ligne in flux:
+                code = ligne.split(b";", 1)[0].strip()
+                if code:
+                    digest.update(code + b"\n")
+                    nombre += 1
+        commandes[nom] = {"sha256": digest.hexdigest(), "nombre": nombre}
+    return commandes
 
 
 def relever(chemin):
     """Relit un 3MF ;
     renvoie SHA, réglages en unités natives et commandes sans commentaires, sans slicer ni écriture."""
     chemin = _sans_lien(Path(chemin).absolute())
-    commandes = {}
-    with ZipFile(chemin) as archive:
-        for nom in archive.namelist():
-            if not re.fullmatch(r"Metadata/plate_\d+\.gcode", nom):
-                continue
-            digest = hashlib.sha256()
-            nombre = 0
-            with archive.open(nom) as flux:
-                for ligne in flux:
-                    code = ligne.split(b";", 1)[0].strip()
-                    if code:
-                        digest.update(code + b"\n")
-                        nombre += 1
-            commandes[nom] = {"sha256": digest.hexdigest(), "nombre": nombre}
+    with Archive3MF(chemin) as archive:
+        commandes = _commandes_archive(archive)
+    # Ces lectures restent des contextes indépendants : instantane conserve le dictionnaire typé complet,
+    # et commandes_machine garde son cache et ses propres gardes d'empreinte (docs/reference/integrite-3mf.md).
     with chemin.open("rb") as flux:
         digest = hashlib.file_digest(flux, "sha256").hexdigest()
     # Le manifeste fixe la liste historique des réglages. La structure ajoutée
