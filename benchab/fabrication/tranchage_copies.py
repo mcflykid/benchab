@@ -10,6 +10,9 @@ from zipfile import ZipFile
 
 from benchab import integrite_3mf
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF, decoder_xml
+
+_BUDGET_XML_OCTETS = 8 * 1024 * 1024
 
 
 def sha256(chemin):
@@ -30,18 +33,30 @@ def chemin_temporaire(chemin):
 
 
 def normaliser(source, destination, usage="impression", identifiants=None, *, configuration):
-    """Normalise exclusivement une nouvelle copie de l'entrée, avant le binaire natif. Réglages en
-    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; catalogue exact, aucun réglage inconnu transformé."""
+    """Normalise une copie 3MF distincte avant le binaire natif, sans lancement.
+
+    Reçoit source, destination, usage, catalogue optionnel et fournisseur de
+    configuration ; les réglages en mm, s, °C et % passent par le dictionnaire typé.
+    Renvoie le bilan des différences permises et de leur intégrité ; lève `ValueError`
+    si l’archive, les budgets XML/JSON de 8 Mio ou les références sont invalides.
+    Les membres sont lus avec CRC, copiés en flux en conservant ordre et métadonnées,
+    puis contrôlés avant publication. Aucun réglage physique n’est inventé.
+    Voir [intégrité 3MF](../../docs/reference/integrite-3mf.md).
+    """
     modifications = []
     if usage not in {"impression", "temoin"}:
         raise ValueError("Usage autorisé : impression ou temoin.")
-    with ZipFile(source) as entree:
-        noms = entree.namelist()
-        if len(noms) != len(set(noms)):
-            raise ValueError("Membres ZIP dupliqués")
-        modele = ET.fromstring(
-            entree.read("Metadata/model_settings.config"),
-            parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True, insert_pis=True)),
+    with Archive3MF(source, taille_max_xml=_BUDGET_XML_OCTETS) as entree:
+        noms = entree.noms()
+        membre_modele = "Metadata/model_settings.config"
+        if entree.taille_membre(membre_modele) > _BUDGET_XML_OCTETS:
+            raise ValueError(f"budget XML dépassé : {membre_modele}")
+        modele_brut = entree.lire(membre_modele, limite_octets=_BUDGET_XML_OCTETS)
+        modele = decoder_xml(
+            modele_brut,
+            limite_octets=_BUDGET_XML_OCTETS,
+            commentaires=True,
+            instructions_traitement=True,
         )
         plaques = modele.findall("plate")
         maximum = min(30, int(configuration()["slicer"]["plaques_max"]))
@@ -65,7 +80,11 @@ def normaliser(source, destination, usage="impression", identifiants=None, *, co
                             "reglage_impression_modifie": False,
                         }
                     )
-        reglages = schema_reglages.decoder(entree.read("Metadata/project_settings.config"))
+        membre_reglages = "Metadata/project_settings.config"
+        if entree.taille_membre(membre_reglages) > _BUDGET_XML_OCTETS:
+            raise ValueError(f"budget réglages dépassé : {membre_reglages}")
+        reglages_brut = entree.lire(membre_reglages, limite_octets=_BUDGET_XML_OCTETS)
+        reglages = schema_reglages.decoder(reglages_brut)
         origine_reglages = dict(reglages)
         post_traitement = reglages.get("post_process", [])
         traitement_actif = any(post_traitement) if isinstance(post_traitement, list) else bool(post_traitement)
@@ -187,8 +206,12 @@ def normaliser(source, destination, usage="impression", identifiants=None, *, co
             k: v for k, v in reglages.items() if k not in metadonnees_adaptees
         }:
             raise ValueError("Un réglage d'impression serait modifié : tranchage refusé.")
+        sources_remplacees = {
+            "Metadata/model_settings.config": modele_brut,
+            "Metadata/project_settings.config": reglages_brut,
+        }
         for membre, contenu in remplacements.items():
-            avant = hashlib.sha256(entree.read(membre)).hexdigest()
+            avant = hashlib.sha256(sources_remplacees[membre]).hexdigest()
             apres = hashlib.sha256(contenu).hexdigest()
             if avant != apres:
                 modifications.append(
@@ -227,14 +250,17 @@ def normaliser(source, destination, usage="impression", identifiants=None, *, co
         try:
             os.close(fd)
             with ZipFile(temporaire, "w") as sortie:
-                sortie.comment = entree.comment
-                for membre in entree.infolist():
-                    if membre.filename in remplacements:
-                        sortie.writestr(membre, remplacements[membre.filename])
+                sortie.comment = entree.commentaire
+                for nom in noms:
+                    information = entree.information(nom)
+                    if nom in remplacements:
+                        with sortie.open(information, "w") as cible:
+                            cible.write(remplacements[nom])
                     else:
-                        with entree.open(membre) as flux, sortie.open(membre, "w") as cible:
+                        with entree.ouvrir_flux(nom) as flux, sortie.open(information, "w") as cible:
                             shutil.copyfileobj(flux, cible)
             integrite = integrite_3mf.verifier(source, temporaire, permis)
+            entree.verifier_source(source)
             temporaire.replace(destination)
         finally:
             temporaire.unlink(missing_ok=True)

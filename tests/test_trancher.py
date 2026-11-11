@@ -3,13 +3,14 @@
 import fcntl
 import json
 import shutil
+import struct
 import sys
 import tempfile
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile, ZipInfo
 
 import pytest
 
@@ -692,3 +693,138 @@ def test_normaliser_refuse_catalogue_ambigue_ou_absent(tmp_path):
     )
     with pytest.raises(ValueError, match="Correspondance"):
         trancher.normaliser(source, tmp_path / "sortie.3mf", identifiants={"Profil déclaré": []})
+
+
+def _corrompre_crc_archive(chemin, cible):
+    """Altère le CRC central d’un membre sans modifier ses octets compressés."""
+    contenu = bytearray(chemin.read_bytes())
+    position = 0
+    while (position := contenu.find(b"PK\x01\x02", position)) >= 0:
+        longueur_nom, longueur_extra, longueur_commentaire = struct.unpack_from("<HHH", contenu, position + 28)
+        debut_nom = position + 46
+        nom = bytes(contenu[debut_nom:debut_nom + longueur_nom]).decode("utf-8")
+        if nom == cible:
+            crc = struct.unpack_from("<I", contenu, position + 16)[0]
+            struct.pack_into("<I", contenu, position + 16, crc ^ 1)
+            chemin.write_bytes(contenu)
+            return
+        position = debut_nom + longueur_nom + longueur_extra + longueur_commentaire
+    raise AssertionError(f"Membre ZIP absent : {cible}")
+
+
+def test_normaliser_refuse_un_chemin_zip_non_confine(tmp_path):
+    """Le contrôle du lecteur commun refuse un membre de traversée avant copie."""
+    source = entree_3mf(tmp_path / "source.3mf")
+    with ZipFile(source, "a") as archive:
+        archive.writestr("../hors-archive.bin", b"interdit")
+    destination = tmp_path / "copie.3mf"
+
+    with pytest.raises(ValueError, match="non sûr|traversant"):
+        trancher.normaliser(source, destination)
+
+    assert not destination.exists()
+
+
+def test_normaliser_borne_xml_avant_parse_et_publication(tmp_path, monkeypatch):
+    """Le budget XML de normalisation s’applique au membre avant sa construction ET."""
+    source = entree_3mf(tmp_path / "source.3mf")
+    with ZipFile(source) as archive:
+        membres = [(nom, archive.read(nom)) for nom in archive.namelist()]
+    modele = b'<config><!--' + b'x' * (8 * 1024 * 1024 + 1) + b'-->' \
+             b'<plate><metadata key="plater_name" value="Plaque 1"/></plate></config>'
+    with ZipFile(source, "w") as archive:
+        for nom, contenu in membres:
+            archive.writestr(nom, modele if nom == "Metadata/model_settings.config" else contenu)
+    destination = tmp_path / "copie.3mf"
+    from benchab.fabrication import tranchage_copies
+
+    monkeypatch.setattr(
+        tranchage_copies.ET,
+        "fromstring",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("XML analysé avant vérification du budget")),
+    )
+
+    with pytest.raises(ValueError, match="budget XML"):
+        trancher.normaliser(source, destination)
+
+    assert not destination.exists()
+
+
+def test_normaliser_borne_reglages_avant_decodage(tmp_path, monkeypatch):
+    """Le budget JSON de réglages s’applique avant le décodeur typé."""
+    source = entree_3mf(tmp_path / "source.3mf")
+    with ZipFile(source) as archive:
+        membres = [(nom, archive.read(nom)) for nom in archive.namelist()]
+    reglages = b'{"filament_type":["PLA"],"note":"' + b'x' * (8 * 1024 * 1024 + 1) + b'"}'
+    with ZipFile(source, "w") as archive:
+        for nom, contenu in membres:
+            archive.writestr(nom, reglages if nom == "Metadata/project_settings.config" else contenu)
+    destination = tmp_path / "copie.3mf"
+    monkeypatch.setattr(
+        trancher.schema_reglages,
+        "decoder",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("JSON décodé avant le budget")),
+    )
+
+    with pytest.raises(ValueError, match="budget réglages"):
+        trancher.normaliser(source, destination)
+
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    "membre",
+    ["Metadata/model_settings.config", "Metadata/project_settings.config", "Metadata/extra.bin"],
+)
+def test_normaliser_refuse_crc_invalide_sur_remplacement_et_copie(tmp_path, membre):
+    """Le CRC source est vérifié même pour les deux membres qui seront remplacés."""
+    source = entree_3mf(tmp_path / "source.3mf")
+    if membre.endswith("extra.bin"):
+        with ZipFile(source, "a") as archive:
+            archive.writestr(membre, b"copie protegee")
+    _corrompre_crc_archive(source, membre)
+    avant = source.read_bytes()
+    destination = tmp_path / "copie.3mf"
+
+    with pytest.raises(BadZipFile, match="CRC"):
+        trancher.normaliser(source, destination)
+
+    assert source.read_bytes() == avant
+    assert not destination.exists()
+
+
+def test_normaliser_preserve_commentaires_pi_ordre_infos_et_commentaire_zip(tmp_path):
+    """La migration vers Archive3MF garde les lexèmes XML suivis et les métadonnées ZIP copiées."""
+    source = entree_3mf(tmp_path / "source.3mf")
+    with ZipFile(source) as archive:
+        membres = [(archive.getinfo(nom), archive.read(nom)) for nom in archive.namelist()]
+    commentaire = b"commentaire-zip-de-test"
+    modele = b'<config><!-- garder --><?avant garder?>' \
+             b'<plate><metadata key="plater_name" value="Plaque 1"/></plate>' \
+             b'<?apres garder?></config>'
+    extra_info = ZipInfo("Metadata/extra.bin", (2024, 1, 2, 3, 4, 6))
+    extra_info.compress_type = 8
+    extra_info.external_attr = 0o100640 << 16
+    with ZipFile(source, "w") as archive:
+        archive.comment = commentaire
+        for info, donnees in membres:
+            if info.filename == "Metadata/model_settings.config":
+                archive.writestr(info.filename, modele)
+            else:
+                archive.writestr(info, donnees)
+        archive.writestr(extra_info, b"copie binaire")
+    destination = tmp_path / "copie.3mf"
+
+    trancher.normaliser(source, destination)
+
+    with ZipFile(source) as avant, ZipFile(destination) as apres:
+        assert apres.namelist() == avant.namelist()
+        assert apres.comment == commentaire
+        assert apres.getinfo("Metadata/extra.bin").date_time == avant.getinfo("Metadata/extra.bin").date_time
+        assert apres.getinfo("Metadata/extra.bin").external_attr == avant.getinfo("Metadata/extra.bin").external_attr
+        assert apres.getinfo("Metadata/extra.bin").compress_type == avant.getinfo("Metadata/extra.bin").compress_type
+        contenu_modele = apres.read("Metadata/model_settings.config")
+        assert b"<?avant garder?>" in contenu_modele
+        assert b"<!-- garder -->" in contenu_modele
+        assert b"<?apres garder?>" in contenu_modele
+        assert apres.read("Metadata/extra.bin") == b"copie binaire"
