@@ -2,6 +2,11 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir
+
+- Remplissage : un dépôt sans rôle ou l’absence de dépôt clairsemé attribué
+  ne valide plus les compteurs du comparateur (#183).
+
 ## 1.11.0 — 2026-11-11
 
 - Coutures : relie les débuts de boucles extérieures à des régions déclarées,
