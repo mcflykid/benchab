@@ -4,6 +4,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.5.0 — 2026-11-11
 
+- Débit U25 : la sortie de rapport ne peut plus écraser un 3MF source ni une preuve existante (#151).
 - Imports : produit un placement traçable depuis un 3MF et une déclaration liée par SHA-256, sans déduire les plaques, le repère ou les réglages (#105).
 - Finition : sépare les vérifications de mouvement, débit, couverture et proposition, avec rapports identiques (suite de #68).
 - Envois : refuse les plaques homonymes et lit les masses et outils en flux, avec CRC complet et copie vérifiée par SHA-256 (#147, suite de #122).
