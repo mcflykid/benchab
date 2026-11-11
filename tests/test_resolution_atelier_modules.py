@@ -49,7 +49,7 @@ def test_destination_cad_privee_et_temporaire_et_refus_externe(monkeypatch, tmp_
     privee = cad_engine.destination(prive / "cache" / "cad-prive")
     temporaire = cad_engine.destination(tmp_path / "cad-temp")
     assert privee.is_dir() and temporaire.is_dir()
-    with pytest.raises(ValueError, match="privée ou temporaire"):
+    with pytest.raises(ValueError, match="atelier privé ou temporaire"):
         cad_engine.destination(Path.home() / "cad-hors-atelier")
 
 

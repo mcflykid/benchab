@@ -35,7 +35,7 @@ import trimesh
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
-from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 
 
 def empreinte(m):
@@ -95,8 +95,8 @@ def depuis_projet(plaques, placement, candidats):
     """Pièces du projet (candidats/<modèle>.stl, déjà posées) et brim_type : réglage de l'objet
     (placement.json), sinon du 3MF. Réglages en unités natives (mm, s, °C, %) lus via le
     dictionnaire typé ; aucun réglage inconnu transformé."""
-    with zipfile.ZipFile(plaques) as archive:
-        st = schema_reglages.decoder(archive.read("Metadata/project_settings.config"))
+    with Archive3MF(plaques) as archive:
+        st = archive.reglages()
     out, vus = [], {}
     for o in json.loads(Path(placement).read_text())["objects"]:
         f = Path(candidats) / f"{o.get('model', o['name'])}.stl"

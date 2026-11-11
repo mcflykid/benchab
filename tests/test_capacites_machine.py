@@ -115,9 +115,14 @@ class Capacites(unittest.TestCase):
     def test_opcodes_inconnus_et_commentaires(self):
         self.assertEqual(self.analyser(BASE + "C X20 E1")["statut"], "FAIL")
         self.assertEqual(self.analyser(BASE + "; C X20 E1")["statut"], "PASS")
-        for command in ["M220 S200", "M221 S110", "G2 X20 E1 I5"]:
+        for command in ["M220 S200", "M221 S110", "G2 X20 E1 I3"]:
             with self.subTest(command=command):
                 self.assertNotEqual(self.analyser(BASE + command)["statut"], "PASS")
+
+    def test_arc_valide_reste_non_verifie_pour_limites_geometriques(self):
+        """Une corde ne qualifie ni les vitesses par axe ni le volume d'un arc."""
+        resultat = self.analyser(BASE + "G2 X20 E1 I5 F600")
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
 
     def test_accelerations_axes_et_categories(self):
         cmds = "M201 X10000 Y10000 Z500 E5000\nM203 X600 Y600 Z20 E40\nM204 S10000\nM205 X9 Y9\n"

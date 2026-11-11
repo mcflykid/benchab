@@ -15,10 +15,11 @@ def positif(valeur):
 
 
 def mesurer(mouvement, diametre_mm):
-    """Mesure un dépôt linéaire : E et longueur en mm, F en mm/min, diamètre en mm.
+    """Mesure un dépôt nominal : E et longueur de trajectoire en mm, F en mm/min, diamètre en mm.
 
     Renvoie volume_mm3, duree_depot_s et debit_mm3_s ; None/NON VÉRIFIÉ si incomplet.
     La durée couvre la partie déposée du mouvement, après remboursement de rétraction.
+    La longueur fournie peut être une longueur analytique d’arc XY G17, jamais une corde.
     Ne simule ni dynamique, ni firmware, ni débit physique ; voir docs/reference/debit.md.
     """
     valeurs = [positif(v) for v in (

@@ -17,6 +17,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from benchab.chemins import atelier_prive, est_temporaire, sans_lien
+from benchab.qualite.ecritures import destination_neuve
 
 REVISION = "5a5dab9503d140b8cf62a28d21ba2573a722d2d6"
 FORMATS = ("step", "stl", "glb", "3mf", "xbf", "dxf")
@@ -27,10 +28,7 @@ def destination(value):
     brut = Path(value).expanduser().absolute()
     if brut.is_symlink():
         raise FileExistsError("Destination existante symbolique refusée")
-    path = sans_lien(brut)
-    prive = atelier_prive()
-    if not path.is_relative_to(prive) and not est_temporaire(path):
-        raise ValueError("Sortie privée ou temporaire exigée")
+    path = destination_neuve(brut)
     # mkdir(exist_ok=False) arbitre aussi les accès concurrents et les liens.
     path.mkdir(mode=0o700, parents=False, exist_ok=False)
     # Garder la graphie déclarée après validation canonique préserve les appels

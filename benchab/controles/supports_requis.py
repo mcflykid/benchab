@@ -30,6 +30,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.fabrication import anycubic as A
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 
@@ -134,8 +135,8 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
         for chemin, precedente in avant.items():
             if not chemin.startswith("projet/") and chemin.endswith("/" + cle) and precedente != str(valeur):
                 permis.append(integrite_3mf.autorisation(chemin, precedente, str(valeur)))
-    with ZipFile(src) as z:
-        c = {n: z.read(n) for n in z.namelist()}
+    with Archive3MF(src) as z:
+        c = {n: z.lire(n) for n in z.noms()}
     st = schema_reglages.decoder(c["Metadata/project_settings.config"])
     st.update(regl)
     c["Metadata/project_settings.config"] = schema_reglages.encoder(st).encode()
@@ -156,25 +157,24 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
         f, _ = A.trancher(copie, d, "tranche-supports.3mf")
         res = A.resultats(f)
         plaques = []
-        with ZipFile(f) as z:
-            for p in res:
-                g = lire_texte_gcode_3mf(f, f"Metadata/plate_{p['index']}.gcode")
-                bandes, interface = masse_support(g, aire, densite)
-                tot = sum(bandes.values())
-                if garder:
-                    Path(garder).mkdir(parents=True, exist_ok=True)
-                    (Path(garder) / f"plaque-{p['index']}.gcode").write_text(g, encoding="utf-8")
-                plaques.append(
-                    {
-                        "plaque": p["index"],
-                        "support_g": round(tot, 2),
-                        "interface_g": round(interface, 2),
-                        "par_5mm_g": {str(k): round(v, 2) for k, v in sorted(bandes.items()) if v >= 0.05},
-                        "total_g": round(p["grammes"], 2),
-                        "secondes": round(p["secondes"]),
-                        "statut": "PASS" if tot < seuil else "WARN",
-                    }
-                )
+        for p in res:
+            g = lire_texte_gcode_3mf(f, f"Metadata/plate_{p['index']}.gcode")
+            bandes, interface = masse_support(g, aire, densite)
+            tot = sum(bandes.values())
+            if garder:
+                Path(garder).mkdir(parents=True, exist_ok=True)
+                (Path(garder) / f"plaque-{p['index']}.gcode").write_text(g, encoding="utf-8")
+            plaques.append(
+                {
+                    "plaque": p["index"],
+                    "support_g": round(tot, 2),
+                    "interface_g": round(interface, 2),
+                    "par_5mm_g": {str(k): round(v, 2) for k, v in sorted(bandes.items()) if v >= 0.05},
+                    "total_g": round(p["grammes"], 2),
+                    "secondes": round(p["secondes"]),
+                    "statut": "PASS" if tot < seuil else "WARN",
+                }
+            )
     return {
         "source": str(src),
         "seuil_g": seuil,

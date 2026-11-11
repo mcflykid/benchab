@@ -201,10 +201,22 @@ def test_options_invalides_refusees(tmp_path, options):
         controler(gcode, **options)
 
 
-def test_g92_xyz_marque_la_couverture_incomplete(tmp_path):
+def test_g92_xyz_preserve_la_continuite_du_repere_spatial(tmp_path):
     gcode = ecrire_gcode(
         tmp_path / "decalage.gcode",
         "M83\n;TYPE:Outer wall\nG92 X0\nG1 X1 Y0 Z2 E1\n",
+    )
+    resultat = controler(gcode)
+    assert resultat["statut"] == "PASS"
+    assert resultat["couverture_complete"] is True
+    assert resultat["couches"][0]["segments"] == 1
+
+
+def test_arc_exact_du_lecteur_reste_non_verifie_pour_continuite(tmp_path):
+    """La continuité refuse les arcs tant que son calcul de topologie est linéaire."""
+    gcode = ecrire_gcode(
+        tmp_path / "arc.gcode",
+        "G90\nM83\nG1 X1 Y0 Z2 F600\n;TYPE:Outer wall\nG3 X0 Y1 I-1 J0 E1\n",
     )
     resultat = controler(gcode)
     assert resultat["statut"] == "NON VÉRIFIÉ"

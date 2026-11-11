@@ -17,7 +17,7 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode import debit
 from benchab.gcode.lecture import lire_membre_3mf
@@ -173,15 +173,12 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
     except (ValueError, TypeError, KeyError) as exc:
         machine = {}
         note("profil maître", "FAIL", str(exc))
-    with zipfile.ZipFile(path) as archive:
-        if len(archive.namelist()) != len(set(archive.namelist())):
-            raise ValueError("membres ZIP dupliqués")
-        if archive.testzip() is not None:
-            raise ValueError("archive ZIP corrompue")
-        settings = schema_reglages.decoder(archive.read("Metadata/project_settings.config"))
+    with Archive3MF(path) as archive:
+        archive.verifier()
+        settings = archive.reglages()
         if not isinstance(settings, dict):
             raise ValueError("réglages projet objet JSON requis")
-        rapport["entrees"]["settings_sha256"] = _sha(archive.read("Metadata/project_settings.config"))
+        rapport["entrees"]["settings_sha256"] = _sha(archive.lire("Metadata/project_settings.config"))
         nozzle_type = str(settings.get("nozzle_type", "")).lower()
         suffix = SUFFIXES.get(nozzle_type, "")
         if not suffix and any(k.endswith(("_BRASS", "_HS")) for k in settings):
@@ -245,14 +242,14 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
             "raison": "Routage physique non prouvé par profil, déclaration ou sélection T.",
         }
         painting = any(
-            any(token in archive.read(n) for token in (b"paint_color", b"mmu_segmentation"))
-            for n in archive.namelist()
+            any(token in archive.lire(n) for token in (b"paint_color", b"mmu_segmentation"))
+            for n in archive.noms()
             if n.endswith(".model")
         )
         allowed_objects = {}
         plate_objects = collections.defaultdict(set)
-        if "Metadata/model_settings.config" in archive.namelist():
-            model = ET.fromstring(archive.read("Metadata/model_settings.config"))
+        if "Metadata/model_settings.config" in archive.noms():
+            model = archive.xml("Metadata/model_settings.config")
             identities = {}
             for obj in model.findall("object"):
                 md = {m.get("key"): m.get("value") for m in obj.findall("metadata")}
@@ -277,15 +274,15 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                         if im.get("object_id") in identities:
                             plate_objects[int(k)].add(identities[im["object_id"]])
         slice_filaments = {}
-        if "Metadata/slice_info.config" in archive.namelist():
-            for pl in ET.fromstring(archive.read("Metadata/slice_info.config")).findall("plate"):
+        if "Metadata/slice_info.config" in archive.noms():
+            for pl in archive.xml("Metadata/slice_info.config").findall("plate"):
                 md = {m.get("key"): m.get("value") for m in pl.findall("metadata")}
                 if str(md.get("index", "")).isdigit():
                     slice_filaments[int(md["index"])] = {f.get("id") for f in pl.findall("filament")}
         import re
 
         members = sorted(
-            (int(m.group(1)), n) for n in archive.namelist() if (m := re.fullmatch(r"Metadata/plate_(\d+)\.gcode", n))
+            (int(m.group(1)), n) for n in archive.noms() if (m := re.fullmatch(r"Metadata/plate_(\d+)\.gcode", n))
         )
         root_v = dict.fromkeys("XYZE", 0.0)
         root_acc = {"axes": {}, "M204": {}, "M205": {}, "SET_VELOCITY_LIMIT": {}}
@@ -497,6 +494,17 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                         root_acc["M205"].update(params)
                 if not move:
                     continue
+                arc = move["trajectory"] == "arc_g17_xy"
+                if arc:
+                    note(
+                        "trajectoire géométrique",
+                        "NON VÉRIFIÉ",
+                        "longueur et débit d’arc exacts ; limites XYZ et enveloppe exigent une courbe, pas la corde",
+                        plaque=number,
+                        outil=move["tool"],
+                        objet=move["object"],
+                        ligne=move["line"],
+                    )
                 length = move["length"]
                 feed = move["feed"] / 60
                 tool = move["tool"]
@@ -528,7 +536,7 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                     "R" if length <= 0 and abs(move["extrusion"]) > 0 else "P" if move["deposited"] > 0 else "T"
                 )
                 current_acc = acceleration.get(acc_category, acceleration.get("S"))
-                if current_acc is not None:
+                if current_acc is not None and not arc:
                     group["acceleration_commandee_mm_s2"] = max(
                         group["acceleration_commandee_mm_s2"] or 0.0, current_acc
                     )
@@ -566,7 +574,11 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                         )
                         continue
                     group["_vitesses"][round(feed, 3)] += length
-                    speeds = {axis: abs(b - a) / duration for axis, a, b in zip("XYZ", move["start"], move["end"])}
+                    speeds = (
+                        dict.fromkeys("XYZ", None)
+                        if arc
+                        else {axis: abs(b - a) / duration for axis, a, b in zip("XYZ", move["start"], move["end"])}
+                    )
                     speeds["E"] = abs(move["extrusion"]) / duration
                 elif abs(move["extrusion"]) > 0 and feed > 0:
                     duration = abs(move["extrusion"]) / feed
@@ -578,8 +590,16 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                 group["temps_nominal_s"] += duration
                 ptime += duration
                 for axis, speed in speeds.items():
-                    group["vitesse_axes_max_mm_s"][axis] = max(group["vitesse_axes_max_mm_s"][axis], speed)
-                    root_v[axis] = max(root_v[axis], speed)
+                    if speed is None:
+                        group["vitesse_axes_max_mm_s"][axis] = None
+                        root_v[axis] = None
+                        continue
+                    group["vitesse_axes_max_mm_s"][axis] = (
+                        max(group["vitesse_axes_max_mm_s"][axis], speed)
+                        if group["vitesse_axes_max_mm_s"][axis] is not None
+                        else None
+                    )
+                    root_v[axis] = max(root_v[axis], speed) if root_v[axis] is not None else None
                     if speed <= 0:
                         continue
                     key = "vitesse_" + ("xy" if axis in "XY" else axis.lower()) + "_mm_s"
@@ -614,14 +634,14 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
                         and len(volume_limits) == 3
                         and all(_positif(v) is not None for v in volume_limits)
                     )
-                    inside = valid_volume and all(
+                    inside = not arc and valid_volume and all(
                         -1e-6 <= v <= float(bound) + 1e-6
                         for point in (move["deposition_start"], move["end"])
                         for v, bound in zip(point, volume_limits)
                     )
                     note(
                         "volume XYZ déposé",
-                        "PASS" if inside else "FAIL" if valid_volume else "NON VÉRIFIÉ",
+                        "NON VÉRIFIÉ" if arc else "PASS" if inside else "FAIL" if valid_volume else "NON VÉRIFIÉ",
                         {"bornes_mm": volume_limits, "debut": move["deposition_start"], "fin": move["end"]},
                         plaque=number,
                         outil=tool,

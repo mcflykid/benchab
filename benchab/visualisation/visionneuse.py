@@ -411,6 +411,9 @@ class Visionneuse:
                         continue
                     for line in iter_lignes_gcode_3mf(tranche, nom_g):
                         event = parser.feed_line(line)
+                        if event and event["trajectory"] == "arc_g17_xy":
+                            parser.error("aperçu des supports : arc analytique non échantillonné comme corde")
+                            continue
                         if (
                             not event
                             or not (event.get("type") or "").startswith("Support")

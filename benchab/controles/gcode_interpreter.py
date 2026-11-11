@@ -3,9 +3,10 @@
 Interpréteur modal linéaire partagé. Aucun accès machine.
 
 XYZ absolus au départ ; E exige M82/M83 pour une mesure certifiable.
-Position E et dette de rétraction sur l’axe partagé. G92 change le repère sans effacer
-la dette. Les arcs et commandes qui changent le mouvement sans modèle explicite
-invalident la couverture ; les commandes de chauffe/ventilation sont ignorées.
+Position E et dette de rétraction sur l’axe partagé. G92 change le repère de commande
+sans déplacer la trajectoire continue ni effacer la dette. Seuls les arcs XY G17 décrits
+dans la documentation dédiée ont une longueur analytique ; les autres commandes qui
+changent le mouvement invalident la couverture ; chauffe/ventilation sont ignorées.
 Les limites de dynamique et la pressure advance sont relevées, sans simuler
 accélérations ni compensation du moteur : les mesures restent nominales.
 La grammaire reconnue ne prouve jamais son application par le firmware.
@@ -38,7 +39,10 @@ class Interpreter:
         self.error_limit = error_limit
         self.errors_truncated = False
         self.xyz = (0.0, 0.0, 0.0)
+        self.spatial_xyz = (0.0, 0.0, 0.0)
         self.relative_xyz = False
+        self.arc_center_relative = True
+        self.arc_plane = "G17"
         self.relative_e = None
         self.tool = tool
         self.e = {}
@@ -75,7 +79,8 @@ class Interpreter:
     def feed_line(self, line):
         """Lit une ligne ; positions et longueurs en mm, vitesse mm/min, ou None sans mouvement.
 
-        Aucune commande exécutée ; arcs non mesurables explicitement NON VÉRIFIÉS.
+        Aucune commande exécutée ; seuls les arcs G17 XY décrits dans la documentation
+        de continuité sont mesurés analytiquement.
         """
         c = self._preparer_ligne(line)
         if not c or self._traiter_objet(c):
@@ -323,8 +328,9 @@ class Interpreter:
         self.last_event = self._evenement("G28", dict.fromkeys(axes, 0.0), c, kind="homing")
         # L'ancien repère ne décrit plus le trajet qui suit le référencement.
         # Voir docs/reference/controles.md, contrôle de débit.
-        self._apres_homing = any(self.xyz)
+        self._apres_homing = any(self.spatial_xyz)
         self.xyz = tuple(0.0 if a in axes else p for a, p in zip("XYZ", self.xyz))
+        self.spatial_xyz = tuple(0.0 if a in axes else p for a, p in zip("XYZ", self.spatial_xyz))
         return None
 
     def _parametres(self, c, op, tail):
@@ -337,7 +343,7 @@ class Interpreter:
                 self.error("paramètres dupliqués ou invalides : " + c)
                 self.last_event = {"kind": "unsupported", "command": op, "parameters": {}, "raw": c}
                 return None
-        if op in {"M82", "M83", "G90", "G91", "G21"} or op.startswith("T"):
+        if op in {"M82", "M83", "G90", "G91", "G21", "G17", "G18", "G19", "G90.1", "G91.1"} or op.startswith("T"):
             if vals or tail.strip() or (op.startswith("T") and not re.fullmatch(r"T\d+", op)):
                 self.error("paramètres modaux non pris en charge : " + c)
                 self.last_event = {"kind": "unsupported", "command": op, "parameters": {}, "raw": c}
@@ -383,6 +389,12 @@ class Interpreter:
             return True
         if op == "G91":
             self.relative_xyz = True
+            return True
+        if op in {"G90.1", "G91.1"}:
+            self.arc_center_relative = op == "G91.1"
+            return True
+        if op in {"G17", "G18", "G19"}:
+            self.arc_plane = op
             return True
         if op.startswith("T"):
             self.tool = int(op[1:])
@@ -431,18 +443,34 @@ class Interpreter:
         return None
 
     def _mouvement(self, c, op, tail, vals):
-        """Calcule trajet et dépôt nominaux en mm, vitesse mm/min ; arcs sans modèle refusés."""
-        if WORDS.sub("", tail).strip() or any(k not in "XYZEF" for k in vals):
+        """Calcule trajet et dépôt nominaux en mm et durée en s, sans tessellation physique."""
+        if WORDS.sub("", tail).strip() or any(k not in "XYZEF" for k in vals if op in {"G0", "G1"}):
             self.error("paramètres mouvement non pris en charge : " + c)
+            return None
+        if op in {"G2", "G3"} and (WORDS.sub("", tail).strip() or any(k not in "XYZEFIJR" for k in vals)):
+            self.error("syntaxe d'arc non prise en charge : " + c)
             return None
         if "F" in vals and vals["F"] <= 0:
             self.error("vitesse non positive")
             return None
-        if op in {"G2", "G3"}:
-            self.error("arc non analysé : " + op)
+        if op in {"G2", "G3"} and vals.get("F", self.feed) <= 0:
+            self.error("arc sans vitesse d'avance connue")
             return None
-        start = self.xyz
-        end = tuple(p + vals.get(a, 0.0) if self.relative_xyz else vals.get(a, p) for a, p in zip("XYZ", start))
+        start = self.spatial_xyz
+        command_start = self.xyz
+        command_end = tuple(
+            p + vals.get(a, 0.0) if self.relative_xyz else vals.get(a, p)
+            for a, p in zip("XYZ", command_start)
+        )
+        # Appliquer le décalage de repère conserve exactement q lorsque G92 XYZ n'a rien décalé.
+        end = tuple(q + (p - r) for p, q, r in zip(start, command_end, command_start))
+        if not all(math.isfinite(v) for v in (*command_end, *end)):
+            self.error("repère de mouvement hors capacité numérique")
+            return None
+        if op in {"G2", "G3"}:
+            longueur = self._longueur_arc(op, c, command_start, command_end, vals)
+            if longueur is None:
+                return None
         self.feed = vals.get("F", self.feed)
         old = self.e.get(None, 0.0)
         de = 0.0
@@ -459,8 +487,9 @@ class Interpreter:
             deposited = max(0.0, de - debt)
             debt = max(0.0, debt - de)
         self.retracted[None] = debt
-        self.xyz = end
-        length = math.dist(start, end)
+        self.xyz = command_end
+        self.spatial_xyz = end
+        length = longueur if op in {"G2", "G3"} else math.dist(start, end)
         if length > 0 and self._apres_homing:
             self._apres_homing = False
             if deposited > 0:
@@ -468,12 +497,18 @@ class Interpreter:
                 self.last_event["homing_unverified"] = True
                 deposited = 0.0
         ratio = deposited / de if de > 0 else 0.0
-        deposition_start = tuple(b - (b - a) * ratio for a, b in zip(start, end))
+        # Les consommateurs géométriques refusent les arcs ; ne pas leur fournir une fausse corde (#123).
+        deposition_start = None if op in {"G2", "G3"} else tuple(
+            b - (b - a) * ratio for a, b in zip(start, end)
+        )
         return {
             "start": start,
             "end": end,
+            "spatial_start": start,
+            "spatial_end": end,
             "deposition_start": deposition_start,
             "length": length,
+            "duration_s": length / self.feed * 60 if self.feed > 0 else None,
             "deposited_length": length * ratio,
             "extrusion": de,
             "deposited": deposited,
@@ -482,7 +517,65 @@ class Interpreter:
             "type": self.kind,
             "object": self.object,
             "op": op,
+            "trajectory": "arc_g17_xy" if op in {"G2", "G3"} else "lineaire",
             "line": self.line_number,
             "layer": self.layer,
             "metadata": dict(self.metadata),
         }
+
+    def _longueur_arc(self, op, raw, start, end, vals):
+        """Mesure G17 XY en mm ; I/J relatifs ou R signé, None et aucun effet si invalide."""
+        if self.arc_plane != "G17":
+            self.error("plan d'arc non pris en charge : " + self.arc_plane)
+            return None
+        if not self.arc_center_relative:
+            self.error("centres d'arc absolus G90.1 non pris en charge : " + raw)
+            return None
+        has_ij = "I" in vals or "J" in vals
+        if has_ij == ("R" in vals):
+            self.error("arc XY exige I/J relatifs ou R signé : " + raw)
+            return None
+        sx, sy, sz = start
+        ex, ey, ez = end
+        dx, dy = ex - sx, ey - sy
+        if "R" in vals:
+            radius = abs(vals["R"])
+            chord = math.hypot(dx, dy)
+            if radius == 0 or chord == 0 or chord > 2 * radius + 1e-9:
+                self.error("rayon R d'arc invalide : " + raw)
+                return None
+            # Éviter inf-inf sur les carrés : une entrée finie ne justifie pas une fausse géométrie.
+            h = radius * math.sqrt(max(0.0, 1 - (chord / radius / 2) ** 2))
+            midx, midy = sx + dx / 2, sy + dy / 2
+            nx, ny = -dy / chord, dx / chord
+            candidats = ((midx + h * nx, midy + h * ny), (midx - h * nx, midy - h * ny))
+            centres = []
+            for cx, cy in candidats:
+                a0, a1 = math.atan2(sy - cy, sx - cx), math.atan2(ey - cy, ex - cx)
+                balayage = (a1 - a0) % (2 * math.pi) if op == "G3" else (a0 - a1) % (2 * math.pi)
+                centres.append((cx, cy, balayage))
+            majeur = vals["R"] < 0
+            cx, cy, balayage = next((v for v in centres if (v[2] > math.pi) == majeur), centres[0])
+        else:
+            cx, cy = sx + vals.get("I", 0.0), sy + vals.get("J", 0.0)
+            rayon = math.hypot(sx - cx, sy - cy)
+            rayon_fin = math.hypot(ex - cx, ey - cy)
+            if rayon <= 0 or not math.isclose(rayon, rayon_fin, rel_tol=1e-7, abs_tol=1e-6):
+                self.error("centre I/J et extrémité incohérents : " + raw)
+                return None
+            a0, a1 = math.atan2(sy - cy, sx - cx), math.atan2(ey - cy, ex - cx)
+            balayage = (a1 - a0) % (2 * math.pi) if op == "G3" else (a0 - a1) % (2 * math.pi)
+            if math.hypot(dx, dy) <= 1e-9:
+                balayage = 2 * math.pi
+        rayon = math.hypot(sx - cx, sy - cy)
+        if "R" in vals and math.hypot(dx, dy) <= 1e-9:
+            self.error("cercle complet exige I/J relatifs : " + raw)
+            return None
+        if rayon <= 0 or balayage <= 0:
+            self.error("géométrie d'arc dégénérée : " + raw)
+            return None
+        longueur = math.hypot(rayon * balayage, ez - sz)
+        if not math.isfinite(longueur):
+            self.error("géométrie d'arc hors capacité numérique : " + raw)
+            return None
+        return longueur

@@ -17,6 +17,7 @@ from pathlib import Path
 from xml.etree import ElementTree as E
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode import debit
 from benchab.gcode.lecture import lire_texte_gcode_3mf
@@ -31,15 +32,13 @@ def positive(value):
 def analyser(path, overrides=None, attendus=None):
     """Exécute analyser avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en
     unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
-    with zipfile.ZipFile(path) as z:
-        membres = z.namelist()
-        if len(membres) != len(set(membres)) or z.testzip() is not None:
-            raise ValueError("archive dupliquée ou corrompue")
-        st = schema_reglages.decoder(z.read("Metadata/project_settings.config"))
+    with Archive3MF(path) as z:
+        membres = z.noms()
+        st = z.reglages()
         caps = {str(i + 1): positive(v) for i, v in enumerate(st.get("filament_max_volumetric_speed", []))}
         if overrides is not None:
             caps = {str(k): positive(v) for k, v in overrides.items()}
-        si = E.fromstring(z.read("Metadata/slice_info.config"))
+        si = z.xml("Metadata/slice_info.config")
         res = {
             "fichier": Path(path).name,
             "plafonds_mm3_s": caps,
@@ -74,7 +73,7 @@ def analyser(path, overrides=None, attendus=None):
         if attendus is not None and {int(k) for k in attendus} != set(indices):
             raise ValueError("plaques différentes du manifeste attendu")
         if "Metadata/model_settings.config" in membres:
-            model = E.fromstring(z.read("Metadata/model_settings.config"))
+            model = z.xml("Metadata/model_settings.config")
             if len(model.findall("plate")) != len(indices):
                 raise ValueError("plaques différentes du modèle")
         for plate in si.findall("plate"):

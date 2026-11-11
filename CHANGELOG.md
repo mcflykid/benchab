@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.2.0 — 2026-11-11
+
+- G-code : arcs G2/G3 du dialecte G17 XY documenté calculés analytiquement, longueur et débit nominaux exacts ; repère spatial distinct après G92 XYZ. Les contrôles géométriques qui ne modélisent pas encore les arcs restent NON VÉRIFIÉS (#13).
+- Chemins et écritures : destinations privées et temporaires communes pour les exports, refus des sorties publiques même dans un checkout temporaire, gardes des hooks avant résolution et remplacements UTF-8 atomiques avec temporaires uniques (#17).
+- Archives : lecteur 3MF commun ouvert une fois par contexte, index non ambigu, budgets de décompression, XML sans DTD ni entité et réglages typés. Migration des contrôles de lecture ; parcours mémoire spécialisés déjà bornés conservés (#64).
+
+Les projets, préparations et connaissances privées sont conservés. Les règles
+strictes U25 de 1.1.0 restent applicables ; un résultat numérique ne vaut pas
+validation physique et aucune commande machine n’est nécessaire à cette mise à jour.
+
 ## 1.1.0 — 2026-11-11
 
 - U25 : calcul commun en mm³/s avec diamètre déclaré ; chaque dépassement établi du plafond donne FAIL, percentile 99 informatif, données insuffisantes NON VÉRIFIÉES (#12).

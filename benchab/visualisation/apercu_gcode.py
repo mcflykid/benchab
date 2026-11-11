@@ -133,6 +133,10 @@ def couches(g):
         d = math.hypot(nx - x, ny - y)
         if cur is not None and F > 0:
             cur["t"] += event["length"] / (F / 60)
+        if event["trajectory"] == "arc_g17_xy":
+            parser.error("aperçu géométrique des arcs non implémenté ; aucune corde tracée")
+            fermer()
+            continue
         if cur is not None and event["deposited"] > 0 and (event["deposited_length"] > 0) and (d > 0):
             sx, sy, _ = event["deposition_start"]
             start = [round(sx * Q), round(sy * Q)]

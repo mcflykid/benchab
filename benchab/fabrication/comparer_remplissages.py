@@ -311,6 +311,10 @@ def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
             dans_remplissage = ligne[6:].strip() == "Sparse infill"
         if mouvement is None:
             continue
+        if mouvement["trajectory"] == "arc_g17_xy":
+            lecteur.error("arc exact en longueur ; comparaison géométrique linéaire non vérifiée")
+            terminer_ilot()
+            continue
         if not dans_remplissage:
             continue
         if mouvement["extrusion"] < 0:
@@ -636,16 +640,17 @@ def cli(argv: list[str] | None = None) -> int:
         apres = {fichier.relative_to(prive).as_posix(): sha256_fichier(fichier) for fichier in fichiers}
         if apres != empreintes:
             raise ValueError("Une source a changé pendant la comparaison.")
-        temporaire = preuve.with_suffix(".json.tmp")
-        temporaire.write_text(
+        # Le nom unique conserve tout voisin et l'ancien état en cas d'échec (#17).
+        from benchab.qualite.ecritures import remplacer_texte
+
+        remplacer_texte(
+            preuve,
             json.dumps(
                 {"statut": "TERMINE", "sources_sha256": empreintes, "validation_physique": False},
                 ensure_ascii=False,
                 indent=2,
             ),
-            encoding="utf-8",
         )
-        temporaire.replace(preuve)
         return 0 if resultat.get("resultats") else 1
     except (OSError, ValueError, KeyError, TypeError, RuntimeError, zipfile.BadZipFile) as erreur:
         parser.error(str(erreur))

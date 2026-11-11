@@ -60,6 +60,10 @@ def analyser_gcode(g, plaque=1):
 
     for line in g.splitlines():
         move = it.feed_line(line)
+        if move and move["trajectory"] == "arc_g17_xy":
+            erreurs.append("arc analytique non pris en charge par l'approximation géométrique des zones")
+            it.error(erreurs[-1])
+            move = None
         if line.strip() == "; PURGE LINE":
             purge = True
         if line.startswith("; AFTER_LAYER_CHANGE") or line.startswith("EXCLUDE_OBJECT_START"):

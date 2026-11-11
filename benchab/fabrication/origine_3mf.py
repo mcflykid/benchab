@@ -40,17 +40,13 @@ def _sha256(chemin: Path, maximum: int) -> str:
 
 
 def _fichier_regulier(valeur, *, doit_exister=True) -> Path:
+    """Valide un chemin sans lien ; FAIL sur traversée/non-fichier, aucune modification du 3MF."""
+    from benchab.chemins import sans_lien
+
     brut = Path(valeur).expanduser()
     if ".." in brut.parts:
         raise ValueError("Traversée de chemin refusée")
-    chemin = brut.absolute()
-    if chemin.is_symlink():
-        raise ValueError("Lien symbolique refusé pour un 3MF ou un binaire")
-    courant = chemin.parent
-    while courant != courant.parent:
-        if courant.is_symlink():
-            raise ValueError("Parent symbolique refusé")
-        courant = courant.parent
+    chemin = sans_lien(brut, strict=doit_exister)
     if doit_exister:
         chemin = chemin.resolve(strict=True)
         if not chemin.is_file():
@@ -59,26 +55,22 @@ def _fichier_regulier(valeur, *, doit_exister=True) -> Path:
 
 
 def _racine_privee(chemin: Path) -> bool:
-    cible = chemin.absolute()
-    racines = [Path.cwd() / "prive"]
-    explicite = os.environ.get("BENCHAB_PRIVE")
-    if explicite:
-        racines.insert(0, Path(explicite).expanduser().absolute())
-    return cible.is_relative_to(Path("/private/tmp")) or any(
-        not racine.is_symlink() and cible.is_relative_to(racine.absolute()) for racine in racines
-    )
+    """Indique si la copie reste privée ou jetable selon la politique commune ; aucune écriture."""
+    from benchab.qualite.ecritures import sortie_privee
+
+    try:
+        sortie_privee(chemin)
+    except ValueError:
+        return False
+    return True
 
 
 def _destination_neuve(valeur) -> tuple[Path, Path]:
-    sortie = _fichier_regulier(valeur, doit_exister=False)
+    """Valide une copie neuve et son parent existant ; FAIL sur lien/hors atelier, sans écriture."""
+    from benchab.qualite.ecritures import destination_neuve
+
+    sortie = destination_neuve(_fichier_regulier(valeur, doit_exister=False))
     parent = sortie.parent.resolve(strict=True)
-    if not _racine_privee(sortie) or sortie.exists() or sortie.is_symlink():
-        raise ValueError("Destination neuve privée exigée")
-    courant = parent
-    while courant != courant.parent:
-        if courant.is_symlink():
-            raise ValueError("Parent symbolique refusé")
-        courant = courant.parent
     return parent / sortie.name, parent
 
 

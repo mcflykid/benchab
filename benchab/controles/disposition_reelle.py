@@ -32,6 +32,9 @@ def analyser(fichier, placement, plateau=None):
         gcode = lire_texte_gcode_3mf(fichier, f"Metadata/plate_{numero}.gcode")
         for ligne in gcode.splitlines():
             mouvement = interpreteur.feed_line(ligne)
+            if mouvement and mouvement["trajectory"] == "arc_g17_xy":
+                interpreteur.error("arc analytique non évalué par les enveloppes linéaires")
+                continue
             if not mouvement or mouvement["deposited_length"] <= 0:
                 continue
             x0, y0 = mouvement["deposition_start"][:2]

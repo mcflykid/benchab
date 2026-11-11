@@ -5,10 +5,9 @@ Refuse les identifiants de témoin dans une préparation destinée à l'impressi
 """
 
 import json
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile
 
-from benchab import reglages as schema_reglages
-from benchab.gcode.lecture import ouvrir_membre_3mf
+from benchab.archives_3mf import Archive3MF
 
 MARQUEUR = b"BENCHAB-temporaire-"
 
@@ -32,23 +31,19 @@ def controler(chemin):
     membres = []
     champs = []
     try:
-        with ZipFile(chemin) as archive:
-            reglages = schema_reglages.decoder(archive.read("Metadata/project_settings.config"))
+        with Archive3MF(chemin) as archive:
+            reglages = archive.reglages()
             if not isinstance(reglages, dict):
                 raise ValueError("configuration projet non structurée")
             for cle, valeur in reglages.items():
                 if "BENCHAB-temporaire-" in json.dumps(valeur, ensure_ascii=False):
                     champs.append(cle)
-            for membre in archive.infolist():
-                if membre.is_dir():
+            for membre in archive.noms():
+                if membre.endswith("/"):
                     continue
-                ouverture = (
-                    ouvrir_membre_3mf(chemin, membre.filename)
-                    if membre.filename.lower().endswith(".gcode") else archive.open(membre)
-                )
-                with ouverture as flux:
+                with archive.ouvrir(membre) as flux:
                     if _contient_marqueur(flux):
-                        membres.append(membre.filename)
+                        membres.append(membre)
     except (OSError, BadZipFile, KeyError, ValueError, RuntimeError):
         return {
             "controle": "identifiants de filaments définitifs",

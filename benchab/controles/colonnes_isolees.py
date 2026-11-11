@@ -66,6 +66,9 @@ def couches(g):
     it = Interpreter()
     for line in g.splitlines():
         move = it.feed_line(line)
+        if move and move["trajectory"] == "arc_g17_xy":
+            it.error("arc exact en longueur ; analyse de colonne linéaire non prise en charge")
+            move = None
         if line.startswith(";LAYER_CHANGE"):
             cur = {"z": None, "piece": [], "support": [], "trajets": [], "erreurs": it.errors}
             out.append(cur)
