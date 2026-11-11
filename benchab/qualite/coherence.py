@@ -12,6 +12,7 @@ from benchab.donnees.base import (
     APPLICATION_ID,
     TABLES,
     _signature_export,
+    lignes_export,
 )
 from benchab.qualite.ecritures import _sans_lien
 
@@ -284,7 +285,7 @@ def _empreinte_membre_export(dossier_fd, nom):
     return hachage.hexdigest(), signature
 
 
-def _manifeste_export(dossier_fd, erreurs, signatures):
+def _manifeste_export(dossier_fd, erreurs, signatures, *, empreintes_brutes=None):
     """Lit le manifeste par le descripteur du dossier, dans la borne de 100 Ko."""
     try:
         fd, signature = _ouvrir_membre_export(dossier_fd, "manifest.json")
@@ -309,6 +310,8 @@ def _manifeste_export(dossier_fd, erreurs, signatures):
     except (ValueError, RecursionError):
         erreurs.append("Manifeste d’export mal formé : export/manifest.json")
         return None
+    if empreintes_brutes is not None:
+        empreintes_brutes["manifest.json"] = hashlib.sha256(donnees).hexdigest()
     return manifeste
 
 
@@ -351,25 +354,34 @@ def _verifier_exports(root, connexion):
             os.close(descripteur)
 
 
+def _contrat_manifeste_export(manifeste, version):
+    """Vérifie la liste, la version et les SHA-256 déclarés, sans lire de table."""
+    if manifeste is None:
+        return None, []
+    erreurs = []
+    if manifeste.get("tables") != list(TABLES):
+        erreurs.append("Liste des tables exportées divergente")
+    schema = manifeste.get("schema")
+    if type(schema) is not int or schema != version:
+        erreurs.append("Version du schéma exporté divergente")
+    empreintes = manifeste.get("sha256")
+    if (
+        not isinstance(empreintes, dict) or set(empreintes) != set(TABLES)
+        or any(not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{64}", sha) for sha in empreintes.values())
+    ):
+        erreurs.append("Empreintes du manifeste d’export mal formées")
+        empreintes = None
+    return empreintes, erreurs
+
+
 def _comparer_exports_epingles(connexion, descripteurs, noms, export_fd, signature_dossier):
     """Compare les exports ouverts et revalide tous leurs noms avant de rendre le rapport."""
     erreurs = []
     signatures = {}
     manifeste = _manifeste_export(export_fd, erreurs, signatures)
-    empreintes = None
-    if manifeste is not None:
-        if manifeste.get("tables") != list(TABLES):
-            erreurs.append("Liste des tables exportées divergente")
-        schema = manifeste.get("schema")
-        if type(schema) is not int or schema != connexion.execute("PRAGMA user_version").fetchone()[0]:
-            erreurs.append("Version du schéma exporté divergente")
-        empreintes = manifeste.get("sha256")
-        if (
-            not isinstance(empreintes, dict) or set(empreintes) != set(TABLES)
-            or any(not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{64}", sha) for sha in empreintes.values())
-        ):
-            erreurs.append("Empreintes du manifeste d’export mal formées")
-            empreintes = None
+    version = connexion.execute("PRAGMA user_version").fetchone()[0]
+    empreintes, diagnostics = _contrat_manifeste_export(manifeste, version)
+    erreurs.extend(diagnostics)
     for table in TABLES:
         nom = table + ".jsonl"
         try:
@@ -385,10 +397,8 @@ def _comparer_exports_epingles(connexion, descripteurs, noms, export_fd, signatu
             erreurs.append(f"Export lié ou illisible : {table} ({type(exc).__name__})")
             continue
         attendu = hashlib.sha256()
-        for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
-            attendu.update(
-                (json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n").encode()
-            )
+        for octets in lignes_export(connexion, table):
+            attendu.update(octets)
         if attendu.hexdigest() != reel or (empreintes is not None and reel != empreintes[table]):
             erreurs.append("Export non conforme au registre : " + table)
     try:

@@ -199,6 +199,18 @@ def parser():
         "--candidat-lien", action="append", default=[], metavar="CHEMIN",
         help="Candidat privé relatif ; propose un lien uniquement si un SHA unique correspond au rendu SQLite",
     )
+    reprise_export = controle.add_parser(
+        "preparer-reprise-export", help="Prépare la copie vérifiée d’un export absent, sans l’appliquer"
+    )
+    reprise_export.add_argument("--table", required=True, help="Table canonique BENCHAB à recopier")
+    reprise_export.add_argument("--sortie", type=Path, required=True, help="Dossier neuf, hors export")
+    coutures = controle.add_parser(
+        "coutures", help="Contrôle les coutures de paroi sur les régions visibles ou cachées déclarées"
+    )
+    coutures.add_argument("source", type=Path, help="3MF tranché exact, lié par son SHA")
+    coutures.add_argument("--declaration", type=Path, required=True, help="Déclaration de visibilité privée")
+    coutures.add_argument("--sortie", type=Path, help="Dossier neuf pour le rapport et son aperçu SVG")
+    coutures.add_argument("--detail", action="store_true", help="Afficher aussi le rapport intégral")
     consommation_retour = controle.add_parser(
         "consommation-retour", help="Lit un plan numérique de filament pour un retour identifié"
     )
@@ -947,9 +959,9 @@ def _mesurer_refus(argv, commande, code):
 def main(argv=None):
     """Distribue les commandes, codes CLI et durées s, sans autorisation machine implicite.
 
-    Les plans `controle plan-reparation` et `controle consommation-retour` ne créent
-    ni atelier ni mesure. --help/--version restent sans effet ; seul init crée un
-    atelier CLI absent (docs/reference/chemins-et-atelier.md).
+    Les plans de réparation et de consommation, la copie d’export et le contrôle
+    des coutures ne créent ni atelier ni mesure. --help/--version restent sans
+    effet ; seul init crée un atelier CLI absent (docs/reference/chemins-et-atelier.md).
     """
     from benchab.chemins import atelier_prive
 
@@ -958,9 +970,11 @@ def main(argv=None):
         argv[i] == "controle" and argv[i + 1] in {
             "installation",
             "plan-reparation",
+            "preparer-reprise-export",
             "appliquer-reparation-vue",
             "entretien",
             "consommation-retour",
+            "coutures",
         }
         for i in range(len(argv) - 1)
     ) or any(
@@ -992,6 +1006,30 @@ def main(argv=None):
         rapport = planifier(atelier_prive(arguments.prive), candidats=arguments.candidat_lien)
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
         return rapport["code"]
+    if arguments.commande == "controle" and arguments.controle == "preparer-reprise-export":
+        from benchab.qualite.reprise_export import preparer
+
+        # Le dossier explicite reçoit la preuve ; Base() n’est jamais ouvert (#119).
+        try:
+            rapport = preparer(arguments.prive, arguments.table, arguments.sortie)
+        except (OSError, ValueError, sqlite3.Error) as erreur:
+            print(f"BENCHAB : préparation de reprise refusée : {erreur}", file=sys.stderr)
+            return 2
+        print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+        return 0
+    if arguments.commande == "controle" and arguments.controle == "coutures":
+        from benchab.qualite.statuts import code_statut
+        from benchab.visualisation.apercu_coutures import controler_declaration, publier
+
+        try:
+            rapport = controler_declaration(arguments.source, arguments.declaration, prive=arguments.prive)
+            sortie = publier(rapport, arguments.sortie, prive=arguments.prive) if arguments.sortie else None
+            print(json.dumps(rapport if sortie is None or arguments.detail else sortie,
+                             ensure_ascii=False, indent=2, allow_nan=False))
+        except (OSError, ValueError, KeyError) as erreur:
+            print(f"BENCHAB : contrôle des coutures refusé : {erreur}", file=sys.stderr)
+            return 2
+        return code_statut(rapport["statut"])
     if arguments.commande == "controle" and arguments.controle == "consommation-retour":
         from benchab.projets.plan_consommation import planifier_lecture
 

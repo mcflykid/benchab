@@ -47,6 +47,10 @@ _OUTIL = re.compile(r"^\s*T(\d+)(?=\s|;|$)")
 
 
 def sha(p):
+    """Calcule le SHA-256 d’un fichier local en flux.
+
+    Renvoie une empreinte hexadécimale sans charger le fichier entier en mémoire.
+    """
     h = hashlib.sha256()
     with open(p, "rb") as f:
         for b in iter(lambda: f.read(1 << 20), b""):
@@ -154,6 +158,10 @@ def temperature_appliquee(st):
 
 
 def envois(source):
+    """Liste les archives G-code 3MF sous une source explicite.
+
+    Renvoie des chemins locaux ; leur présence ne prouve ni transmission ni impression.
+    """
     return sorted(source.glob("*/*.gcode.3mf")) + sorted(source.glob("*.gcode.3mf")) if source.is_dir() else []
 
 
@@ -287,6 +295,11 @@ def archiver(source, archive):
 
 
 def main(argv=None, *, prive=None):
+    """Liste ou archive des exports G-code 3MF.
+
+    Renvoie 0 sans erreur, 1 si des fichiers sont illisibles, ou 2 sur refus CLI ;
+    aucune action machine n’est exécutée.
+    """
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)

@@ -22,6 +22,7 @@ LIMITES = [
 
 
 def nombre(v, nom, minimum=0, strict=True):
+    """Valide une entrée numérique finie ; la valeur de retour garde l’unité du champ, sans statut."""
     if (
         isinstance(v, bool)
         or not isinstance(v, (int, float))
@@ -33,6 +34,7 @@ def nombre(v, nom, minimum=0, strict=True):
 
 
 def section(spec, epaisseur=None):
+    """Calcule les caractéristiques de sections déclarées ; entrées en mm, aires en mm² et inerties en mm⁴."""
     forme = spec.get("forme")
     t = nombre(epaisseur if epaisseur is not None else spec.get("epaisseur_mm"), "Épaisseur")
     if forme == "rectangle":
@@ -70,6 +72,7 @@ def section(spec, epaisseur=None):
 
 
 def densite(v):
+    """Convertit une densité déclarée en pourcentage vers une fraction sans unité, entre 0 et 1."""
     if isinstance(v, str):
         v = float(v.rstrip("%"))
     v = nombre(v, "Densité", strict=False)
@@ -114,6 +117,11 @@ def fleche_ef(force, longueur, rigidite, elements=8):
 
 
 def calculer(cas, reglages=None, registre=None):
+    """Estime une contrainte et un coefficient sans unité depuis un effort en N et des cotes en mm.
+
+    Renvoie PASS, WARN, FAIL ou NON VERIFIE selon les données déclarées ; ne certifie
+    ni la pièce réelle ni ses propriétés et ne modifie aucun réglage.
+    """
     reglages = reglages or {}
     try:
         if not isinstance(registre, dict):
@@ -226,6 +234,7 @@ def calculer(cas, reglages=None, registre=None):
 
 
 def lire_parametres(projet):
+    """Lit littéralement EFFORTS et REMPLISSAGE sans exécuter le fichier ; renvoie déclarations et SHA-256."""
     p = Path(projet) / "src/parametres.py"
     if not p.exists():
         return {}, None
@@ -245,6 +254,7 @@ def lire_parametres(projet):
 
 
 def evaluer_piece(cas, usage="non_declare", reglages=None, registre=None):
+    """Résume les cas mécaniques d’une pièce ; conserve statuts et coefficient minimal sans unité."""
     if usage == "decoratif" and not cas:
         return {
             "statut": "NON APPLICABLE",
@@ -298,6 +308,10 @@ def reglages_3mf(path):
 
 
 def auditer_projet(projet, tranche=None, registre=None):
+    """Audite les déclarations des pièces et réglages 3MF ; rapporte statuts, SHA et limites, sans modifier le projet.
+
+    Le registre et le fichier tranché sont facultatifs ; les preuves manquantes restent explicites.
+    """
     projet = Path(projet)
     declarations, h = lire_parametres(projet)
     efforts = declarations.get("EFFORTS") or {}
@@ -361,12 +375,14 @@ def auditer_projet(projet, tranche=None, registre=None):
 
 
 def cle_classement(variante):
+    """Produit la clé de tri d’une variante selon imprimabilité, statut, heures et grammes déclarés."""
     st = variante.get("resistance_calculee", {}).get("statut", "NON VERIFIE")
     rang = {"PASS": 0, "NON APPLICABLE": 0, "WARN": 1, "NON VERIFIE": 2, "FAIL": 3}.get(st, 3)
     return (bool(variante.get("alerte_imprimabilite")), rang, variante["heures"], variante["grammes"])
 
 
 def main(argv=None, *, prive=None):
+    """Audite les déclarations mécaniques et écrit un rapport neuf ; renvoie un code de statut."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--projet", type=Path, required=True)
     p.add_argument("--json", type=Path, required=True)

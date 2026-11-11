@@ -82,6 +82,19 @@ def _export_identique(path, attendu):
         flux.close()
 
 
+def lignes_export(connexion, table):
+    """Produit les lignes JSONL canoniques d’une table BENCHAB, en octets UTF-8.
+
+    La connexion fournie conserve son instantané et doit renvoyer des lignes
+    SQLite nommées. La table doit être connue ; aucune écriture n’a lieu.
+    """
+    if table not in TABLES:
+        raise ValueError("Table d’export BENCHAB inconnue.")
+    for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
+        texte = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
+        yield texte.encode("utf-8")
+
+
 class Base:
     """Base canonique privée ; chemins explicites et données en unités natives, aucune commande machine.
 
@@ -209,9 +222,7 @@ class Base:
 
     def _lignes_canoniques(self, table):
         """Rend les lignes JSONL dans les mêmes octets pour comparaison et publication."""
-        for ligne in self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
-            texte = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
-            yield texte.encode("utf-8")
+        yield from lignes_export(self.connexion, table)
 
     def _ecrire_table_temporaire(self, table, dossier):
         """Sérialise une table SQLite en UTF-8 JSONL temporaire ; renvoie son SHA-256 hexadécimal."""

@@ -23,6 +23,7 @@ IDENTITE = {"name", "type", "base_id", "version", "inherits", "print_settings_id
 
 
 def sha(chemin: str | Path) -> str:
+    """Calcule le SHA-256 d’un fichier local ; renvoie l’empreinte hexadécimale sans modifier la source."""
     return sha256_fichier(chemin)
 
 
@@ -222,6 +223,11 @@ def auditer_profil(
 
 
 def auditer_machine(base: Base, chemin: str | Path, maitre=None) -> dict:
+    """Compare un profil machine privé au profil maître.
+
+    Conserve les valeurs déclarées et signale FAIL ou NON VÉRIFIÉ ; aucune capacité
+    physique n’est déduite des limites de configuration.
+    """
     fichier = _fichier_prive(base, chemin)
     brut = _json_objet(fichier)
     if brut.get("type") not in ("printer", "machine"):
@@ -274,6 +280,11 @@ def auditer_machine(base: Base, chemin: str | Path, maitre=None) -> dict:
 
 
 def proposer_strategies(st: dict, selection=("adaptivecubic", "combinaison"), usage="non_declare") -> list[dict]:
+    """Construit jusqu’à trois variantes candidates à partir des réglages typés.
+
+    Les distances nominales sont en mm ; chaque variante reste expérimentale,
+    sans adoption automatique ni validation physique.
+    """
     if (
         not isinstance(selection, (tuple, list))
         or not 1 <= len(selection) <= 3
@@ -330,6 +341,11 @@ def preparer_etude(
     usage="non_declare",
     maitre=None,
 ) -> dict:
+    """Prépare une étude privée depuis un 3MF et un STL dont les cotes sont en mm.
+
+    Publie les copies et le manifeste dans un dossier neuf ; aucune source ou
+    préparation figée n’est modifiée, aucune impression n’est lancée.
+    """
     source = _fichier_prive(base, base_3mf)
     fichier_modele = _fichier_prive(base, modele)
     if fichier_modele.suffix.lower() != ".stl":

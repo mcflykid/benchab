@@ -284,6 +284,7 @@ def test_top_objet_8_et_projet_5_conserves_dans_sortie_tranchee(tmp_path, monkey
     source = entree_3mf(tmp_path / "source.3mf", tops=("8",), modele=modele, buse=buse)
     original = source.read_bytes()
     monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+    natifs = {}
 
     class SlicerSimule:
         def __init__(self, commande, **options):
@@ -300,9 +301,19 @@ def test_top_objet_8_et_projet_5_conserves_dans_sortie_tranchee(tmp_path, monkey
                         '<metadata key="prediction" value="1"/><metadata key="weight" value="1"/></plate></config>'
                     ),
                 )
+            natifs[sortie] = sortie.read_bytes()
             self.pid = 12345
             self.returncode = None
 
+    publier = trancher._publier_sortie
+
+    def publier_copie(fichier, destination):
+        natif, = natifs
+        assert fichier != natif
+        assert natif.read_bytes() == natifs[natif]
+        return publier(fichier, destination)
+
+    monkeypatch.setattr(trancher, "_publier_sortie", publier_copie)
     monkeypatch.setattr(trancher.subprocess, "Popen", SlicerSimule)
     ressources = SimpleNamespace(ru_utime=0, ru_stime=0, ru_maxrss=1)
     monkeypatch.setattr(trancher.os, "wait4", lambda pid, options: (pid, 0, ressources))
@@ -828,3 +839,92 @@ def test_normaliser_preserve_commentaires_pi_ordre_infos_et_commentaire_zip(tmp_
         assert b"<!-- garder -->" in contenu_modele
         assert b"<?apres garder?>" in contenu_modele
         assert apres.read("Metadata/extra.bin") == b"copie binaire"
+
+
+def test_restauration_refuse_la_substitution_apres_integrite(tmp_path, monkeypatch):
+    """Une version arrivée après le contrôle ne peut pas être écrasée."""
+    from benchab.fabrication import tranchage_copies
+
+    source = entree_3mf(tmp_path / "source.3mf")
+    nouvelle = b"autre version de la fixture"
+    verifier = tranchage_copies.integrite_3mf.verifier
+
+    def verifier_puis_remplacer(chemin, copie, permis):
+        resultat = verifier(chemin, copie, permis)
+        autre = tmp_path / "autre.3mf"
+        autre.write_bytes(nouvelle)
+        autre.replace(source)
+        return resultat
+
+    monkeypatch.setattr(tranchage_copies.integrite_3mf, "verifier", verifier_puis_remplacer)
+    with pytest.raises(ValueError, match="(?i)source|modifi"):
+        trancher.restaurer_noms(source, ["Autre nom"])
+    assert source.read_bytes() == nouvelle
+    assert not list(tmp_path.glob(".noms-*"))
+
+
+def test_restauration_noms_dans_copie_preserve_native_et_membres(tmp_path):
+    """La nouvelle destination est exclusive et laisse le G-code natif intact."""
+    source = entree_3mf(tmp_path / "native.3mf")
+    with ZipFile(source, "a") as archive:
+        archive.comment = b"commentaire fixture"
+        archive.writestr("Metadata/plate_1.gcode", b"G90\r\n")
+        archive.writestr("Metadata/annexe.txt", b"preuve")
+    avant = source.read_bytes()
+    sortie = tmp_path / "restauree.3mf"
+    rapport = trancher.restaurer_noms(source, ["Nom restauré"], destination=sortie)
+    assert rapport["reouverture"] == "PASS" and rapport["noms"] == ["Nom restauré"]
+    assert source.read_bytes() == avant
+    with ZipFile(source) as natif, ZipFile(sortie) as apres:
+        assert natif.namelist() == apres.namelist() and natif.comment == apres.comment
+        assert all(natif.read(nom) == apres.read(nom) for nom in natif.namelist()
+                   if nom != "Metadata/model_settings.config")
+    preuve = sortie.read_bytes()
+    with pytest.raises(ValueError, match="empreinte"):
+        trancher.restaurer_noms(source, ["Nom restauré"], empreinte_source="0" * 64)
+    with pytest.raises(FileExistsError):
+        trancher.restaurer_noms(source, ["Autre nom"], destination=sortie)
+    assert sortie.read_bytes() == preuve and source.read_bytes() == avant
+
+
+@pytest.mark.parametrize("copie_neuve", [False, True])
+def test_restauration_refuse_octet_altere_apres_publication(tmp_path, monkeypatch, copie_neuve):
+    """Même avec une taille et un mtime conservés, l’empreinte finale doit être exacte."""
+    import os
+
+    from benchab.qualite import ecritures
+
+    source = entree_3mf(tmp_path / "native.3mf")
+    with ZipFile(source, "a") as archive:
+        archive.comment = b"natif"
+    cible = tmp_path / "restauree.3mf" if copie_neuve else source
+
+    def alterer(path):
+        info = path.stat()
+        donnees = path.read_bytes()
+        assert donnees.endswith(b"natif")
+        path.write_bytes(donnees[:-1] + b"x")
+        os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns))
+
+    if copie_neuve:
+        renommer = ecritures.renommer_exclusif
+
+        def publication(temporaire, destination):
+            renommer(temporaire, destination)
+            alterer(Path(destination))
+
+        monkeypatch.setattr(ecritures, "renommer_exclusif", publication)
+    else:
+        remplacer = Path.replace
+
+        def remplacement(temporaire, destination):
+            resultat = remplacer(temporaire, destination)
+            if Path(destination) == source:
+                alterer(source)
+            return resultat
+
+        monkeypatch.setattr(Path, "replace", remplacement)
+
+    with pytest.raises(ValueError, match="(?i)copie publi|empreinte"):
+        trancher.restaurer_noms(source, ["Nom restauré"], **({"destination": cible} if copie_neuve else {}))
+    assert cible.read_bytes().endswith(b"natix")

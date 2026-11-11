@@ -13,11 +13,16 @@ def test_rejouer_identifiant_change_code_sans_doubler_mesure_ni_duree(tmp_path, 
     try:
         seance.ouvrir(base)
         identifiant = "mesure-rejouee"
+        # Un début réel ajouté à la durée peut franchir un seuil de précision
+        # flottante. Les deux instants simulés sont représentables exactement (#185).
+        horloge = [1000.5]
+        monkeypatch.setattr("benchab.mesure.collecte.time.perf_counter", lambda: horloge[0])
         mesure = Mesure()
         mesure.identifiant = identifiant
-        monkeypatch.setattr("benchab.mesure.collecte.time.perf_counter", lambda: mesure.debut + 2.5)
 
+        horloge[0] = 1003.0
         mesure.enregistrer(base, "controle plaques", 1)
+        horloge[0] = 1010.0
         mesure.enregistrer(base, "controle plaques", 0)
 
         ligne = base.connexion.execute(
@@ -44,8 +49,10 @@ def test_mesure_stocke_unites_et_seance_valide(tmp_path, monkeypatch):
             lambda _cible: SimpleNamespace(ru_utime=0.0, ru_stime=0.0, ru_maxrss=64),
         )
         monkeypatch.setattr("benchab.mesure.collecte.sys.platform", "darwin")
+        horloge = [300.5]
+        monkeypatch.setattr("benchab.mesure.collecte.time.perf_counter", lambda: horloge[0])
         mesure = Mesure()
-        monkeypatch.setattr("benchab.mesure.collecte.time.perf_counter", lambda: mesure.debut + 1.25)
+        horloge[0] = 301.75
         mesure.enregistrer(base, "vote preparation", 0)
 
         ligne = base.connexion.execute("SELECT * FROM mesures WHERE id = ?", (mesure.identifiant,)).fetchone()

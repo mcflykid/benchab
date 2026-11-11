@@ -41,6 +41,10 @@ OBJETS = "Metadata/model_settings.config"
 
 
 def positif(valeur, nom: str, *, nul: bool = False) -> float:
+    """Valide un réel fini selon le plancher demandé.
+
+    Renvoie la valeur dans l’unité du champ ; refuse booléens et valeurs non finies.
+    """
     if isinstance(valeur, bool):
         raise ValueError(f"{nom} : booléen interdit.")
     try:
@@ -113,6 +117,7 @@ def lire_3mf(source: str | Path):
 
 
 def charger_fabrication(projet: str | Path, objectif: str | None = None) -> dict:
+    """Charge FABRICATION.json schema 1 et choisit l’objectif ; ne modifie ni le projet ni ses réglages."""
     chemin = Path(projet) / "FABRICATION.json"
     donnees = json.loads(chemin.read_text(encoding="utf-8")) if chemin.is_file() else {"schema": 1}
     if not isinstance(donnees, dict) or type(donnees.get("schema")) is not int or donnees["schema"] != 1:
@@ -154,6 +159,11 @@ def _lire_maitre(base: Base, config: dict, maitre):
 
 
 def filaments(st: dict, config: dict, base: Base) -> tuple[dict, list[str]]:
+    """Relie les profils filament déclarés aux valeurs embarquées.
+
+    Les limites sont en mm³/s, les températures en °C et le diamètre en mm ;
+    renvoie alertes et profils sans imputer une consommation à une bobine.
+    """
     ids = st.get("filament_settings_id")
     if not isinstance(ids, list) or not ids or any(not isinstance(item, str) or not item for item in ids):
         raise ValueError("Identifiants des filaments embarqués absents.")
@@ -456,6 +466,11 @@ def clone(source: str | Path, cible: str | Path, proposition: dict | None = None
 
 
 def decision_candidat(capacites: dict, controles: dict, alertes: list[str]) -> tuple[str, str]:
+    """Agrège les contrôles et alertes d’un candidat.
+
+    Renvoie une décision et un statut PASS, WARN, FAIL ou NON VÉRIFIÉ ;
+    aucune tenue physique n’est certifiée.
+    """
     obligatoires = {"routine", "premiere_couche", "zones_locales", "resistance", "geometrie"}
     if not obligatoires.issubset(controles) or not controles["premiere_couche"] or not controles["zones_locales"]:
         return "À revoir", "NON VÉRIFIÉ"
