@@ -46,18 +46,21 @@ de l’agent, à côté du lien existant. Depuis la racine du projet où le skil
 être découvert :
 
 ```sh
-npx --yes openskills install mcflykid/benchab --universal -y
-npx --yes openskills list
-npx --yes openskills read benchab
+DEPOT_BENCHAB="$(git -C /chemin/vers/le/checkout-BENCHAB remote get-url origin)"
+npx --yes --package=openskills@1.5.0 openskills install "$DEPOT_BENCHAB" --universal -y
+npx --yes --package=openskills@1.5.0 openskills list
+npx --yes --package=openskills@1.5.0 openskills read benchab
 ```
 
 Cette option requiert Node.js 20.6 ou ultérieur et un accès réseau au dépôt ;
-OpenSkills est lancé par `npx`, sans installation globale. `--universal` place
-la copie dans `.agent/skills/benchab`. Le lien BENCHAB géré par `benchab skill`
-reste indépendant et suit directement le checkout local. Pour actualiser une
-copie OpenSkills installée depuis GitHub, exécuter `npx --yes openskills update
-benchab`. Cette voie ne remplace pas `uv sync --locked` et n’installe pas les
-dépendances Python.
+OpenSkills est lancé par `npx`, sans installation globale. La variable reprend
+l’URL `origin` du checkout ; elle ne transmet aucun chemin local `prive/` ni
+`BENCHAB_PRIVE`. `--universal` place la copie dans `.agent/skills/benchab`. Le
+lien BENCHAB géré par `benchab skill` reste indépendant et suit directement le
+checkout local. Pour actualiser une copie OpenSkills installée depuis GitHub,
+exécuter `npx --yes --package=openskills@1.5.0 openskills update benchab`.
+Cette voie ne remplace pas `uv sync --locked` et n’installe pas les dépendances
+Python.
 
 Voir le [format Agent Skills](https://agentskills.io/specification) et le
 [guide officiel OpenSkills](https://github.com/numman-ali/openskills).
