@@ -4,15 +4,16 @@ Dans l’éprouvette de remplissage localisé, BENCHAB compare B à A : même fo
 mêmes régions mesurées, et hausse de densité déclarée pour le modificateur.
 La troisième variante change aussi les parois et reste hors de ce verdict.
 
-Le dépôt clairsemé est mesuré en mm à 0,1 mm près. Les deux arrondis
-indépendants peuvent déplacer un écart de 0,1 mm :
+Le dépôt clairsemé est mesuré en mm à 0,1 mm près. Deux arrondis
+indépendants donnent un intervalle de ±0,1 mm autour de chaque écart affiché.
+La comparaison exige que tout l’intervalle du contrôle hors zone soit contenu
+entre −0,1 et +0,1 mm.
 
-- **PASS** : hausse supérieure à 0,1 mm dans la zone et écart hors zone au
-  plus égal à 0,1 mm.
-- **FAIL** : la hausse attendue n’est pas mesurée ou le dépôt diminue alors
-  que le témoin hors zone reste comparable.
-- **NON VÉRIFIÉ** : mesures manquantes, dépôt de référence insuffisant ou
-  variation du contrôle hors zone au-delà de la précision de mesure.
+- **PASS** : le bas de l’intervalle de hausse dans la zone dépasse +0,1 mm.
+- **FAIL** : l’intervalle de l’effet reste entièrement entre −0,1 et +0,1 mm
+  (effet nul à cette précision) ou entièrement sous −0,1 mm (effet inversé).
+- **NON VÉRIFIÉ** : mesures manquantes, dépôt insuffisant, stabilité hors
+  zone non établie ou intervalle de l’effet à cheval sur le seuil.
 
 Sur la sonde synthétique de la [qualification multi-volumes](integrite-3mf.md#qualification-native-dun-modificateur-48),
 le dépôt dans une boîte intérieure de 8 × 8 × 4 mm passe de 628,2 à

@@ -185,12 +185,19 @@ def evaluer_effet_densite(temoin, variante):
     if min(a, controle_a, controle_b) <= seuil:
         return {**rapport, "detail": "Dépôts de référence ou de contrôle insuffisants."}
     # Deux arrondis indépendants à 0,1 mm peuvent déplacer le delta de 0,1 mm (#82).
-    if abs(controle) > seuil:
-        return {**rapport, "detail": "La zone de contrôle n'est pas comparable à la précision de mesure."}
-    if delta <= seuil:
-        detail = "Dépôt diminué malgré la hausse de densité." if delta < -seuil else "Aucune hausse mesurée."
-        return {**rapport, "statut": "FAIL", "detail": detail}
-    return {**rapport, "statut": "PASS", "detail": "Hausse mesurée dans la zone, contrôle hors zone stable."}
+    bas, haut = delta - seuil, delta + seuil
+    hors_bas, hors_haut = controle - seuil, controle + seuil
+    rapport.update(intervalle_delta_zone_mm=[float(bas), float(haut)],
+                   intervalle_delta_hors_zone_mm=[float(hors_bas), float(hors_haut)])
+    if hors_bas < -seuil or hors_haut > seuil:
+        return {**rapport, "detail": "La stabilité hors zone n'est pas établie avec cette précision."}
+    if bas > seuil:
+        return {**rapport, "statut": "PASS", "detail": "Hausse mesurée dans la zone, contrôle hors zone stable."}
+    if haut < -seuil:
+        return {**rapport, "statut": "FAIL", "detail": "Dépôt diminué malgré la hausse de densité."}
+    if bas >= -seuil and haut <= seuil:
+        return {**rapport, "statut": "FAIL", "detail": "Aucune hausse mesurable à cette précision."}
+    return {**rapport, "detail": "L'incertitude de mesure couvre le seuil de l'effet attendu."}
 
 
 def _sortie_privee(sortie: str | Path) -> Path:
