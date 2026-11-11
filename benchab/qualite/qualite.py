@@ -183,20 +183,26 @@ def _objets_3mf_archive(archive):
     """Extrait les plaques dans l'ordre du XML depuis un contexte 3MF déjà ouvert."""
     cfg = archive.xml("Metadata/model_settings.config")
     noms = {}
+    identifiants = set()
     for objet in cfg.iter():
         if objet.tag.rsplit("}", 1)[-1] != "object":
             continue
         identifiant = objet.get("id", "")
-        nom = next(
-            (
-                metadata.get("value")
-                for metadata in objet
-                if metadata.tag.rsplit("}", 1)[-1] == "metadata" and metadata.get("key") == "name"
-            ),
-            None,
-        )
-        if re.fullmatch(r"\d+", identifiant) and nom:
-            noms[identifiant] = nom
+        if not re.fullmatch(r"\d+", identifiant):
+            continue
+        identifiant_normalise = int(identifiant)
+        if identifiant_normalise in identifiants:
+            raise ValueError("identifiant d’objet ambigu dans model_settings.config")
+        identifiants.add(identifiant_normalise)
+        valeurs_nom = [
+            metadata.get("value")
+            for metadata in objet
+            if metadata.tag.rsplit("}", 1)[-1] == "metadata" and metadata.get("key") == "name"
+        ]
+        if len(valeurs_nom) > 1:
+            raise ValueError("noms d’objet ambigus dans model_settings.config")
+        if valeurs_nom and valeurs_nom[0]:
+            noms[str(identifiant_normalise)] = valeurs_nom[0]
     plaques = []
     for plaque in cfg.iter():
         if plaque.tag.rsplit("}", 1)[-1] != "plate":
@@ -204,8 +210,33 @@ def _objets_3mf_archive(archive):
         metadata = [element for element in plaque.iter() if element.tag.rsplit("}", 1)[-1] == "metadata"]
         nom = next((m.get("value") for m in metadata if m.get("key") == "plater_name"), None)
         ids = [m.get("value", "") for m in metadata if m.get("key") == "object_id"]
-        plaques.append({"nom": nom or "", "objets": [noms.get(i, "?" + i) for i in ids if re.fullmatch(r"\d+", i)]})
+        plaques.append({
+            "nom": nom or "",
+            "objets": [noms.get(str(int(i)), "?" + i) for i in ids if re.fullmatch(r"\d+", i)],
+        })
     return plaques
+
+
+def _indices_slice_info(info):
+    """Valide les index de plaque positifs et uniques, dans l'ordre XML, avant de lire les G-code."""
+    resultat, vus = [], set()
+    for plaque in info.findall("plate"):
+        index_brut = [
+            metadata.get("value") for metadata in plaque.findall("metadata") if metadata.get("key") == "index"
+        ]
+        if len(index_brut) != 1:
+            raise ValueError("index de plaque absent ou dupliqué dans slice_info.config")
+        try:
+            index = int(index_brut[0])
+        except (TypeError, ValueError) as erreur:
+            raise ValueError("index de plaque invalide dans slice_info.config") from erreur
+        if index < 1:
+            raise ValueError("index de plaque non positif dans slice_info.config")
+        if index in vus:
+            raise ValueError("index de plaque dupliqué dans slice_info.config")
+        vus.add(index)
+        resultat.append(index)
+    return resultat
 
 
 def niveau1(cfg_path):
@@ -384,9 +415,12 @@ def niveau3(cfg_path):
                 "Metadata/slice_info.config", limite_octets=Archive3MF.MAX_XML_OCTETS,
             )
             info = decoder_xml(octets_info, limite_octets=Archive3MF.MAX_XML_OCTETS)
+            indices = _indices_slice_info(info)
             from benchab.fabrication.anycubic import resultats_xml
 
             mesures = resultats_xml(octets_info)
+            if [mesure["index"] for mesure in mesures] != indices:
+                raise ValueError("index de plaque incohérent dans slice_info.config")
             membres_gcode = dict(plaques_gcode_archive(archive))
             for mesure in mesures:
                 index = mesure["index"]

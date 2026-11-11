@@ -1,7 +1,10 @@
 """Conserve l’ordre des plaques des rapports et refuse les G-code 3MF ambigus ou vides."""
 
 import json
+from xml.etree import ElementTree as ET
 from zipfile import ZipFile
+
+import pytest
 
 from benchab.archives_3mf import Archive3MF
 from benchab.qualite import qualite
@@ -51,6 +54,77 @@ def test_objets_3mf_conserve_ordre_noms_objets_et_plaques(tmp_path):
         {"nom": "M", "objets": ["Pièce A"]},
         {"nom": "L", "objets": ["Pièce B"]},
     ]
+
+
+def test_objets_3mf_refuse_identifiants_qui_canonisent_vers_le_meme_entier(tmp_path):
+    """Les IDs 1 et 01 ne doivent pas désigner implicitement le même objet."""
+    archive = tmp_path / "ambigus.3mf"
+    with ZipFile(archive, "w") as paquet:
+        paquet.writestr(
+            "Metadata/model_settings.config",
+            '<config><object id="1"><metadata key="name" value="A"/></object>'
+            '<object id="01"><metadata key="name" value="B"/></object></config>',
+        )
+    with pytest.raises(ValueError, match="identifiant d’objet ambigu"):
+        qualite.objets_3mf(archive)
+
+
+def test_objets_3mf_refuse_plusieurs_noms_pour_un_objet(tmp_path):
+    """Un objet avec plusieurs métadonnées name reste ambigu même si elles sont égales."""
+    archive = tmp_path / "noms-ambigus.3mf"
+    with ZipFile(archive, "w") as paquet:
+        paquet.writestr(
+            "Metadata/model_settings.config",
+            '<config><object id="1"><metadata key="name" value="A"/>'
+            '<metadata key="name" value="A"/></object></config>',
+        )
+    with pytest.raises(ValueError, match="noms d’objet ambigus"):
+        qualite.objets_3mf(archive)
+
+
+def test_niveau3_refuse_plusieurs_index_dans_une_ligne_slice_info(tmp_path):
+    """Deux valeurs index dans un élément plate ne doivent pas être réduites à la dernière."""
+    tranche = tmp_path / "tranche.3mf"
+    with ZipFile(tranche, "w") as archive:
+        archive.writestr(
+            "Metadata/slice_info.config",
+            '<config><plate><metadata key="index" value="1"/><metadata key="index" value="2"/>'
+            '<metadata key="prediction" value="60"/><metadata key="weight" value="1"/></plate></config>',
+        )
+        archive.writestr(
+            "Metadata/model_settings.config",
+            '<config><plate><metadata key="plater_name" value="Plaque"/></plate></config>',
+        )
+        archive.writestr("Metadata/project_settings.config", "{}")
+        archive.writestr("Metadata/plate_2.gcode", "G1 X1\n")
+    cfg = tmp_path / "qualite.json"
+    cfg.write_text(
+        json.dumps({"tranche_3mf": tranche.name, "placement": "absent.json", "plaques_3mf": "absent.3mf"}),
+        encoding="utf-8",
+    )
+
+    assert qualite.niveau3(cfg) == qualite.KO
+    controles = json.loads((tmp_path / "preuves/qualite/niveau3.json").read_text(encoding="utf-8"))["controles"]
+    resultat, = [item for item in controles if item["controle"] == "résultats du tranchage"]
+    assert resultat["statut"] == qualite.KO
+    assert "index" in resultat["detail"]
+
+
+@pytest.mark.parametrize(
+    ("xml", "message"),
+    [
+        (
+            '<config><plate><metadata key="index" value="1"/></plate>'
+            '<plate><metadata key="index" value="1"/></plate></config>',
+            "dupliqué",
+        ),
+        ('<config><plate><metadata key="index" value="0"/></plate></config>', "non positif"),
+    ],
+)
+def test_indices_slice_info_doivent_etre_positifs_et_uniques(xml, message):
+    """Les indices de résultats sont validés avant le parcours des membres G-code."""
+    with pytest.raises(ValueError, match=message):
+        qualite._indices_slice_info(ET.fromstring(xml))
 
 
 def test_niveau3_conserve_ordre_et_categories_du_rapport_sml(tmp_path):
