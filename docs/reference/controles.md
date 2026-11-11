@@ -61,9 +61,10 @@ lien est refusé. Les G-code conservés avec `supports-requis --garder` sont
 traités comme des preuves neuves, plaque par plaque.
 
 La routine lit uniquement les résultats du contrôle courant. Relancer la
-routine conserve les fichiers identiques ; si les preuves diffèrent, une
-nouvelle exécution garde ses rapports et journaux dans un dossier distinct.
-Les anciennes preuves restent consultables.
+routine conserve les fichiers identiques et publie les fichiers différents
+dans un sous-dossier de rejeu neuf. Les anciennes preuves restent consultables.
+Si aucun rapport n’a été produit, le résultat le signale et indique le journal
+de cette exécution.
 
 
 ## Reconstruction et réimpression
