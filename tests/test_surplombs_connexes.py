@@ -7,6 +7,7 @@ import trimesh
 
 from benchab.cli import CONTROLES_DIRECTS
 from benchab.controles import surplombs_connexes as sc
+from benchab.qualite.empreintes import sha256_fichier
 
 
 def test_controle_est_accessible_par_la_route_commune():
@@ -106,4 +107,56 @@ def test_cli_ecrit_json_neuf_sans_toucher_au_maillage(tmp_path):
 
     assert rapport["statut"] == "RENSEIGNÉE"
     assert rapport["unite"] == "mm"
+    assert rapport["source_sha256"] == sha256_fichier(source)
     assert source.read_bytes() == empreinte
+
+
+def test_stl_exporte_et_relu_reconstruit_connexite_par_coordonnees_exactes(tmp_path):
+    """Le STL répète les sommets des triangles, mais garde la face plane dans un seul groupe connexe."""
+    source = tmp_path / "cube.stl"
+    trimesh.creation.box(extents=[2, 2, 2]).export(source)
+    relu = trimesh.load_mesh(source, process=False)
+    assert len(relu.vertices) == len(relu.faces) * 3
+
+    rapport = sc.cartographier(relu, source=source, unite="mm")
+
+    assert len(rapport["groupes"]) == 1
+    assert rapport["groupes"][0]["nb_faces"] == 2
+    assert rapport["topologie_maillage"]["statut"] == "RENSEIGNÉE"
+
+
+def test_topologie_signale_arete_non_manifold_et_orientation_incoherente():
+    """Les diagnostics géométriques signalent l'ambiguïté sans réorienter les triangles."""
+    adjacency, topologie = sc._adjacence_exacte(np.asarray([
+        [[0, 0, 0], [1, 0, 0], [0, 1, 1]],
+        [[0, 0, 0], [1, 0, 0], [0, -1, 1]],
+        [[0, 0, 0], [1, 0, 0], [0, 0, -1]],
+    ], dtype=float))
+
+    assert len(adjacency) == 2
+    assert topologie["aretes_non_manifold"] == 1
+    assert topologie["aretes_orientation_incoherente"] == 1
+
+
+def test_adjacence_ne_fusionne_pas_les_coordonnees_proches():
+    """Un écart même minime entre deux sommets reste une frontière, sans tolérance implicite."""
+    triangles = np.asarray([
+        [[0, 0, 1], [1, 0, 1], [0, 1, 1]],
+        [[1.0000001, 0, 1], [0, 0, 1], [1, -1, 1]],
+    ], dtype=float)
+
+    adjacency, topologie = sc._adjacence_exacte(triangles)
+
+    assert len(adjacency) == 0
+    assert topologie["aretes_ouvertes"] == 6
+
+
+def test_cli_refuse_une_source_modifiee_pendant_la_lecture(tmp_path, monkeypatch, capsys):
+    """La sortie est refusée si les SHA-256 relus avant et après l'analyse diffèrent."""
+    source = tmp_path / "fixture.stl"
+    trimesh.creation.box().export(source)
+    empreintes = iter(["a" * 64, "b" * 64])
+    monkeypatch.setattr(sc, "sha256_fichier", lambda _chemin: next(empreintes))
+
+    assert sc.main([str(source), "--unite-mm"]) == 2
+    assert "a changé pendant sa lecture" in capsys.readouterr().err

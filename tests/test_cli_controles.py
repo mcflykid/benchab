@@ -16,7 +16,7 @@ def test_controle_mesure_transmet_les_arguments_et_le_code(tmp_path, monkeypatch
     def controle(arguments, **options):
         assert options == (
             {"prive": tmp_path / "prive"}
-            if nom in {"appuis-gcode", "ecarts-profils-3mf"}
+            if nom in {"appuis-gcode", "ecarts-profils-3mf", "surplombs-connexes"}
             else {}
         )
         appels.append(arguments)

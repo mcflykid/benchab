@@ -24,7 +24,12 @@ par l'appelant : le format ne la déclare pas. Le seuil d'angle est un filtre
 géométrique configurable, pas un seuil de support. Le rapport ne calcule ni
 l'accès réel au plateau, ni la franchissabilité d'un pont, ni les trajectoires
 du slicer ; ces champs restent NON VÉRIFIÉS. Il ne justifie aucun réglage ni
-besoin physique de support.
+besoin physique de support. La connexité repose sur l'égalité exacte des
+coordonnées d'arêtes ; aucune tolérance ne rapproche les sommets. Le rapport
+compte les arêtes ouvertes, non-manifold et d'orientation locale incohérente,
+et conserve le sens des triangles lus. Les normales ne démontrent pas une
+orientation physique correcte. Le SHA-256 source est comparé avant et après
+lecture, puis conservé dans le rapport.
 
 ## Choisir le support dans Slicer Next 2.0.0.3
 

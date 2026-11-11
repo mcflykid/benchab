@@ -11,10 +11,42 @@ import numpy as np
 import trimesh
 
 from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
+from benchab.qualite.empreintes import sha256_fichier
+
+
+def _adjacence_exacte(triangles):
+    """Construit l'adjacence par arêtes de coordonnées exactement égales, sans fusion approchée."""
+    aretes = defaultdict(list)
+    for face, triangle in enumerate(triangles):
+        sommets = [tuple(float(valeur) for valeur in point) for point in triangle]
+        for depart, arrivee in zip(sommets, sommets[1:] + sommets[:1]):
+            cle = tuple(sorted((depart, arrivee)))
+            sens = 1 if depart < arrivee else -1
+            aretes[cle].append((face, sens))
+    adjacency = []
+    ouvertes = non_manifold = orientation_incoherente = 0
+    for incidents in aretes.values():
+        if len(incidents) == 1:
+            ouvertes += 1
+        elif len(incidents) == 2:
+            if incidents[0][1] == incidents[1][1]:
+                orientation_incoherente += 1
+            adjacency.append((incidents[0][0], incidents[1][0]))
+        else:
+            non_manifold += 1
+            if len({incident[1] for incident in incidents}) < len(incidents):
+                orientation_incoherente += 1
+            faces = [incident[0] for incident in incidents]
+            adjacency.extend((faces[0], face) for face in faces[1:])
+    return np.asarray(adjacency, dtype=int).reshape((-1, 2)), {
+        "aretes_ouvertes": ouvertes,
+        "aretes_non_manifold": non_manifold,
+        "aretes_orientation_incoherente": orientation_incoherente,
+    }
 
 
 def _composantes_faces(nombre_faces, adjacency):
-    """Numérote les composantes surfaciques à partir des paires d'adjacence du maillage."""
+    """Numérote les composantes surfaciques à partir des arêtes géométriquement partagées."""
     voisins = defaultdict(list)
     for a, b in adjacency:
         voisins[int(a)].append(int(b))
@@ -36,11 +68,12 @@ def _composantes_faces(nombre_faces, adjacency):
     return numeros, voisins
 
 
-def cartographier(maillage, *, source, unite, angle_max_deg=50.0):
+def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None):
     """Mesure les groupes de faces orientées vers le bas sans prédire les supports physiques.
 
-    Entrées : maillage triangulé, provenance source, unité explicite (« mm ») et angle maximal en degrés.
+    Entrées : maillage triangulé, provenance, unité explicite (« mm »), seuil en degrés et SHA-256 facultatif.
     Sortie : groupes connexes avec aires en mm², altitudes/hauteurs en mm et angles en degrés.
+    La topologie est mesurée par égalité exacte des coordonnées ; aucun sommet n'est fusionné ni triangle réorienté.
     Les accès au plateau et la possibilité de pont restent NON VÉRIFIÉS ; aucun réglage n'est modifié.
     """
     if unite != "mm":
@@ -59,9 +92,8 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0):
     # Le seuil décrit seulement une inclinaison géométrique ; il ne constitue pas une règle de support.
     angle_faces = np.degrees(np.arccos(np.clip(np.abs(normales[:, 2]), 0.0, 1.0)))
     selection = (normales[:, 2] < 0) & (angle_faces <= angle_max_deg)
-    adjacency = np.asarray(maillage.face_adjacency, dtype=int).reshape((-1, 2))
+    adjacency, topologie = _adjacence_exacte(triangles := np.asarray(maillage.triangles, dtype=float))
     composante, voisins = _composantes_faces(len(maillage.faces), adjacency)
-    triangles = np.asarray(maillage.triangles, dtype=float)
     groupes = []
     visites = set()
     for depart in np.flatnonzero(selection):
@@ -107,7 +139,22 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0):
         "schema": "benchab-surplombs-connexes-v1",
         "statut": "RENSEIGNÉE",
         "source": str(source),
+        "source_sha256": source_sha256,
         "unite": "mm",
+        "topologie_maillage": {
+            **topologie,
+            "statut": (
+                "AMBIGUË"
+                if topologie["aretes_non_manifold"] or topologie["aretes_orientation_incoherente"]
+                else "OUVERTE" if topologie["aretes_ouvertes"] else "RENSEIGNÉE"
+            ),
+            "coherence_orientation": (
+                "AMBIGUË"
+                if topologie["aretes_non_manifold"] or topologie["aretes_orientation_incoherente"]
+                else "NON VÉRIFIÉE" if topologie["aretes_ouvertes"] else "COHÉRENTE LOCALEMENT"
+            ),
+            "sens_normales": "calculées depuis l'ordre des sommets des triangles ; aucune réorientation appliquée",
+        },
         "seuil_inclinaison_deg": angle_max_deg,
         "definition": "faces à normale descendante, inclinées au plus du seuil par rapport à l'horizontale",
         "interpretation": "mesures de maillage avant tranchage ; aucune nécessité physique de support n'est conclue",
@@ -115,11 +162,12 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0):
     }
 
 
-def main(argv=None):
+def main(argv=None, *, prive=None):
     """Produit un JSON privé neuf depuis un STL ; unités mm déclarées par option, code 0 si mesuré.
 
     Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés et --sortie facultative.
     Sortie : rapport JSON écrit sans écrasement, ou JSON sur stdout ; erreurs d'entrée et de sortie code 2.
+    L'entrée est empreintée avant et après lecture ; une sortie reste dans l'atelier privé choisi et est neuve.
     Aucun appel de slicer, aucun réglage modifié, aucune validation physique.
     """
     parser = argparse.ArgumentParser(description=__doc__)
@@ -136,10 +184,15 @@ def main(argv=None):
             raise ValueError("--unite-mm est requis : STL ne porte pas d'unité déclarée.")
         if args.source.suffix.lower() != ".stl" or not args.source.is_file():
             raise ValueError("Une source STL existante est requise.")
+        empreinte_avant = sha256_fichier(args.source)
         maillage = trimesh.load_mesh(args.source, process=False)
         rapport = cartographier(maillage, source=args.source, unite="mm", angle_max_deg=args.angle_max_deg)
+        empreinte_apres = sha256_fichier(args.source)
+        if empreinte_apres != empreinte_avant:
+            raise ValueError("La source STL a changé pendant sa lecture ; rapport refusé.")
+        rapport["source_sha256"] = empreinte_avant
         if args.sortie:
-            sortie = sortie_privee(args.sortie)
+            sortie = sortie_privee(args.sortie, prive=prive)
             ecrire_json_neuf(sortie, rapport, entrees=[args.source])
         else:
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
