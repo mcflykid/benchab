@@ -16,6 +16,11 @@ from pathlib import Path
 
 
 def sha256_fichier(path, taille_bloc=1048576):
+    """Calcule le SHA-256 hexadécimal stable d'un fichier régulier, par blocs en octets.
+
+    Un lien final, un fichier spécial ou une mutation donne un refus (ValueError
+    ou OSError). La source et ses métadonnées ne sont jamais écrites.
+    """
     if type(taille_bloc) is not int or taille_bloc <= 0:
         raise ValueError("taille de bloc strictement positive requise")
     path = Path(path)

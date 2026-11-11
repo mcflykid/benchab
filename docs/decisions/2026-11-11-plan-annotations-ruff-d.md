@@ -1,12 +1,12 @@
-# Plan : ratchet Ruff D progressif
+# Plan : contrôle Ruff D progressif
 
 **But :** contrôler Ruff D10x sur le code nouveau et les portées publiques modifiées, en ignorant les lacunes historiques intactes.
 
-**Architecture :** contrôleur Python dans `benchab/qualite/annotations.py`, appelé en CI avec les deux révisions Git explicites. Le diff NUL détermine les chemins sûrs ; l'AST associe lignes modifiées aux portées publiques, et Ruff JSON fournit les violations D10x.
+**Architecture :** contrôleur Python dans `benchab/qualite/annotations.py`, appelé en CI avec les deux révisions Git explicites. Le diff NUL détermine les chemins sûrs ; la comparaison AST détecte les portées effectivement modifiées, et Ruff JSON fournit les violations D10x.
 
 **Technologies :** Python standard, AST, subprocess Git/Ruff, pytest, GitHub Actions.
 
-**Décision :** `docs/reference/decisions/annotations-ruff-d.md`.
+**Décision :** [contrôle progressif](2026-11-11-annotations-ruff-d.md).
 
 ## Contraintes globales
 
@@ -21,6 +21,8 @@
 - Chemins contenant espaces, tabulations, retours de ligne ou préfixes ambigus : transport NUL et arguments séparés.
 - Renommages, suppressions et fichiers hors `benchab/` : portée documentée et testée.
 - Corps modifié avec ligne `def` inchangée : la portée reste contrôlée.
+- Décorateur ajouté ou retiré : la portée reste contrôlée ; supprimer une portée entière ne touche pas sa voisine.
+- Nouveau paquet et constructeur public : D104 et D107 sont pris en compte.
 - Ruff absent ou erreur d'analyse : échec explicite.
 
 ### Étapes
