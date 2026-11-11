@@ -271,6 +271,51 @@ def test_placement_refuse_path_non_qualifie_sur_build_item(tmp_path):
     assert "p:path" in rapport["raisons"][0]
 
 
+def test_placement_refuse_mode_opc_inconnu_et_replis_de_casse_ambigus(tmp_path):
+    """Le placement exige une racine unique que le format permet de résoudre."""
+    for cas in ("mode-opc", "repli-casse"):
+        source = _source(tmp_path / f"{cas}.3mf")
+        with ZipFile(source, "a") as archive:
+            if cas == "mode-opc":
+                archive.writestr(
+                    "_rels/.rels",
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                    '<Relationship Id="r" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" '
+                    'Target="/3D/3dmodel.model" TargetMode="Inconnu"/></Relationships>',
+                )
+            else:
+                archive.writestr("3d/3DMODEL.MODEL", archive.read("3D/3dmodel.model"))
+        declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Objet"}])
+        rapport = generer(source, declaration)
+        assert rapport["placement"] is None
+        assert "ambigu" in rapport["raisons"][0].lower()
+        assert lire_3mf(source).extents.tolist() == [10.0, 10.0, 10.0]
+
+
+def test_lecteur_generique_ne_suit_pas_le_path_nu_d_un_build_item(tmp_path):
+    """L’extension hors namespace ne change pas le chargement historique."""
+    source = _source(tmp_path / "build-path-nu.3mf", items=[{"objectid": "1", "path": "/3D/alt.model"}])
+    with ZipFile(source, "a") as archive:
+        archive.writestr("3D/alt.model", _modele(source, [{"objectid": "1"}], unite="inch"))
+    assert lire_3mf(source).extents.tolist() == [10.0, 10.0, 10.0]
+    declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Objet"}])
+    assert generer(source, declaration)["placement"] is None
+
+
+def test_placement_refuse_unite_differente_sur_cible_du_build_item(tmp_path):
+    """Le modèle relié à l’instance doit partager l’unité du modèle principal."""
+    source = _source(tmp_path / "build-unites-mixtes.3mf", items=[
+        {"objectid": "1", f"{{{PROD}}}path": "/3D/alt.model"},
+    ])
+    with ZipFile(source, "a") as archive:
+        archive.writestr("3D/alt.model", _modele(source, [{"objectid": "1"}], unite="inch"))
+    declaration = _declaration(source, [{"build_item": 1, "plate": 1, "name": "Objet"}])
+    rapport = generer(source, declaration)
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "Unités mixtes" in rapport["raisons"][0]
+
+
 def test_cli_publie_le_contrat_placement_sur_pass_et_aucun_faux_contrat_sur_nv(
     atelier_initialise, tmp_path, capsys
 ):

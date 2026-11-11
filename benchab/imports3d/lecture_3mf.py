@@ -91,11 +91,14 @@ def _lire(source, max_faces, *, identites=False):
             m[:3, 3] *= facteur
             return m
 
-        def chemin_element(element):
+        def chemin_element(element, *, build=False):
             """Renvoie l’unique p:path production ; refuse les extensions ambiguës pour une preuve d’identité."""
-            attributs = [(cle, valeur) for cle, valeur in element.attrib.items() if cle.rsplit("}", 1)[-1] == "path"]
             if not identites:
-                return next((v for _, v in attributs), None)
+                # Le lecteur historique accepte un path nu sur un composant, pas sur une instance de build.
+                return next((v for k, v in element.attrib.items() if k.endswith("}path") or (
+                    not build and k == "path"
+                )), None)
+            attributs = [(cle, valeur) for cle, valeur in element.attrib.items() if cle.rsplit("}", 1)[-1] == "path"]
             if len(attributs) > 1 or any(cle != PROD + "path" for cle, _ in attributs):
                 raise ValueError("Attribut p:path absent du namespace attendu ou ambigu")
             if attributs and not attributs[0][1].strip():
@@ -156,15 +159,15 @@ def _lire(source, max_faces, *, identites=False):
                     "objet_id_maillage": ident,
                     "unite_source": modele(nom)[0].get("unit", "millimeter"),
                     "transformations": list(trace),
-                }
-                resultats.append((obj.get("name", f"Objet{len(resultats) + 1}"), m, identite if identites else None))
+                } if identites else None
+                resultats.append((obj.get("name", f"Objet{len(resultats) + 1}"), m, identite))
             for component in obj.findall(NS + "components/" + NS + "component"):
                 path = chemin_element(component)
                 enfant = chemin(nom, path) if path else nom
                 if modele(enfant)[2] != facteur:
                     raise ValueError("Unités mixtes entre modèles 3MF : conversion explicite requise")
                 matrice_composant = matrice(component, facteur)
-                trace_composant = {
+                trace_enfant = (*trace, {
                     "type": "composant",
                     "modele": nom,
                     "objet_id": ident,
@@ -173,10 +176,10 @@ def _lire(source, max_faces, *, identites=False):
                     "transform_3mf": component.get("transform"),
                     "translation_mm": matrice_composant[:3, 3].tolist(),
                     "matrice_mm": matrice_composant.tolist(),
-                }
+                }) if identites else ()
                 parcourir(
                     enfant, component.attrib["objectid"], transform @ matrice_composant, pile + (cle,), racine,
-                    (*trace, trace_composant), build_item,
+                    trace_enfant, build_item,
                 )
 
         # Relation OPC prioritaire, plutôt qu'une hypothèse sur la casse du nom.
@@ -187,6 +190,7 @@ def _lire(source, max_faces, *, identites=False):
             internes = [rel for rel in candidats if rel.get("TargetMode") != "External"]
             if identites and candidats and (
                 len(candidats) != 1 or len(internes) != 1 or candidats[0].get("Type") != REL_MODELE
+                or candidats[0].get("TargetMode", "Internal") != "Internal"
             ):
                 raise ValueError("Relations OPC du modèle principal ambiguës")
             for rel in internes:
@@ -194,7 +198,10 @@ def _lire(source, max_faces, *, identites=False):
                     principal = chemin("racine", rel.attrib["Target"])
                     break
         if principal is None:
-            principal = next((n for n in sorted(noms) if n.lower() == "3d/3dmodel.model"), None)
+            repli = [n for n in sorted(noms) if n.lower() == "3d/3dmodel.model"]
+            if identites and len(repli) > 1:
+                raise ValueError("Modèles principaux de repli ambigus")
+            principal = repli[0] if repli else None
         if principal is None:
             raise ValueError("Modèle principal 3MF absent")
         racine_modele = principal
@@ -202,10 +209,12 @@ def _lire(source, max_faces, *, identites=False):
         for build_item, item in enumerate(root.findall(NS + "build/" + NS + "item"), 1):
             if printable_element(item) == "0":
                 continue
-            path = chemin_element(item)
+            path = chemin_element(item, build=True)
             modele_item = chemin(principal, path) if path else principal
+            if identites and modele(modele_item)[2] != facteur:
+                raise ValueError("Unités mixtes entre modèles 3MF : conversion explicite requise")
             matrice_item = matrice(item, facteur)
-            trace_item = {
+            trace_item = ({
                 "type": "instance",
                 "modele": principal,
                 "modele_cible": modele_item,
@@ -214,13 +223,13 @@ def _lire(source, max_faces, *, identites=False):
                 "transform_3mf": item.get("transform"),
                 "translation_mm": matrice_item[:3, 3].tolist(),
                 "matrice_mm": matrice_item.tolist(),
-            }
+            },) if identites else ()
             parcourir(
                 modele_item,
                 item.attrib["objectid"],
                 matrice_item,
                 racine=item.attrib["objectid"],
-                trace=(trace_item,),
+                trace=trace_item,
                 build_item=build_item,
             )
     if not resultats:
