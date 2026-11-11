@@ -183,7 +183,7 @@ def render(spec_path):
 
 
 def main(argv=None):
-    """Lance le rendu Blender à partir d’une spécification unique. Sort au code 2 sur refus."""
+    """Lance le rendu Blender. Sort au code 1 si l’usage est invalide ou 2 si le rendu échoue."""
     args = (
         list(argv) if argv is not None else (sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:])
     )

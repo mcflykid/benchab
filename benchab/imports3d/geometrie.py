@@ -118,7 +118,10 @@ def statistiques(d, p, seuil):
 
 
 def comparer(reference, candidat, tolerance_mm=0.1, nombre=4000, graine=0):
-    """Compare les surfaces sans recalage à la tolérance en mm. Retourne ECART ou CONFORME_ECHANTILLONS."""
+    """Compare les surfaces échantillonnées à la tolérance en mm, sans recalage.
+
+    Retourne ECART ou CONFORME_ECHANTILLONS.
+    """
     seuil = positif(tolerance_mm, "Tolérance")
     if isinstance(graine, bool) or not isinstance(graine, int) or graine < 0:
         raise ValueError("Graine : entier positif ou nul.")

@@ -535,7 +535,7 @@ class CloudLecture:
             self._token = None
 
     def relever(self, printer_id):
-        """Relève l’imprimante demandée en lecture seule et efface le jeton temporaire de la mémoire du client."""
+        """Relève l’imprimante en lecture seule et réinitialise le jeton temporaire du client."""
         wanted = _id(printer_id)
         try:
             self._authentifier()

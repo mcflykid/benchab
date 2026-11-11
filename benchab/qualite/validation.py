@@ -94,7 +94,7 @@ def mauvais(q, autorises=("PASS",)):
 
 
 def verifier(base, cfg=None, humain=True):
-    """Vérifie les preuves du projet et renvoie les contrôles PASS, FAIL ou WARNING selon leur portée."""
+    """Vérifie les preuves du projet. Chaque contrôle renvoie PASS, FAIL, WARNING ou NON VÉRIFIÉ."""
     base = Path(base).resolve()
     cfg = cfg or json.loads((base / "qualite.json").read_text())
     out = []

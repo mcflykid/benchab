@@ -219,7 +219,7 @@ def lire_url(url):
 
 
 def documentation(racine, *, lecteur_url=lire_url):
-    """Contrôle la typographie et les liens des documents publics, puis retourne les erreurs."""
+    """Retourne les erreurs de typographie et de liens publics. Le lecteur HTTP par défaut accède au réseau."""
     racine = Path(racine).resolve()
     erreurs, urls = [], {}
     for p in documents(racine):
@@ -270,7 +270,7 @@ def _checkout_benchab(racine):
 
 
 def verifier(racine, *, lecteur_url=lire_url, prive=None):
-    """Contrôle publication et structure du checkout BENCHAB ; renvoie erreurs, sans écrire ni lire le privé."""
+    """Retourne les erreurs de publication et de structure. Le lecteur HTTP par défaut accède au réseau."""
     racine = Path(racine).resolve()
     erreurs_structure = []
     if _checkout_benchab(racine):
