@@ -44,6 +44,7 @@ NOMS_TECHNIQUES = {"build123d", "lib3mf", "py-lib3mf", "manifold3d", "urllib3", 
 
 
 def anomalies_typographiques(texte):
+    """Retourne les anomalies d’encodage, d’espaces et d’unités relevées dans le texte."""
     erreurs = []
     if "\ufffd" in texte or "\x00" in texte or unicodedata.normalize("NFC", texte) != texte:
         erreurs.append("encodage ou normalisation typographique invalide")
@@ -65,6 +66,7 @@ def anomalies_typographiques(texte):
 
 
 def typographie(chemins):
+    """Relit les documents UTF-8 et renvoie leurs erreurs typographiques ou de lecture."""
     erreurs = []
     for chemin in chemins:
         p = Path(chemin)
@@ -93,11 +95,14 @@ def typographie(chemins):
 
 
 class LiensHTML(HTMLParser):
+    """Collecte les cibles href et src des balises HTML, sans ouvrir de lien."""
     def __init__(self):
+        """Initialise le parseur avec décodage des entités et une liste vide de cibles."""
         super().__init__(convert_charrefs=True)
         self.cibles = []
 
     def handle_starttag(self, _tag, attributs):
+        """Ajoute les valeurs href et src non vides de la balise lue."""
         self.cibles.extend(v for k, v in attributs if k.lower() in {"href", "src"} and v)
 
 
@@ -110,6 +115,7 @@ def cibles_markdown(texte):
 
 
 def empreinte_dependances(projet):
+    """Calcule le SHA-256 des déclarations de dépendances, groupes, construction et sources."""
     declarations = {
         "runtime": projet["project"].get("dependencies", []),
         "optionnelles": projet["project"].get("optional-dependencies", {}),
@@ -135,6 +141,7 @@ def compatible(expression):
 
 
 def licences(racine):
+    """Vérifie l’inventaire des licences contre le verrou et renvoie les erreurs de publication."""
     racine = Path(racine)
     erreurs = []
     try:
@@ -192,6 +199,7 @@ def licences(racine):
 
 
 def documents(racine, *, extensions=frozenset({".md"})):
+    """Énumère les documents des extensions demandées hors dossiers exclus et liens symboliques."""
     racine = Path(racine).resolve()
     for dossier, enfants, noms in os.walk(racine, followlinks=False):
         enfants[:] = [n for n in enfants if n not in EXCLUS and not n.endswith(".egg-info")]
@@ -202,6 +210,7 @@ def documents(racine, *, extensions=frozenset({".md"})):
 
 
 def lire_url(url):
+    """Sonde une URL par lecture bornée à 1 024 octets, avec un délai de 10 s."""
     requete = Request(url, headers={"User-Agent": "BENCHAB-publication/1.0", "Range": "bytes=0-1023"})
     with urlopen(requete, timeout=10) as reponse:
         if not 200 <= reponse.status < 400:
@@ -210,6 +219,7 @@ def lire_url(url):
 
 
 def documentation(racine, *, lecteur_url=lire_url):
+    """Contrôle la typographie et les liens des documents publics, puis retourne les erreurs."""
     racine = Path(racine).resolve()
     erreurs, urls = [], {}
     for p in documents(racine):

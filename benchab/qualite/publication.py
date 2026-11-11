@@ -41,6 +41,7 @@ FAMILLES = {"temoin-S", "temoin-M", "temoin-L", "fixture-test"}
 
 
 def empreinte(fichier):
+    """Calcule le SHA-256 du fichier fourni sans transformer ses octets."""
     with fichier.open("rb") as flux:
         return hashlib.file_digest(flux, "sha256").hexdigest()
 
@@ -115,6 +116,7 @@ def relatif(base, value):
 
 
 def charger(projet):
+    """Charge les données du projet et son suivi validé. Refuse une transaction de vues interrompue."""
     projet = Path(projet)
     if (projet.parent / ".transaction-vues.json").exists():
         raise ValueError("catalogue interrompu : reprise transactionnelle requise")

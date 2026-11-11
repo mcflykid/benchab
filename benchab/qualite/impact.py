@@ -16,6 +16,7 @@ EXCLUS = {"prive", ".git", ".venv", "node_modules", "__pycache__", ".pytest_cach
 
 
 def fichiers(root):
+    """Énumère les chemins Python réguliers du dépôt hors dossiers exclus et liens symboliques."""
     root = Path(root).resolve()
     for dossier, dirs, noms in os.walk(root, followlinks=False):
         dirs[:] = sorted(

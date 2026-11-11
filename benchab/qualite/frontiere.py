@@ -122,6 +122,7 @@ def _est_zip(chemin):
 
 
 def appels_interdits(texte, python):
+    """Signale les appels littéraux au Python système détectés dans le texte ou son AST."""
     erreurs = []
     if re.search(r"^#!.*\bpython3\b", texte, re.M):
         erreurs.append("interpréteur système dans une ligne de lancement")
