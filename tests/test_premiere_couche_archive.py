@@ -87,3 +87,13 @@ def test_detail_est_le_rapport_et_exige_une_sortie(tmp_path, capsys):
     assert "--json" in capsys.readouterr().err
     assert PC.main([str(source), "--json", str(sortie), "--detail"]) == 0
     assert capsys.readouterr().out == sortie.read_text()
+
+
+def test_option_resume_ne_devient_pas_le_nom_du_rapport(tmp_path, monkeypatch, capsys):
+    """Une option ne remplace pas le chemin exigé et aucun fichier n’est créé."""
+    source = tmp_path / "source.gcode"
+    source.write_text(GCODE, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert PC.main([str(source), "--json", "--resume"]) == 2
+    assert "Chemin requis après --json" in capsys.readouterr().err
+    assert not (tmp_path / "--resume").exists()

@@ -264,7 +264,7 @@ def main(argv=None):
     if "--json" in a:
         try:
             index_json = a.index("--json")
-            if index_json + 1 >= len(a):
+            if index_json + 1 >= len(a) or a[index_json + 1].startswith("--"):
                 raise ValueError("Chemin requis après --json")
             # Refuser avant lecture/calcul pour protéger la source (#152, chemins-et-atelier.md).
             sortie = destination_neuve(Path(a[index_json + 1]))
