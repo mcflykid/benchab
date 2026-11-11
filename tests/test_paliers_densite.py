@@ -80,3 +80,39 @@ def test_paliers_survivent_comme_modificateurs_dans_un_3mf_neuf(tmp_path):
     assert [p.find("./metadata[@key='sparse_infill_density']").get("value") for p in parties[1:]] == [
         "65%", "35%", "15%",
     ]
+
+
+def test_paliers_depuis_un_dessus_incline_gardent_profondeurs_et_volumes():
+    """La profondeur est mesurée selon la normale du plan, sans supposer Z vertical."""
+    from benchab.conception.paliers_densite import modificateurs_depuis_plan
+
+    piece = trimesh.creation.box((12, 8, 10))
+    matrice = trimesh.transformations.rotation_matrix(np.pi / 5, (0, 1, 0))
+    piece.apply_transform(matrice)
+    normale = matrice[:3, 2]
+    point = (5 * normale).tolist()
+    avant = piece.vertices.copy()
+    volumes, r = modificateurs_depuis_plan(
+        piece, point, normale.tolist(),
+        [{"profondeur_mm": 2, "densite": "60%"}, {"profondeur_mm": 5, "densite": "20%"}],
+    )
+    assert r["statut"] == "PASS"
+    assert [v["mesh"].volume for v in volumes] == pytest.approx([12 * 8 * 2, 12 * 8 * 3])
+    limites = [sorted((float(d.min()), float(d.max()))) for v in volumes if (d := v["mesh"].vertices @ normale).size]
+    assert np.allclose(limites, [[3, 5], [0, 3]], atol=1e-7, rtol=0)
+    assert r["volume_non_attribue_mm3"] == pytest.approx(12 * 8 * 5)
+    assert r["effet_gcode"] == "NON VÉRIFIÉ"
+    assert np.array_equal(piece.vertices, avant)
+
+
+@pytest.mark.parametrize(
+    ("point", "normale"),
+    [([0, 0, 4], [0, 0, 1]), ([0, 0, 6], [0, 0, 1]), ([0, 0, 5], [0, 0, -1])],
+)
+def test_plan_traversant_detache_ou_inverse_ne_donne_pas_de_paliers(point, normale):
+    """Un plan déclaré doit être tangent par une vraie face extérieure."""
+    from benchab.conception.paliers_densite import modificateurs_depuis_plan
+
+    piece = trimesh.creation.box((12, 8, 10))
+    with pytest.raises(ValueError, match="Plan"):
+        modificateurs_depuis_plan(piece, point, normale, [{"profondeur_mm": 2, "densite": "60%"}])

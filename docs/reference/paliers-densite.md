@@ -35,3 +35,18 @@ et la source de référence sont intacts.
 Ce résultat porte sur trois boîtes intérieures de ce coupon et le motif
 gyroïde. Il ne mesure pas l’ensemble de chaque couronne, ne qualifie pas
 les avertissements natifs du trancheur et ne valide aucune pièce physique.
+
+## Paliers depuis une face plane
+
+`modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers)`
+emploie des paliers en `profondeur_mm` depuis un plan de face déclaré,
+sans supposer que la face est horizontale. La normale indique le côté
+extérieur ; la fonction contrôle qu’une face de la pièce coïncide avec le
+plan et que la matière reste du côté intérieur. Un plan décalé, traversant
+ou tangent seulement par une arête n’est pas accepté.
+
+Les volumes produits sont des tranches parallèles, contenues dans la pièce
+et disjointes en volume. Le témoin incliné vérifie les profondeurs, les
+volumes analytiques et la conservation du maillage. L’effet G-code de
+cette famille et les distances à une surface courbe restent à qualifier
+(#83).
