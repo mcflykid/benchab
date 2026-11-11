@@ -115,7 +115,9 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
   des connaissances, #41 les avertissements de cohérence et #75 la vitrine publique.
 - #114 : lecture PDF optionnelle des guides, sans dépendance imposée à tous les usages.
 - #119 regroupe le diagnostic, la réparation conservatrice et l’apprentissage des
-  incidents. Les premiers outils existent ; l’autoréparation générale reste à concevoir.
+  incidents. Première étape : plan passif des vues privées absentes/divergentes ;
+  sauvegarde, application et contrôle après restent à concevoir. L’autoréparation
+  générale n’existe pas.
 
 La boucle attendue est : retour sourcé → défaut reproduit → correctif → test de
 régression → contrôle et relecture → livraison. Une vue peut être régénérée depuis

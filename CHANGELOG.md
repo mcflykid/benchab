@@ -30,6 +30,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Lecture 3MF : intégrité avant/après, noms et résultats de plaques et optimisation utilisent les limites et le décodage communs (suite de #122).
 - Qualification ASN : tranchage natif d’une sonde synthétique à deux volumes ; rôles, géométrie et réglages contrôlés, effet de la densité mesuré dans le G-code (#48).
 
+- Données privées : première étape #119, plan JSON passif pour vues absentes ou divergentes, sans réparation ni mesure.
+
 ## 1.2.0 — 2026-11-11
 
 - G-code : arcs G2/G3 du dialecte G17 XY documenté calculés analytiquement, longueur et débit nominaux exacts ; repère spatial distinct après G92 XYZ. Les contrôles géométriques qui ne modélisent pas encore les arcs restent NON VÉRIFIÉS (#13).

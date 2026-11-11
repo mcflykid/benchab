@@ -119,6 +119,7 @@ def parser():
     installation.add_argument("--profil", type=Path, action="append", default=[])
     installation.add_argument("--espace-minimum-mio", type=int, default=1024)
     installation.add_argument("--detail", action="store_true", help="Inclut les preuves et chemins privés dans stdout")
+    controle.add_parser("plan-reparation", help="Compare les vues privées et prépare un plan sans écriture")
     complet = controle.add_parser("complet", help="Vérifie le dépôt et, sur demande explicite, les témoins S/M/L")
     complet.add_argument("--racine", type=Path, default=Path.cwd())
     complet.add_argument("--temoins", action="store_true")
@@ -913,6 +914,13 @@ def main(argv=None):
         return 0
     if "--help" in argv or "-h" in argv:
         return _aide_deleguee(arguments)
+    if arguments.commande == "controle" and arguments.controle == "plan-reparation":
+        from benchab.qualite.plan_reparation import planifier
+
+        # Comme le diagnostic d'installation, ce plan reste hors Base() et hors mesure (#119).
+        rapport = planifier(atelier_prive(arguments.prive))
+        print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
+        return rapport["code"]
     if arguments.commande == "controle" and arguments.controle == "installation":
         from benchab.qualite.installation import diagnostiquer
 

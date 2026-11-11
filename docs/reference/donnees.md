@@ -43,6 +43,11 @@ génération.
 Le manifeste privé des vues permet au contrôle de cohérence de repérer une vue
 absente, périmée ou altérée. Le contrôle ne régénère rien : la génération est
 une opération explicite, distincte de la vérification.
+La commande `benchab controle plan-reparation` compare les rendus SQLite aux
+vues privées en lecture seule et produit des cibles/SHA avec préconditions de
+sauvegarde et de contrôle futur. Elle ne répare rien ; voir
+[le plan de régénération](plan-reparation-vues.md). Une divergence n'est pas
+une preuve de falsification.
 
 Une reprise historique peut conserver une préparation sous forme de résumé.
 Son JSON figé garde son empreinte originale ; son état reste « historique résumé ;
