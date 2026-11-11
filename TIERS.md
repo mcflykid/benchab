@@ -72,7 +72,7 @@ les licences duales cryptography et packaging, la branche Apache-2.0 est retenue
 | matplotlib-inline | 0.2.2 | BSD-3-Clause |
 | meshoptimizer | 0.2.30a0 | MIT |
 | mpmath | 1.3.0 | BSD-3-Clause |
-| mypy | 2.4.1 | MIT |
+| mypy | 2.4.1 | MIT AND Apache-2.0 |
 | mypy-extensions | 1.2.0 | MIT |
 | narwhals | 2.28.0 | MIT |
 | networkx | 3.7 | BSD-3-Clause |

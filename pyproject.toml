@@ -73,6 +73,8 @@ files = [
     "benchab/reglages.py",
 ]
 check_untyped_defs = true
+incremental = false
+cache_dir = "/dev/null"
 follow_imports = "silent"
 ignore_missing_imports = true
 warn_unused_ignores = true
