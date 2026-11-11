@@ -840,6 +840,11 @@ def appliquer_candidat_lien(
             or identite_apres != identite_lien
         ):
             raise RuntimeError("Contrôle après reprise échoué ; NON VÉRIFIÉ, preuve conservée.")
+        # Une substitution entre la garde et la publication interdit de valider la copie.
+        try:
+            _verifier_identite_base_sqlite(base, identite_base)
+        except ValueError as exc:
+            raise ValueError(f"{exc} Reprise NON VÉRIFIÉE ; copie et preuve conservées.") from exc
 
     return {
         "statut": "PASS", "application_effectuee": True, "cible_vue": cible,

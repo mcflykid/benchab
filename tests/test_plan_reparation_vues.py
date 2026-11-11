@@ -248,8 +248,9 @@ def test_appliquer_refuse_wal_effectif_avant_preuve(tmp_path, monkeypatch):
     assert index.is_symlink() and candidat.read_bytes() == attendu
 
 
-def test_appliquer_refuse_base_remplacee_apres_preuve(tmp_path, monkeypatch):
-    """Le chemin de base garde la même identité jusqu'à la publication de la copie."""
+@pytest.mark.parametrize("apres_copie", [False, True])
+def test_appliquer_refuse_base_remplacee_apres_preuve(tmp_path, monkeypatch, apres_copie):
+    """Le changement d’identité SQLite avant ou juste après la copie interdit PASS."""
     prive = _atelier(tmp_path)
     index = prive / "vues/INDEX.md"
     attendu = index.read_bytes()
@@ -265,7 +266,10 @@ def test_appliquer_refuse_base_remplacee_apres_preuve(tmp_path, monkeypatch):
 
     def remplacer_base_apres_preuve(publication):
         resultat = publieur(publication)
-        if any(chemin.name.startswith("reprise-lien-") for chemin in publication.sorties):
+        if any(
+            chemin == cible if apres_copie else chemin.name.startswith("reprise-lien-")
+            for chemin in publication.sorties
+        ):
             remplacement = tmp_path / "base-remplacement.sqlite"
             remplacement.write_bytes(base.read_bytes())
             remplacement.replace(base)
@@ -276,7 +280,10 @@ def test_appliquer_refuse_base_remplacee_apres_preuve(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="Identité du chemin SQLite modifiée"):
         plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
 
-    assert not cible.exists()
+    if apres_copie:
+        assert cible.read_bytes() == attendu
+    else:
+        assert not cible.exists()
     assert index.is_symlink() and candidat.read_bytes() == attendu
     assert list((prive / "sauvegardes/vues").glob("reprise-lien-*.json"))
 
