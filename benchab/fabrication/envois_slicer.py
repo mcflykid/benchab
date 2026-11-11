@@ -121,7 +121,7 @@ def lire(p):
                 "envoye_le": f"{m[2]}/{m[1]} {m[3]}:{m[4]}" if m else None,
                 "nom": m[5] if m else p.stem,
                 "sha256": initial,
-                "octets": p.stat().st_size,
+                "octets": archive.taille_source(),
                 "plaques": len(plaques),
                 "filament_utilise_g": utilise,
                 "filaments_utilises": sorted({outil for detail in details for outil in detail["filaments_utilises"]}),

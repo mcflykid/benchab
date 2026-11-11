@@ -59,10 +59,22 @@ class Envois(unittest.TestCase):
             tailles.append(resultat)
             return resultat
 
-        with patch.object(E.Archive3MF, "sha256", compter), patch.object(
-            E, "sha", side_effect=AssertionError("Hachage par réouverture du chemin")
+        taille_source = E.Archive3MF.taille_source
+        tailles_lues = []
+
+        def compter_taille(archive):
+            """Trace la taille renvoyée par le descripteur réellement ouvert."""
+            taille = taille_source(archive)
+            tailles_lues.append(taille)
+            return taille
+
+        with (
+            patch.object(E.Archive3MF, "sha256", compter),
+            patch.object(E.Archive3MF, "taille_source", compter_taille),
+            patch.object(E, "sha", side_effect=AssertionError("Hachage par réouverture du chemin")),
         ):
             rapport = E.lire(p)
+        self.assertEqual(tailles_lues, [p.stat().st_size])
         self.assertEqual(tailles, [avant])
         self.assertEqual(rapport["sha256"], avant)
         self.assertEqual(rapport["filament_utilise_g"], [0, 12.5])
