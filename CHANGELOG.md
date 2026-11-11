@@ -2,6 +2,21 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.18.0 — 2026-11-11
+
+- Lecture 3MF : termine la migration des lecteurs métier et documente
+  les validateurs sur instantané qui gardent leur contrat (#122).
+- Optimisation : refuse une source remplacée pendant le clone et vérifie
+  l’ordre, le commentaire et le contenu non modifié (#202).
+- Synthèse d’atelier : refuse le XML hors contrat depuis le fichier lié par
+  SHA, sans changer les rapports S/M/L valides (#203).
+- Comparaison 3MF : résout les matériaux de base Core déclarés dans un
+  maillage direct ; la conversion reste NON VÉRIFIÉE (suite de #43).
+- Remplissage : prépare des paliers radiaux disjoints et mesure sur un
+  coupon l’effet numérique d’un changement de densité (suite de #83).
+- Supports : reproduit l’effet d’une consigne XY sur les trajets d’un
+  coupon, sans conclure au retrait (suite de #89).
+
 ## 1.17.0 — 2026-11-11
 
 - Restauration 3MF : conserve le commentaire global du ZIP et lit les

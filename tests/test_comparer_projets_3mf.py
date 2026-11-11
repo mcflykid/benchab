@@ -4,6 +4,8 @@ import json
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
+import pytest
+
 from benchab.cli import main as cli_main
 from benchab.controles.comparer_projets_3mf import comparer
 
@@ -18,13 +20,17 @@ def _archive_peinte(
     path, *, dialect="paint_color", couleurs=("1", "2"), triangles=((0, 1, 2), (0, 2, 3)),
     x1="1", composant=False, relation_ambigue=False, objet_supplementaire=False,
     type_relation=None, cible_relation="/3D/3dmodel.model", mode_relation=None,
-    qname_relation=False, proprietes_objet=None,
+    qname_relation=False, proprietes_objet=None, groupes_materiau=(), proprietes_facettes=None,
 ):
     """Écrit un modèle OPC synthétique direct, avec deux facettes et un dialecte explicite."""
     from benchab.imports3d.lecture_3mf import NS, NS_REL, REL_MODELE
 
     modele = ET.Element(NS + "model", unit="millimeter")
     ressources = ET.SubElement(modele, NS + "resources")
+    for identifiant, bases in groupes_materiau:
+        groupe = ET.SubElement(ressources, NS + "basematerials", id=identifiant)
+        for nom, couleur in bases:
+            ET.SubElement(groupe, NS + "base", name=nom, displaycolor=couleur)
     objet = ET.SubElement(ressources, NS + "object", id="1", type="model")
     for cle, valeur in (proprietes_objet or {}).items():
         objet.set(cle, valeur)
@@ -43,6 +49,8 @@ def _archive_peinte(
                 else "{http://schemas.slic3r.org/3mf/2017/06}mmu_segmentation"
             )
             attributs[nom] = couleurs[index]
+        if proprietes_facettes is not None:
+            attributs.update(proprietes_facettes[index])
         ET.SubElement(faces, NS + "triangle", **attributs)
     if objet_supplementaire:
         ET.SubElement(ressources, NS + "object", id="2", type="model")
@@ -432,3 +440,81 @@ def test_cli_resume_conserve_le_rapport_complet_et_les_sources(tmp_path, capsys)
     empreinte = sortie.read_bytes()
     assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 2
     assert capsys.readouterr().err and sortie.read_bytes() == empreinte
+
+
+def test_core_compare_materiaux_resolus_malgre_reindexation(tmp_path):
+    """Un autre id ou index ne change pas le matériau déclaré par facette."""
+    source, candidat = tmp_path / "source.3mf", tmp_path / "candidat.3mf"
+    _archive_peinte(
+        source, groupes_materiau=(("2", [("Structure", "#112233"), ("Interface", "#abcdef")]),),
+        proprietes_objet={"pid": "2", "pindex": "0"},
+        proprietes_facettes=({}, {"p1": "1"}),
+    )
+    _archive_peinte(
+        candidat, groupes_materiau=(("7", [("Interface", "#ABCDEFFF"), ("Structure", "#112233FF")]),),
+        proprietes_objet={"pid": "7", "pindex": "1"},
+        proprietes_facettes=({"p1": "1"}, {"p1": "0", "p2": "0", "p3": "0"}),
+    )
+    rapport = comparer(source, candidat)
+    core = rapport["peinture"]["proprietes_standard_3mf"]
+    assert core["statut"] == "PASS"
+    assert core["differences"] == [] and core["facettes_comparees"] == 2
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+
+
+def test_core_alerte_si_un_materiau_de_facette_disparait(tmp_path):
+    """La perte de l’attribution Core reste visible sans déduire un filament."""
+    source, candidat = tmp_path / "source.3mf", tmp_path / "candidat.3mf"
+    _archive_peinte(
+        source, groupes_materiau=(("2", [("Structure", "#112233"), ("Interface", "#AABBCC")]),),
+        proprietes_objet={"pid": "2", "pindex": "0"},
+        proprietes_facettes=({}, {"p1": "1"}),
+    )
+    _archive_peinte(
+        candidat, groupes_materiau=(("2", [("Structure", "#112233")]),),
+        proprietes_objet={"pid": "2", "pindex": "0"},
+    )
+    core = comparer(source, candidat)["peinture"]["proprietes_standard_3mf"]
+    assert core["statut"] == "WARN"
+    assert core["differences"] == [{
+        "portee": "facette", "facette": 2,
+        "source": {"nom": "Interface", "srgb_affichage": "#AABBCCFF"},
+        "candidat": {"nom": "Structure", "srgb_affichage": "#112233FF"},
+    }]
+
+
+@pytest.mark.parametrize(
+    ("groupes", "objet", "triangle"),
+    [
+        ((("1", [("A", "#000000")]),), {"pid": "1", "pindex": "0"}, {}),
+        ((("2", [("A", "#000000")]),), {"pid": "2", "pindex": "2"}, {}),
+        ((("2", [("A", "#000000"), ("B", "#FFFFFF")]),), {"pid": "2", "pindex": "0"}, {"p1": "0", "p2": "1"}),
+        ((("2", [("A", "#000000")]),), {}, {"pid": "2", "p1": "0"}),
+    ],
+)
+def test_core_refuse_alias_indices_gradients_et_defauts_absents(tmp_path, groupes, objet, triangle):
+    """Une référence ambiguë ou un gradient interdit ne peut produire un résultat qualifié."""
+    source, candidat = tmp_path / "source.3mf", tmp_path / "candidat.3mf"
+    _archive_peinte(
+        source, groupes_materiau=groupes, proprietes_objet=objet, proprietes_facettes=({}, triangle),
+    )
+    _archive_peinte(candidat)
+    core = comparer(source, candidat)["peinture"]["proprietes_standard_3mf"]
+    assert core["statut"] == "NON VÉRIFIÉ" and core["differences"] == []
+
+
+def test_core_herite_index_objet_avec_groupe_de_facette_explicite(tmp_path):
+    """Un pid de facette remplace le groupe et conserve l’index par défaut sans p1."""
+    source, candidat = tmp_path / "source.3mf", tmp_path / "candidat.3mf"
+    groupes = (("2", [("Structure", "#112233")]), ("3", [("Interface", "#AABBCC")]))
+    objet = {"pid": "2", "pindex": "0"}
+    _archive_peinte(
+        source, groupes_materiau=groupes, proprietes_objet=objet,
+        proprietes_facettes=({"pid": "3", "p2": "0", "p3": "0"}, {}),
+    )
+    _archive_peinte(
+        candidat, groupes_materiau=groupes, proprietes_objet=objet,
+        proprietes_facettes=({"pid": "3", "p1": "0"}, {}),
+    )
+    core = comparer(source, candidat)["peinture"]["proprietes_standard_3mf"]
+    assert core["statut"] == "PASS" and core["differences"] == []

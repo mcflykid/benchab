@@ -6,9 +6,9 @@ import json
 import os
 import stat
 import uuid
-import zipfile
 from pathlib import Path
 
+from benchab.archives_3mf import Archive3MF
 from benchab.visualisation.stockage_commentaires import ouvrir_dossier, sans_liens
 
 MAX_JSON = 2 * 1024 * 1024
@@ -67,12 +67,14 @@ def _json(path, attendu=None, avecempreinte=False):
 
 @contextlib.contextmanager
 def _archive_liee(path, attendu):
-    """Ouvre une archive ZIP dont le SHA attendu est vérifié, sans extraire de membre."""
+    """Lit un 3MF borné depuis le descripteur haché ; ne publie aucun membre."""
     with _lecture(path, MAX_ARCHIVE) as stream:
         if not attendu or _digest(stream) != attendu:
             raise ValueError("Archive modifiée ou sans empreinte")
-        with zipfile.ZipFile(stream) as archive:
-            yield (archive, stream)
+        with Archive3MF.depuis_descripteur(
+            path, stream.fileno(), taille_max_membre=MAX_ARCHIVE, taille_max_totale=MAX_ARCHIVE,
+        ) as archive:
+            yield archive
 
 
 def _ouvrir_parent_sortie(path):

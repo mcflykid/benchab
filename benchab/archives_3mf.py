@@ -117,10 +117,33 @@ class Archive3MF:
         self.taille_max_xml = taille_max_xml
         self._archive = None
         self._fichier = None
+        self._descripteur_emprunte = None
         self._infos = {}
         self._identite = None
         self._octets_lus = 0
         self._flux_ouverts = []
+
+    @classmethod
+    @contextlib.contextmanager
+    def depuis_descripteur(cls, chemin, descripteur, **budgets):
+        """Lit un 3MF depuis un descripteur déjà validé et le chemin qui lui correspond.
+
+        Le contexte possède sa copie du descripteur et restaure le curseur
+        partagé en octets ; l’appelant garde le sien ouvert et inutilisé
+        pendant la lecture. Refuse un autre fichier, une mutation ou un
+        budget dépassé. Ne crée ni ne modifie aucun fichier.
+        """
+        if type(descripteur) is not int or descripteur < 0:
+            raise ValueError("descripteur de fichier invalide")
+        position = os.lseek(descripteur, 0, os.SEEK_CUR)
+        lecteur = cls(chemin, **budgets)
+        lecteur._descripteur_emprunte = descripteur
+        try:
+            with lecteur as archive:
+                yield archive
+                archive.verifier_source(chemin)
+        finally:
+            os.lseek(descripteur, position, os.SEEK_SET)
 
     def __enter__(self):
         """Ouvre un contexte neuf et refuse réentrée, index invalide ou budget dépassé."""
@@ -143,12 +166,20 @@ class Archive3MF:
             if isinstance(valeur, bool) or not isinstance(valeur, int) or valeur <= 0:
                 raise ValueError(f"budget {nom} invalide : entier strictement positif requis")
         drapeaux = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-        descripteur = os.open(self.chemin, drapeaux)
+        descripteur = (
+            os.open(self.chemin, drapeaux)
+            if self._descripteur_emprunte is None else os.dup(self._descripteur_emprunte)
+        )
         self._fichier = os.fdopen(descripteur, "rb")
         try:
             if not stat.S_ISREG(os.fstat(self._fichier.fileno()).st_mode):
                 raise ValueError("la source doit être un fichier régulier")
             self._identite = self._stat_identite()
+            if (
+                self._descripteur_emprunte is not None
+                and self._signature(self.chemin.lstat()) != self._identite
+            ):
+                raise ValueError("Source différente pour le descripteur 3MF emprunté")
             self._archive = zipfile.ZipFile(self._fichier, "r")
             infos = self._archive.infolist()
             if len(infos) > self.nombre_max_membres:
@@ -198,7 +229,11 @@ class Archive3MF:
 
     def _stat_identite(self):
         """Identité locale (périphérique, inode, taille et dates) de l’archive."""
-        info = os.fstat(self._fichier.fileno())
+        return self._signature(os.fstat(self._fichier.fileno()))
+
+    @staticmethod
+    def _signature(info):
+        """Identité comparable d’une source obtenue par lstat ou fstat."""
         return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
 
     @staticmethod
@@ -325,8 +360,7 @@ class Archive3MF:
 
         if self._archive is None:
             raise RuntimeError("ouvrir Archive3MF avec un bloc with")
-        info = sans_lien(chemin, strict=True).lstat()
-        signature = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        signature = self._signature(sans_lien(chemin, strict=True).lstat())
         if signature != self._identite or self._stat_identite() != self._identite:
             raise ValueError("Source différente ou modifiée pour le contexte 3MF ouvert")
 

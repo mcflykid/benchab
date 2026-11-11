@@ -288,3 +288,28 @@ def test_refuse_doctype_xml_multiencodage_sans_bom(tmp_path, encoding):
     with Archive3MF(path) as archive:
         with pytest.raises(ValueError, match="DOCTYPE|ENTITY"):
             archive.xml("xml")
+
+
+def test_depuis_descripteur_relit_source_epinglee_et_retablit_le_curseur(tmp_path):
+    """Le ZIP lit le même fichier ouvert et rend le curseur à l’appelant."""
+    chemin = tmp_path / "source.3mf"
+    _zip(chemin, [("x", b"preuve")])
+    with chemin.open("rb") as source:
+        source.read(7)
+        with Archive3MF.depuis_descripteur(chemin, source.fileno(), taille_max_totale=6) as archive:
+            assert archive.sha256() == hashlib.sha256(chemin.read_bytes()).hexdigest()
+            assert archive.lire("x") == b"preuve"
+        assert source.tell() == 7 and not source.closed
+
+
+def test_depuis_descripteur_refuse_un_autre_fichier_au_meme_chemin(tmp_path):
+    """Un nom remplacé ne peut pas être associé au descripteur de l’ancien fichier."""
+    chemin, remplace = tmp_path / "source.3mf", tmp_path / "remplacement.3mf"
+    _zip(chemin, [("x", b"avant")])
+    _zip(remplace, [("x", b"apres")])
+    with chemin.open("rb") as source:
+        remplace.replace(chemin)
+        with pytest.raises(ValueError, match="Source différente"):
+            with Archive3MF.depuis_descripteur(chemin, source.fileno()):
+                pytest.fail("Le descripteur ne désigne plus le chemin déclaré")
+        assert source.read(2) == b"PK"
