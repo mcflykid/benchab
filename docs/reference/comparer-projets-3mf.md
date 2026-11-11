@@ -33,14 +33,21 @@ OPC ambiguës ou attributs d’extension inconnus restent `NON VÉRIFIÉ`.
 Dans ce sous-cas, les extensions ASN `paint_color` et Prusa
 `slic3rpe:mmu_segmentation` sont comparées comme attributs XML littéraux
 uniquement si les deux archives utilisent le même QName. Une propriété absente
-sur une facette est signalée `WARN`; les facettes permutées ou un dialecte/QName
-différent donnent `NON VÉRIFIÉ`. Aucune valeur n’est décodée ou transcodée.
+sur une facette est signalée `WARN`. Si le modèle et le dialecte unique sont
+établis d’un seul côté et que l’autre n’a aucun attribut de ce dialecte, toutes
+les absences ou tous les ajouts littéraux sont rapportés en `WARN`. Les
+facettes permutées, un dialecte/QName différent, un modèle ambigu, des
+relations OPC mal formées, un chemin URI non interne ou une facette dégénérée
+donnent `NON VÉRIFIÉ`. Aucune valeur n’est décodée ou transcodée.
 Les références Core `pid`, `p1`–`p3` et leurs ressources restent
-`NON VÉRIFIÉES`, car ce lot n’en résout pas la sémantique. Aucun de ces constats
-ne prouve la compatibilité du slicer ou la conservation après conversion.
+`NON VÉRIFIÉES`, car ce lot n’en résout pas la sémantique. Leur présence est
+signalée sans verdict sémantique, avec prise en compte de `pid`/`pindex` de
+l’objet et de `pid`/`p1`–`p3` des facettes. Aucun de ces constats ne prouve la
+compatibilité du slicer ou la conservation après conversion.
 
-Le statut général reste `NON VÉRIFIÉ` tant que la peinture par facette n’est
-pas qualifiée, même si les réglages projet et la palette sont identiques.
+Le statut général reste `NON VÉRIFIÉ`, car la comparaison littérale n’établit
+ni la sémantique des propriétés Core ni la compatibilité du slicer, même si les
+réglages projet, la palette ou les attributs littéraux sont identiques.
 Cette première étape ne satisfait donc qu’une partie de #43. Elle ne teste
 pas la réouverture par un slicer, les réglages au niveau objet/plaque, les
 propriétés standard de matériau ou les encodages de peinture ASN/Prusa.

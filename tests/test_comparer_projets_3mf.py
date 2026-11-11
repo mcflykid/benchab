@@ -17,6 +17,8 @@ def _archive(path, settings):
 def _archive_peinte(
     path, *, dialect="paint_color", couleurs=("1", "2"), triangles=((0, 1, 2), (0, 2, 3)),
     x1="1", composant=False, relation_ambigue=False, objet_supplementaire=False,
+    type_relation=None, cible_relation="/3D/3dmodel.model", mode_relation=None,
+    qname_relation=False, proprietes_objet=None,
 ):
     """Écrit un modèle OPC synthétique direct, avec deux facettes et un dialecte explicite."""
     from benchab.imports3d.lecture_3mf import NS, NS_REL, REL_MODELE
@@ -24,6 +26,8 @@ def _archive_peinte(
     modele = ET.Element(NS + "model", unit="millimeter")
     ressources = ET.SubElement(modele, NS + "resources")
     objet = ET.SubElement(ressources, NS + "object", id="1", type="model")
+    for cle, valeur in (proprietes_objet or {}).items():
+        objet.set(cle, valeur)
     if composant:
         ET.SubElement(objet, NS + "components")
     maillage = ET.SubElement(objet, NS + "mesh")
@@ -45,13 +49,11 @@ def _archive_peinte(
     construction = ET.SubElement(modele, NS + "build")
     ET.SubElement(construction, NS + "item", objectid="1")
     relations = ET.Element(NS_REL + "Relationships")
-    ET.SubElement(
-        relations,
-        NS_REL + "Relationship",
-        Id="rModel",
-        Type=REL_MODELE,
-        Target="/3D/3dmodel.model",
-    )
+    attributs_relation = {"Id": "rModel", "Type": type_relation or REL_MODELE, "Target": cible_relation}
+    if mode_relation is not None:
+        attributs_relation["TargetMode"] = mode_relation
+    qname = "{urn:autre}Relationship" if qname_relation else NS_REL + "Relationship"
+    ET.SubElement(relations, qname, attributs_relation)
     if relation_ambigue:
         ET.SubElement(
             relations,
@@ -144,7 +146,7 @@ def test_cli_est_un_diagnostic_json_sans_ouvrir_un_atelier(tmp_path, capsys, mon
     code = cli_main(["controle", "comparer-projets-3mf", str(source), str(candidate)])
 
     sortie = capsys.readouterr()
-    assert code == 2  # La peinture par facette demeure NON VÉRIFIÉE.
+    assert code == 2  # Les propriétés Core et la compatibilité restent NON VÉRIFIÉES.
     assert sortie.err == ""
     rapport = json.loads(sortie.out)
     assert rapport["statut"] == "NON VÉRIFIÉ"
@@ -301,6 +303,62 @@ def test_peinture_non_verifiee_si_composant_objet_ou_relation_ambigue(tmp_path):
         rapport = comparer(source, candidate)
 
         assert rapport["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_perte_ou_ajout_integral_de_peinture_est_warn(tmp_path):
+    """Un dialecte unique d’un seul côté qualifie la perte ou l’ajout littéral intégral."""
+    for nom, couleurs_source, couleurs_candidat, attendu in (
+        ("perte", ("1", "2"), (None, None), "peinture absente du candidat"),
+        ("ajout", (None, None), ("1", "2"), "peinture absente de la source"),
+    ):
+        source, candidate = tmp_path / f"{nom}-source.3mf", tmp_path / f"{nom}-candidate.3mf"
+        _archive_peinte(source, couleurs=couleurs_source)
+        _archive_peinte(candidate, couleurs=couleurs_candidat)
+
+        peinture = comparer(source, candidate)["peinture"]["extensions_asn_prusa"]
+
+        assert peinture["statut"] == "WARN"
+        assert peinture["cause"] == attendu
+        assert len(peinture["differences_litterales"]) == 2
+
+
+def test_proprietes_core_vides_ne_sont_pas_signalees_presentes(tmp_path):
+    """Les dictionnaires de facette vides ne prouvent aucune propriété Core."""
+    source, candidate = tmp_path / "source.3mf", tmp_path / "candidate.3mf"
+    _archive_peinte(source)
+    _archive_peinte(candidate, proprietes_objet={"pid": "2", "pindex": "0"})
+
+    peinture = comparer(source, candidate)["peinture"]["proprietes_standard_3mf"]
+
+    assert peinture["present_source"] is False
+    assert peinture["present_candidat"] is True
+    assert peinture["statut"] == "NON VÉRIFIÉ"
+
+
+def test_relation_opc_non_qualifiee_ou_cible_dangereuse_reste_non_verifiee(tmp_path):
+    """La résolution directe refuse QName, type, chemin et mode externe non qualifiés."""
+    for nom, options in (
+        ("qname", {"qname_relation": True}),
+        ("type", {"type_relation": "urn:other/3dmodel"}),
+        ("parent", {"cible_relation": "/3D/../3D/3dmodel.model"}),
+        ("backslash", {"cible_relation": "3D\\3dmodel.model"}),
+        ("uri", {"cible_relation": "https://example.invalid/model"}),
+        ("external", {"mode_relation": "External"}),
+    ):
+        source, candidate = tmp_path / f"{nom}-source.3mf", tmp_path / f"{nom}-candidate.3mf"
+        _archive_peinte(source, **options)
+        _archive_peinte(candidate)
+
+        assert comparer(source, candidate)["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_facette_aux_indices_repetes_reste_non_verifiee(tmp_path):
+    """Une triangle dégénéré répété n’établit pas une identité de facette qualifiée."""
+    source, candidate = tmp_path / "source.3mf", tmp_path / "candidate.3mf"
+    _archive_peinte(source, triangles=((0, 0, 2), (0, 2, 3)))
+    _archive_peinte(candidate, triangles=((0, 0, 2), (0, 2, 3)))
+
+    assert comparer(source, candidate)["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
 
 
 def test_cle_inconnue_reste_non_verifiee_meme_identique(tmp_path):

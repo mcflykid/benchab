@@ -44,6 +44,8 @@ def _lire_peinture_directe(archive):
         return inconnu
     candidates, ids = [], set()
     for relation in relations:
+        if relation.tag != _NS_REL + "Relationship":
+            return {**inconnu, "raison": "QName de relation OPC inattendu."}
         identifiant, cible = relation.get("Id"), relation.get("Target")
         mode, type_relation = relation.get("TargetMode", "Internal"), relation.get("Type", "")
         if not identifiant or identifiant in ids or not cible or mode not in {"Internal", "External"}:
@@ -53,12 +55,19 @@ def _lire_peinture_directe(archive):
             candidates.append((type_relation, mode, cible))
     if len(candidates) != 1 or candidates[0][:2] != (_REL_MODELE, "Internal"):
         return {**inconnu, "raison": "Relation OPC StartPart absente, externe ou ambiguë."}
-    import posixpath
-    from urllib.parse import unquote
+    from urllib.parse import unquote, urlsplit
 
-    cible = unquote(candidates[0][2]).replace("\\", "/")
-    modele = posixpath.normpath(cible.lstrip("/") if cible.startswith("/") else cible)
-    if modele.startswith("../") or modele in {"", "."} or modele not in noms:
+    cible_brute = candidates[0][2]
+    uri = urlsplit(cible_brute)
+    cible = unquote(uri.path)
+    segments = cible.split("/")
+    if (
+        uri.scheme or uri.netloc or uri.query or uri.fragment or "\\" in cible
+        or any(segment == ".." for segment in segments)
+    ):
+        return {**inconnu, "raison": "Cible StartPart externe ou chemin OPC non qualifié."}
+    modele = cible.lstrip("/") if cible.startswith("/") else cible
+    if modele in {"", "."} or modele not in noms:
         return {**inconnu, "raison": "Cible StartPart hors archive ou absente."}
     racine = archive.xml(modele)
     if racine.tag != _NS_3MF + "model":
@@ -72,6 +81,9 @@ def _lire_peinture_directe(archive):
         return {**inconnu, "raison": "Unité, cardinalité des objets ou ordre du build non qualifié."}
     objet, item = objets[0], items[0]
     ident = objet.get("id")
+    proprietes_objet = {
+        cle: objet.get(cle) for cle in ("pid", "pindex") if cle in objet.attrib
+    }
     attributs_path = [cle for cle in item.attrib if cle.rsplit("}", 1)[-1] == "path"]
     if (
         not ident or item.get("objectid") != ident or item.get("printable", "1") != "1"
@@ -108,6 +120,8 @@ def _lire_peinture_directe(archive):
             return {**inconnu, "raison": "Indices de facettes invalides."}
         if any(indice < 0 or indice >= len(sommets) for indice in entiers):
             return {**inconnu, "raison": "Indice de facette hors du maillage."}
+        if len(set(entiers)) != 3:
+            return {**inconnu, "raison": "Facette avec indices de sommets répétés."}
         faces.append(indices)
         proprietes_core.append({cle: triangle.get(cle) for cle in ("pid", "p1", "p2", "p3") if cle in triangle.attrib})
         peinture = {}
@@ -137,7 +151,7 @@ def _lire_peinture_directe(archive):
         "facettes": faces,
         "peintures": peintures,
         "dialectes": sorted(dialectes),
-        "proprietes_core": proprietes_core,
+        "proprietes_core": {"objet": proprietes_objet, "facettes": proprietes_core},
     }
 
 
@@ -158,9 +172,21 @@ def _comparer_peinture(source, candidat):
             )
             return {**nv, "raison": raison}
     dialectes_source, dialectes_candidat = source["dialectes"], candidat["dialectes"]
-    if dialectes_source != dialectes_candidat or len(dialectes_source) != 1:
+    raison_perte = None
+    if dialectes_source == dialectes_candidat and len(dialectes_source) != 1:
         return {**nv, "raison": "Dialecte/QName absent, mélangé ou différent entre les deux projets."}
-    dialecte_qname = dialectes_source[0]
+    if len(dialectes_source) == len(dialectes_candidat) == 1:
+        if dialectes_source != dialectes_candidat:
+            return {**nv, "raison": "Dialecte/QName différent entre les deux projets."}
+        dialecte_qname = dialectes_source[0]
+    elif len(dialectes_source) == 1 and not dialectes_candidat:
+        dialecte_qname = dialectes_source[0]
+        raison_perte = "peinture absente du candidat"
+    elif not dialectes_source and len(dialectes_candidat) == 1:
+        dialecte_qname = dialectes_candidat[0]
+        raison_perte = "peinture absente de la source"
+    else:
+        return {**nv, "raison": "Dialecte/QName absent, mélangé ou différent entre les deux projets."}
     dialecte = _DIALECTES_PEINTURE[dialecte_qname]
     differences = []
     for index, (peinture_source, peinture_candidat) in enumerate(
@@ -178,7 +204,16 @@ def _comparer_peinture(source, candidat):
                 "statut": "DIFFÉRENT",
             })
     statut = "WARN" if differences else "PASS"
-    return {"statut": statut, "dialecte": dialecte, "differences_litterales": differences}
+    resultat = {"statut": statut, "dialecte": dialecte, "differences_litterales": differences}
+    if differences and raison_perte is not None:
+        resultat["cause"] = raison_perte
+    return resultat
+
+
+def _proprietes_core_presentes(peinture):
+    """Signale seulement la présence littérale de pid/pindex ou de propriétés de facette."""
+    proprietes = peinture.get("proprietes_core", {})
+    return bool(proprietes.get("objet")) or any(proprietes.get("facettes", ()))
 
 
 def _type_qualifie(cle, valeur):
@@ -409,8 +444,8 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
     """Compare deux 3MF sans les modifier ; valeurs sans conversion, empreintes SHA-256 exactes.
 
     Les réglages projet reconnus sont identiques, différents ou NON VÉRIFIÉS.
-    La peinture par facette reste NON VÉRIFIÉE, faute d’identité et d’ordre de maillage
-    comparés dans cette première étape.
+    La peinture par facette est comparée littéralement dans un sous-cas direct qualifié ;
+    les propriétés Core et la compatibilité du slicer restent NON VÉRIFIÉES.
     """
     source = Path(source).expanduser()
     candidat = Path(candidat).expanduser()
@@ -421,7 +456,7 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
     extension_peinture = _comparer_peinture(peinture_source, peinture_candidat)
     return {
         "schema": 1,
-        "statut": "NON VÉRIFIÉ",  # La peinture par facette n’est pas qualifiée dans ce lot.
+        "statut": "NON VÉRIFIÉ",  # Core et compatibilité de conversion restent hors qualification.
         "source": str(source),
         "candidat": str(candidat),
         "sha256": {
@@ -434,8 +469,8 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
             "statut": "NON VÉRIFIÉ",
             "proprietes_standard_3mf": {
                 "statut": "NON VÉRIFIÉ",
-                "present_source": bool(peinture_source.get("proprietes_core")),
-                "present_candidat": bool(peinture_candidat.get("proprietes_core")),
+                "present_source": _proprietes_core_presentes(peinture_source),
+                "present_candidat": _proprietes_core_presentes(peinture_candidat),
                 "raison": "Les références Core pid/p1–p3 et leurs ressources ne sont pas résolues sémantiquement.",
             },
             "extensions_asn_prusa": extension_peinture,
@@ -447,7 +482,8 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
         "limites": [
             "Comparaison en lecture seule des seuls réglages projet décodés par le dictionnaire typé.",
             "Les valeurs sont comparées dans leur forme native, sans normalisation ni réindexation.",
-            "La peinture de facettes standard ou spécifique au slicer reste NON VÉRIFIÉE.",
+            "Les propriétés de peinture Core restent NON VÉRIFIÉES ; les attributs connus ne sont comparés que "
+            "littéralement dans le sous-cas direct qualifié.",
             "Aucune conversion, réécriture, compatibilité de slicer ou validation physique n’est établie.",
         ],
     }
