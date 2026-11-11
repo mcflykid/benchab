@@ -17,7 +17,7 @@ from benchab.controles.plaques_interface import analyser as analyser_plaques
 from benchab.controles.regles import verifier_nommage
 from benchab.fabrication import anycubic
 from benchab.imports3d.lecture_3mf import lire as lire_3mf
-from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, renommer_exclusif
+from benchab.qualite.ecritures import PublicationNeuve, renommer_exclusif
 from benchab.qualite.empreintes import sha256_fichier
 
 
@@ -292,19 +292,15 @@ def calculer(plan, *, choisir_connecteurs=False):
 
 
 def _destination(path, prive=None):
-    path = _sans_lien(Path(path).expanduser().absolute())
-    from benchab.chemins import atelier_prive, est_temporaire
+    """Valide un export neuf privé/temporaire ; FAIL sur préparation figée, aucune écriture ni réglage changé."""
+    from benchab.qualite.ecritures import destination_neuve
 
-    prive = atelier_prive(prive)
-    if not path.is_relative_to(prive) and not est_temporaire(path):
-        raise ValueError("Les choix et exports de découpe restent dans le projet privé ou /private/tmp")
+    path = destination_neuve(path, prive=prive)
     if any(
         a.casefold() == "preparations" and re.fullmatch(r"p[0-9]+", b.casefold())
         for a, b in zip(path.parts, path.parts[1:])
     ):
         raise ValueError("Préparation Pnn figée : enregistrer la variante dans candidats ou preuves")
-    if path.exists():
-        raise FileExistsError("Sortie existante ; aucune version précédente écrasée")
     return path
 
 

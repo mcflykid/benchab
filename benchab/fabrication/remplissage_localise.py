@@ -121,11 +121,13 @@ def analyser_gcode(
     regions: dict[str, list[float]],
     types: tuple[str, ...] = ("Sparse infill", "Internal solid infill", "Inner wall", "Outer wall"),
 ) -> dict[str, dict[str, float]]:
-    """Mesure les longueurs déposées par type à l'intérieur des régions 3D."""
+    """Mesure les dépôts par type en régions 3D ; refuse les arcs faute d'intersection courbe exacte."""
     rapport = {nom: {type_ligne: 0.0 for type_ligne in types} for nom in regions}
     interpreteur = Interpreter()
     for ligne in gcode.splitlines():
         mouvement = interpreteur.feed_line(ligne)
+        if mouvement and mouvement["trajectory"] == "arc_g17_xy":
+            raise ValueError("arc G2/G3 non pris en charge pour la découpe linéaire des régions")
         if not mouvement or mouvement["deposited_length"] <= 0 or mouvement["type"] not in types:
             continue
         debut, fin = mouvement["deposition_start"], mouvement["end"]
@@ -155,14 +157,10 @@ def analyser_gcode(
 
 def _sortie_privee(sortie: str | Path) -> Path:
     """Valide une sortie privée/temporaire reconnue ; FAIL si lien/existant, aucune création ni réglage changé."""
-    from benchab.chemins import atelier_prive, est_temporaire, sans_lien
+    from benchab.qualite.ecritures import destination_neuve
 
-    cible = sans_lien(sortie)
+    cible = destination_neuve(sortie)
     cible.parent.resolve(strict=True)
-    if not cible.is_relative_to(atelier_prive()) and not est_temporaire(cible):
-        raise ValueError("La sortie doit rester sous BENCHAB/prive ou le temporaire système.")
-    if cible.exists():
-        raise FileExistsError(f"{cible} existe déjà : une nouvelle sortie est requise")
     return cible
 
 

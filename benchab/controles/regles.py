@@ -10,6 +10,7 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
 
+from benchab.archives_3mf import Archive3MF
 from benchab.controles import debit_gcode, plaques_interface
 from benchab.controles.rapports import RapportCourant
 from benchab.qualite.statuts import code_statut
@@ -22,12 +23,12 @@ def verifier_nommage(fichier: str | Path) -> dict:
     """Vérifie les noms persistés des plaques et objets d'un 3MF enregistré."""
     source = Path(fichier)
     erreurs: list[str] = []
-    with zipfile.ZipFile(source) as archive:
-        membres = archive.namelist()
+    with Archive3MF(source) as archive:
+        membres = archive.noms()
         membre = "Metadata/model_settings.config"
         if membres.count(membre) != 1 or len(membres) != len(set(membres)):
             raise ValueError("Configuration de modèle absente, dupliquée ou ambiguë.")
-        racine = ElementTree.fromstring(archive.read(membre))
+        racine = archive.xml(membre)
 
     plaques = racine.findall("plate")
     objets = racine.findall("object")

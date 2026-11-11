@@ -1,5 +1,10 @@
 # Interpréteur G-code commun
 
+Cette décision conserve le périmètre du premier lot livré en 1.1.0. Le lot
+1.2.0 ajoute les arcs du dialecte documenté et le repère spatial après G92 ;
+voir [les fondations 1.2.0](2026-11-11-fondations-1-2.md) et
+[la portée de la continuité](../reference/continuite-paroi.md).
+
 Le lot #13 précède le contrat de débit #12. Les zones locales et plusieurs
 contrôles utilisent déjà `Interpreter` ; la continuité possède encore une copie
 de ses règles modales et les caches partagés ne sont pas protégés.

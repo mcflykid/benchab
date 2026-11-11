@@ -9,6 +9,7 @@ from xml.etree import ElementTree as ET
 
 import numpy as np
 
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.rapports import RapportCourant
 from benchab.machine.configuration import charger as charger_configuration
 from benchab.qualite.statuts import code_statut
@@ -66,10 +67,10 @@ def analyser(fichier, *, pas=None, plateau=None, marge=None):
         raise ValueError("Marge d'objet finie et positive ou nulle requise")
     fichier = chemin(fichier)
     try:
-        with zipfile.ZipFile(fichier) as archive:
-            config = ET.fromstring(archive.read("Metadata/model_settings.config"))
-            modeles = {"/" + nom: ET.fromstring(archive.read(nom))
-                       for nom in archive.namelist() if nom.endswith(".model")}
+        with Archive3MF(fichier) as archive:
+            config = archive.xml("Metadata/model_settings.config")
+            modeles = {"/" + nom: archive.xml(nom)
+                       for nom in archive.noms() if nom.endswith(".model")}
     except ET.ParseError as erreur:
         statut = "NON VÉRIFIÉ"
         return {

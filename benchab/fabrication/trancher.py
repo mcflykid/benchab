@@ -48,10 +48,10 @@ def sha256(chemin):
 
 
 def ecrire_json(chemin, donnees):
-    """Remplace le rapport JSON UTF-8 ; aucun réglage d’impression n’est modifié."""
-    temporaire = chemin.with_suffix(".tmp")
-    temporaire.write_text(json.dumps(donnees, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temporaire.replace(chemin)
+    """Remplace un rapport JSON UTF-8 atomiquement ; temporaire unique, aucun réglage modifié."""
+    from benchab.qualite.ecritures import remplacer_texte
+
+    remplacer_texte(chemin, json.dumps(donnees, ensure_ascii=False, indent=2) + "\n")
 
 
 def chemin_temporaire(chemin):

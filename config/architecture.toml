@@ -49,7 +49,7 @@ raison = "Le producteur charge ce fichier HTML adjacent au module Python"
 contrainte = "Conserver le nom exact obtenu par Path.with_suffix"
 duree = "Tant que le producteur de l'aperçu garde ce chemin"
 preuve_fichier = "benchab/visualisation/apercu_gcode.py"
-preuve_sha256 = "e6e857f3bf397eda31677e6cc82be144e916e5221e88e10448a6458b869d48be"
+preuve_sha256 = "653569a034b2e153ad12f0b466107e600a6035bdbb3e345aa5858b8891d8f7ac"
 consommateur = "benchab/visualisation/apercu_gcode.py"
 
 [[ressources]]

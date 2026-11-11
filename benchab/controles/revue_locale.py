@@ -27,9 +27,9 @@ import json
 import os
 import re
 import sys
-import zipfile
 from pathlib import Path
 
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 
@@ -61,6 +61,9 @@ def mesurer_plaque(g):
             z = round(float(line[3:]), 3)
         move = it.feed_line(line)
         if not move:
+            continue
+        if move["trajectory"] == "arc_g17_xy":
+            it.error("arc exact en longueur ; trajectoire de support non représentée par une corde")
             continue
         if move["feed"] > 0:
             tc[z] += move["length"] / (move["feed"] / 60)
@@ -187,8 +190,8 @@ def juger_geometrie(zo, plaques, gcodes):
 
 def revoir(tranche, envoi, revue_p, faits_p):
     env = json.loads(Path(envoi).read_text())["zones_locales"]
-    zf = zipfile.ZipFile(tranche)
-    noms = {int(m.group(1)): n for n in zf.namelist() if (m := re.match(r"Metadata/plate_(\d+)\.gcode$", n))}
+    with Archive3MF(tranche) as zf:
+        noms = {int(m.group(1)): n for n in zf.noms() if (m := re.match(r"Metadata/plate_(\d+)\.gcode$", n))}
     gcodes = {pl: lire_texte_gcode_3mf(tranche, n, erreurs="ignore") for pl, n in noms.items()}
     plaques = {pl: mesurer_plaque(g) for pl, g in gcodes.items()}
     if env.get("tranche_sha256") != sha(tranche):

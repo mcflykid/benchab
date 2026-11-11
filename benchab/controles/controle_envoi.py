@@ -13,9 +13,9 @@ import sys
 import zipfile
 from contextlib import ExitStack
 from pathlib import Path
-from xml.etree import ElementTree as E
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles import zones_locales as ZL
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.rapports import RapportCourant
@@ -38,7 +38,7 @@ def chemin_local(value):
 
 
 def plaques(z):
-    return sorted(int(m.group(1)) for n in z.namelist() if (m := re.match(r"Metadata/plate_(\d+)\.gcode$", n)))
+    return sorted(int(m.group(1)) for n in z.noms() if (m := re.match(r"Metadata/plate_(\d+)\.gcode$", n)))
 
 
 def demarrage(g):
@@ -158,9 +158,9 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         raise RapportRefuse(str(error)) from error
     DEC = json.loads(Path(DECLARATION).read_text())
     risques_locaux, erreurs_locales = [], []
-    z = ressources.enter_context(zipfile.ZipFile(T3MF))
-    ps = schema_reglages.decoder(z.read("Metadata/project_settings.config"))
-    ms = E.fromstring(z.read("Metadata/model_settings.config"))
+    z = ressources.enter_context(Archive3MF(T3MF))
+    ps = z.reglages()
+    ms = z.xml("Metadata/model_settings.config")
     obj_ext = {
         o.get("id"): next((m.get("value") for m in o.findall("metadata") if m.get("key") == "extruder"), "1")
         for o in ms.findall("object")
@@ -172,7 +172,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         ]
         for p in ms.findall("plate")
     }
-    ref = ressources.enter_context(zipfile.ZipFile(REFF)) if REFF else None
+    ref = ressources.enter_context(Archive3MF(REFF)) if REFF else None
     res = []
     indices_absents = set()
     bed = ps.get("curr_bed_type")

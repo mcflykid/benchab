@@ -60,14 +60,12 @@ class _Etat:
         """Applique les seules décisions métier du contrôle ; accélérations en mm/s², sans réinterprétation modale."""
         op = evenement.get("command")
         mots = evenement.get("parameters", {})
-        if self.lecteur.tool != ancien_outil or op == "G92" or evenement.get("kind") == "homing":
+        if self.lecteur.tool != ancien_outil or evenement.get("kind") == "homing":
             self.derniere_fin = None
         if evenement.get("kind") == "homing" and "Z" in mots:
             self.z_meta = None
-        # Le lecteur sait suivre G92 ; une mesure de couche ne qualifie pas pour
-        # autant le nouveau repère XYZ (docs/reference/continuite-paroi.md).
-        if op == "G92" and set(mots) & {"X", "Y", "Z"}:
-            self.incomplet = True
+        # G92 ne déplace pas la trajectoire continue ; ses coordonnées de commande
+        # restent distinctes du repère spatial (docs/reference/continuite-paroi.md).
         if evenement.get("homing_unverified"):
             self.homing_non_verifie = True
         if op == "M204":
@@ -97,6 +95,10 @@ class _Etat:
             self.derniere_fin = None
         if mouvement is None:
             return
+        if mouvement["op"] in {"G2", "G3"}:
+            self.incomplet = True
+            self.derniere_fin = None
+            return
         # Un changement F seul n’interrompt pas le dépôt précédent ; les modes,
         # rétractions et trajectoires sont déjà résolus par le lecteur commun.
         if not set(evenement.get("parameters", {})) & {"X", "Y", "Z", "E"}:
@@ -104,7 +106,7 @@ class _Etat:
         if mouvement["deposited_length"] <= 0:
             self.derniere_fin = None
             return
-        fin = mouvement["end"]
+        fin = mouvement["spatial_end"]
         z = fin[2] if "Z" in evenement.get("parameters", {}) else self.z_meta
         z = fin[2] if z is None else z
         if self.intervalle_z_mm is not None and not self.intervalle_z_mm[0] <= z <= self.intervalle_z_mm[1]:

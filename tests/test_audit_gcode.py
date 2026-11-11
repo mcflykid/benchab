@@ -221,7 +221,7 @@ class Modal(unittest.TestCase):
         it, m = self.parse("M82\nG92 X10 Y20 Z.2 E100\nG1 X20 E101 F600\nG91\nG1 Y5 E102\nG92 X0 E0\nM83\nG1 X2 E1")
         self.assertFalse(it.errors)
         self.assertEqual([v["deposited"] for v in m], [1, 1, 1])
-        self.assertEqual(m[-1]["end"], (2.0, 25.0, 0.2))
+        self.assertEqual(m[-1]["end"], (12.0, 5.0, 0.0))
 
     def test_dette_retraction_et_reprise_partielle(self):
         it, m = self.parse("M83\nG1 E-2\nG1 X10 E1 F600\nG1 X20 E2")

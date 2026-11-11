@@ -301,6 +301,9 @@ def analyser_lignes(
         move = interpreter.feed_line(line)
         if not move:
             continue
+        if move["trajectory"] == "arc_g17_xy":
+            interpreter.error("arc analytique non pris en charge par l'intersection linéaire des appuis")
+            continue
         kind = move["type"]
         if not move["deposited_length"] or kind not in PIECE | SUPPORTS:
             fermer_parcours()

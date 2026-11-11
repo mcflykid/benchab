@@ -13,7 +13,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 
@@ -29,7 +29,8 @@ def main(argv):
         print(__doc__)
         return 2
     TMF, PLACE, OUT = Path(argv[0]), json.loads(Path(argv[1]).read_text()), Path(argv[2])
-    z = zipfile.ZipFile(TMF)
+    with Archive3MF(TMF) as archive:
+        premiere = float(archive.reglages().get("initial_layer_print_height", "0.2"))
     voulu = {o["name"]: o.get("reglages", {}) for o in PLACE["objects"]}
     res = {"source": TMF.name, "plaques": []}
     for k, pl in enumerate(PLACE["plates"], 1):
@@ -41,15 +42,15 @@ def main(argv):
         hauteurs = set()
         temps = set()
         consignes = []
-        premiere = float(
-            schema_reglages.decoder(z.read("Metadata/project_settings.config")).get("initial_layer_print_height", "0.2")
-        )
         st = collections.defaultdict(lambda: {"types": collections.Counter(), "f_paroi_ext": [], "boucles": []})
         boucle = None
         nouvelle_boucle = False
         it = Interpreter()
         for ligne in g:
             move = it.feed_line(ligne)
+            if move and move["trajectory"] == "arc_g17_xy":
+                it.error("arc exact en longueur ; vérification géométrique non prise en charge")
+                move = None
             evenement = it.last_event or {}
             commande = evenement.get("command")
             parametres = evenement.get("parameters", {})

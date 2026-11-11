@@ -284,6 +284,11 @@ def _archives(root, projet, fiche):
                         if setting and setting[1] in REGLAGES:
                             reglages[setting[1]] = setting[2].strip()
                         move = parser.feed_line(ligne)
+                        if move and move["trajectory"] == "arc_g17_xy":
+                            parser.error(
+                                "arc analytique non pris en charge par la représentation géométrique synthétique"
+                            )
+                            move = None
                         contact.ajouter(move, parser.metadata)
                         ev = parser.last_event or {}
                         op = ev.get("command")

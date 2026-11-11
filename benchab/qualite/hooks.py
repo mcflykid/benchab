@@ -17,7 +17,8 @@ PY = sys.executable
 
 def projet(p):
     """Résout le projet contenant un chemin ; renvoie Path ou None, sans unité ni écriture."""
-    p = Path(p).resolve()
+    # Garder le lien visible avant résolution : règle commune #17, chemins-et-atelier.md.
+    p = sans_lien(p)
     for d in [p if p.is_dir() else p.parent, *p.parents]:
         if (d / "qualite.json").exists():
             return d
@@ -34,7 +35,7 @@ def pre(data):
     # Le repli doit suivre chaque appel, pas le dossier présent à l’import (#21).
     cwd = sans_lien(data.get("cwd") or Path.cwd())
     for p in paths:
-        f = Path(p) if Path(p).is_absolute() else cwd / p
+        f = sans_lien(Path(p) if Path(p).is_absolute() else cwd / p)
         root = protege(f)
         if root:
             raise RuntimeError("Écriture refusée : fichier figé dans " + root)
@@ -53,7 +54,7 @@ def pre(data):
         if "cd" in tokens:
             i = tokens.index("cd")
             if i + 1 < len(tokens):
-                cwd = (cwd / tokens[i + 1]).resolve()
+                cwd = sans_lien(cwd / tokens[i + 1])
         mutating = bool(
             re.search(r"\b(rm|mv|cp|tee|touch|truncate|sed)\b|write_text|write_bytes|open\([^\n]+[\"\']w|[>]", cmd)
         )
@@ -63,12 +64,12 @@ def pre(data):
                     continue
                 token = token.strip(";&()")
                 f = Path(token) if token.startswith("/") else cwd / token
-                if protege(f):
+                if protege(sans_lien(f)):
                     raise RuntimeError("Commande refusée : écriture visant un fichier figé")
         if "livrables.py" in cmd and re.search(r"\bfiger\b", cmd):
             try:
                 i = tokens.index("figer")
-                d = (cwd / tokens[i + 1]).resolve()
+                d = sans_lien(cwd / tokens[i + 1])
             except (ValueError, IndexError):
                 raise RuntimeError("Gel refusé : cible non déterminée")
             if (d / "qualite.json").exists():

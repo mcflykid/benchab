@@ -80,6 +80,8 @@ def deux_couches(g):
             if not math.isfinite(w) or not 0 < w <= 10:
                 raise ValueError("largeur de ligne invalide (0 < largeur ≤ 10 mm)")
         move = it.feed_line(line)
+        if move and move["op"] in {"G2", "G3"}:
+            raise ValueError("arc analytique exact, mais représentation XY en segments non prise en charge")
         if move and vus and move["type"] in PIECE and move["deposited_length"] > 0:
             a, b = move["deposition_start"], move["end"]
             if sum(map(len, couches)) >= MAX_SEGMENTS:

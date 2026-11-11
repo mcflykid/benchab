@@ -33,12 +33,12 @@ import json
 import math
 import sys
 from pathlib import Path
-from zipfile import ZipFile
 
 import numpy as np
 import trimesh as tm
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles import supports_requis as S
 from benchab.fabrication import anycubic as A
 from benchab.gcode.lecture import lire_texte_gcode_3mf
@@ -231,7 +231,8 @@ def trancher(cands, profil, reglages_support):
     """cands : [(nom, mesh posé)] ; profil : 3MF dont on reprend project_settings ; renvoie la masse,
     le temps et la masse de support par plaque. Réglages en unités natives (mm, s, °C, %) lus via le
     dictionnaire typé ; aucun réglage inconnu transformé. Le 3MF neuf porte ce profil explicite comme provenance."""
-    st = schema_reglages.decoder(ZipFile(profil).read("Metadata/project_settings.config"))
+    with Archive3MF(profil) as archive:
+        st = archive.reglages()
     st.update(reglages_support)
     # U25 : la masse dépend du diamètre déclaré, jamais d'une constante implicite.
     densite = float(schema_reglages.valeur_unique(st, "filament_density"))

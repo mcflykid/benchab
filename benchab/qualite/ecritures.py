@@ -26,7 +26,7 @@ from benchab.qualite.empreintes import sha256_fichier as _sha
 
 
 def sortie_privee(chemin, *, prive=None):
-    """Valide un rapport privé/temporaire neuf ; Path sans unité, FAIL hors périmètre ou lien, aucune écriture."""
+    """Valide un chemin privé/temporaire ; Path sans unité, FAIL hors périmètre ou lien, aucune écriture."""
     from benchab.chemins import atelier_prive, est_temporaire_hors_depot
 
     chemin = _sans_lien(chemin)
@@ -37,13 +37,26 @@ def sortie_privee(chemin, *, prive=None):
 
 
 def sortie_durable(chemin, *, prive=None):
-    """Réserve un chemin de preuve ou d’archive à l’atelier choisi ; FAIL hors atelier ou lien."""
+    """Valide un chemin de preuve sous l’atelier choisi ; Path sans unité, FAIL hors atelier/lien, sans écriture."""
     from benchab.chemins import atelier_prive
 
     racine = atelier_prive(prive)
     cible = _sans_lien(chemin)
     if not cible.is_relative_to(racine):
         raise ValueError("Une sortie durable doit rester dans l’atelier privé.")
+    return cible
+
+
+def destination_neuve(chemin, *, prive=None, temporaire=True):
+    """Valide une destination neuve sans unité, privée ou jetable ; FAIL sur lien/existant, sans création.
+
+    Le temporaire doit rester hors checkout public ; cette garde ne réserve pas
+    le nom. L'appelant publie ensuite exclusivement (docs/reference/chemins-et-atelier.md).
+    """
+    garde = sortie_privee if temporaire else sortie_durable
+    cible = garde(chemin, prive=prive)
+    if cible.exists():
+        raise FileExistsError("Sortie existante ; aucune version précédente écrasée")
     return cible
 
 

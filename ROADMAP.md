@@ -26,16 +26,29 @@ du repère des couches après G92 XYZ restent à traiter. Le changement U25 peut
 faire passer un fichier de PASS à FAIL sans modifier ses trajectoires ; voir
 le [contrat du débit](docs/reference/debit.md).
 
-## Prochaine version : 1.2.0
+## Version 1.2.0 — fondations
+
+| Domaine | Résultat | Issues |
+| --- | --- | --- |
+| Lecture G-code | Arcs G17 XY analytiques, repère spatial après G92 ; géométrie non modélisée explicitement NON VÉRIFIÉE | #13 |
+| Destinations et écritures | Gardes communes, checkout temporaire protégé, écritures UTF-8 atomiques sans nom temporaire fixe | #17 |
+| Archives | Lecteur ZIP/XML commun borné, réglages typés et migration des contrôles de lecture | #64 |
+
+Voir [la décision de livraison](docs/decisions/2026-11-11-fondations-1-2.md).
+Les parcours mémoire spécialisés déjà bornés sont conservés ; les autres
+familles de lecteurs seront migrées dans un lot distinct. Les projets et leurs
+preuves restent privés et ne sont pas réécrits par cette version.
+
+## Prochaine version : 1.3.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
 Traiter les prérequis avant les nouveaux réglages :
 
-- **Lecture G-code** : #13 pour les mouvements encore non qualifiés. Les
-  consommateurs déjà raccordés et leurs témoins restent acquis.
-- **Fichiers et archives** : #17 pour les chemins et écritures communs, puis
-  #64 pour migrer progressivement les lecteurs ZIP/XML ; #42 suit la traçabilité 3MF.
+- **Lecture G-code** : #123 étend les usages géométriques au-delà
+  du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
+- **Fichiers et archives** : #122 poursuit la migration des familles hors contrôles ;
+  #42 suit la traçabilité 3MF.
 - **Contrôle avant envoi** : #71 pour ACE/buse/démarrage, #109 pour les
   avertissements natifs, #111 pour les mesures structurées des zones locales.
 - **Provenance et profils** : #36 avant l’enrichissement communautaire #40 ;

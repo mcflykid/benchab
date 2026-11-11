@@ -419,15 +419,15 @@ def _protections_globales(prive: Path) -> tuple[set[Path], set[str]]:
 
 
 def _sortie_privee(prive: Path, chemin: str | Path) -> Path:
+    """Valide une sortie neuve sous l'atelier ; FAIL sur lien/existant, sans création ni réglage changé."""
+    from benchab.qualite.ecritures import destination_neuve
+
     brut = Path(chemin).expanduser()
-    if any(element.is_symlink() for element in (brut, *brut.parents)):
-        raise ValueError("Lien symbolique dans la sortie refusé.")
     candidat = brut if brut.is_absolute() else prive / brut
-    parent = candidat.parent.resolve(strict=False)
-    cible = parent / candidat.name
-    if not cible.is_relative_to(prive) or cible.exists():
-        raise ValueError("La sortie doit être neuve et rester sous base.prive.")
-    return cible
+    try:
+        return destination_neuve(candidat, prive=prive, temporaire=False)
+    except FileExistsError as erreur:
+        raise ValueError("La sortie doit être neuve et rester sous base.prive.") from erreur
 
 
 __all__ = ["FILAMENT", "PAR_OBJET", "duree_positive", "main", "pieces_projet"]

@@ -314,6 +314,11 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
                 block += 1
             if not move:
                 continue
+            if move["trajectory"] == "arc_g17_xy":
+                report["couverture"]["erreurs"].append(
+                    f"{member}:{line_no}: arc analytique non couvert par la géométrie linéaire des parois"
+                )
+                continue
             if any(abs(a - b) > 1e-10 for a, b in zip(move["start"], move["end"])):
                 have_xyz = True
             if any(
