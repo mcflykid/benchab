@@ -2,6 +2,23 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir
+
+- Diagnostic : signale les exports absents, liés, mal formés ou divergents
+  sans arrêter les autres comparaisons et sans modifier l’atelier (#177).
+- Continuité : choisit le membre G-code exact et refuse les numéros de
+  plaque ambigus même avec une sélection explicite (#178).
+- Continuité : mesure le début du dépôt sur les arcs G17 de paroi extérieure
+  à Z constant sans approximation de corde (suite de #123).
+- Archives : normalise les copies du trancheur depuis le lecteur commun,
+  en préservant les métadonnées et les différences permises (suite de #122).
+- Supports : qualifie deux valeurs d’interface sur un seul binaire
+  identifié, avec un effet numérique répété sur coupon (suite de #80 et #89).
+- Fixations : ajoute un fraisage conique traversant à cotes explicites,
+  sans cote normative ni jeu déduit (suite de #27).
+- Annotations : précise le rôle et les limites des outils de préparation
+  sans changer leur comportement (suite de #127).
+
 ## 1.9.0 — 2026-11-11
 
 - Tranchage : refuse deux membres G-code pour un même numéro de plaque et
