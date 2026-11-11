@@ -103,8 +103,8 @@ La vis a un fond circulaire tangent aux flancs. L’outil à soustraire
 (`--role outil-interieur`) emploie le profil intérieur à plateaux et
 demande un `--jeu-radial-mm` explicite, appliqué aux rayons du profil.
 La source des cotes couvre les valeurs déclarées, y compris le jeu.
-Le rapport sépare ce jeu des diamètres nominaux et garde l’ajustement
-réel NON VÉRIFIÉ.
+Le rapport sépare les rayons et diamètres nominaux des rayons de l’outil
+après ajout du jeu. L’ajustement réel reste NON VÉRIFIÉ.
 
 Les options de profondeur et de méplats du profil sur mesure sont
 incompatibles avec ce mode. Le rapport donne les diamètres mineur et sur

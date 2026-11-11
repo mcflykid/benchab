@@ -180,6 +180,10 @@ def test_profil_iso_m6_distingue_fond_arrondi_et_cretes_interieures():
     assert rv["diametre_sur_flancs_nominal_mm"] == pytest.approx(5.350481, abs=1e-6)
     assert rv["diametre_mineur_nominal_mm"] == pytest.approx(4.773131, abs=1e-6)
     assert ro["diametre_mineur_nominal_mm"] == pytest.approx(4.917468, abs=1e-6)
+    assert ro["rayon_crete_nominal_mm"] == 3
+    assert ro["rayon_fond_nominal_mm"] == pytest.approx(4.917468 / 2, abs=1e-6)
+    assert ro["rayon_crete_avec_jeu_mm"] == 3.1
+    assert ro["rayon_fond_avec_jeu_mm"] == pytest.approx(4.917468 / 2 + 0.1, abs=1e-6)
     assert ro["ajustement_reel"] == "NON VÉRIFIÉ"
 
     # Coupe dans l’axe : le cercle de raccord est sous le plateau du profil intérieur.
