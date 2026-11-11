@@ -361,6 +361,11 @@ def test_resume_cli_conserve_la_preuve_et_le_verdict(tmp_path, capsys, atelier_i
     assert resume["source_sha256"] == preuve["source_sha256"] == sha256_fichier(source) == sha
     assert resume["rapport"] == str(rapport)
     assert "ilots_isoles" not in resume
+    ilot = preuve["ilots_isoles"][0]
+    assert resume["premiers_ilots"] == [{
+        "centre_xy_mm": ilot["centre_xy_mm"], "z_mm": [ilot["de_z"], ilot["a_z"]], "motifs": ilot["motifs"],
+    }]
+    assert resume["ilots_omis"] == 0
 
     assert main([*commande, "--resume", "--sortie", str(rapport)]) == 2
     refus = capsys.readouterr()

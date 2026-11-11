@@ -366,8 +366,8 @@ def main(argv=None, *, prive=None):
     Reçoit le chemin source puis les seuils de couche et hauteur (mm) et
     d’aire (mm²), et une option de position XY. Code 0 sans îlot, 2 si des
     îlots sont signalés ou si la lecture ou l’écriture est refusée.
-    Le résumé exige un JSON complet neuf dans l’atelier privé. Le maillage
-    source est conservé.
+    Le résumé montre les trois premiers îlots par Z en mm et exige un JSON
+    complet neuf dans l’atelier privé. Le maillage source est conservé.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="STL en mm")
@@ -407,9 +407,17 @@ def main(argv=None, *, prive=None):
 
     affichage = rapport
     if args.resume:
+        premiers_ilots = [
+            {
+                "centre_xy_mm": ilot["centre_xy_mm"], "z_mm": [ilot["de_z"], ilot["a_z"]],
+                "motifs": ilot["motifs"],
+            }
+            for ilot in ilots[:3]
+        ]
         affichage = {
             "statut": rapport["statut"], "code": code, "source_sha256": empreinte,
             "nombre_ilots": len(ilots), "rapport": str(cible),
+            "premiers_ilots": premiers_ilots, "ilots_omis": len(ilots) - len(premiers_ilots),
         }
     print(json.dumps(affichage, indent=1, ensure_ascii=False))
     return code
