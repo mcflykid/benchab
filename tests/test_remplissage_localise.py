@@ -158,6 +158,30 @@ class Zones(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sortie refusé|BENCHAB/prive|atelier privé"):
             remplissage.eprouvette("/var/tmp/sortie-interdite", "/missing.3mf")
 
+    def test_lecture_gcode_resultat_refuse_les_indices_ambigus(self):
+        """Deux graphies du même numéro de plaque ne doivent pas choisir un G-code."""
+        with tempfile.TemporaryDirectory(dir="/private/tmp") as temporaire:
+            archive = Path(temporaire) / "tranche.3mf"
+            with ZipFile(archive, "w") as paquet:
+                paquet.writestr("Metadata/plate_1.gcode", "G1 X1\n")
+                paquet.writestr("Metadata/plate_01.gcode", "G1 X2\n")
+            with self.assertRaisesRegex(ValueError, "numéro de plaque dupliqué"):
+                remplissage._gcodes_resultats(archive, [{"index": 1}])
+
+    def test_lecture_gcode_resultat_conserve_le_contenu_de_la_plaque(self):
+        """Le résultat lu par l’archive commune conserve les commandes et leurs mesures."""
+        with tempfile.TemporaryDirectory(dir="/private/tmp") as temporaire:
+            archive = Path(temporaire) / "tranche.3mf"
+            contenu = "M83\r\n;TYPE:Sparse infill\r\nG1 X0 Y0\r\nG1 X10 Y0 E1\r\n"
+            with ZipFile(archive, "w") as paquet:
+                paquet.writestr("Metadata/plate_1.gcode", contenu)
+            codes = remplissage._gcodes_resultats(archive, [{"index": 1}])
+            self.assertEqual(
+                remplissage.analyser_gcode(codes[1], {"zone": [0, -1, 20, 1, -1, 1]}),
+                {"zone": {"Sparse infill": 10.0, "Internal solid infill": 0.0,
+                          "Inner wall": 0.0, "Outer wall": 0.0}},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

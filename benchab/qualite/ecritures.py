@@ -251,6 +251,7 @@ def publier_texte_repris(cible, texte, *, entrees=()):
 
 
 def valider_chemins(entrees, sorties):
+    """Valide les chemins sans lien et sans collision ; renvoie les sorties absentes sans les créer."""
     entrees = [_sans_lien(p).resolve() for p in entrees]
     sorties = [_sans_lien(p) for p in sorties]
     cibles = [p.resolve() for p in sorties]
@@ -268,6 +269,7 @@ class PublicationNeuve:
     """
 
     def __init__(self, entrees, sorties):
+        """Valide les entrées et sorties sans unité avant de préparer une publication exclusive."""
         self.entrees = list(entrees)
         self.sorties = valider_chemins(self.entrees, sorties)
         self._temps = {}
@@ -275,6 +277,7 @@ class PublicationNeuve:
         self._publie = False
 
     def __enter__(self):
+        """Prépare un espace temporaire par sortie ; renvoie la transaction sans publier."""
         try:
             for cible in self.sorties:
                 cible.parent.mkdir(parents=True, exist_ok=True)
@@ -288,9 +291,11 @@ class PublicationNeuve:
         return self
 
     def temporaire(self, cible):
+        """Renvoie le chemin privé d’écriture préparé pour une cible déclarée, sans publier."""
         return self._temps[Path(os.path.abspath(cible))]
 
     def publier(self):
+        """Publie les fichiers relus et synchronisés par liens exclusifs, sans écraser de fichier."""
         if self._publie:
             raise ValueError("Publication déjà effectuée.")
         valider_chemins(self.entrees, self.sorties)
@@ -321,6 +326,7 @@ class PublicationNeuve:
             raise
 
     def __exit__(self, *exc):
+        """Retire les espaces temporaires de cette opération et conserve les fichiers publiés."""
         for d in reversed(self._dossiers):
             d.cleanup()
         self._dossiers.clear()
@@ -400,6 +406,7 @@ class TransactionVues:
     """
 
     def __init__(self, root):
+        """Associe le journal des vues à une racine d’atelier sans y écrire."""
         self.root = _sans_lien(root).resolve()
         self.journal = self.root / "projets/.transaction-vues.json"
         self.entrees = {}
@@ -407,6 +414,7 @@ class TransactionVues:
 
     @staticmethod
     def atomique(path, contenu, mode=0o600):
+        """Remplace une vue par les octets fournis au mode POSIX voulu, sous le verrou de l’appelant."""
         path = _sans_lien(path)
         fd, nom = tempfile.mkstemp(prefix=".vue-", dir=path.parent)
         try:
@@ -426,17 +434,20 @@ class TransactionVues:
                 os.unlink(nom)
 
     def chemin(self, rel):
+        """Résout un chemin relatif sous projets et refuse une sortie de périmètre ou un lien."""
         p = Path(rel)
         if p.is_absolute() or ".." in p.parts or not p.parts or p.parts[0] != "projets":
             raise ValueError("journal : chemin hors projets")
         return _sans_lien(self.root / p)
 
     def sauver(self):
+        """Synchronise le journal de reprise JSON après ajout des empreintes et modes."""
         self.atomique(
             self.journal, json.dumps({"schema": 1, "entrees": self.entrees, "dossiers": self.dossiers}).encode()
         )
 
     def enregistrer_dossier(self, source, destination):
+        """Consigne l’identité du dossier avant renommage exclusif vers une cible absente."""
         source = _sans_lien(source)
         destination = _sans_lien(destination)
         a = source.relative_to(self.root).as_posix()
@@ -450,7 +461,7 @@ class TransactionVues:
         self.sauver()
 
     def restaurer(self):
-
+        """Restaure les vues et dossiers journalisés si leurs identités correspondent encore."""
         dossiers = []
         for e in self.dossiers:
             source = self.chemin(e["source"])
@@ -466,6 +477,7 @@ class TransactionVues:
         self.terminer()
 
     def enregistrer(self, path, contenu):
+        """Consigne la vue initiale et le SHA des nouveaux octets avant écriture (16 Mio par vue)."""
         import base64
 
         p = _sans_lien(path)
@@ -510,6 +522,7 @@ class TransactionVues:
                 self.atomique(p, avant, mode)
 
     def terminer(self):
+        """Retire le journal terminé et synchronise son dossier ; les vues restent en place."""
         if self.journal.exists():
             self.journal.unlink()
             directory = os.open(self.journal.parent, os.O_RDONLY | os.O_DIRECTORY)
@@ -519,6 +532,7 @@ class TransactionVues:
                 os.close(directory)
 
     def recuperer(self):
+        """Relit le journal éventuel et restaure ses vues ; refuse une modification extérieure."""
         if self.journal.exists():
             d = json.loads(_sans_lien(self.journal).read_text())
             if d.get("schema") != 1 or not isinstance(d.get("entrees"), dict):
@@ -530,6 +544,7 @@ class TransactionVues:
             self.dossiers = []
 
     def valider(self):
+        """Vérifie les empreintes publiées puis clôt le journal ; un écart laisse la reprise disponible."""
         for e in self.dossiers:
             st = self.chemin(e["destination"]).stat()
             if (st.st_dev, st.st_ino) != (e["dev"], e["ino"]):

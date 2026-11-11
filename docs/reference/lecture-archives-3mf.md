@@ -77,7 +77,10 @@ ordres de grandeur.
 Les contrôles déjà migrés sont U20 (plaques-interface), U22 (règles), U25
 (débit G-code), capacités machine, envoi, supports requis, décollement,
 orientations des supports, identifiants filaments, revue locale et vérification
-des réglages. `finition_parois` analyse un instantané déjà borné à 64 Mio avec
+des réglages. Les études de couches variables et de remplissage localisé lisent
+les réglages via `reglages()` ; l’étude de remplissage associe les résultats aux
+membres G-code par numéro de plaque non ambigu et conserve le lecteur en flux.
+`finition_parois` analyse un instantané déjà borné à 64 Mio avec
 son parcours mémoire protégé ; `paquet_3mf` valide des octets fournis et garde
 son propre validateur mémoire borné. Les écritures ZIP en mode `w` ou `a` ne
 sont pas concernées.

@@ -9,14 +9,15 @@ import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from zipfile import ZipFile
 
 import numpy as np
 import trimesh
 
 from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.geometrie_arc import longueur_deposee_dans_boite
+from benchab.gcode.lecture import iter_lignes_gcode_3mf, plaques_gcode_archive
 
 
 def _reglage(densite: int, motif: str = "gyroid") -> dict[str, str]:
@@ -37,6 +38,21 @@ ROLES = {
 }
 FORMES = ("boite", "cylindre")
 _NOMBRE_GCODE = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+
+
+def _gcodes_resultats(tranche: str | Path, resultats: list[dict]) -> dict[int, str]:
+    """Lit les G-codes des plaques par index non ambigu ; contrôle CRC et garde la source stable."""
+    codes = {}
+    with Archive3MF(tranche) as archive:
+        membres = dict(plaques_gcode_archive(archive))
+        for resultat in resultats:
+            index = resultat.get("index")
+            if type(index) is not int or index < 1 or index not in membres or index in codes:
+                raise ValueError("Résultat de plaque absent, invalide ou dupliqué dans l'archive.")
+            archive.verifier_source(tranche)
+            codes[index] = "".join(iter_lignes_gcode_3mf(tranche, membres[index], archive=archive))
+            archive.verifier_source(tranche)
+    return codes
 
 
 def _nombre(valeur: object, nom: str, *, positif: bool = True) -> float:
@@ -220,8 +236,14 @@ def eprouvette(sortie: str | Path, base_3mf: str | Path) -> dict:
 
     sortie = _sortie_privee(sortie)
     base = Path(base_3mf).expanduser().resolve(strict=True)
-    with ZipFile(base) as archive:
-        settings = schema_reglages.decoder(archive.read("Metadata/project_settings.config"))
+    with Archive3MF(base) as archive:
+        membre_reglages = "Metadata/project_settings.config"
+        noms = archive.noms()
+        if membre_reglages not in noms:
+            raise ValueError("Configuration de projet absente du 3MF source.")
+        settings = archive.reglages()
+        archive.verifier(membres=[nom for nom in noms if nom != membre_reglages])
+        archive.verifier_source(base)
 
     piece = trimesh.creation.box(extents=(90, 20, 15))
     piece.apply_translation((45, 10, 7.5))
@@ -278,30 +300,30 @@ def eprouvette(sortie: str | Path, base_3mf: str | Path) -> dict:
     resultats_tranche = sorted(resultats(tranche), key=lambda item: item["index"])
     if [item.get("index") for item in resultats_tranche] != [1, 2, 3]:
         raise ValueError("résultats de tranchage incomplets, dupliqués ou inattendus")
+    codes_gcode = _gcodes_resultats(tranche, resultats_tranche)
     mesures = []
-    with ZipFile(tranche) as archive:
-        for (nom, _), resultat, plaque in zip(variants, resultats_tranche, plaques):
-            item = plaque["items"][0]
-            x0, y0 = item["x"], item["y"]
-            gcode = archive.read(f"Metadata/plate_{resultat['index']}.gcode").decode(errors="replace")
-            regions = {
-                "zone (x 60–90)": [x0 + 62, y0 + 2, x0 + 88, y0 + 18, 3, 12],
-                "hors zone (x 2–58)": [x0 + 2, y0 + 2, x0 + 58, y0 + 18, 3, 12],
-            }
-            longueurs = analyser_gcode(gcode, regions)
-            hors_zone = longueurs["hors zone (x 2–58)"]["Sparse infill"]
-            zone = longueurs["zone (x 60–90)"]["Sparse infill"]
-            mesures.append(
-                {
-                    "nom": nom,
-                    "grammes": round(resultat["grammes"], 2),
-                    "secondes": resultat["secondes"],
-                    "avertissements": resultat["avertissements"],
-                    "longueurs_mm": longueurs,
-                    "mesure_effet": {"zone_mm": zone, "hors_zone_mm": hors_zone},
+    for (nom, _), resultat, plaque in zip(variants, resultats_tranche, plaques):
+        item = plaque["items"][0]
+        x0, y0 = item["x"], item["y"]
+        gcode = codes_gcode[resultat["index"]]
+        regions = {
+            "zone (x 60–90)": [x0 + 62, y0 + 2, x0 + 88, y0 + 18, 3, 12],
+            "hors zone (x 2–58)": [x0 + 2, y0 + 2, x0 + 58, y0 + 18, 3, 12],
+        }
+        longueurs = analyser_gcode(gcode, regions)
+        hors_zone = longueurs["hors zone (x 2–58)"]["Sparse infill"]
+        zone = longueurs["zone (x 60–90)"]["Sparse infill"]
+        mesures.append(
+            {
+                "nom": nom,
+                "grammes": round(resultat["grammes"], 2),
+                "secondes": resultat["secondes"],
+                "avertissements": resultat["avertissements"],
+                "longueurs_mm": longueurs,
+                "mesure_effet": {"zone_mm": zone, "hors_zone_mm": hors_zone},
                 "densite_zone_sur_hors_zone": round((zone / 26) / max(1e-9, hors_zone / 56), 2),
-                }
-            )
+            }
+        )
     rapport = {
         "tranchage_s": rapport_tranchage["duree_s"],
         "zone": bilan,

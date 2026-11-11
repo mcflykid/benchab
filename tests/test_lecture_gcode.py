@@ -86,3 +86,42 @@ def test_analyse_refuse_si_le_3mf_change_pendant_le_parse(tmp_path):
         analyser_membre_gcode_3mf(paquet, membre, {}, analyser)
 
     vider_cache_lecture()
+
+
+@pytest.mark.parametrize("cache_chaud", [False, True])
+def test_contexte_refuse_le_remplacement_du_chemin_avant_le_sha(tmp_path, monkeypatch, cache_chaud):
+    """Un changement après la garde refuse le résultat et laisse le cache exact."""
+    from benchab.archives_3mf import Archive3MF
+    from benchab.gcode import lecture
+
+    ancien = tmp_path / "lecture.3mf"
+    nouveau = tmp_path / "remplacement.3mf"
+    membre = "Metadata/plate_1.gcode"
+    for chemin, gcode in ((ancien, "G1 X11"), (nouveau, "G1 X22")):
+        with ZipFile(chemin, "w") as archive:
+            archive.writestr(membre, gcode)
+
+    vider_cache_lecture()
+    if cache_chaud:
+        assert lire_membre_3mf(nouveau, membre) == b"G1 X22"
+
+    def empreinte_apres_remplacement(chemin):
+        if nouveau.exists():
+            nouveau.replace(ancien)
+        return empreinte_3mf(chemin)
+
+    refus = []
+    with monkeypatch.context() as patch:
+        try:
+            with Archive3MF(ancien) as archive:
+                patch.setattr(lecture, "empreinte_3mf", empreinte_apres_remplacement)
+                try:
+                    lire_membre_3mf(ancien, membre, archive=archive)
+                except ValueError as erreur:
+                    refus.append(str(erreur))
+        except ValueError as erreur:
+            # Le remplacement peut aussi changer le ctime de l’inode déjà ouvert.
+            assert "modifiée pendant" in str(erreur)
+    assert refus and "contexte" in refus[0]
+    assert lire_membre_3mf(ancien, membre) == b"G1 X22"
+    vider_cache_lecture()

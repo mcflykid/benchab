@@ -72,3 +72,9 @@ complémentaires ; une réussite sur un petit pont ne valide pas une portée lon
 Étude de supports Slicer Next du 23/10, leçons de mécanismes et observations
 locales du 04/11/2026 : [corpus avec portée et preuve](../../benchab/reference/connaissances.jsonl),
 [catalogue des sources](../../benchab/reference/sources-savoir.jsonl).
+
+Avec `--sortie RAPPORT.json --resume`, le rapport complet est créé en privé
+et la commande affiche le chemin, les cinq groupes de plus grande aire et
+le nombre d’omissions. `--detail` affiche aussi le rapport complet. Sans
+ces options, la sortie historique est conservée. Les appuis et ponts restent
+NON VÉRIFIÉS dans le résumé.

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.mesures_zones import verifier_mesures_declarees
+from benchab.gcode.geometrie_arc import enveloppe_deposee_xyz
 
 NUM = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 PIECE = {
@@ -42,9 +43,10 @@ def sha(path):
 def analyser_gcode(g, plaque=1):
     """Détecte les zones Bridge/Overhang et leurs bbox XY/Z en mm depuis le G-code.
 
-    Renvoie les segments, leur plaque et objet déclaré avec les erreurs de
-    couverture; les arcs restent non vérifiés et aucune preuve physique n'est
-    produite. L'analyse ne modifie ni G-code ni réglage.
+    Renvoie les mouvements, leur plaque et objet déclaré, ainsi que les erreurs.
+    Sur les zones déclarées, les arcs G17 qualifiés bornent la portion déposée
+    en mm ; ils ne prouvent ni la portée libre ni l’appui réel. Toute géométrie
+    ou attribution non couverte reste bloquante. Aucun fichier ni réglage modifié.
     """
     it = Interpreter()
     x = y = z = 0.0
@@ -53,13 +55,14 @@ def analyser_gcode(g, plaque=1):
     active = False
     purge = False
     zone = None
+    zone_arc = False
     objets_zone = set()
     zones = []
     erreurs = []
     depots = 0
 
     def finir():
-        nonlocal zone
+        nonlocal zone, zone_arc
         if zone:
             zone["bbox_xy_mm"] = [round(v, 3) for v in zone["bbox_xy_mm"]]
             # L'identifiant historique rattache des avis humains figés. Ajouter
@@ -68,16 +71,31 @@ def analyser_gcode(g, plaque=1):
             zone["objet"] = next(iter(objets_zone)) if len(objets_zone) == 1 else None
             if len(objets_zone) > 1:
                 zone["objet_ambigu"] = True
+            if zone_arc and (len(objets_zone) != 1 or None in objets_zone):
+                erreurs.append("attribution objet non vérifiée sur une zone avec arc G17")
             zones.append(zone)
             zone = None
+            zone_arc = False
             objets_zone.clear()
 
     for line in g.splitlines():
         move = it.feed_line(line)
+        courbe = None
         if move and move["trajectory"] == "arc_g17_xy":
-            erreurs.append("arc analytique non pris en charge par l'approximation géométrique des zones")
-            it.error(erreurs[-1])
-            move = None
+            # Le contrôle qualifie ici une enveloppe locale, jamais la corde ni la couverture (#123).
+            if (
+                active and not purge and move["layer"] >= 0 and move["deposited"] > 0
+                and typ in {"Bridge", "Overhang wall"} and move["type"] == typ
+            ):
+                try:
+                    courbe = enveloppe_deposee_xyz(move)
+                except ValueError as erreur:
+                    erreurs.append(f"arc G17 ligne {move['line']} : {erreur}")
+                    move = None
+            else:
+                erreurs.append("arc analytique non pris en charge par l'approximation géométrique des zones")
+                it.error(erreurs[-1])
+                move = None
         if line.strip() == "; PURGE LINE":
             purge = True
         if line.startswith("; AFTER_LAYER_CHANGE") or line.startswith("EXCLUDE_OBJECT_START"):
@@ -92,15 +110,13 @@ def analyser_gcode(g, plaque=1):
         if not c:
             continue
         if move:
-            op = move["op"]
             x, y, z = move["start"]
             nx, ny, nz = move["end"]
-            x, y, z = move["deposition_start"] if move["deposited"] > 0 else move["start"]
+            if courbe is None and move["deposited"] > 0:
+                x, y, z = move["deposition_start"]
             de = move["deposited"]
             feed = move["feed"]
-            if active and not purge and de > 0 and (math.hypot(nx - x, ny - y) > 1e-8 or op in ("G2", "G3")):
-                if op in ("G2", "G3"):
-                    erreurs.append("arc extrudé non analysé : revue nécessaire")
+            if active and not purge and de > 0 and (courbe is not None or math.hypot(nx - x, ny - y) > 1e-8):
                 if typ not in PIECE and typ not in {
                     "Support",
                     "Support interface",
@@ -115,22 +131,31 @@ def analyser_gcode(g, plaque=1):
                 if typ in {"Bridge", "Overhang wall"}:
                     if feed <= 0:
                         erreurs.append("vitesse inconnue sur une zone à risque")
+                    if courbe is None:
+                        bbox = [min(x, nx), min(y, ny), max(x, nx), max(y, ny)]
+                        bas_z = haut_z = nz
+                    else:
+                        (xmin, xmax), (ymin, ymax), (bas_z, haut_z) = courbe
+                        bbox = [xmin, ymin, xmax, ymax]
+                        zone_arc = True
                     if zone is None:
                         zone = {
                             "plaque": plaque,
                             "type": typ,
-                            "z_min_mm": nz,
-                            "z_max_mm": nz,
-                            "bbox_xy_mm": [min(x, nx), min(y, ny), max(x, nx), max(y, ny)],
+                            "z_min_mm": bas_z,
+                            "z_max_mm": haut_z,
+                            "bbox_xy_mm": bbox,
                             "segments": 0,
                             "vitesse_min_mm_s": feed / 60,
                             "vitesse_max_mm_s": feed / 60,
                         }
                     b = zone["bbox_xy_mm"]
                     objets_zone.add(move["object"])
-                    zone["bbox_xy_mm"] = [min(b[0], x, nx), min(b[1], y, ny), max(b[2], x, nx), max(b[3], y, ny)]
-                    zone["z_min_mm"] = min(zone["z_min_mm"], nz)
-                    zone["z_max_mm"] = max(zone["z_max_mm"], nz)
+                    zone["bbox_xy_mm"] = [
+                        min(b[0], bbox[0]), min(b[1], bbox[1]), max(b[2], bbox[2]), max(b[3], bbox[3])
+                    ]
+                    zone["z_min_mm"] = min(zone["z_min_mm"], bas_z)
+                    zone["z_max_mm"] = max(zone["z_max_mm"], haut_z)
                     zone["segments"] += 1
                     zone["vitesse_min_mm_s"] = min(zone["vitesse_min_mm_s"], feed / 60)
                     zone["vitesse_max_mm_s"] = max(zone["vitesse_max_mm_s"], feed / 60)

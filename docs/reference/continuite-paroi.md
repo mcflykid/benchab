@@ -52,6 +52,13 @@ ou l’enveloppe hors de ±1 000 000 mm restent NON VÉRIFIÉES. La corde n’es
 l’interpréteur n’est pas ajusté. Les vitesses et accélérations par axe d’un arc restent NON VÉRIFIÉES ; cette
 enveloppe numérique ne confirme ni la trajectoire firmware, ni la géométrie utile réelle, ni la tenue physique.
 
+La revue des zones locales utilise l’enveloppe du dépôt G17 pour les ponts et
+parois en surplomb explicitement déclarés, en repère physique après G92. Elle
+ne mesure ni la portée libre ni le contact. Les arcs sans couche ou attribution
+d’objet vérifiée restent bloquants, comme les arcs d’autres rôles pour ce
+contrôle. Une mesure locale de cordons qui ne traite que G0/G1 ne valide pas
+ces arcs (suite de #123).
+
 Le rapport distingue l’accélération extérieure configurée de l’accélération `M204` observée pendant les dépôts.
 Une commande de mouvement non prise en charge rend la couverture incomplète : le résultat devient `NON VÉRIFIÉ`.
 

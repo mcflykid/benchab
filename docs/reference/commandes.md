@@ -19,6 +19,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `fabrication tracer-3mf SOURCE --sortie NOM.3mf` | Copie privée avec empreinte source facultative ; conservation native NON VÉRIFIÉE |
 | `controle envoi`, `routine`, `regles`, `continuite-paroi` | Contrôles de préparation |
 | `controle surplombs-connexes SOURCE.stl --unite-mm` | Groupes de triangles orientés vers le bas ; rapport numérique sans validation d’appui |
+| `controle entretien --historique FICHIER [--sortie RAPPORT]` | Bilan conditionnel depuis un historique privé explicite, sans SQLite ni action machine |
 | `controle ecarts-profils-3mf` | Compare les réglages 3MF aux profils explicitement fournis ; rapport privé |
 | `controle publication`, `frontiere`, `typographie` | Dépôt partageable |
 | `qualite niveau1`, `niveau3`, `incrementiel`, `resume`, `tout`, `hooks`, `archives`, `comparer-fabrication` | Qualité logicielle et impact des tests |
@@ -31,6 +32,11 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `machine profils-cibles`, `affectations-ace` | Profils de travail et correspondance des filaments |
 | `machine cloud-lecture`, `telemetrie`, `session-compte` | Lecture Cloud ; tests simulés, autorisation réseau distincte |
 | `vote --preparer`, `vote DOSSIER`, `vote --etat` | [Conseil et relecture](vote.md) |
+
+Les attestations ACE sont liées à l’empreinte du contexte d’audit, qui inclut
+le code. Après une modification de l’audit, les anciennes attestations restent
+des preuves historiques et ne qualifient pas automatiquement un rapport neuf.
+Ne changez pas leur empreinte pour les faire accepter.
 
 Voir le format et les limites du [contrôle des plages Z](plages-z.md).
 Les limites de la cartographie STL sont décrites dans

@@ -1,8 +1,10 @@
 import json
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -98,6 +100,123 @@ class VariantTests(unittest.TestCase):
         with (self.root / "b.3mf").open("ab") as f:
             f.write(b"changed")
         self.assertEqual(self.run_report()["statut"], "FAIL")
+
+    def test_duplicate_summary_metadata_is_rejected_as_ambiguous(self):
+        path = self.root / "ambiguous.3mf"
+        with ZipFile(path, "w") as archive:
+            archive.writestr(
+                "Metadata/slice_info.config",
+                '<config><plate><metadata key="index" value="1"/><metadata key="index" value="2"/>'
+                '<metadata key="prediction" value="90"/><metadata key="weight" value="12"/></plate></config>',
+            )
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({"source": path.name, "sha256": empreinte(path)}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "FAIL")
+        self.assertIn("ambigu", measure["raison"])
+
+    def test_duplicate_archive_member_is_rejected_not_selected(self):
+        path = self.root / "duplicate.3mf"
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with ZipFile(path, "w") as archive:
+                for seconds in (90, 120):
+                    archive.writestr(
+                        "Metadata/slice_info.config",
+                        '<config><plate><metadata key="index" value="1"/>'
+                        f'<metadata key="prediction" value="{seconds}"/>'
+                        '<metadata key="weight" value="12"/></plate></config>',
+                    )
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({"source": path.name, "sha256": empreinte(path)}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "FAIL")
+        self.assertIn("membre dupliqué", measure["raison"])
+
+    def test_xml_crc_is_checked(self):
+        path = self.root / "crc.3mf"
+        with ZipFile(path, "w") as archive:
+            archive.writestr(
+                "Metadata/slice_info.config",
+                '<config><plate><metadata key="index" value="1"/>'
+                '<metadata key="prediction" value="90"/><metadata key="weight" value="12"/></plate></config>',
+            )
+        data = bytearray(path.read_bytes())
+        central = data.index(b"PK\x01\x02")
+        data[central + 16:central + 20] = struct.pack("<I", 0)
+        path.write_bytes(data)
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({"source": path.name, "sha256": empreinte(path)}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "FAIL")
+        self.assertIn("illisible", measure["raison"])
+
+    def test_unique_indices_do_not_reorder_historic_plate_results(self):
+        path = self.root / "ordre.3mf"
+        with ZipFile(path, "w") as archive:
+            for index, seconds in ((2, 200), (1, 100)):
+                archive.writestr(
+                    f"Metadata/plate-{index}.xml",
+                    f'<plate><metadata key="index" value="{index}"/>'
+                    f'<metadata key="prediction" value="{seconds}"/>'
+                    '<metadata key="weight" value="10"/></plate>',
+                )
+            archive.writestr(
+                "Metadata/slice_info.config",
+                '<config><plate><metadata key="index" value="2"/><metadata key="prediction" value="200"/>'
+                '<metadata key="weight" value="20"/></plate><plate><metadata key="index" value="1"/>'
+                '<metadata key="prediction" value="100"/><metadata key="weight" value="10"/></plate></config>',
+            )
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({"source": path.name, "sha256": empreinte(path)}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "PASS")
+        self.assertEqual([plate["temps_s"] for plate in measure["plaques"]], [200, 100])
+
+    def test_duplicate_indices_across_plates_fail(self):
+        path = self.root / "duplicate-indices.3mf"
+        with ZipFile(path, "w") as archive:
+            archive.writestr(
+                "Metadata/slice_info.config",
+                '<config><plate><metadata key="index" value="1"/><metadata key="prediction" value="90"/>'
+                '<metadata key="weight" value="12"/></plate><plate><metadata key="index" value="1"/>'
+                '<metadata key="prediction" value="100"/><metadata key="weight" value="12"/></plate></config>',
+            )
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({"source": path.name, "sha256": empreinte(path)}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "FAIL")
+        self.assertIn("indices de plaque absents ou dupliqués", measure["raison"])
+
+    def test_missing_indices_keep_historic_xml_order(self):
+        path = self.root / "without-indices.3mf"
+        with ZipFile(path, "w") as archive:
+            archive.writestr(
+                "Metadata/slice_info.config",
+                '<config><plate><metadata key="prediction" value="200"/><metadata key="weight" value="20"/>'
+                '</plate><plate><metadata key="prediction" value="100"/><metadata key="weight" value="10"/>'
+                '</plate></config>',
+            )
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({"source": path.name, "sha256": empreinte(path)}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "PASS")
+        self.assertEqual([plate["temps_s"] for plate in measure["plaques"]], [200, 100])
+
+    def test_summary_path_must_not_follow_a_symlink(self):
+        """Le 3MF désigné par un lien ne doit pas être haché ni adopté."""
+        declaration = self.make_3mf("source.3mf")
+        lien = self.root / "alias.3mf"
+        lien.symlink_to(self.root / "source.3mf")
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({**declaration, "source": lien.name}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "FAIL")
+        self.assertIn("Lien symbolique", measure["raison"])
+
+    def test_summary_overflow_cannot_be_reported_as_pass(self):
+        """Deux valeurs finies dont le cumul déborde n’annoncent jamais PASS."""
+        path = self.root / "overflow.3mf"
+        plate = '<plate><metadata key="prediction" value="1e308"/><metadata key="weight" value="12"/></plate>'
+        with ZipFile(path, "w") as archive:
+            archive.writestr("Metadata/slice_info.config", f"<config>{plate * 2}</config>")
+        empreinte = variants.importer().empreinte
+        measure = variants.fabrication({"source": path.name, "sha256": empreinte(path)}, self.root, empreinte)
+        self.assertEqual(measure["statut"], "FAIL")
+        self.assertIn("cumul", measure["raison"])
 
     def test_summary_claim_mismatch_fails(self):
         self.data["variantes"][1]["mesures_fabrication"] = self.make_3mf("a.3mf") | {"temps_s": 5}
