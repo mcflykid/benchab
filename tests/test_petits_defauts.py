@@ -1,6 +1,9 @@
 """Régressions d'arrondi, codes CLI et robustesse des écritures SQLite."""
 
+import hashlib
+import json
 import os
+import stat
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +14,7 @@ import pytest
 
 from benchab import cli
 from benchab.controles import decollement
-from benchab.donnees.base import APPLICATION_ID, Base
+from benchab.donnees.base import APPLICATION_ID, TABLES, Base
 from benchab.fabrication.planning import _heure
 
 
@@ -69,6 +72,7 @@ def test_echec_du_manifeste_nettoie_le_temporaire(atelier_initialise, monkeypatc
     """Une erreur de renommage conserve le manifeste existant sans fichier temporaire résiduel."""
     base = Base(atelier_initialise, creer=False)
     export = base.prive / "export"
+    (export / "manifest.json").write_bytes(b'{"corrompu":true}\n')
     avant = (export / "manifest.json").read_bytes()
     remplacer = Path.replace
 
@@ -84,4 +88,109 @@ def test_echec_du_manifeste_nettoie_le_temporaire(atelier_initialise, monkeypatc
         assert (export / "manifest.json").read_bytes() == avant
         assert not list(export.glob(".manifest-*"))
     finally:
+        base.fermer()
+
+
+def test_export_identique_conserve_inode_et_octets(atelier_initialise, monkeypatch):
+    """Un export canonique déjà présent ne remplace ni les JSONL ni le manifeste."""
+    base = Base(atelier_initialise, creer=False)
+    export = base.prive / "export"
+    fichiers = [export / f"{table}.jsonl" for table in TABLES]
+    fichiers.append(export / "manifest.json")
+    avant = {f: (f.stat().st_ino, f.read_bytes()) for f in fichiers}
+    monkeypatch.setattr("benchab.donnees.base.tempfile.mkstemp", lambda **_: pytest.fail("temporaire inattendu"))
+    try:
+        base.exporter()
+        assert {f: (f.stat().st_ino, f.read_bytes()) for f in fichiers} == avant
+    finally:
+        base.fermer()
+
+
+def test_export_corrompu_est_reconstruit_depuis_sqlite(atelier_initialise):
+    """Un manifeste inchangé ne masque pas un JSONL altéré, que le canon répare."""
+    base = Base(atelier_initialise, creer=False)
+    export = base.prive / "export"
+    fichier = export / "projets.jsonl"
+    canon = fichier.read_bytes()
+    fichier.write_bytes(b'{"id":"corrompu"}\n')
+    try:
+        base.exporter()
+        repare = fichier.read_bytes()
+        manifeste = json.loads((export / "manifest.json").read_text())
+        assert repare == canon
+        assert manifeste["sha256"]["projets"] == hashlib.sha256(repare).hexdigest()
+        assert all(
+            manifeste["sha256"][table] == hashlib.sha256((export / f"{table}.jsonl").read_bytes()).hexdigest()
+            for table in TABLES
+        )
+    finally:
+        base.fermer()
+
+
+def test_manifeste_altere_est_reconstruit_apres_verification_jsonl(atelier_initialise):
+    """Le manifeste se répare depuis les SHA calculés, sans toucher aux JSONL concordants."""
+    base = Base(atelier_initialise, creer=False)
+    export = base.prive / "export"
+    avant = {table: (export / f"{table}.jsonl").stat().st_ino for table in TABLES}
+    (export / "manifest.json").write_bytes(b'{"manifeste":"invalide"}\n')
+    try:
+        base.exporter()
+        manifeste = json.loads((export / "manifest.json").read_text())
+        assert all(
+            manifeste["sha256"][table] == hashlib.sha256((export / f"{table}.jsonl").read_bytes()).hexdigest()
+            for table in TABLES
+        )
+        assert {table: (export / f"{table}.jsonl").stat().st_ino for table in TABLES} == avant
+    finally:
+        base.fermer()
+
+
+def test_export_refuse_une_table_speciale(atelier_initialise):
+    """Un FIFO dans le dossier d’export reste en place et interrompt l’écriture."""
+    base = Base(atelier_initialise, creer=False)
+    fifo = base.prive / "export/projets.jsonl"
+    fifo.unlink()
+    os.mkfifo(fifo)
+    try:
+        with pytest.raises(ValueError, match="Export spécial refusé"):
+            base.exporter()
+        assert stat.S_ISFIFO(fifo.stat().st_mode)
+    finally:
+        fifo.unlink()
+        base.fermer()
+
+
+def test_export_refuse_une_table_liee(atelier_initialise, tmp_path):
+    """Un JSONL lié est refusé sans modifier sa cible."""
+    base = Base(atelier_initialise, creer=False)
+    cible = tmp_path / "cible.jsonl"
+    cible.write_bytes(b"preuve intacte")
+    lien = base.prive / "export/projets.jsonl"
+    lien.unlink()
+    lien.symlink_to(cible)
+    try:
+        with pytest.raises(ValueError, match="Export lié refusé"):
+            base.exporter()
+        assert cible.read_bytes() == b"preuve intacte"
+        assert lien.is_symlink()
+    finally:
+        lien.unlink()
+        base.fermer()
+
+
+def test_export_refuse_un_manifeste_lie(atelier_initialise, tmp_path):
+    """Un manifeste lié est refusé après contrôle des JSONL, sans écraser sa cible."""
+    base = Base(atelier_initialise, creer=False)
+    cible = tmp_path / "manifeste-cible.json"
+    cible.write_bytes(b"preuve intacte")
+    lien = base.prive / "export/manifest.json"
+    lien.unlink()
+    lien.symlink_to(cible)
+    try:
+        with pytest.raises(ValueError, match="Export lié refusé"):
+            base.exporter()
+        assert cible.read_bytes() == b"preuve intacte"
+        assert lien.is_symlink()
+    finally:
+        lien.unlink()
         base.fermer()

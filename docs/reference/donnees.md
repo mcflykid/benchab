@@ -1,7 +1,12 @@
 # Données de l'atelier
 
 SQLite dans l'espace privé est la source des vues et de l'export JSONL. Chaque
-transaction réussie remplace l'export des treize tables et son manifeste SHA256.
+transaction valide toujours les données, puis compare les treize exports à leur
+sérialisation canonique. Si les octets et le SHA réels concordent, le JSONL garde
+son inode ; un fichier divergent est reconstruit depuis SQLite. Le manifeste est
+publié en dernier et n'est jamais utilisé seul pour déclarer les JSONL valides
+(première étape #19). La validation et la comparaison parcourent encore la base
+entière : leur coût reste proportionnel à sa taille.
 Les projets, leurs fichiers, les observations et les préférences restent privés.
 Le savoir général publiable est sélectionné séparément dans `benchab/reference/`.
 
