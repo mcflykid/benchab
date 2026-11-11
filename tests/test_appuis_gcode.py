@@ -146,3 +146,18 @@ def test_appuis_refuse_deux_graphies_avant_selection(tmp_path, capsys):
     sortie = capsys.readouterr()
     assert "numéro de plaque dupliqué" in sortie.err
     assert not sortie.out and source.read_bytes() == avant
+
+
+def test_sha_rapport_appuis_vient_de_l_archive_epinglee(tmp_path, monkeypatch):
+    """Le rapport ne mélange jamais le membre épinglé et un SHA d’une autre lecture."""
+    import hashlib
+
+    from benchab.controles import appuis_gcode
+
+    source = tmp_path / "preuve.3mf"
+    _ecrire_fixture_gcode_3mf(source)
+    avant = source.read_bytes()
+    monkeypatch.setattr(appuis_gcode, "empreinte_3mf", lambda chemin: "a" * 64, raising=False)
+    rapport = analyser_fichier(source, plaques={1})
+    assert rapport["sha256"] == hashlib.sha256(avant).hexdigest()
+    assert source.read_bytes() == avant

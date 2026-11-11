@@ -19,7 +19,7 @@ from scipy.spatial import cKDTree
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive
 from benchab.controles.gcode_interpreter import Interpreter
-from benchab.gcode.lecture import analyser_membre_gcode_3mf, empreinte_3mf, plaques_gcode_archive
+from benchab.gcode.lecture import analyser_membre_gcode_3mf, plaques_gcode_archive
 
 PAS_DEFAUT_MM = 0.15
 RECOUVREMENT_DEFAUT_MM = 0.05
@@ -428,7 +428,8 @@ def analyser_fichier(
         with Archive3MF(path) as archive:
             # Refuser l’index ambigu avant le filtre de sélection et le cache.
             membres = sorted(plaques_gcode_archive(archive), key=lambda plaque_membre: plaque_membre[1])
-            digest = empreinte_3mf(path)
+            # Le SHA du rapport porte sur le descripteur qui fournit les plaques.
+            digest = archive.sha256()
 
             def run(lines):
                 return analyser_lignes(lines, **options)
