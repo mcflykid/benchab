@@ -7,6 +7,7 @@ import json
 import math
 import re
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -161,6 +162,37 @@ def analyser_gcode(
     return {nom: {kind: round(value, 1) for kind, value in mesures.items()} for nom, mesures in rapport.items()}
 
 
+def evaluer_effet_densite(temoin, variante):
+    """Compare deux mesures homologues en mm ; PASS, FAIL ou NON VÉRIFIÉ.
+
+    Chaque dictionnaire fournit zone_mm et hors_zone_mm. Le contrôle compare
+    une seule hausse de densité déclarée, pas une combinaison de réglages.
+    Aucun verdict physique ni changement de réglage.
+    """
+    seuil = Decimal("0.1")
+    rapport = {"statut": "NON VÉRIFIÉ", "seuil_mm": float(seuil),
+               "delta_zone_mm": None, "delta_hors_zone_mm": None}
+    champs = ("zone_mm", "hors_zone_mm")
+    brutes = [r.get(c) if isinstance(r, dict) else None for r in (temoin, variante) for c in champs]
+    try:
+        if any(type(x) not in (int, float) or not math.isfinite(x) or x < 0 for x in brutes):
+            return {**rapport, "detail": "Mesures homologues manquantes ou non valides."}
+    except OverflowError:
+        return {**rapport, "detail": "Mesures hors capacité numérique."}
+    a, controle_a, b, controle_b = (Decimal(str(x)) for x in brutes)
+    delta, controle = b - a, controle_b - controle_a
+    rapport.update(delta_zone_mm=float(delta), delta_hors_zone_mm=float(controle))
+    if min(a, controle_a, controle_b) <= seuil:
+        return {**rapport, "detail": "Dépôts de référence ou de contrôle insuffisants."}
+    # Deux arrondis indépendants à 0,1 mm peuvent déplacer le delta de 0,1 mm (#82).
+    if abs(controle) > seuil:
+        return {**rapport, "detail": "La zone de contrôle n'est pas comparable à la précision de mesure."}
+    if delta <= seuil:
+        detail = "Dépôt diminué malgré la hausse de densité." if delta < -seuil else "Aucune hausse mesurée."
+        return {**rapport, "statut": "FAIL", "detail": detail}
+    return {**rapport, "statut": "PASS", "detail": "Hausse mesurée dans la zone, contrôle hors zone stable."}
+
+
 def _sortie_privee(sortie: str | Path) -> Path:
     """Valide une sortie privée/temporaire reconnue ; FAIL si lien/existant, aucune création ni réglage changé."""
     from benchab.qualite.ecritures import destination_neuve
@@ -259,7 +291,8 @@ def eprouvette(sortie: str | Path, base_3mf: str | Path) -> dict:
                     "secondes": resultat["secondes"],
                     "avertissements": resultat["avertissements"],
                     "longueurs_mm": longueurs,
-                    "densite_zone_sur_hors_zone": round((zone / 26) / max(1e-9, hors_zone / 56), 2),
+                    "mesure_effet": {"zone_mm": zone, "hors_zone_mm": hors_zone},
+                "densite_zone_sur_hors_zone": round((zone / 26) / max(1e-9, hors_zone / 56), 2),
                 }
             )
     rapport = {
@@ -267,6 +300,8 @@ def eprouvette(sortie: str | Path, base_3mf: str | Path) -> dict:
         "zone": bilan,
         "reference": reference,
         "variantes": mesures,
+        # La troisième plaque change aussi les parois : seule B/A isole l'effet de densité.
+        "effet_densite_B_sur_A": evaluer_effet_densite(mesures[0]["mesure_effet"], mesures[1]["mesure_effet"]),
     }
     (sortie / "eprouvette.json").write_text(json.dumps(rapport, indent=1, ensure_ascii=False), encoding="utf-8")
     return rapport
