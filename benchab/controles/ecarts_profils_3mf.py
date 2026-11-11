@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import stat
 from pathlib import Path
@@ -155,15 +156,31 @@ def _forme_connue(valeur, definition):
     return definition.get("type") not in (None, "inconnu") and (not formes or type(valeur).__name__ in formes)
 
 
-def comparer(archive, fichiers_profils, *, dossiers_presets=()):
+def comparer(archive, fichiers_profils, *, dossiers_presets=(), avant_intervention=None, champs_manuels=()):
     """Compare les portées projet/objet/partie aux presets explicitement fournis.
 
     Les valeurs restent dans leurs unités natives. Retourne PASS, WARN ou
     NON VÉRIFIÉ, les sources par clé et les SHA avant/après ; aucune écriture.
-    Les écarts ne prouvent jamais une modification manuelle ni un fait fabricant.
+    Une déclaration manuelle reste NON VÉRIFIÉE sauf delta scalaire typé entre
+    archives. Elle n’authentifie ni auteur ni geste.
     """
     archive = sans_lien(Path(archive).expanduser(), strict=True)
     sha_3mf_avant = sha256_fichier(archive)
+    if isinstance(champs_manuels, str):
+        raise ValueError("--champ-manuel doit être répété, pas fourni comme chaîne unique.")
+    champs_manuels = tuple(champs_manuels)
+    for chemin in champs_manuels:
+        if not isinstance(chemin, str) or not chemin or "/" not in chemin:
+            raise ValueError("Un champ manuel doit être un chemin typé exact, par exemple projet/outer_wall_speed.")
+    if len(champs_manuels) != len(set(champs_manuels)):
+        raise ValueError("Un champ manuel ne peut être déclaré qu’une fois.")
+    avant_path = None
+    sha_intervention_avant = None
+    etat_avant, types_avant = {}, {}
+    if avant_intervention is not None:
+        avant_path = sans_lien(Path(avant_intervention).expanduser(), strict=True)
+        sha_intervention_avant = sha256_fichier(avant_path)
+        etat_avant, types_avant = integrite_3mf.instantane(avant_path, avec_types=True)
     profils, chemins, sha_avant = _charger_profils(fichiers_profils, dossiers_presets)
     etat, types = integrite_3mf.instantane(archive, avec_types=True)
     projet = {cle.removeprefix("projet/"): valeur for cle, valeur in etat.items() if cle.startswith("projet/")}
@@ -282,9 +299,49 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
                 "raison": f"Héritage absent du preset {nom_profil} : {parent}",
                 "profil": {"name": parent}, "modification_manuelle": "NON VÉRIFIÉ",
             })
+    interventions = []
+    for chemin in champs_manuels:
+        avant = etat_avant.get(chemin)
+        apres = etat.get(chemin)
+        type_avant = types_avant.get(chemin, {})
+        type_apres = types.get(chemin, {})
+        raison = None
+        valide = avant_intervention is not None
+        if not valide:
+            raison = "Archive antérieure absente."
+        elif chemin not in etat_avant:
+            valide, raison = False, "Champ absent de l’instantané avant."
+        elif chemin not in etat:
+            valide, raison = False, "Champ absent de l’instantané après."
+        elif type(avant) not in (str, int, float, bool) or type(apres) not in (str, int, float, bool):
+            valide, raison = False, "Le champ n’est pas scalaire ; slot ou liste ambiguë."
+        elif (type(avant) is float and not math.isfinite(avant)) or (type(apres) is float and not math.isfinite(apres)):
+            valide, raison = False, "Valeur scalaire non finie."
+        elif not _forme_connue(avant, type_avant) or not _forme_connue(apres, type_apres):
+            valide, raison = False, "Forme ou définition typée inconnue."
+        elif type_avant.get("type") != type_apres.get("type") or type(avant) is not type(apres):
+            valide, raison = False, "Types natifs ou définitions avant/après différents."
+        elif avant == apres:
+            valide, raison = False, "Aucun changement typé constaté."
+        if valide:
+            statut_intervention = "DÉCLARÉE — ÉCART VÉRIFIÉ"
+            raison = "Déclaration explicite et delta scalaire typé constaté ; auteur et geste non authentifiés."
+            for ligne in comparaisons:
+                if ligne["chemin"] == chemin:
+                    ligne["modification_manuelle"] = statut_intervention
+        else:
+            statut_intervention = "NON VÉRIFIÉ"
+        interventions.append({
+            "chemin": chemin, "statut": statut_intervention, "raison": raison,
+            "valeur_avant": avant, "valeur_apres": apres,
+            "provenance_avant": ({"source": str(avant_path), "sha256": sha_intervention_avant, "chemin": chemin}
+                                  if avant_path is not None else None),
+            "provenance_apres": {"source": str(archive), "sha256": sha_3mf_avant, "chemin": chemin},
+        })
     sha_apres = {nom: _lire_profil(chemin)[1] for nom, chemin in chemins.items()}
     sha_3mf_apres = sha256_fichier(archive)
-    if sha_3mf_apres != sha_3mf_avant or sha_apres != sha_avant:
+    sha_intervention_apres = sha256_fichier(avant_path) if avant_path is not None else None
+    if sha_3mf_apres != sha_3mf_avant or sha_apres != sha_avant or sha_intervention_apres != sha_intervention_avant:
         raise ValueError("Archive ou profil modifié pendant la comparaison.")
     if not comparaisons and not non_verifies:
         non_verifies.append({"cle": None, "chemin": None, "statut": "NON VÉRIFIÉ",
@@ -296,6 +353,7 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
         "sha256_3mf_avant": sha_3mf_avant, "sha256_3mf_apres": sha_3mf_apres,
         "profils_sha256_avant": sha_avant, "profils_sha256_apres": sha_apres,
         "comparaisons": comparaisons, "differences": différences, "non_verifies": non_verifies,
+        "interventions_manuelles": interventions,
         "profils": [
             {"categorie": p["categorie"], "name": nom,
              "heritages": [
@@ -311,7 +369,8 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
         ],
         "contexte_filaments": contexte,
         "limites": [
-            "Les différences sont des observations numériques en unités natives, pas des changements manuels établis.",
+            "Une intervention déclarée atteste seulement un delta scalaire explicitement demandé entre deux archives ; "
+            "elle n’authentifie ni auteur ni geste.",
             "Une clé, forme ou correspondance non qualifiée reste NON VÉRIFIÉE.",
             "Aucune conclusion fabricant, compatibilité physique, ni validation d’impression.",
             "Les profils fournis et leurs parents sont lus en lecture seule.",
@@ -358,13 +417,18 @@ def main(argv=None, *, prive=None):
     parser.add_argument("archive", type=Path)
     parser.add_argument("--profil", type=Path, action="append", required=True)
     parser.add_argument("--dossier-presets", type=Path, action="append", default=[])
+    parser.add_argument("--avant-intervention", type=Path)
+    parser.add_argument("--champ-manuel", action="append", default=[])
     parser.add_argument("--rapport", type=Path, required=True)
     parser.add_argument("--prive", type=Path, default=prive)
     args = parser.parse_args(argv)
     try:
-        rapport = comparer(args.archive, args.profil, dossiers_presets=args.dossier_presets)
+        rapport = comparer(args.archive, args.profil, dossiers_presets=args.dossier_presets,
+                           avant_intervention=args.avant_intervention, champs_manuels=args.champ_manuel)
         cible = sortie_privee(args.rapport, prive=args.prive)
         entrees = [args.archive, *args.profil]
+        if args.avant_intervention is not None:
+            entrees.append(args.avant_intervention)
         entrees.extend(
             heritage["fichier"]
             for profil in rapport["profils"]

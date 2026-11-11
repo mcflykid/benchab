@@ -68,6 +68,79 @@ def test_compare_reglages_typages_portees_origines_et_sha(tmp_path):
     assert rapport["differences"][0]["sensible"] is False
     assert rapport["differences"][0]["modification_manuelle"] == "NON VÉRIFIÉ"
     assert rapport["statut"] == "WARN"
+    assert rapport["interventions_manuelles"] == []
+
+
+def test_intervention_declaree_requiert_delta_scalaire_exact_et_sources_sha(tmp_path):
+    """Ne déclare un écart manuel que pour un champ explicitement nommé et changé entre deux instantanés."""
+    avant = tmp_path / "avant.3mf"
+    apres = tmp_path / "apres.3mf"
+    _archive(avant, {"top_shell_layers": "4"})
+    _archive(apres, {"top_shell_layers": "5"})
+    profil = _profil(tmp_path / "P.json", "process", "P", {"top_shell_layers": "5"})
+    avant_octets, apres_octets = avant.read_bytes(), apres.read_bytes()
+    sha_avant = hashlib.sha256(avant_octets).hexdigest()
+    sha_apres = hashlib.sha256(apres_octets).hexdigest()
+
+    rapport = ecarts_profils_3mf.comparer(
+        apres, [profil], avant_intervention=avant, champs_manuels=["projet/top_shell_layers"]
+    )
+
+    declaration = rapport["interventions_manuelles"][0]
+    assert declaration["statut"] == "DÉCLARÉE — ÉCART VÉRIFIÉ"
+    assert declaration["valeur_avant"] == "4" and declaration["valeur_apres"] == "5"
+    assert declaration["provenance_avant"] == {
+        "source": str(avant), "sha256": sha_avant, "chemin": "projet/top_shell_layers"
+    }
+    assert declaration["provenance_apres"] == {
+        "source": str(apres), "sha256": sha_apres, "chemin": "projet/top_shell_layers"
+    }
+    assert rapport["comparaisons"][0]["modification_manuelle"] == "DÉCLARÉE — ÉCART VÉRIFIÉ"
+    assert avant.read_bytes() == avant_octets and apres.read_bytes() == apres_octets
+
+
+@pytest.mark.parametrize(
+    "avant_valeur,apres_valeur,attendu",
+    [("5", "5", "Aucun changement typé"), (None, "5", "absent de l’instantané avant")],
+)
+def test_intervention_identique_ou_absente_reste_non_verifiee(tmp_path, avant_valeur, apres_valeur, attendu):
+    """Un champ identique ou absent ne prouve aucune intervention."""
+    avant, apres = tmp_path / "avant.3mf", tmp_path / "apres.3mf"
+    _archive(avant, {} if avant_valeur is None else {"top_shell_layers": avant_valeur})
+    _archive(apres, {} if apres_valeur is None else {"top_shell_layers": apres_valeur})
+    profil = _profil(tmp_path / "P.json", "process", "P", {"top_shell_layers": "5"})
+    rapport = ecarts_profils_3mf.comparer(
+        apres, [profil], avant_intervention=avant, champs_manuels=["projet/top_shell_layers"]
+    )
+    declaration = rapport["interventions_manuelles"][0]
+    assert declaration["statut"] == "NON VÉRIFIÉ"
+    assert attendu in declaration["raison"]
+
+
+def test_champ_manuel_sans_archive_avant_reste_non_verifie(tmp_path):
+    """Un nom de champ déclaré sans archive de référence ne suffit pas."""
+    apres = tmp_path / "apres.3mf"
+    _archive(apres, {"top_shell_layers": "5"})
+    profil = _profil(tmp_path / "P.json", "process", "P", {"top_shell_layers": "5"})
+    rapport = ecarts_profils_3mf.comparer(
+        apres, [profil], champs_manuels=["projet/top_shell_layers"]
+    )
+    declaration = rapport["interventions_manuelles"][0]
+    assert declaration["statut"] == "NON VÉRIFIÉ"
+    assert declaration["provenance_avant"] is None
+
+
+def test_champ_manuel_liste_ou_slot_ambigu_reste_non_verifie(tmp_path):
+    """Les listes de profils multi-axes ne deviennent pas des interventions scalaires."""
+    avant, apres = tmp_path / "avant.3mf", tmp_path / "apres.3mf"
+    _archive(avant, {"machine_max_speed_x": ["500", "600"]})
+    _archive(apres, {"machine_max_speed_x": ["500", "700"]})
+    profil = _profil(tmp_path / "M.json", "machine", "M", {"machine_max_speed_x": ["500", "700"]})
+    rapport = ecarts_profils_3mf.comparer(
+        apres, [profil], avant_intervention=avant, champs_manuels=["projet/machine_max_speed_x"]
+    )
+    assert rapport["interventions_manuelles"][0]["statut"] == "NON VÉRIFIÉ"
+    assert "scalaire" in rapport["interventions_manuelles"][0]["raison"]
 
 
 def test_familles_sensibles_et_type_inconnu_non_comparables(tmp_path):
@@ -227,6 +300,32 @@ def test_cli_ecrit_uniquement_le_rapport_prive(tmp_path):
     assert code == 0
     assert json.loads(rapport.read_text())["statut"] == "PASS"
     assert hashlib.sha256(profil.read_bytes()).hexdigest() == sha
+
+
+def test_cli_declare_intervention_et_refuse_collision_avec_archive_source(tmp_path):
+    """Le CLI propage les champs déclarés et protège l’archive antérieure du rapport."""
+    avant, apres = tmp_path / "avant.3mf", tmp_path / "apres.3mf"
+    _archive(avant, {"top_shell_layers": "4"})
+    _archive(apres, {"top_shell_layers": "5"})
+    profil = _profil(tmp_path / "P.json", "process", "P", {"top_shell_layers": "5"})
+    attendu = avant.read_bytes()
+    atelier = Base(tmp_path)
+    atelier.fermer()
+    code = cli_main(
+        ["--prive", str(tmp_path), "controle", "ecarts-profils-3mf", "--",
+         str(apres), "--profil", str(profil), "--avant-intervention", str(avant),
+         "--champ-manuel", "projet/top_shell_layers", "--rapport", str(tmp_path / "rapport.json")]
+    )
+    assert code == 0
+    rapport = json.loads((tmp_path / "rapport.json").read_text())
+    assert rapport["interventions_manuelles"][0]["statut"] == "DÉCLARÉE — ÉCART VÉRIFIÉ"
+    code_collision = cli_main(
+        ["--prive", str(tmp_path), "controle", "ecarts-profils-3mf", "--",
+         str(apres), "--profil", str(profil), "--avant-intervention", str(avant),
+         "--champ-manuel", "projet/top_shell_layers", "--rapport", str(avant)]
+    )
+    assert code_collision == 2
+    assert avant.read_bytes() == attendu
 
 
 def test_archive_liee_refusee_avant_comparaison(tmp_path):
