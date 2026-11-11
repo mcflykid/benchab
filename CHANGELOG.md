@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir — 1.3.0
+## 1.3.0 — 2026-11-11
 
 - Réglages : contexte commun des slots filament, identités et ordre conservés, variantes suffixées appariées séparément et résidus NON VÉRIFIÉS (#103).
 - Envoi : avertissements natifs par plaque, codes inconnus conservés et origine non établie signalée (#109).
@@ -14,6 +14,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Import : attribution déclarée des modèles, liée à leur SHA-256 et conservée à la reprise (#36).
 - Réglages : comparaison des valeurs énumérées avec les essais du binaire ASN identifié ; les replis observés échouent et les valeurs non essayées restent NON VÉRIFIÉES (première étape de #80).
 - Lecture 3MF : intégrité avant/après, noms et résultats de plaques et optimisation utilisent les limites et le décodage communs (suite de #122).
+- Qualification ASN : tranchage natif d’une sonde synthétique à deux volumes ; rôles, géométrie et réglages contrôlés, effet de la densité mesuré dans le G-code (#48).
 
 ## 1.2.0 — 2026-11-11
 

@@ -74,6 +74,33 @@ composant et la géométrie locale doivent aussi rester identiques, même quand
 le moteur renumérote ses ressources. [La conversion officielle des types est
 explicite et possède un retour par défaut](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/Model.cpp#L2402).
 
+#### Qualification native d’un modificateur (#48)
+
+Une nouvelle sonde synthétique corrige le rôle de l’entrée historique et utilise
+le plan d’origine avant le lancement. Sur ASN 2.0.0.3 et le
+[binaire identifié](enumerations-asn.md#binaire-observé), deux copies d’une
+boîte de 20 × 20 × 8 mm portent le même modificateur de 10 × 10 × 6 mm.
+La seule différence autorisée est la densité clairsemée du modificateur :
+20 % ou 60 %.
+
+| Densité du modificateur | Valeur relue | Segments déposés du remplissage clairsemé |
+| --- | --- | ---: |
+| 20 % | 20 % | 7 263 |
+| 60 % | 60 % | 13 783 |
+
+Les deux tranchages natifs ont réussi. Les liaisons `normal_part` et
+`modifier_part`, les empreintes géométriques et les transformations des
+composants sont vérifiées par le plan. Après restauration des seules matrices
+documentaires, l’intégrité source/sortie ne relève aucune différence de
+réglages ; les deux variantes ne diffèrent entre elles que sur la densité
+prévue. Les SHA du G-code natif et restauré coïncident pour chaque essai, et
+l’interpréteur ne signale aucune erreur. Les entrées et les 646 profils
+contrôlés sont intacts.
+
+Les essais historiques restent des échecs conservés. Ce résultat qualifie
+ce producteur, ce témoin et ce binaire. Il ne mesure ni une tenue physique,
+ni l’effet de tous les modificateurs ou motifs verrouillés.
+
 ### Export de découpe depuis un 3MF
 
 La découpe produit de nouveaux corps et de nouvelles plaques : elle ne transfère
