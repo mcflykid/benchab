@@ -33,7 +33,7 @@ from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF, decoder_xml
 from benchab.fabrication.reglages import normaliser_heritages
 from benchab.fabrication.trancher import restaurer_noms, trancher_fichier
-from benchab.gcode.lecture import lire_texte_gcode_3mf, membres_gcode_3mf
+from benchab.gcode.lecture import lire_texte_gcode_3mf, membres_gcode_3mf, plaques_gcode_archive
 from benchab.machine.configuration import charger
 from benchab.qualite.empreintes import sha256_fichier
 
@@ -500,26 +500,38 @@ def _signature_sortie(path):
 
 
 def _valider_tranchage(path, noms, attendu=None):
-    mesures = resultats(path)
-    with ZipFile(path) as z:
-        membres = z.namelist()
-        if len(membres) != len(set(membres)) or z.testzip() is not None:
-            raise ValueError("ZIP dupliqué ou corrompu")
-        plaques = {
-            int(re.fullmatch(r"Metadata/plate_(\d+)\.gcode", n).group(1)): n
-            for n in membres
-            if re.fullmatch(r"Metadata/plate_\d+\.gcode", n)
-        }
+    """Valide les résultats par plaque et chaque G-code exact d’un 3MF tranché.
+
+    Entrées : chemin 3MF, noms source par ordre de plaque, réglages attendus éventuels.
+    Sortie : résultats (s, g) dans l’ordre XML ; refuse alias numériques, CRC invalide,
+    texte G-code non UTF-8 ou plaque sans commande. Les membres ignorés sont aussi lus
+    jusqu’à EOF pour valider le paquet ; aucun profil ni résultat n’est modifié.
+    """
+    with Archive3MF(path) as archive:
+        membres = archive.noms()
+        resultats_octets = archive.lire("Metadata/slice_info.config", limite_octets=archive.taille_max_xml)
+        mesures = resultats_xml(resultats_octets)
+        plaques = dict(plaques_gcode_archive(archive))
         indices = {p["index"] for p in mesures}
         attendues = set(range(1, len(noms) + 1)) if noms else indices
         if not plaques or set(plaques) != indices or indices != attendues:
             raise ValueError("plaques tranchées absentes ou incohérentes avec les résultats/source")
-        for numero, membre in plaques.items():
-            gcode = lire_texte_gcode_3mf(path, membre, erreurs="strict")
+        gcodes = {}
+        for membre in membres:
+            if membre not in plaques.values():
+                continue
+            # Lire dans le même contexte force le CRC du G-code à EOF sans extraction disque.
+            gcode = archive.lire(membre).decode("utf-8", errors="strict")
             if not any(ligne.split(";")[0].strip() for ligne in gcode.splitlines()):
+                numero = next(numero for numero, nom in plaques.items() if nom == membre)
                 raise ValueError(f"plaque {numero} sans commandes")
-    if attendu and reglages_embarques(path, attendu):
-        raise ValueError("réglages embarqués absents ou différents des réglages requis")
+            gcodes[membre] = gcode
+        # Le résultat XML et les G-code ont été lus en entier ; le reste du ZIP,
+        # même non consommé par ce contrôle, passe aussi le CRC avant validation.
+        membres_lus = {"Metadata/slice_info.config", *plaques.values()}
+        archive.verifier(membres=(nom for nom in membres if nom not in membres_lus))
+        if attendu and _ecarts_reglages_embarques(gcodes.items(), attendu):
+            raise ValueError("réglages embarqués absents ou différents des réglages requis")
     return mesures
 
 
@@ -593,12 +605,17 @@ def reglages_embarques(t3mf, attendu):
     Retourne les écarts FAIL/NON VÉRIFIÉ ; liste vide si conforme. Ne modifie jamais
     le 3MF ni ses réglages ; une liste par mode machine n'est jamais assimilée aux filaments.
     """
-    ecarts = []
     plaques = membres_gcode_3mf(t3mf)
     if not plaques:
         return [{"plaque": None, "reglage": "G-code", "attendu": "au moins une plaque", "embarque": None}]
-    for n in plaques:
-        g = lire_texte_gcode_3mf(t3mf, n)
+    gcodes = {n: lire_texte_gcode_3mf(t3mf, n) for n in plaques}
+    return _ecarts_reglages_embarques(gcodes.items(), attendu)
+
+
+def _ecarts_reglages_embarques(gcodes, attendu):
+    """Compare des textes G-code déjà lus aux réglages attendus sans nouvelle lecture d’archive."""
+    ecarts = []
+    for n, g in sorted(gcodes):
         for k, v in attendu.items():
             definition = schema_reglages.definition(k, valeur=v)
             if definition["type"] == "inconnu":
