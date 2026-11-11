@@ -150,6 +150,26 @@ def _entete_sqlite(chemin):
         return flux.read(20)
 
 
+def _journal_en_mode_rollback(connexion):
+    """Vérifie dans la transaction SQLite que le journal utilise un mode rollback."""
+    mode = connexion.execute("PRAGMA journal_mode").fetchone()[0].lower()
+    return mode in {"delete", "truncate", "persist"}
+
+
+def _identite_base_sqlite(chemin):
+    """Retourne dev/inode d'une base régulière, sans suivre un lien symbolique."""
+    info = os.stat(chemin, follow_symlinks=False)
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("La base SQLite doit rester un fichier ordinaire sans lien.")
+    return info.st_dev, info.st_ino
+
+
+def _verifier_identite_base_sqlite(chemin, identite):
+    """Refuse une base dont l'identité dev/inode diffère de celle du plan actif."""
+    if _identite_base_sqlite(chemin) != identite:
+        raise ValueError("Identité du chemin SQLite modifiée pendant la reprise.")
+
+
 def _source_logique(rendu, fiches):
     """Calcule le SHA logique stable de tous les textes rendus depuis la transaction SQLite."""
     attendus = {**rendu["fichiers"], **fiches}
@@ -231,6 +251,7 @@ def planifier(prive: Path | str | None = None, *, candidats: list[str] | None = 
     de vue ne reçoit qu'une proposition si un candidat unique a le SHA rendu exact.
     Invariant : les propositions ne modifient aucun lien ni fichier.
     Invariant : SQLite est ouvert en mode ro/query_only ; aucune source n'est réparée.
+    Invariant : le mode du journal est relu dans l'instantané avant de rendre les vues.
     """
     try:
         racine = atelier_prive(prive).absolute()
@@ -248,6 +269,9 @@ def planifier(prive: Path | str | None = None, *, candidats: list[str] | None = 
             connexion.execute("BEGIN")
             application_id = connexion.execute("PRAGMA application_id").fetchone()[0]
             version = connexion.execute("PRAGMA user_version").fetchone()[0]
+            # La lecture d'identité établit l'instantané ; l'en-tête seul peut dater d'avant un passage WAL.
+            if not _journal_en_mode_rollback(connexion):
+                return _rapport_indisponible("Mode journal SQLite hors rollback dans l'instantané ouvert.")
             if application_id != APPLICATION_ID or version != 1:
                 return _rapport_indisponible("Identité ou schéma de la base BENCHAB non établi.")
             rendu = vues._rendre(connexion)
@@ -656,7 +680,8 @@ def appliquer_candidat_lien(
     Sortie : PASS et preuve privée relue, ou refus sans annoncer de réparation.
     Invariants : conserve le lien et la candidate, refuse cible canonique/manifeste,
     tient le snapshot SQLite en lecture jusqu'au contrôle final, prouve l'état antérieur
-    et publie la copie exclusivement.
+    et publie la copie exclusivement. Vérifie l'identité dev/inode de la base jusqu'à
+    la publication ; un changement de chemin annule l'application.
     """
     if type(rapport) is not dict or type(candidat) is not str:
         raise ValueError("Plan ou candidat invalide.")
@@ -707,6 +732,7 @@ def appliquer_candidat_lien(
 
     racine = atelier_prive(prive).absolute()
     base = sans_lien(racine / "benchab.sqlite", racine=racine, strict=True)
+    identite_base = _identite_base_sqlite(base)
     entete = _entete_sqlite(base)
     if not entete.startswith(b"SQLite format 3\0") or len(entete) != 20 or entete[18:20] != b"\x01\x01":
         raise ValueError("Format de journal SQLite non pris en charge pour la reprise.")
@@ -731,6 +757,11 @@ def appliquer_candidat_lien(
         connexion.execute("BEGIN")
         application_id = connexion.execute("PRAGMA application_id").fetchone()[0]
         version = connexion.execute("PRAGMA user_version").fetchone()[0]
+        # L'en-tête antérieur ne suffit pas : un passage WAL peut survenir avant l'ouverture.
+        # La lecture d'identité a établi le snapshot rollback maintenu jusqu'à publication.
+        _verifier_identite_base_sqlite(base, identite_base)
+        if not _journal_en_mode_rollback(connexion):
+            raise ValueError("Mode journal SQLite hors rollback dans l'instantané ouvert.")
         identite_source = {"application_id": application_id, "user_version": version}
         if identite_source != {
             "application_id": source_plan["application_id"], "user_version": source_plan["user_version"],
@@ -775,6 +806,7 @@ def appliquer_candidat_lien(
         preuve = racine / "sauvegardes/vues" / (
             f"reprise-lien-{uuid.uuid4().hex}-{proposition['sha256'][:24]}.json"
         )
+        _verifier_identite_base_sqlite(base, identite_base)
         with PublicationNeuve([], [preuve]) as publication:
             publication.temporaire(preuve).write_text(texte_preuve, encoding="utf-8")
             publication.publier()
@@ -792,8 +824,10 @@ def appliquer_candidat_lien(
             or relu.get("sha256") != proposition["sha256"] or relu.get("identite") != actuel.get("identite")
         ):
             raise ValueError("Préconditions changées après preuve ; la copie n'est pas publiée.")
+        _verifier_identite_base_sqlite(base, identite_base)
         with PublicationNeuve([actuel["chemin"]], [destination]) as publication:
             publication.temporaire(destination).write_bytes(relu["contenu"])
+            _verifier_identite_base_sqlite(base, identite_base)
             publication.publier()
         apres = _empreinte_fichier(racine, destination_rel, lecture=True)
         _, texte_apres, destination_apres, chemin_apres, identite_apres = _instantane_lien(

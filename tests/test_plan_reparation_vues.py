@@ -188,6 +188,99 @@ def test_plan_nouvre_pas_une_base_a_journal_wal(tmp_path, monkeypatch):
     assert _empreintes(prive) == avant
 
 
+def test_plan_refuse_bascule_wal_apres_lecture_initiale_entete(tmp_path, monkeypatch):
+    """Le mode journal effectif est vérifié après l'ouverture de l'instantané SQLite."""
+    prive = _atelier(tmp_path)
+    entete_originale = plan_reparation._entete_sqlite
+    bascule_effectuee = False
+
+    def entete_puis_bascule(chemin):
+        nonlocal bascule_effectuee
+        entete = entete_originale(chemin)
+        if not bascule_effectuee:
+            bascule_effectuee = True
+            with sqlite3.connect(chemin) as connexion:
+                assert connexion.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
+        return entete
+
+    monkeypatch.setattr(plan_reparation, "_entete_sqlite", entete_puis_bascule)
+
+    rapport = plan_reparation.planifier(prive)
+
+    assert bascule_effectuee
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["actions"] == []
+    assert "journal" in rapport["detail"].lower()
+
+
+def test_appliquer_refuse_wal_effectif_avant_preuve(tmp_path, monkeypatch):
+    """Un passage WAL après l'en-tête initial est refusé avant preuve ou copie."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    entete_originale = plan_reparation._entete_sqlite
+    bascule_effectuee = False
+
+    def entete_puis_bascule(chemin):
+        nonlocal bascule_effectuee
+        entete = entete_originale(chemin)
+        if not bascule_effectuee:
+            bascule_effectuee = True
+            with sqlite3.connect(chemin) as connexion:
+                assert connexion.execute("PRAGMA journal_mode = WAL").fetchone()[0] == "wal"
+        return entete
+
+    monkeypatch.setattr(plan_reparation, "_entete_sqlite", entete_puis_bascule)
+
+    with pytest.raises(ValueError, match="journal"):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+
+    assert bascule_effectuee
+    assert not cible.exists()
+    assert not list((prive / "sauvegardes/vues").glob("reprise-lien-*.json"))
+    assert index.is_symlink() and candidat.read_bytes() == attendu
+
+
+def test_appliquer_refuse_base_remplacee_apres_preuve(tmp_path, monkeypatch):
+    """Le chemin de base garde la même identité jusqu'à la publication de la copie."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    base = prive / "benchab.sqlite"
+    publieur = PublicationNeuve.publier
+
+    def remplacer_base_apres_preuve(publication):
+        resultat = publieur(publication)
+        if any(chemin.name.startswith("reprise-lien-") for chemin in publication.sorties):
+            remplacement = tmp_path / "base-remplacement.sqlite"
+            remplacement.write_bytes(base.read_bytes())
+            remplacement.replace(base)
+        return resultat
+
+    monkeypatch.setattr(PublicationNeuve, "publier", remplacer_base_apres_preuve)
+
+    with pytest.raises(ValueError, match="Identité du chemin SQLite modifiée"):
+        plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+
+    assert not cible.exists()
+    assert index.is_symlink() and candidat.read_bytes() == attendu
+    assert list((prive / "sauvegardes/vues").glob("reprise-lien-*.json"))
+
+
 def test_appliquer_vue_absente_depuis_plan_conserve_sqlite(tmp_path):
     """Applique explicitement une vue absente depuis son rendu SQLite confirmé."""
     prive = _atelier(tmp_path)
