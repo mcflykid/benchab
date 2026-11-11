@@ -2,7 +2,7 @@
 
 import pytest
 
-from benchab.donnees.base import Base
+from benchab.donnees.base import TABLES, Base
 from benchab.donnees.vues import generer
 from benchab.qualite.coherence import verifier
 
@@ -18,6 +18,57 @@ def test_corruption_export_detectee_sans_reparation(tmp_path):
         base.exporter()
         assert verifier(base.prive) == []
     finally:
+        base.fermer()
+
+
+def test_substitution_concurrente_du_dossier_export_est_refusee_sans_lire_le_lien(tmp_path, monkeypatch):
+    """Un dirfd conservé empêche de suivre un dossier export remplacé pendant le contrôle."""
+    import os
+    import shutil
+
+    import benchab.qualite.coherence as coherence
+
+    base = Base(tmp_path / "prive")
+    dossier = base.prive / "export"
+    original = base.prive / "export-original"
+    externe = tmp_path / "copie-export"
+    shutil.copytree(dossier, externe)
+    sqlite_avant = (base.prive / "benchab.sqlite").read_bytes()
+    inodes_originaux = {
+        table + ".jsonl": (dossier / (table + ".jsonl")).stat().st_ino for table in TABLES
+    }
+    octets_originaux = {
+        nom: (dossier / nom).read_bytes() for nom in ("manifest.json", *(table + ".jsonl" for table in TABLES))
+    }
+    inodes_lus = {}
+    ouvrir_manifeste = coherence._manifeste_export
+    empreinter = coherence._empreinte_membre_export
+
+    def remplacer_apres_manifeste(dirfd, erreurs, signatures):
+        manifeste = ouvrir_manifeste(dirfd, erreurs, signatures)
+        dossier.rename(original)
+        dossier.symlink_to(externe, target_is_directory=True)
+        return manifeste
+
+    def surveiller_membre(dirfd, nom):
+        inodes_lus[nom] = os.stat(nom, dir_fd=dirfd, follow_symlinks=False).st_ino
+        return empreinter(dirfd, nom)
+
+    monkeypatch.setattr(coherence, "_manifeste_export", remplacer_apres_manifeste)
+    monkeypatch.setattr(coherence, "_empreinte_membre_export", surveiller_membre)
+    try:
+        erreurs = coherence.verifier(base.prive)
+
+        assert any("Dossier d’export remplacé pendant le contrôle" in erreur for erreur in erreurs), erreurs
+        assert dossier.is_symlink()
+        assert (base.prive / "benchab.sqlite").read_bytes() == sqlite_avant
+        assert all((externe / (table + ".jsonl")).is_file() for table in TABLES)
+        assert inodes_lus == inodes_originaux
+        assert all((original / nom).read_bytes() == octets for nom, octets in octets_originaux.items())
+    finally:
+        if dossier.is_symlink():
+            os.unlink(dossier)
+        original.rename(dossier)
         base.fermer()
 
 
