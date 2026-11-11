@@ -411,13 +411,12 @@ def test_plan_ne_propose_pas_de_remplacement_pour_un_lien_vivant(tmp_path):
     prive = _atelier(tmp_path)
     index = prive / "vues/INDEX.md"
     attendu = index.read_bytes()
-    candidat = prive / "candidats/INDEX.md"
-    candidat.parent.mkdir()
+    candidat = prive / "vues/candidat.md"
     candidat.write_bytes(attendu)
     index.unlink()
-    index.symlink_to(candidat.relative_to(prive))
+    index.symlink_to(candidat.name)
 
-    rapport = plan_reparation.planifier(prive, candidats=["candidats/INDEX.md"])
+    rapport = plan_reparation.planifier(prive, candidats=["vues/candidat.md"])
 
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["propositions_liens"] == []
@@ -463,3 +462,40 @@ def test_cli_plan_reparation_accepte_candidat_explicitement(tmp_path, capsys):
     assert code == 1
     assert rapport["propositions_liens"][0]["candidat"] == "candidat.md"
     assert rapport["application_effectuee"] is False
+
+
+def test_plan_lien_vivant_resout_la_cible_depuis_le_dossier_du_lien(tmp_path):
+    """Un homonyme à la racine ne masque pas une cible vivante sous vues/."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    index.unlink()
+    cible_vivante = prive / "vues/autre.md"
+    cible_vivante.write_bytes(attendu)
+    (prive / "autre.md").unlink(missing_ok=True)
+    index.symlink_to("autre.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+
+    assert rapport["propositions_liens"] == []
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+
+
+def test_plan_lien_casse_ignore_un_homonyme_a_la_racine(tmp_path):
+    """Un homonyme à la racine ne rend pas vivante la cible absente sous vues/."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    index.unlink()
+    (prive / "autre.md").write_bytes(attendu)
+    index.symlink_to("autre.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+
+    proposition = next(item for item in rapport["propositions_liens"] if item["cible"] == "vues/INDEX.md")
+    assert proposition["candidat"] == "candidat.md"
+    assert rapport["statut"] == "WARN"

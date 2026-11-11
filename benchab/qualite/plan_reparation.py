@@ -203,7 +203,8 @@ def _lien_cible_absente(racine: Path, relatif: str) -> bool:
     # Ce lot ne traite qu'un lien déplacé simple dans le privé ; les autres formes restent à vérifier.
     if cible.is_absolute() or not cible.parts or any(part in {"", ".", ".."} for part in cible.parts):
         return False
-    courant = racine
+    # readlink renvoie un chemin interprété depuis le parent du lien, pas depuis l'atelier.
+    courant = parent
     for composant in cible.parts:
         courant = courant / composant
         if courant.is_symlink():
