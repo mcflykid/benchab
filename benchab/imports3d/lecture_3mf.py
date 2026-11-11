@@ -22,7 +22,10 @@ _MAX_XML = 512 * 1024 * 1024
 
 
 def lire(source, max_faces=3_000_000):
-    """Lit une scène 3MF en mm, bornée en faces ; refuse archive incomplète, aucune extraction ni réglage modifié."""
+    """Lit une scène 3MF en mm, bornée en faces ; conserve les noms et identités/transforms source dans metadata.
+
+    Refuse archive incomplète ; aucun membre n’est extrait sur disque et aucun réglage n’est modifié.
+    """
     try:
         return _lire(source, max_faces)
     except (E.ParseError, BadZipFile, KeyError, UnicodeError) as exc:
@@ -85,7 +88,7 @@ def _lire(source, max_faces):
             m[:3, 3] *= facteur
             return m
 
-        def parcourir(nom, ident, transform, pile=(), racine=None):
+        def parcourir(nom, ident, transform, pile=(), racine=None, trace=(), build_item=None):
             nonlocal total_faces
             cle = nom, ident
             if cle in pile or len(pile) >= 32:
@@ -121,14 +124,35 @@ def _lire(source, max_faces):
                 if min(min(f) for f in faces) < 0 or max(max(f) for f in faces) >= len(vertices):
                     raise ValueError("Indice de triangle 3MF invalide")
                 m = trimesh.Trimesh(np.asarray(vertices) * facteur, faces, process=False).apply_transform(transform)
-                resultats.append((obj.get("name", f"Objet{len(resultats) + 1}"), m))
+                identite = {
+                    "build_item": build_item,
+                    "modele_principal": racine_modele,
+                    "objet_id_racine": racine,
+                    "modele_maillage": nom,
+                    "objet_id_maillage": ident,
+                    "unite_source": modele(nom)[0].get("unit", "millimeter"),
+                    "transformations": list(trace),
+                }
+                resultats.append((obj.get("name", f"Objet{len(resultats) + 1}"), m, identite))
             for component in obj.findall(NS + "components/" + NS + "component"):
                 path = next((v for k, v in component.attrib.items() if k.endswith("}path") or k == "path"), None)
                 enfant = chemin(nom, path) if path else nom
                 if modele(enfant)[2] != facteur:
                     raise ValueError("Unités mixtes entre modèles 3MF : conversion explicite requise")
+                matrice_composant = matrice(component, facteur)
+                trace_composant = {
+                    "type": "composant",
+                    "modele": nom,
+                    "objet_id": ident,
+                    "modele_cible": enfant,
+                    "objet_id_cible": component.attrib["objectid"],
+                    "transform_3mf": component.get("transform"),
+                    "translation_mm": matrice_composant[:3, 3].tolist(),
+                    "matrice_mm": matrice_composant.tolist(),
+                }
                 parcourir(
-                    enfant, component.attrib["objectid"], transform @ matrice(component, facteur), pile + (cle,), racine
+                    enfant, component.attrib["objectid"], transform @ matrice_composant, pile + (cle,), racine,
+                    (*trace, trace_composant), build_item,
                 )
 
         # Relation OPC prioritaire, plutôt qu'une hypothèse sur la casse du nom.
@@ -143,23 +167,45 @@ def _lire(source, max_faces):
             principal = next((n for n in sorted(noms) if n.lower() == "3d/3dmodel.model"), None)
         if principal is None:
             raise ValueError("Modèle principal 3MF absent")
+        racine_modele = principal
         root, _, facteur = modele(principal)
-        for item in root.findall(NS + "build/" + NS + "item"):
+        for build_item, item in enumerate(root.findall(NS + "build/" + NS + "item"), 1):
             if item.get("printable", "1") == "0":
                 continue
             path = next((v for k, v in item.attrib.items() if k.endswith("}path")), None)
+            modele_item = chemin(principal, path) if path else principal
+            matrice_item = matrice(item, facteur)
+            trace_item = {
+                "type": "instance",
+                "modele": principal,
+                "modele_cible": modele_item,
+                "objet_id": item.get("objectid"),
+                "build_item": build_item,
+                "transform_3mf": item.get("transform"),
+                "translation_mm": matrice_item[:3, 3].tolist(),
+                "matrice_mm": matrice_item.tolist(),
+            }
             parcourir(
-                chemin(principal, path) if path else principal,
+                modele_item,
                 item.attrib["objectid"],
-                matrice(item, facteur),
+                matrice_item,
                 racine=item.attrib["objectid"],
+                trace=(trace_item,),
+                build_item=build_item,
             )
     if not resultats:
         raise ValueError("Aucun objet imprimable dans le 3MF")
     scene = trimesh.Scene()
-    for i, (nom, mesh) in enumerate(resultats):
-        scene.add_geometry(mesh, node_name=f"Objet{i + 1}", geom_name=f"Objet{i + 1}", metadata={"nom_source": nom})
+    for i, (nom, mesh, identite) in enumerate(resultats):
+        scene.add_geometry(
+            mesh,
+            node_name=f"Objet{i + 1}",
+            geom_name=f"Objet{i + 1}",
+            metadata={"nom_source": nom, "identite_import": identite},
+        )
     scene.metadata["units"] = "mm"
     scene.metadata["unites_fichier"] = root.get("unit", "millimeter")
     scene.metadata["modificateurs_non_geometriques"] = ignores
+    # Les rapports de placement doivent relier les bornes déjà transformées aux IDs et matrices de la source (#105).
+    scene.metadata["identites_import"] = [identite for _, _, identite in resultats]
     return scene
