@@ -124,14 +124,17 @@ benchab --prive /chemin/atelier controle appliquer-reprise-export \
 La preuve doit rester au statut `CANDIDAT`, désigner la table et le JSONL
 frère exacts, et déclarer le même SHA que le manifeste courant. Sous le verrou
 `cache/export.lock`, la commande relit les deux membres bornés, ouvre SQLite en
-lecture seule et en mode rollback, puis compare octet pour octet le JSONL à une
+lecture seule et en mode rollback, puis compare octet pour octet le JSONL à la
 sérialisation indépendante du snapshot. Une seule table réellement absente peut
-être publiée : un stage neuf dans `export/` est relié à son nom canonique par
-un lien exclusif, sans remplacement. Après publication, la commande relit le
-SHA de la table et du manifeste, puis revérifie l’identité et l’empreinte de la
-base et du candidat. Le candidat, les autres tables et le manifeste ne sont pas
-modifiés. Si une vérification postérieure échoue, la cible publiée reste en
-place pour diagnostic et aucun PASS n’est renvoyé. La preuve sur disque garde
+être publiée : un stage neuf dans `export/` est renommé vers son nom canonique
+par une opération exclusive, sans alias et sans remplacement. Après publication,
+la commande relit la preuve, le JSONL candidat, le manifeste et la base, puis
+revérifie les chaînes de dossiers. Son dernier contrôle relit le membre canonique
+depuis le descripteur du dossier d’export épinglé. Le candidat, les autres tables
+et le manifeste ne sont pas modifiés. Si une vérification postérieure échoue,
+la cible publiée reste en place pour diagnostic et aucun PASS n’est renvoyé. Un
+refus avant publication peut laisser un fichier de stage caché `.reprise-*` dans `export/` ; il est
+conservé pour diagnostic, sans suppression par chemin. La preuve sur disque garde
 `CANDIDAT` ; seul le résultat de la commande peut indiquer `PASS`.
 Un refus CLI renvoie le code 2. Cette opération ne remplace aucun export,
 n’applique aucune autre table et ne crée pas de mesure de séance.

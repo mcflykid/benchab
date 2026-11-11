@@ -229,9 +229,62 @@ def _creer_stage(fd_export):
     raise FileExistsError("Impossible de réserver un stage neuf dans export/.")
 
 
-def _lier_exclusif(source_fd, source, export_fd, destination):
-    """Publie par lien exclusif un fichier staging neuf, sans remplacement."""
-    os.link(source, destination, src_dir_fd=export_fd, dst_dir_fd=export_fd, follow_symlinks=False)
+def _hachage_fd_borne(fd, budget):
+    """Hache au plus budget + 1 octets depuis le début d’un descripteur."""
+    if type(budget) is not int or budget < 0:
+        raise ValueError("Budget de lecture invalide.")
+    hachage = hashlib.sha256()
+    position = 0
+    while position <= budget:
+        taille = min(1024 * 1024, budget + 1 - position)
+        bloc = os.pread(fd, taille, position)
+        if not bloc:
+            return hachage.hexdigest(), position
+        position += len(bloc)
+        if position > budget:
+            raise ValueError("Fichier candidat au-delà du budget de lecture.")
+        hachage.update(bloc)
+    raise ValueError("Fichier candidat au-delà du budget de lecture.")
+
+
+def _ecrire_tout(fd, octets):
+    """Écrit un bloc complet ; une écriture nulle ou négative est un refus."""
+    reste = memoryview(octets)
+    while reste:
+        ecrit = os.write(fd, reste)
+        if ecrit <= 0:
+            raise OSError("Écriture nulle du stage d’export.")
+        reste = reste[ecrit:]
+
+
+def _publier_stage_exclusif(source, destination, export_fd):
+    """Renomme un stage par dirfd, sans alias ni remplacement."""
+    renommer_exclusif(source, destination, src_dir_fd=export_fd, dst_dir_fd=export_fd)
+
+
+def _verifier_cible_finale(fd_export, nom, fd_stage, sha_attendu, taille_attendue):
+    """Contrôle en dernière opération le membre publié depuis son dossier épinglé."""
+    entree = os.stat(nom, dir_fd=fd_export, follow_symlinks=False)
+    fd = os.open(nom, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd_export)
+    try:
+        signature = _signature_export(os.fstat(fd))
+        if (
+            not stat.S_ISREG(entree.st_mode)
+            or not os.path.samestat(os.fstat(fd_stage), os.fstat(fd))
+            or _signature_export(entree) != signature
+            or signature[3] != taille_attendue
+        ):
+            raise ValueError("La cible canonique ne désigne pas le stage créé.")
+        sha, taille = _hachage_fd_borne(fd, _MAX_OCTETS)
+        if sha != sha_attendu or taille != taille_attendue:
+            raise ValueError("Le SHA final de la cible diffère du candidat.")
+        if _signature_export(os.fstat(fd)) != signature:
+            raise ValueError("La cible canonique a changé pendant sa relecture.")
+        entree_fin = os.stat(nom, dir_fd=fd_export, follow_symlinks=False)
+        if _signature_export(entree_fin) != signature:
+            raise ValueError("La cible canonique a été remplacée après sa relecture.")
+    finally:
+        os.close(fd)
 
 
 def appliquer(prive, preuve, sha256_preuve):
@@ -318,7 +371,6 @@ def appliquer(prive, preuve, sha256_preuve):
                     raise ValueError("Le manifeste courant diffère de la preuve ou du SHA de la table.")
 
                 nom_stage, fd_stage, identite_stage = _creer_stage(fd_export)
-                publie = False
                 try:
                     hachage = hashlib.sha256()
                     octets = lignes = 0
@@ -330,10 +382,7 @@ def appliquer(prive, preuve, sha256_preuve):
                         if octets > _MAX_OCTETS:
                             raise ValueError("Le JSONL dépasse le budget de 64 Mio.")
                         hachage.update(bloc)
-                        vue = memoryview(bloc)
-                        while vue:
-                            ecrit = os.write(fd_stage, vue)
-                            vue = vue[ecrit:]
+                        _ecrire_tout(fd_stage, bloc)
                     sha_table_lu = hachage.hexdigest()
                     if octets != donnees["octets"] or sha_table_lu != sha_table:
                         raise ValueError("Les octets du JSONL diffèrent de la preuve CANDIDAT.")
@@ -365,6 +414,7 @@ def appliquer(prive, preuve, sha256_preuve):
                         or signature_preuve_avant != signature_preuve
                     ):
                         raise ValueError("La preuve candidate a changé avant publication.")
+                    _verifier_chaine_dossiers(descripteurs_preuve, noms_preuve)
                     verifier_export()
                     verifier_verrou()
                     _absence(fd_export, nom_canonique)
@@ -381,67 +431,48 @@ def appliquer(prive, preuve, sha256_preuve):
                         or _sha_membre(fd_export, nom_stage) != sha_table
                     ):
                         raise ValueError("Le stage neuf diffère des octets du candidat avant publication.")
-                    _lier_exclusif(fd_stage, nom_stage, fd_export, nom_canonique)
-                    publie = True
-                    os.fsync(fd_export)
-                    info_stage = os.fstat(fd_stage)
-                    info_canonique = os.stat(nom_canonique, dir_fd=fd_export, follow_symlinks=False)
-                    if (
-                        _identite_fichier(info_stage) != identite_stage
-                        or not os.path.samestat(info_stage, info_canonique)
-                    ):
-                        raise ValueError("La cible publiée ne désigne plus le stage créé.")
-                    if _sha_membre(fd_export, nom_canonique) != sha_table:
-                        raise ValueError("SHA différent après publication ; la cible reste en place.")
-                    _verifier_membre_export(fd_export, "manifest.json", signature_manifeste)
-                    if _sha_membre(fd_export, "manifest.json") != sha_manifeste:
-                        raise ValueError("Manifeste modifié après publication ; la cible reste en place.")
-                    verifier_export()
-                    verifier_verrou()
-                    if _signature_sqlite(base) != signature_base:
-                        raise ValueError("Base modifiée après publication ; la cible reste en place.")
-                    _verifier_journal(base)
-                    octets_preuve_fin, sha_preuve_fin, signature_preuve_fin = _lire_fichier_candidat(
-                        fd_candidat, nom_preuve, 100_000
-                    )
-                    if sha_preuve_fin != sha256_preuve or signature_preuve_fin != signature_preuve:
-                        raise ValueError("La preuve candidate a changé après publication.")
-                    hachage_candidat_fin = hashlib.sha256()
-                    position = 0
-                    while True:
-                        bloc = os.pread(fd_table, 1024 * 1024, position)
-                        if not bloc:
-                            break
-                        position += len(bloc)
-                        hachage_candidat_fin.update(bloc)
-                    if (
-                        hachage_candidat_fin.hexdigest() != sha_table
-                        or _signature_export(os.fstat(fd_table)) != signature_table
-                        or _signature_export(os.stat(nom_table, dir_fd=fd_candidat, follow_symlinks=False))
-                        != signature_table
-                    ):
-                        raise ValueError("Le JSONL candidat a changé après publication.")
-                    if octets_preuve_fin != preuve_octets:
-                        raise ValueError("Les octets de la preuve ont changé après publication.")
-                finally:
-                    if not publie:
-                        try:
-                            courant = os.stat(nom_stage, dir_fd=fd_export, follow_symlinks=False)
-                            if _identite_fichier(courant) == identite_stage:
-                                os.unlink(nom_stage, dir_fd=fd_export)
-                        except FileNotFoundError:
-                            pass
-                    os.close(fd_stage)
-                # Ne retirer que notre alias staging ; aucun chemin remplacé n’est supprimé.
-                try:
-                    entree_stage_fin = os.stat(nom_stage, dir_fd=fd_export, follow_symlinks=False)
-                    if _identite_fichier(entree_stage_fin) == identite_stage:
-                        os.unlink(nom_stage, dir_fd=fd_export)
+                    _publier_stage_exclusif(nom_stage, nom_canonique, fd_export)
+                    try:
                         os.fsync(fd_export)
-                except FileNotFoundError:
-                    pass
+                        _verifier_chaine_dossiers(descripteurs_preuve, noms_preuve)
+                        octets_preuve_fin, sha_preuve_fin, signature_preuve_fin = _lire_fichier_candidat(
+                            fd_candidat, nom_preuve, 100_000
+                        )
+                        if (
+                            octets_preuve_fin != preuve_octets
+                            or sha_preuve_fin != sha256_preuve
+                            or signature_preuve_fin != signature_preuve
+                        ):
+                            raise ValueError("La preuve candidate a changé après publication.")
+                        hachage_candidat_fin, taille_candidat_fin = _hachage_fd_borne(fd_table, _MAX_OCTETS)
+                        if (
+                            hachage_candidat_fin != sha_table
+                            or taille_candidat_fin != donnees["octets"]
+                            or _signature_export(os.fstat(fd_table)) != signature_table
+                            or _signature_export(os.stat(nom_table, dir_fd=fd_candidat, follow_symlinks=False))
+                            != signature_table
+                        ):
+                            raise ValueError("Le JSONL candidat a changé après publication.")
+                        _verifier_membre_export(fd_export, "manifest.json", signature_manifeste)
+                        if _sha_membre(fd_export, "manifest.json") != sha_manifeste:
+                            raise ValueError("Manifeste modifié après publication.")
+                        verifier_export()
+                        verifier_verrou()
+                        if _signature_sqlite(base) != signature_base:
+                            raise ValueError("Base modifiée après publication.")
+                        _verifier_journal(base)
+                        _verifier_chaine_dossiers(descripteurs_preuve, noms_preuve)
+                        verifier_export()
+                        verifier_verrou()
+                        _verifier_cible_finale(fd_export, nom_canonique, fd_stage, sha_table, octets)
+                    except (OSError, ValueError, sqlite3.Error) as erreur:
+                        raise ValueError(
+                            f"La cible export/{nom_canonique} a été créée et est laissée en place ; "
+                            "le contrôle a échoué ; "
+                            f"aucune suppression n’a été tentée : {erreur}"
+                        ) from erreur
                 finally:
-                    connexion.rollback()
+                    os.close(fd_stage)
         finally:
             os.close(fd_table)
     finally:

@@ -245,6 +245,7 @@ def test_appliquer_copie_uniquement_table_absente_et_garde_candidat(tmp_path, at
     assert cible.read_bytes() == attendu
     assert {p.name: p.read_bytes() for p in candidat.iterdir()} == candidat_avant
     assert (prive / "benchab.sqlite").read_bytes() == base_avant
+    assert not list((prive / "export").glob(".reprise-*"))
     with pytest.raises(ValueError, match="absente"):
         appliquer(prive, preuve, sha_preuve)
 
@@ -299,27 +300,28 @@ def test_appliquer_refuse_si_snapshot_sqlite_a_change(tmp_path, atelier):
 
 
 def test_appliquer_refuse_arrivee_concurrente_sans_ecraser(tmp_path, atelier, monkeypatch):
-    """Un fichier arrivé avant le lien exclusif reste intact."""
+    """Un fichier arrivé avant le renommage exclusif reste intact."""
     import benchab.qualite.reprise_export as reprise
 
     prive, cible, _ = atelier
     _candidat(prive, tmp_path)
     preuve = tmp_path / "candidat/preuve.json"
     sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
-    lier = reprise._lier_exclusif
+    publier = reprise._publier_stage_exclusif
 
-    def arriver_avant(source_fd, source, export_fd, destination):
+    def arriver_avant(source, destination, export_fd):
         import os
 
         cible_fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600, dir_fd=export_fd)
         os.write(cible_fd, b"tiers\n")
         os.close(cible_fd)
-        return lier(source_fd, source, export_fd, destination)
+        return publier(source, destination, export_fd)
 
-    monkeypatch.setattr(reprise, "_lier_exclusif", arriver_avant)
+    monkeypatch.setattr(reprise, "_publier_stage_exclusif", arriver_avant)
     with pytest.raises((FileExistsError, ValueError)):
         reprise.appliquer(prive, preuve, sha)
     assert cible.read_bytes() == b"tiers\n"
+    assert list((prive / "export").glob(".reprise-*"))
 
 
 def test_appliquer_course_postpublication_conserve_la_cible(tmp_path, atelier, monkeypatch):
@@ -330,16 +332,92 @@ def test_appliquer_course_postpublication_conserve_la_cible(tmp_path, atelier, m
     _candidat(prive, tmp_path)
     preuve = tmp_path / "candidat/preuve.json"
     sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
-    lier = reprise._lier_exclusif
+    publier = reprise._publier_stage_exclusif
 
-    def modifier_apres_lien(source_fd, source, export_fd, destination):
-        lier(source_fd, source, export_fd, destination)
+    def modifier_apres_renommage(source, destination, export_fd):
+        publier(source, destination, export_fd)
         cible.write_bytes("altération concurrente\n".encode())
 
-    monkeypatch.setattr(reprise, "_lier_exclusif", modifier_apres_lien)
-    with pytest.raises(ValueError, match="(?i)après publication|sha|cible publiée"):
+    monkeypatch.setattr(reprise, "_publier_stage_exclusif", modifier_apres_renommage)
+    with pytest.raises(ValueError, match="(?i)cible.*créée.*laissée"):
         reprise.appliquer(prive, preuve, sha)
     assert cible.read_bytes() == "altération concurrente\n".encode()
+
+
+def test_sha_fd_refuse_croissance_au_dela_du_budget(tmp_path, monkeypatch):
+    """Le dernier contrôle de SHA ne lit jamais davantage que budget + 1 octets."""
+    import benchab.qualite.reprise_export as reprise
+
+    fichier = tmp_path / "candidat.jsonl"
+    fichier.write_bytes(b"1234567890")
+    fd = fichier.open("rb")
+    demandes = []
+    pread = reprise.os.pread
+
+    def borner(descripteur, taille, position):
+        demandes.append(taille)
+        return pread(descripteur, taille, position)
+
+    monkeypatch.setattr(reprise.os, "pread", borner)
+    try:
+        with pytest.raises(ValueError, match="budget"):
+            reprise._hachage_fd_borne(fd.fileno(), 4)
+    finally:
+        fd.close()
+    assert demandes and max(demandes) <= 5
+
+
+def test_ecriture_stage_refuse_ecriture_nulle(monkeypatch):
+    """Une écriture système nulle termine en refus sans boucle infinie."""
+    import benchab.qualite.reprise_export as reprise
+
+    monkeypatch.setattr(reprise.os, "write", lambda *_a, **_k: 0)
+    with pytest.raises(OSError, match="nulle"):
+        reprise._ecrire_tout(123, b"candidat")
+
+
+def test_appliquer_verifie_chaine_preuve_apres_renommage(tmp_path, atelier, monkeypatch):
+    """Le remplacement du parent de preuve après publication refuse le PASS sans retirer la cible."""
+    import benchab.qualite.reprise_export as reprise
+
+    prive, cible, attendu = atelier
+    candidat, preuve, sha = _candidat(prive, tmp_path)
+    publier = reprise._publier_stage_exclusif
+
+    def remplacer_parent(source, destination, export_fd):
+        publier(source, destination, export_fd)
+        ancien = candidat.with_name("candidat-ancien")
+        candidat.rename(ancien)
+        candidat.mkdir()
+        (candidat / "tiers.json").write_text("tiers")
+
+    monkeypatch.setattr(reprise, "_publier_stage_exclusif", remplacer_parent)
+    with pytest.raises(ValueError, match="(?i)cible.*créée.*laissée"):
+        reprise.appliquer(prive, preuve, sha)
+    assert cible.read_bytes() == attendu
+    assert (candidat / "tiers.json").read_text() == "tiers"
+
+
+def test_appliquer_verifie_la_cible_en_dernier(tmp_path, atelier, monkeypatch):
+    """Une altération déclenchée à la relecture du candidat est détectée ensuite sur la cible épinglée."""
+    import benchab.qualite.reprise_export as reprise
+
+    prive, cible, _ = atelier
+    _candidat(prive, tmp_path)
+    preuve = tmp_path / "candidat/preuve.json"
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    hacher = reprise._hachage_fd_borne
+
+    def altérer_apres_publication(fd, budget):
+        resultat = hacher(fd, budget)
+        if cible.exists():
+            cible.write_bytes(b"changement apres verification source\n")
+        return resultat
+
+    monkeypatch.setattr(reprise, "_hachage_fd_borne", altérer_apres_publication)
+    with pytest.raises(ValueError, match="(?i)cible.*créée.*laissée"):
+        reprise.appliquer(prive, preuve, sha)
+    assert cible.read_bytes() == b"changement apres verification source\n"
 
 
 def test_cli_appliquer_est_diagnostic_sans_base_ni_mesure(tmp_path, atelier, capsys, monkeypatch):
@@ -355,3 +433,29 @@ def test_cli_appliquer_est_diagnostic_sans_base_ni_mesure(tmp_path, atelier, cap
     assert json.loads(capsys.readouterr().out)["statut"] == "PASS"
     assert cible.read_bytes() == attendu
     assert (candidat / "preuve.json").is_file()
+
+
+def test_cli_refus_postpublication_annonce_cible_conservee(tmp_path, atelier, capsys, monkeypatch):
+    """La CLI renvoie 2 et indique que la cible créée n’a pas été supprimée."""
+    import benchab.qualite.reprise_export as reprise
+    from benchab import cli
+
+    prive, cible, _ = atelier
+    _candidat(prive, tmp_path)
+    preuve = tmp_path / "candidat/preuve.json"
+    sha = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    publier = reprise._publier_stage_exclusif
+
+    def altérer(source, destination, fd_export):
+        publier(source, destination, fd_export)
+        cible.write_bytes(b"tiers concurrent\n")
+
+    monkeypatch.setattr(reprise, "_publier_stage_exclusif", altérer)
+    monkeypatch.setattr(cli, "Base", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("Base()")))
+    code = cli.main([
+        "--prive", str(prive), "controle", "appliquer-reprise-export",
+        "--preuve", str(preuve), "--sha256-preuve", sha,
+    ])
+    assert code == 2
+    assert "créée et est laissée en place" in capsys.readouterr().err
+    assert cible.read_bytes() == b"tiers concurrent\n"
