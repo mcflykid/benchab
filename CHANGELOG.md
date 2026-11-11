@@ -2,6 +2,20 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.17.0 — 2026-11-11
+
+- Restauration 3MF : conserve le commentaire global du ZIP et lit les
+  composants par le lecteur commun, avec contrôle des CRC (#199, suite de #122).
+- Production 3MF : vérifie les deux membres de géométrie contre leurs
+  octets prévus avant de remplacer la destination (#200).
+- Appuis G-code : propose l’échantillonnage des arcs G17 planaires exacts
+  sur demande et conserve un rapport privé complet en mode résumé. Le
+  mode par défaut et le verdict U25 restent inchangés (suites de #123 et #35).
+- Filetage nominal : produit un STL extérieur ou un outil de soustraction
+  triangulaire avec jeu déclaré, hors norme ISO (suite de #27).
+- Visionneuse : documente le repère de la transformation de translation
+  sans modifier son comportement (suite de #127).
+
 ## 1.16.0 — 2026-11-11
 
 - Origine 3MF : lit les modèles du plan dans le contexte commun, avec
