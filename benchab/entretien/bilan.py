@@ -44,12 +44,41 @@ def _cle(evenement):
     return (organe, compteur) if all(isinstance(x, str) and x.strip() for x in (organe, compteur)) else ("", "")
 
 
+def _couverture_locale(declarations, date_service, usages):
+    """Qualifie une période attestée, bornée en dates ISO avec fuseau."""
+    if len(declarations) != 1:
+        return {"couverture": "INCONNUE", "motif_couverture": "Plusieurs périodes déclarées pour le compteur."}
+    declaration = declarations[0]
+    debut, fin = _date(declaration.get("debut")), _date(declaration.get("fin"))
+    statut, source = declaration.get("statut"), declaration.get("source")
+    if (
+        debut is None or fin is None or debut >= fin
+        or statut not in ("COMPLETE", "INCOMPLETE", "INCONNUE")
+        or not isinstance(source, str) or not source.strip()
+    ):
+        return {"couverture": "INCONNUE", "motif_couverture": "Période, statut ou source invalide."}
+    preuve = {cle: declaration[cle] for cle in ("organe", "compteur", "statut", "debut", "fin", "source")}
+    champs = {"couverture": statut, "preuve_couverture": preuve}
+    if statut != "COMPLETE":
+        return {**champs, "motif_couverture": "Couverture locale incomplète ou inconnue."}
+    dates = [_date(usage.get("date")) for usage in usages]
+    if date_service is None or not debut <= date_service <= fin or any(
+        date is None or not date_service <= date <= fin for date in dates
+    ):
+        return {
+            **champs, "couverture": "INCONNUE",
+            "motif_couverture": "Le dernier entretien et les usages retenus doivent être dans la période attestée.",
+        }
+    return champs
+
+
 def calculer(donnees):
     """Calcule depuis événements et seuils explicitement sourcés.
 
     `valeur` compte en g, h ou autre unité explicitement donnée ; les statuts
     `PASS`, `WARN` et `NON VÉRIFIÉ` décrivent uniquement le compteur déclaré,
-    jamais une usure ou une validation physique. Les entrées restent en mémoire.
+    jamais une usure ou une validation physique. Une période sourcée peut
+    remplacer la couverture globale pour un compteur. Les entrées restent en mémoire.
     """
     if not isinstance(donnees, dict):
         raise ValueError("Bilan synthétique invalide.")
@@ -57,6 +86,9 @@ def calculer(donnees):
     seuils = donnees.get("seuils")
     if not isinstance(evenements, list) or not isinstance(seuils, list):
         raise ValueError("Événements et seuils explicites requis.")
+    couvertures = donnees.get("couvertures", [])
+    if not isinstance(couvertures, list):
+        raise ValueError("Les couvertures par compteur doivent être une liste.")
 
     erreurs, uniques, conflits = [], {}, set()
     for evenement in evenements:
@@ -87,7 +119,14 @@ def calculer(donnees):
     for _, evenement in uniques.values():
         cle = _cle(evenement)
         evenements_par_cle[cle].append(evenement)
-    cles = set(seuils_par_cle) | set(evenements_par_cle)
+    couvertures_par_cle = defaultdict(list)
+    for couverture in couvertures:
+        cle = _cle(couverture) if isinstance(couverture, dict) else ("", "")
+        if cle == ("", ""):
+            erreurs.append("Couverture sans organe ou compteur explicite")
+        else:
+            couvertures_par_cle[cle].append(couverture)
+    cles = set(seuils_par_cle) | set(evenements_par_cle) | set(couvertures_par_cle)
     compteurs = []
 
     for organe, compteur in sorted(cles, key=lambda cle: tuple(str(x or "") for x in cle)):
@@ -128,10 +167,13 @@ def calculer(donnees):
         )
         usages_apres = ordre[debut + 1 :] if debut is not None else []
         date_service = _date(ordre[debut].get("date")) if debut is not None else None
+        if cle in couvertures_par_cle:
+            # Une attestation locale invalide ne peut pas reprendre COMPLETE du fichier (#73).
+            resultat.update(_couverture_locale(couvertures_par_cle[cle], date_service, usages_apres))
         valide = (
             seuil_valide
             and cle not in conflits
-            and donnees.get("couverture") == "COMPLETE"
+            and resultat["couverture"] == "COMPLETE"
             and debut is not None
             and all(_date(evenement.get("date")) is not None for evenement in evenements_cle)
             and not erreurs
