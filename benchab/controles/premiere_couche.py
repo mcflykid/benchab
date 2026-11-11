@@ -1,6 +1,8 @@
 """Contrôle numérique des deux premières couches.
 
 Usage : benchab controle premiere-couche <tranche.3mf|fichier.gcode> [options]
+--arcs-planaires qualifie les dépôts G17 à Z constant par distance analytique ;
+sans l'option, les arcs restent NON VÉRIFIÉ.
 Avec --json RAPPORT, --resume borne l’affichage et --detail affiche le rapport complet.
 
 Méthode : les trajets extrudés des deux premières couches (types de la pièce seulement : parois, surfaces,
@@ -29,6 +31,7 @@ from scipy import ndimage
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
+from benchab.gcode.geometrie_arc import enveloppe_deposee_xyz
 from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 # Budget conservateur des tableaux NumPy/SciPy : 64 octets/cellule, 256 Mio.
@@ -36,6 +39,7 @@ MAX_CELLS = 4_000_000
 MAX_SAMPLES = 2_000_000
 MAX_SEGMENTS = 250_000
 MAX_KERNEL = 4096
+MAX_ARC_CELL_TESTS = 2_000_000
 
 PIECE = (
     "Outer wall",
@@ -71,9 +75,7 @@ def gcodes(f):
 
 
 def deux_couches(g):
-    """
-    Segments extrudés [(x0, y0, x1, y1, largeur)] des deux premières couches de la pièce.
-    """
+    """Extrait les segments extrudés [(x0, y0, x1, y1, largeur)] des deux premières couches."""
     couches, vus, w = [[], []], [], 0.42
     it = Interpreter()
     for line in g.splitlines():
@@ -101,6 +103,118 @@ def deux_couches(g):
     if it.errors:
         raise ValueError("; ".join(it.errors))
     return couches, vus[:2]
+
+
+def _extraire_couches(g, arcs_planaires):
+    """Extrait les dépôts linéaires et, sur demande, les arcs G17 admissibles."""
+    if not arcs_planaires:
+        couches, zs = deux_couches(g)
+        return couches, zs, [[], []]
+    couches, arcs, vus, w = [[], []], [[], []], [], 0.42
+    it = Interpreter()
+    for line in g.splitlines():
+        if line.startswith(";Z:"):
+            z = float(line[3:])
+            if not math.isfinite(z) or abs(z) > 1e6:
+                raise ValueError("coordonnée Z invalide")
+            z = round(z, 3)
+            if z not in vus:
+                vus.append(z)
+            if len(vus) > 2:
+                break
+        elif line.startswith(";WIDTH:"):
+            w = float(line[7:])
+            if not math.isfinite(w) or not 0 < w <= 10:
+                raise ValueError("largeur de ligne invalide (0 < largeur ≤ 10 mm)")
+        move = it.feed_line(line)
+        if move and vus and move["type"] in PIECE and move["deposited_length"] > 0:
+            couche = len(vus) - 1
+            if sum(map(len, couches)) + sum(map(len, arcs)) >= MAX_SEGMENTS:
+                raise ValueError("budget de segments et arcs dépassé")
+            if move["op"] in {"G2", "G3"}:
+                bornes = enveloppe_deposee_xyz(move)
+                if bornes[2][0] != bornes[2][1]:
+                    raise ValueError("arc hélicoïdal : seules les trajectoires G17 à Z constant sont qualifiées")
+                arcs[couche].append((move, w))
+            else:
+                a, b = move["deposition_start"], move["end"]
+                couches[couche].append((a[0], a[1], b[0], b[1], w))
+    if it.errors:
+        raise ValueError("; ".join(it.errors))
+    return couches, vus[:2], arcs
+
+
+def _preparer_arcs(arcs, origine, forme, pas):
+    """Prépare les arcs et compte leurs boîtes d'échantillonnage avant les masques."""
+    valides = []
+    total = 0
+    for mouvement, largeur_arc in arcs:
+        if not math.isfinite(largeur_arc) or not 0 < largeur_arc <= 10:
+            raise ValueError("largeur d'arc invalide")
+        bornes = enveloppe_deposee_xyz(mouvement)
+        if bornes[2][0] != bornes[2][1]:
+            raise ValueError("arc hélicoïdal : Z constant requis")
+        arc = mouvement["arc_g17"]
+        debut = float(arc["debut_depot_fraction"])
+        sweep = float(arc["balayage_signe_rad"]) * (1 - debut)
+        cx, cy = map(float, arc["centre_xy_mm"])
+        rayon = float(arc["rayon_mm"])
+        start, end = mouvement["start"], mouvement["end"]
+        # Les tolérances plus larges de l'interpréteur servent à lire le G-code ;
+        # ici on refuse les extrémités arrondies qui changent le cercle mesuré.
+        if not all(
+            math.isclose(math.hypot(point[0] - cx, point[1] - cy), rayon, rel_tol=1e-12, abs_tol=1e-9)
+            for point in (start, end)
+        ):
+            raise ValueError("extrémité arrondie non qualifiée pour le cercle analytique")
+        demi = float(largeur_arc) / 2
+        i0 = max(0, math.floor((bornes[0][0] - demi - origine[0]) / pas))
+        i1 = min(forme[0] - 1, math.ceil((bornes[0][1] + demi - origine[0]) / pas))
+        j0 = max(0, math.floor((bornes[1][0] - demi - origine[1]) / pas))
+        j1 = min(forme[1] - 1, math.ceil((bornes[1][1] + demi - origine[1]) / pas))
+        if i0 <= i1 and j0 <= j1:
+            total += (i1 - i0 + 1) * (j1 - j0 + 1)
+        if not math.isfinite(sweep) or abs(sweep) <= 0 or abs(sweep) > math.tau:
+            raise ValueError("balayage G17 invalide")
+        angle_debut = float(arc["angle_debut_rad"]) + float(arc["balayage_signe_rad"]) * debut
+        valides.append((i0, i1, j0, j1, cx, cy, rayon, angle_debut, sweep, demi))
+    return valides, total
+
+
+def masquer_arcs(arcs, origine, forme, pas, *, budget=MAX_ARC_CELL_TESTS):
+    """Marque les points de grille à distance analytique d'arcs déposés, sans corde.
+
+    Entrées : mouvements G17 avec largeur en mm, origine et pas de grille en mm, forme XY.
+    Sortie : masque booléen ; refuse hélices, géométries invalides et budgets dépassés.
+    Chaque point de grille est un échantillon numérique, pas une mesure physique.
+    """
+    if not math.isfinite(pas) or pas <= 0:
+        raise ValueError("pas fini strictement positif requis")
+    if len(forme) != 2 or any(not isinstance(n, int) or n <= 0 for n in forme) or math.prod(forme) > MAX_CELLS:
+        raise ValueError("budget de grille dépassé (4 millions de cellules)")
+    valides, total = _preparer_arcs(arcs, origine, forme, pas)
+    if total > budget:
+        raise ValueError("budget de cellules testées pour arcs dépassé")
+    masque = np.zeros(forme, dtype=bool)
+    tol = 1e-12
+    for i0, i1, j0, j1, cx, cy, rayon, a0, sweep, demi in valides:
+        if i0 > i1 or j0 > j1:
+            continue
+        x = origine[0] + np.arange(i0, i1 + 1, dtype=float) * pas
+        y = origine[1] + np.arange(j0, j1 + 1, dtype=float) * pas
+        xx, yy = np.meshgrid(x, y, indexing="ij")
+        angles = np.arctan2(yy - cy, xx - cx)
+        angle_delta = (angles - a0) % math.tau if sweep > 0 else (a0 - angles) % math.tau
+        dans_arc = angle_delta <= abs(sweep) + tol
+        radial = np.abs(np.hypot(xx - cx, yy - cy) - rayon)
+        debut_xy = (cx + rayon * math.cos(a0), cy + rayon * math.sin(a0))
+        fin_angle = a0 + sweep
+        fin_xy = (cx + rayon * math.cos(fin_angle), cy + rayon * math.sin(fin_angle))
+        distance_debut = np.hypot(xx - debut_xy[0], yy - debut_xy[1])
+        distance_fin = np.hypot(xx - fin_xy[0], yy - fin_xy[1])
+        distance = np.where(dans_arc, radial, np.minimum(distance_debut, distance_fin))
+        masque[i0 : i1 + 1, j0 : j1 + 1] |= distance <= demi + tol
+    return masque
 
 
 def tracer(segs, origine, forme, pas):
@@ -146,32 +260,61 @@ def tracer(segs, origine, forme, pas):
     return m
 
 
-def controler(g, ilot_max=3.0, creux_max=150.0, pas=0.1):
-    """Rend PASS, WARN ou NON VÉRIFIÉ pour le G-code, avec seuils en mm² et pas en mm."""
+def controler(g, ilot_max=3.0, creux_max=150.0, pas=0.1, *, arcs_planaires=False):
+    """Rend PASS, WARN ou NON VÉRIFIÉ avec seuils en mm² et grille en mm.
+
+    L'option arcs_planaires qualifie les arcs G17 déposés à Z constant par mesure
+    numérique ; aucun statut ne constitue une validation physique.
+    """
     try:
         for value in (ilot_max, creux_max, pas):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError("seuils et pas finis strictement positifs requis")
-        return _controler(g, ilot_max, creux_max, pas)
+        return _controler(g, ilot_max, creux_max, pas, arcs_planaires=arcs_planaires)
     except (ValueError, OverflowError, MemoryError, IndexError) as exc:
         return {"statut": "NON VÉRIFIÉ", "detail": str(exc) or "budget mémoire dépassé"}
 
 
-def _controler(g, ilot_max, creux_max, pas):
+def _controler(g, ilot_max, creux_max, pas, *, arcs_planaires=False):
     try:
-        (c1, c2), zs = deux_couches(g)
+        (c1, c2), zs, (a1, a2) = _extraire_couches(g, arcs_planaires)
     except ValueError as ex:
         return {"statut": "NON VÉRIFIÉ", "detail": str(ex)}
-    if not c1:
+    if not c1 and not a1:
         return {"statut": "NON VÉRIFIÉ", "detail": "aucune extrusion de pièce en 1re couche"}
-    a = np.array([s[:4] for s in c1 + c2])
-    if not np.isfinite(a).all() or np.any(np.abs(a) > 1e6):
+    segments = c1 + c2
+    if segments:
+        coords = np.array([s[:4] for s in segments], dtype=float)
+    else:
+        coords = np.empty((0, 4), dtype=float)
+    bornes_arcs = [enveloppe_deposee_xyz(m)[0:2] for m, _ in a1 + a2]
+    coords_arcs = [v for bornes in bornes_arcs for axe in bornes for v in axe]
+    if (coords.size and (not np.isfinite(coords).all() or np.any(np.abs(coords) > 1e6))) or any(
+        not math.isfinite(v) or abs(v) > 1e6 for v in coords_arcs
+    ):
         raise ValueError("coordonnées non finies ou extrêmes")
-    o = (a[:, [0, 2]].min() - 2, a[:, [1, 3]].min() - 2)
-    forme = (int((a[:, [0, 2]].max() - o[0] + 2) / pas) + 1, int((a[:, [1, 3]].max() - o[1] + 2) / pas) + 1)
+    if coords.size:
+        xmin, ymin = coords[:, [0, 2]].min(), coords[:, [1, 3]].min()
+        xmax, ymax = coords[:, [0, 2]].max(), coords[:, [1, 3]].max()
+    else:
+        xmin, ymin = math.inf, math.inf
+        xmax, ymax = -math.inf, -math.inf
+    for bornes in bornes_arcs:
+        xmin, xmax = min(xmin, *bornes[0]), max(xmax, *bornes[0])
+        ymin, ymax = min(ymin, *bornes[1]), max(ymax, *bornes[1])
+    marge = max(2.0, max((largeur / 2 for _, largeur in a1 + a2), default=0.0))
+    o = (xmin - marge, ymin - marge)
+    forme = (int((xmax - o[0] + marge) / pas) + 1, int((ymax - o[1] + marge) / pas) + 1)
     if math.prod(forme) > MAX_CELLS:
         raise ValueError("budget de grille dépassé (4 millions de cellules)")
+    if arcs_planaires:
+        _, cellules_arcs = _preparer_arcs(a1 + a2, o, forme, pas)
+        if cellules_arcs > MAX_ARC_CELL_TESTS:
+            raise ValueError("budget de cellules testées pour arcs dépassé")
     m1, m2 = tracer(c1, o, forme, pas), tracer(c2, o, forme, pas)
+    if arcs_planaires:
+        m1 |= masquer_arcs(a1, o, forme, pas)
+        m2 |= masquer_arcs(a2, o, forme, pas)
     px = pas * pas
     defauts = []
     lab, n = ndimage.label(
@@ -208,13 +351,29 @@ def _controler(g, ilot_max, creux_max, pas):
                     "xy": [round(o[0] + i * pas, 1), round(o[1] + j * pas, 1)],
                 }
             )
-    return {
+    resultat = {
         "statut": "WARN" if defauts else "PASS",
         "z_couches": zs,
         "segments": [len(c1), len(c2)],
         "aire_1re_couche_mm2": round(float(m1.sum() * px)),
         "defauts": defauts,
     }
+    if arcs_planaires:
+        resultat["arcs_planaires"] = {
+            "statut": "PASS",
+            "nombre": len(a1) + len(a2),
+            "couches": [len(a1), len(a2)],
+            "methode": "distance analytique aux arcs déposés, évaluée sur la grille numérique",
+            "cellules_testees_max": MAX_ARC_CELL_TESTS,
+            "grille": {
+                "pas_mm": pas,
+                "origine_xy_mm": [round(o[0], 9), round(o[1], 9)],
+                "forme_xy_cellules": list(forme),
+            },
+            "largeurs_ligne_mm": sorted({largeur for _, largeur in a1 + a2}),
+            "portee": "qualification géométrique numérique ; aucune validation physique",
+        }
+    return resultat
 
 
 def _resume(plaques, statut, sortie):
@@ -242,7 +401,7 @@ def _resume(plaques, statut, sortie):
 
 
 def main(argv=None):
-    """Contrôle les défauts de première couche en mm² et rend le code du contrôle."""
+    """Contrôle la première couche en mm² ; --arcs-planaires active l'analyse G17 numérique."""
     a = list(sys.argv[1:] if argv is None else argv)
     if not a or a[0].startswith("--"):
         print(__doc__)
@@ -257,6 +416,7 @@ def main(argv=None):
         return float(a[position])
 
     resume, detail = "--resume" in a, "--detail" in a
+    arcs_planaires = "--arcs-planaires" in a
     if (resume and detail) or ((resume or detail) and "--json" not in a):
         print("Utiliser --resume ou --detail avec --json RAPPORT.", file=sys.stderr)
         return 2
@@ -274,7 +434,7 @@ def main(argv=None):
 
     try:
         options = (opt("--ilot-max", 3.0), opt("--creux-max", 150.0), opt("--pas", 0.1))
-        res = {f"plaque {k}": controler(g, *options) for k, g in gcodes(a[0])}
+        res = {f"plaque {k}": controler(g, *options, arcs_planaires=arcs_planaires) for k, g in gcodes(a[0])}
     except (OSError, ValueError, BadZipFile) as erreur:
         print(f"NON VÉRIFIÉ {a[0]} : {erreur}", file=sys.stderr)
         return 2
