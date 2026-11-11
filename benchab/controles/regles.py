@@ -13,6 +13,7 @@ from xml.etree import ElementTree
 from benchab.archives_3mf import Archive3MF
 from benchab.controles import debit_gcode, plaques_interface
 from benchab.controles.rapports import RapportCourant
+from benchab.qualite.ecritures import destination_rapport_optionnel
 from benchab.qualite.statuts import code_statut
 
 _LIBELLE_AUTO = re.compile(r"^Plaque\s+\d+\s*\(.*\)$", re.IGNORECASE)
@@ -134,10 +135,15 @@ def controler(fichier: str | Path) -> dict:
 
 
 def main(argv=None, *, base=None, prive=None) -> int:
-    """Exécute les contrôles de règles et publie le rapport privé ; retourne son code de statut ou 2 en cas de refus."""
+    """Contrôle les règles, publie le JSON privé et retourne son code ou 2 sur refus.
+
+    Le résumé recopie PASS, FAIL ou NON VÉRIFIÉ et exige un rapport neuf.
+    Les réglages et la source restent intacts.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--sortie", type=Path, help="Rapport JSON, dans l’espace privé de BENCHAB.")
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige un rapport neuf")
     parser.add_argument("--prive", type=Path, help="Racine privée, requise en exécution autonome.")
     args = parser.parse_args(argv)
     valeur_privee = base.prive if base is not None else prive or args.prive
@@ -146,16 +152,28 @@ def main(argv=None, *, base=None, prive=None) -> int:
     racine_privee = Path(valeur_privee).expanduser().resolve()
     sortie = args.sortie or racine_privee / "rapports" / "regles-lot4.json"
     try:
-        sortie_abs = sortie.expanduser().resolve()
+        sortie_abs = (
+            destination_rapport_optionnel(args.sortie, resume=True, nom="des règles", prive=racine_privee)
+            if args.resume else sortie.expanduser().resolve()
+        )
         if not sortie_abs.is_relative_to(racine_privee.resolve()):
             raise ValueError("Le rapport doit rester dans l’espace privé.")
-        rapport = RapportCourant(sortie_abs, [args.source], "regles_lot4")
+        rapport = RapportCourant(sortie_abs, [args.source], "regles_lot4", neuf=args.resume)
         resultat = controler(args.source)
         rapport.publier(resultat)
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as erreur:
         print(f"Contrôle refusé : {erreur}", file=sys.stderr)
         return 2
-    print(json.dumps(resultat, ensure_ascii=False, indent=1))
+    affichage = resultat
+    if args.resume:
+        affichage = {
+            "statut": resultat["statut"], "code": resultat["code"], "rapport": str(rapport.path),
+            "resultats": [
+                {cle: ligne[cle] for cle in ("controle", "statut")} for ligne in resultat["resultats"]
+            ],
+            "hors_portee": resultat["portee"]["hors_portee"],
+        }
+    print(json.dumps(affichage, ensure_ascii=False, indent=1))
     return resultat["code"]
 
 

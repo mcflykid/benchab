@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from benchab.controles.rapports import RapportCourant
+from benchab.qualite.ecritures import destination_rapport_optionnel
 from benchab.qualite.statuts import code_statut
 
 AXES = (
@@ -346,10 +347,15 @@ def _rapport_final(*, statut, declencheurs, rapports, comparaison, manquants) ->
 
 
 def main(argv=None, *, base=None, prive=None) -> int:
-    """Évalue les indicateurs et comparaisons déclarés ; retourne leur code sans détecter ni produire une découpe."""
+    """Évalue les indicateurs déclarés et retourne leur code.
+
+    Le résumé recopie le verdict et exige un rapport privé neuf.
+    Aucune découpe n’est détectée ni produite.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Manifeste JSON privé des indicateurs et comparaisons.")
     parser.add_argument("--sortie", type=Path, help="Rapport JSON, dans l'espace privé de BENCHAB.")
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige un rapport neuf")
     parser.add_argument("--prive", type=Path, help="Racine privée, requise en exécution autonome.")
     args = parser.parse_args(argv)
     valeur_privee = base.prive if base is not None else prive or args.prive
@@ -358,23 +364,34 @@ def main(argv=None, *, base=None, prive=None) -> int:
     racine = Path(valeur_privee).expanduser().resolve(strict=True)
     sortie = args.sortie or racine / "rapports/opportunite-decoupe.json"
     try:
+        chemin_sortie = (
+            destination_rapport_optionnel(args.sortie, resume=True, nom="d’opportunité", prive=racine)
+            if args.resume else sortie.expanduser().resolve()
+        )
         source_argument = args.source.expanduser()
         if source_argument.is_absolute():
             source_argument = source_argument.resolve(strict=True).relative_to(racine)
         source, contenu, _ = _lire_prive(racine, source_argument)
         donnees = json.loads(contenu)
-        chemin_sortie = sortie.expanduser().resolve()
         if not chemin_sortie.is_relative_to(racine):
             raise ValueError("Le rapport doit rester dans l'espace privé.")
         entrees = _entrees_manifeste(racine, source, donnees)
-        rapport = RapportCourant(chemin_sortie, entrees, "opportunite_decoupe")
+        rapport = RapportCourant(chemin_sortie, entrees, "opportunite_decoupe", neuf=args.resume)
         resultat = evaluer(racine, donnees)
         resultat["code"] = code_statut(resultat["statut"])
         rapport.publier(resultat)
     except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as erreur:
         print(f"Contrôle refusé : {erreur}", file=sys.stderr)
         return 2
-    print(json.dumps(resultat, ensure_ascii=False, indent=1))
+    affichage = resultat
+    if args.resume:
+        affichage = {
+            "statut": resultat["statut"], "code": resultat["code"], "rapport": str(rapport.path),
+            "nombre_declencheurs": len(resultat["declencheurs"]),
+            "nombre_manquants": len(resultat["manquants"]),
+            "choix_final_humain_requis": resultat["choix_final_humain_requis"],
+        }
+    print(json.dumps(affichage, ensure_ascii=False, indent=1))
     return resultat["code"]
 
 

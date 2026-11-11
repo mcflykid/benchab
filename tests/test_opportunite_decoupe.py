@@ -196,6 +196,26 @@ def test_main_refuse_un_json_sans_provenance_sans_le_modifier(tmp_path, capsys):
     assert cible.read_bytes() == original
 
 
+def test_resume_public_conserve_les_sources_du_diagnostic(capsys, atelier_initialise):
+    """Le rapport privé contient les sources et comparaisons derrière le résumé."""
+    from benchab.cli import main as cli
+
+    prive = atelier_initialise
+    demande = prive / "demande.json"
+    demande.write_text(json.dumps(_indicateurs(prive)), encoding="utf-8")
+    cible = prive / "rapport opportunité.json"
+    args = ["--prive", str(prive), "controle", "opportunite-decoupe", str(demande)]
+    assert cli([*args, "--resume", "--sortie", str(cible)]) == 0
+    resume = json.loads(capsys.readouterr().out)
+    rapport = json.loads(cible.read_bytes())
+    assert resume["statut"] == rapport["statut"] == "PASS"
+    assert resume["code"] == rapport["code"] == 0
+    assert resume["rapport"] == str(cible)
+    assert resume["nombre_declencheurs"] == len(rapport["declencheurs"])
+    assert rapport["rapports_sources"] and "rapports_sources" not in resume
+    assert resume["choix_final_humain_requis"] == rapport["choix_final_humain_requis"]
+
+
 def test_rapport_declencheur_doit_etre_lie_a_la_piece_courante(tmp_path):
     donnees = _indicateurs(tmp_path, forme={"retrecissement_naturel": True, "volumes_fusionnes": False})
     rapport = tmp_path / donnees["rapports"]["forme"]["fichier"]

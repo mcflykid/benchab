@@ -82,8 +82,8 @@ def _reconnu(data, outil, source, path):
 class RapportCourant:
     """Publie le rapport courant d’un outil et d’une source identifiés ; protège les preuves figées."""
 
-    def __init__(self, path, entrees, outil):
-        """Épingle les empreintes des entrées et vérifie la destination existante ; refuse les collisions."""
+    def __init__(self, path, entrees, outil, *, neuf=False):
+        """Épingle les entrées et refuse les collisions ou une destination existante si neuf est demandé."""
         self.path = _sans_lien(path)
         self.entrees = [_sans_lien(p) for p in entrees]
         self.outil = outil
@@ -93,6 +93,8 @@ class RapportCourant:
             raise ValueError("Collision entrée/rapport : écrasement refusé")
         _protege(self.path)
         existant = self.path.exists()
+        if neuf and existant:
+            raise FileExistsError("Sortie existante ; aucune version précédente écrasée")
         self.ancien = _lire(self.path) if existant else None
         self.sha_ancien = sha(self.path) if existant else None
         if existant and not _reconnu(self.ancien, outil, self.source, self.path):

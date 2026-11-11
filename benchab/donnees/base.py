@@ -231,7 +231,9 @@ class Base:
                     for cle, valeur in donnees.items():
                         if not isinstance(valeur, str):
                             continue
-                        if cle.endswith("_json") and "/" in valeur:
+                        # Valider les chemins décodés, même quand le JSON masque
+                        # le séparateur ou désigne le parent sans séparateur.
+                        if cle.endswith("_json"):
                             try:
                                 valeur = json.loads(valeur)
                             except ValueError:
