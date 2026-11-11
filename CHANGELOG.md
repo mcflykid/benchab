@@ -2,6 +2,18 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.23.0 — 2026-11-11
+
+- Inventaire : calcule le SHA de l’envoi une seule fois et mesure la taille
+  dans son lecteur 3MF ouvert, avec contrôle final et rapport inchangé (#219).
+- 3MF : compare les déclarations d’un composant Core unique, local et
+  préalablement défini, à placements identiques (suite de #43).
+- G-code : clôt la vérification des usages G17 couverts, avec tests des
+  cercles complets refusés dans les contrôles linéaires. Les arcs arrondis
+  et le firmware restent hors du verdict (#123, #134).
+- Supports : compare les styles grille et ajusté à réglage isolé, avec
+  écart Z nominal et répétition, sans conclusion sur le retrait (#80, #89).
+
 ## 1.22.0 — 2026-11-11
 
 ### Plaques et CAO

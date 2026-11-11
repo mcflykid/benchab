@@ -114,3 +114,21 @@ Dans un 3MF, un numéro de plaque désigne un seul membre G-code. Un nom
 unique avec un zéro initial est lisible ; plusieurs graphies du même numéro
 donnent NON VÉRIFIÉ, même avec une plaque choisie explicitement. Le résultat
 en cache reste lié aux octets du 3MF et à l’archive effectivement ouverte (#178).
+
+## Périmètre vérifié de G17
+
+Le périmètre #123 couvre les arcs G17 à centre relatif qualifiés par le
+lecteur, y compris les arcs majeurs, les cercles complets, G92 et la dette
+de rétraction. Une hélice ne donne une mesure que dans les contrôles qui
+la modélisent explicitement : enveloppe XYZ, mesure par boîte et demande
+nominale par axe. Les options de première couche et d’appuis restent
+limitées aux arcs planaires à Z constant.
+
+Les mesures de cordons linéaires, de colonnes, de coutures, de finition,
+d’écart Z des supports, de disposition et de projection d’un pont vers
+un îlot ne remplacent pas un arc par sa corde. Une portion exclue reste
+signalée et les verdicts ne qualifient que la couverture établie. Un
+cercle complet à extrémités égales ne peut donc pas être ignoré comme
+un déplacement nul par le contrôle de disposition ou de colonnes.
+La précision des arcs natifs arrondis et le firmware restent suivis
+dans #134 ; U25 conserve le contrat de rayon exact.

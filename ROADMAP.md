@@ -379,7 +379,25 @@ recense les options de lecture courtes des parcours couverts. Les fonctions
 publiques de l’inventaire d’archives décrivent leurs budgets, unités et
 limites sans changement de comportement (#127).
 
-## Prochaine version : 1.23.0
+## Version 1.23.0 — inventaire des envois et périmètre G17
+
+L’inventaire hache le 3MF déjà ouvert une seule fois et vérifie la source
+jusqu’à la fin. Les inventaires S/M/L gardent les mêmes masses, membres
+et empreintes (#219). La comparaison 3MF couvre aussi une feuille Core
+locale dans un assemblage simple à placements déclarés identiques ;
+aucune conversion entre slicers n’est déduite (#43).
+
+La vérification #123 clôt le périmètre G17 qualifié : mesures analytiques
+ou bornées là où le contrôle couvre la courbe, couverture incomplète
+sinon. Les cercles complets ne peuvent pas disparaître des contrôles
+linéaires. Les hélices en continuité restent hors de ce contrat, et la
+qualification du firmware et des arcs arrondis reste dans #134.
+
+Pour les supports normaux, la grille et le style ajusté donnent des trajets
+différents sur le même coupon, avec un écart Z médian nominal identique et
+deux rejeux ajustés concordants. Le retrait reste à mesurer (#80, #89).
+
+## Prochaine version : 1.24.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -388,14 +406,9 @@ Traiter les prérequis avant les nouveaux réglages :
 - **Annotations** : #127 suit le rattrapage des portées anciennes sous le
   contrôle Ruff D10x introduit par #37. Poursuivre les domaines historiques
   restants, dont conception et visualisation.
-- **Lecture G-code** : #123 étend les usages géométriques au-delà
-  du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
-  La mesure dans une boîte, l’enveloppe du dépôt et la revue des ponts et
-  surplombs attribués peuvent utiliser la courbe. La continuité des parois
-  extérieures, la première couche et les appuis sur demande couvrent G17 à Z constant.
-  Les hélices en continuité et la cinématique restent à qualifier. #133 a conservé
-  le débit mesurable de l’arc dans la finition des parois. #134 suit la
-  précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
+- **Lecture G-code** : #134 suit la précision des arcs I/J natifs que
+  le contrat de rayon constant ne qualifie pas. Conserver les refus explicites
+  hors du périmètre G17 livré et les témoins numériques déjà acquis.
 - **Fichiers et archives** : garder la garde commune acquise avec #122 et
   déclarer les différences exactes pour chaque nouvelle transformation.
   La preuve des échanges entre slicers reste distincte (#43).

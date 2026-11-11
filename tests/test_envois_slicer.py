@@ -46,6 +46,41 @@ class Envois(unittest.TestCase):
         self.assertEqual(e["filament_utilise_g"], [0, 12.5])
         self.assertFalse(e["temperature_ambigue"])
 
+    def test_empreinte_inventaire_depuis_le_3mf_deja_ouvert(self):
+        """L’inventaire hache une seule fois les octets du lecteur déjà ouvert."""
+        p = envoi(self.src, "1023-1809-Temoin.gcode.3mf")
+        avant = E.sha(p)
+        tailles = []
+        empreinte = E.Archive3MF.sha256
+
+        def compter(archive, **options):
+            """Conserve la vraie lecture et trace le nombre de hachages."""
+            resultat = empreinte(archive, **options)
+            tailles.append(resultat)
+            return resultat
+
+        taille_source = E.Archive3MF.taille_source
+        tailles_lues = []
+
+        def compter_taille(archive):
+            """Trace la taille renvoyée par le descripteur réellement ouvert."""
+            taille = taille_source(archive)
+            tailles_lues.append(taille)
+            return taille
+
+        with (
+            patch.object(E.Archive3MF, "sha256", compter),
+            patch.object(E.Archive3MF, "taille_source", compter_taille),
+            patch.object(E, "sha", side_effect=AssertionError("Hachage par réouverture du chemin")),
+        ):
+            rapport = E.lire(p)
+        self.assertEqual(tailles_lues, [p.stat().st_size])
+        self.assertEqual(tailles, [avant])
+        self.assertEqual(rapport["sha256"], avant)
+        self.assertEqual(rapport["filament_utilise_g"], [0, 12.5])
+        self.assertEqual(rapport["octets"], p.stat().st_size)
+        self.assertEqual(E.sha(p), avant)
+
     def test_variante_hs_differente_ambigue_seulement_sans_type_de_buse(self):
         self.assertTrue(
             E.lire(envoi(self.src, "1023-1809-Pomme.gcode.3mf", temp="210", hs="220"))["temperature_ambigue"]

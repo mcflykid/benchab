@@ -38,8 +38,8 @@ de réglages. Avec le binaire ASN 2.0.0.3 identifié dans la
 [recette des énumérations](enumerations-asn.md), la médiane estimée passe de
 0,20 à 0,40 mm et la projection de 177,5 à 176,75 mm². Les estimations
 de matière restent à 3,28 g et celles de durée passent de 990 à 989 s.
-Les deux répétitions donnent les mêmes mesures ; leur G-code ne diffère
-que par la date de génération. Les 3MF bruts gardent leurs empreintes
+Les deux rejeux de la variante à 0,38 mm donnent les mêmes mesures entre
+eux ; leur G-code ne diffère que par la date de génération. Les 3MF bruts gardent leurs empreintes
 distinctes. La source et les profils restent intacts. Ce constat qualifie
 l’effet numérique sur ce coupon, sans conclusion sur le retrait (#89).
 
@@ -116,3 +116,22 @@ minimum en mm et le chemin du rapport complet privé. Avec `--sortie`
 seule, le rapport complet reste aussi affiché. NON MESURABLE garde
 sa raison et le code 0 ; une erreur de lecture ou de destination
 donne le code 2. Aucune base ou mesure d’atelier n’est créée (#35).
+
+### Styles de support normal grille et ajusté
+
+Avec `support_type=normal(auto)`, le binaire ASN 2.0.0.3 conserve
+`support_style=grid` et `support_style=snug` sur le coupon à interface
+concentrique. La [liste de styles publiée par ASN](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L222-L244)
+identifie ces valeurs ; la comparaison d’intégrité confirme que cette
+clé est la seule différence avant et après tranchage.
+
+| Style | Segments Support | Segments Support interface | Écart Z médian nominal | Projection estimée | Temps et matière estimés |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `grid` | 921 | 126 | 0,18 mm | 121 mm² | 984 s ; 3,64 g |
+| `snug`, deux rejeux | 859 | 96 | 0,18 mm | 137,5 mm² | 977 s ; 3,52 g |
+
+Les deux rejeux `snug` partent des mêmes octets et reproduisent le G-code
+à la date près. La source et les 646 profils sont intacts. Les avertissements
+du slicer restent présents. Une projection plus grande ne prouve ni un
+contact physique, ni un retrait plus facile. Le résultat ne s’étend pas à
+un autre type de support ou à une autre géométrie (#80, #89).

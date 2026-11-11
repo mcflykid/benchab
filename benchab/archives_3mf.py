@@ -354,6 +354,19 @@ class Archive3MF:
             raise RuntimeError("ouvrir Archive3MF avec un bloc with")
         return self._infos[membre].file_size
 
+    def taille_source(self):
+        """Retourne la taille en octets du fichier épinglé au contexte ouvert.
+
+        Ne rouvre pas le chemin. Une archive modifiée ou un contexte fermé
+        est refusé ; l’appelant contrôle encore l’identité du chemin à la fin.
+        """
+        if self._fichier is None or self._archive is None:
+            raise RuntimeError("ouvrir Archive3MF avec un bloc with")
+        taille = self._stat_identite()
+        if taille != self._identite:
+            raise ValueError("archive 3MF modifiée pendant sa lecture")
+        return taille[2]
+
     def verifier_source(self, chemin):
         """Exige le même fichier que le contexte 3MF ouvert ; FAIL sur lien, remplacement ou mutation."""
         from benchab.chemins import sans_lien
