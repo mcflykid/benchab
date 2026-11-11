@@ -21,6 +21,8 @@ ASN = {
         ("top_surface_pattern", "monotonicline"),
         ("bottom_surface_pattern", "rectilinear"),
         ("wall_sequence", "inner-outer-inner wall"),
+        ("alternate_extra_wall", "0"),
+        ("alternate_extra_wall", "1"),
         ("support_interface_pattern", "auto"),
         ("support_interface_pattern", "concentric"),
     ],
@@ -53,6 +55,8 @@ def test_inconnu_reste_non_verifie():
         ({**ASN, "sha256": "0" * 64}, "sparse_infill_pattern", "supportcubic"),
         (ASN, "locked_skeleton_infill_pattern", "rectilinear"),
         (ASN, "support_interface_pattern", "grid"),
+        (ASN, "alternate_extra_wall", "2"),
+        ({**ASN, "sha256": "0" * 64}, "alternate_extra_wall", "1"),
         ({**ASN, "sha256": "0" * 64}, "support_interface_pattern", "concentric"),
     ):
         diagnostic, = reglages.verifier({cle: valeur}, identite_slicer=identite)

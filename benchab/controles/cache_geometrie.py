@@ -16,11 +16,14 @@ from benchab.qualite.empreintes import sha256_fichier
 
 
 def sha(chemin):
+    """Renvoie le SHA-256 hexadécimal du fichier, sans l’écrire."""
     return sha256_fichier(chemin)
 
 
 class Projet:
+    """Adaptateur du cache JSON local de géométrie, sans accès machine."""
     def __init__(self, racine):
+        """Prépare le dossier de cache déclaré en mode privé ; racine liée refusée."""
         self.racine = Path(racine).expanduser().absolute()
         if self.racine.is_symlink():
             raise ValueError("Racine de cache liée refusée")
@@ -29,6 +32,7 @@ class Projet:
         self.d = self.racine
 
     def charger(self, nom, defaut):
+        """Lit l’entrée JSON nommée ou renvoie le défaut si elle est absente."""
         chemin = self.d / nom
         if chemin.is_symlink():
             raise ValueError("Fichier de cache lié refusé")
@@ -37,6 +41,7 @@ class Projet:
         return json.loads(chemin.read_text())
 
     def ecrire(self, nom, valeur):
+        """Remplace atomiquement l’entrée de cache par le JSON fini donné ; renvoie None."""
         chemin = self.d / nom
         if chemin.is_symlink():
             raise ValueError("Fichier de cache lié refusé")
@@ -53,6 +58,7 @@ class Projet:
                 os.unlink(temporaire)
 
     def journal(self, **_):
+        """Accepte les appels de journal de l’adaptateur et renvoie None sans écrire."""
         return None
 
 

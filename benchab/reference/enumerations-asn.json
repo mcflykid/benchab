@@ -5,6 +5,7 @@
     "internal_solid_infill_pattern",
     "top_surface_pattern",
     "bottom_surface_pattern",
+    "alternate_extra_wall",
     "wall_sequence",
     "locked_skeleton_infill_pattern",
     "locked_skin_infill_pattern",
@@ -38,6 +39,10 @@
         "bottom_surface_pattern": {
           "monotonic": {"statut": "PASS", "valeur_embarquee": "monotonic"},
           "rectilinear": {"statut": "PASS", "valeur_embarquee": "rectilinear"}
+        },
+        "alternate_extra_wall": {
+          "0": {"statut": "PASS", "valeur_embarquee": "0"},
+          "1": {"statut": "PASS", "valeur_embarquee": "1"}
         },
         "wall_sequence": {
           "inner wall/outer wall": {"statut": "PASS", "valeur_embarquee": "inner wall/outer wall"},

@@ -59,3 +59,26 @@ embarqué `0.7`, que le contrôle exact ne substitue pas silencieusement.
 Les sources et les 646 profils relus restent intacts. Ce test mesure un
 effet sur les trajets de ce coupon ; il ne mesure ni la distance XY
 physique, ni le contact, ni le retrait (#89).
+
+## Variabilité observée du style arborescent fort
+
+Sur le même coupon synthétique, le style `tree_strong` est conservé
+avec `support_type=tree(auto)` par ASN 2.0.0.3. Le binaire a le SHA-256
+`618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d`.
+Les deux entrées `tree_strong` sont identiques octet pour octet et ont
+été tranchées dans deux dossiers distincts. Face au témoin `organic`, seul
+`support_style` diffère dans les réglages, avant et après tranchage.
+
+| Mesure du coupon | `organic` | `tree_strong`, essai 1 | `tree_strong`, essai 2 |
+| --- | ---: | ---: | ---: |
+| Segments `Support` | 20 019 | 22 669 | 22 638 |
+| Longueur `Support` | 7 087,421 mm | 5 557,530 mm | 5 551,561 mm |
+| Écart Z médian estimé | 0,200 mm | 0,735 mm | 0,735 mm |
+| Estimation du temps | 990 s | 973 s | 972 s |
+| Estimation de matière | 3,28 g | 3,26 g | 3,26 g |
+
+Les G-code `tree_strong` diffèrent au-delà du commentaire de date, malgré
+les empreintes d’entrée identiques. Les 646 profils relus et la référence
+sont intacts. La variabilité observée ne suffit pas à en isoler la cause :
+la répétabilité du style reste NON VÉRIFIÉE (#208, suite de #89). Aucun
+choix de support ni verdict physique ne découle de cet essai.

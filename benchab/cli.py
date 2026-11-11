@@ -207,6 +207,14 @@ def parser():
     )
     reprise_export.add_argument("--table", required=True, help="Table canonique BENCHAB à recopier")
     reprise_export.add_argument("--sortie", type=Path, required=True, help="Dossier neuf, hors export")
+    reprise_source = controle.add_parser(
+        "preparer-reprise-source", help="Prépare une copie non appliquée d’un original identifié dans un tar"
+    )
+    reprise_source.add_argument("--archive", type=Path, required=True, help="Sauvegarde tar régulière")
+    reprise_source.add_argument("--sha256-archive", required=True, help="SHA-256 exact des octets du tar")
+    reprise_source.add_argument("--membre", required=True, help="Chemin projets/SLUG/sources/FICHIER")
+    reprise_source.add_argument("--sha256-source", required=True, help="SHA-256 exact de l’original")
+    reprise_source.add_argument("--sortie", type=Path, required=True, help="Dossier neuf sous prive/rapports/")
     appliquer_reprise = controle.add_parser(
         "appliquer-reprise-export", help="Applique une table absente depuis une preuve CANDIDAT explicite"
     )
@@ -294,6 +302,7 @@ def parser():
     continuite.add_argument("--z-max", type=float)
     continuite.add_argument("--bandes-z", type=float, help="Largeur des bandes de synthèse en mm")
     continuite.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; destination existante refusée")
+    continuite.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     continuite.add_argument("--reference", type=Path)
     continuite.add_argument("--plaque-reference", type=int)
     continuite.add_argument(
@@ -517,10 +526,12 @@ def executer(arguments, base):
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle in {"continuite-paroi", "continuite_paroi"}:
-            from benchab.controles.continuite_paroi import controler
+            from benchab.controles.continuite_paroi import controler, resumer
             from benchab.qualite.ecritures import _sans_lien, ecrire_json_neuf, sortie_durable
             from benchab.qualite.empreintes import sha256_fichier
 
+            if arguments.resume and arguments.sortie is None:
+                raise ValueError("--resume exige --sortie pour conserver le rapport complet")
             source = _sans_lien(arguments.fichier.absolute())
             empreinte_avant = sha256_fichier(source) if source.is_file() else None
             reference_source = _sans_lien(arguments.reference.absolute()) if arguments.reference else None
@@ -566,6 +577,9 @@ def executer(arguments, base):
                 _protege(sortie)
                 entrees = [source] + ([arguments.reference.absolute()] if arguments.reference else [])
                 ecrire_json_neuf(sortie, rapport, entrees=entrees)
+                if arguments.resume:
+                    print(json.dumps(resumer(rapport, sortie), ensure_ascii=False, separators=(",", ":")))
+                    return rapport["code"]
             print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle == "complet":
@@ -980,9 +994,9 @@ def _mesurer_refus(argv, commande, code):
 def main(argv=None):
     """Distribue les commandes, codes CLI et durées s, sans autorisation machine implicite.
 
-    Les plans de réparation et de consommation, la copie/application d’export
-    et le contrôle des coutures ne créent ni atelier ni mesure. --help/--version restent sans
-    effet ; seul init crée un atelier CLI absent (docs/reference/chemins-et-atelier.md).
+    Les plans et préparations d’export/source ainsi que le contrôle des coutures ne créent
+    ni atelier ni mesure. --help/--version restent sans effet ; seul init crée un atelier
+    CLI absent (docs/reference/chemins-et-atelier.md).
     """
     from benchab.chemins import atelier_prive
 
@@ -992,6 +1006,7 @@ def main(argv=None):
             "installation",
             "plan-reparation",
             "preparer-reprise-export",
+            "preparer-reprise-source",
             "appliquer-reprise-export",
             "appliquer-reparation-vue",
             "entretien",
@@ -1041,6 +1056,20 @@ def main(argv=None):
             rapport = preparer(arguments.prive, arguments.table, arguments.sortie)
         except (OSError, ValueError, sqlite3.Error) as erreur:
             print(f"BENCHAB : préparation de reprise refusée : {erreur}", file=sys.stderr)
+            return 2
+        print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+        return 0
+    if arguments.commande == "controle" and arguments.controle == "preparer-reprise-source":
+        from benchab.donnees.reprise_source import preparer
+
+        # La copie reste sous rapports ; aucun original ni Base() n’est ouvert (#119).
+        try:
+            rapport = preparer(
+                arguments.prive, arguments.archive, arguments.sha256_archive,
+                arguments.membre, arguments.sha256_source, arguments.sortie,
+            )
+        except (OSError, ValueError) as erreur:
+            print(f"BENCHAB : préparation de source refusée : {erreur}", file=sys.stderr)
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0

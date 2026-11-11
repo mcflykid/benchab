@@ -35,6 +35,7 @@ _CHUNK = 64 * 1024
 
 @dataclass(frozen=True)
 class PacketLimits:
+    """Budgets de lecture ZIP/JSON : tailles en octets, nombres de membres et profondeur sans unité."""
     archive_bytes: int = 64 * 1024 * 1024
     member_bytes: int = 64 * 1024 * 1024
     total_bytes: int = 256 * 1024 * 1024
@@ -45,6 +46,7 @@ class PacketLimits:
     json_nodes: int = 20_000
 
     def __post_init__(self) -> None:
+        """Refuse un budget hors des plafonds internes sans lire de fichier."""
         ceilings = (512 * 1024 * 1024, 512 * 1024 * 1024, 1024 * 1024 * 1024, 8192, 1000, 8 * 1024 * 1024, 64, 200_000)
         for value, ceiling in zip(vars(self).values(), ceilings):
             if type(value) is not int or not 1 <= value <= ceiling:
@@ -56,6 +58,7 @@ DEFAULT_LIMITS = PacketLimits()
 
 @dataclass(frozen=True)
 class PacketMember:
+    """Identité d’un membre contrôlé : tailles en octets, CRC32 et SHA-256, sans interprétation métier."""
     name: str
     size: int
     compressed_size: int
@@ -66,6 +69,7 @@ class PacketMember:
 
 @dataclass(frozen=True)
 class ProjectSettings:
+    """Nom, empreinte et clés du membre de réglages, sans mutation de leur valeur."""
     member: str
     sha256: str
     keys: tuple[str, ...]
@@ -73,6 +77,7 @@ class ProjectSettings:
 
 @dataclass(frozen=True)
 class PacketReport:
+    """Résultat structurel du paquet : taille en octets, inventaire et CRC, sans verdict d’envoi."""
     archive_sha256: str
     archive_size: int
     members: tuple[PacketMember, ...]
@@ -308,6 +313,11 @@ def inspect_packet(path: Path, *, limits: PacketLimits = DEFAULT_LIMITS) -> Pack
 
 
 def main(argv=None):
+    """Inspecte un paquet 3MF en lecture seule, affiche le rapport ou publie un JSON neuf.
+
+    Budgets CLI en Mio, Kio ou compte selon le champ. Code 0 pour inspection
+    terminée, 2 si refus ; aucun verdict physique ou autorisation d’envoi.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--json", type=Path, help="Rapport neuf, sans écrasement ; sinon sortie standard")

@@ -8,7 +8,10 @@ commune calcule le premier point réellement déposé sur le cercle exact, aprè
 la dette de rétraction, sans remplacer l’arc par une corde (suite #123).
 
 La commande accepte `--sortie prive/rapports/continuite.json` pour un export
-JSON neuf, identique au rapport affiché, avec chemin source, plaque et SHA-256.
+JSON neuf, identique au rapport affiché par défaut, avec chemin source, plaque
+et SHA-256. Avec `--sortie`, `--resume` affiche le verdict, les compteurs,
+les avertissements et le chemin du rapport détaillé, sans changer le code de
+sortie ni les données publiées (suite de #35).
 Une destination existante, une entrée ou une préparation figée ne sont jamais
 écrasées. `--bandes-z 5` ajoute une synthèse par bandes de 5 mm sans retirer
 les mesures par couche ni modifier le verdict. Les bandes couvrent la fenêtre Z
@@ -46,8 +49,9 @@ seuil historique de raccord de 0,02 mm reste inchangé. Les hélices, autres
 plans, rôles d’arc non reconnus et géométries incohérentes rendent la couverture
 NON VÉRIFIÉE. Les arcs n’établissent qu’une continuité numérique des trajectoires
 déclarées ; cela ne valide ni l’interpolation du firmware, ni l’adhésion ou la
-tenue physique. Le contrôle de première couche conserve ses limites et laisse
-les arcs NON VÉRIFIÉS. Aucun arc n’y est remplacé par sa corde.
+tenue physique. Le contrôle de première couche peut mesurer les dépôts G17 à
+Z constant avec `--arcs-planaires` ; sans cette option, ils restent NON
+VÉRIFIÉS. Aucun arc n’y est remplacé par sa corde.
 
 Le contrôle des capacités-machine calcule aussi l’enveloppe XYZ analytique de la portion déposée d’un arc G17 pour
 le verdict local `volume XYZ déposé`. Il inclut les extrema angulaires réellement parcourus et les deux extrémités Z
@@ -97,10 +101,12 @@ courbe. Le repère physique reste distinct du repère de commande après G92.
 Les longueurs sont arrondies à 0,1 mm ; aucune corde n’est comptée. Les
 bornes, extrémités et enveloppes circulaires au-delà de ±1 000 000 mm sont refusées.
 
-Cette extension concerne les mesures par boîte. Les contrôles de couverture
-première couche, de continuité et d’appuis qui attendent encore des segments
-restent NON VÉRIFIÉS pour les arcs. Les autres plans et centres absolus ne sont
-pas qualifiés. La mesure est numérique et ne valide pas une impression.
+Cette extension concerne les mesures par boîte. La continuité des parois
+extérieures suit les limites décrites plus haut ; les
+[appuis](couches-courtes.md) mesurent les arcs G17 planaires seulement avec
+`--arcs-planaires`, comme la première couche. Les autres plans et centres
+absolus ne sont pas qualifiés. Ces
+mesures sont numériques et ne valident pas une impression.
 
 Dans un 3MF, un numéro de plaque désigne un seul membre G-code. Un nom
 unique avec un zéro initial est lisible ; plusieurs graphies du même numéro

@@ -138,3 +138,37 @@ conservé pour diagnostic, sans suppression par chemin. La preuve sur disque gar
 `CANDIDAT` ; seul le résultat de la commande peut indiquer `PASS`.
 Un refus CLI renvoie le code 2. Cette opération ne remplace aucun export,
 n’applique aucune autre table et ne crée pas de mesure de séance.
+
+## Préparer une copie d’un original depuis une sauvegarde
+
+Une seule source de projet peut être copiée depuis une sauvegarde tar BENCHAB
+quand le membre et son SHA-256 sont connus. La commande ne restaure pas le projet
+et ne modifie ni source existante, ni base, ni profil :
+
+```sh
+benchab --prive /chemin/atelier controle preparer-reprise-source \
+  --archive /chemin/sauvegarde.tar --sha256-archive SHA256_TAR \
+  --membre projets/SLUG/sources/FICHIER --sha256-source SHA256_SOURCE \
+  --sortie /chemin/atelier/rapports/reprise-source
+```
+
+Le tar doit être un fichier ordinaire stable sans lien et son SHA porte sur tous
+ses octets. La limite est de 65 Gio pour l’archive, 100 000 entrées, 4 Gio par
+membre, 64 Gio pour les fichiers cumulés et 32 Mio pour le manifeste. Les noms,
+types et tailles sont validés contre `BENCHAB-MANIFEST.json` ; le membre demandé
+doit être un fichier régulier `projets/SLUG/sources/FICHIER` dont le SHA du
+manifeste, le SHA déclaré et les octets lus concordent. Aucun arbre n’est extrait
+et les liens ou membres TAR spéciaux sont refusés. Les extensions PAX et
+GNU sont bornées en nombre, en profondeur et en taille (64 Mio cumulés,
+64 Kio pour un corps PAX). Les membres creux sont refusés. Les deux blocs
+de fin TAR et le remplissage nul du producteur sont exigés.
+
+La sortie doit être un dossier neuf sous `prive/rapports/`. Il contient la copie
+`source/FICHIER` et `preuve.json`. Le fichier de preuve conserve `CANDIDAT` ; le
+retour `PASS` signifie seulement que la copie et la preuve publiées ont été
+relues et correspondent aux empreintes prévues. Cela ne certifie ni l’origine
+historique de l’archive ni la pertinence de l’original, et n’applique pas la
+copie au projet. Une archive changée, un membre absent ou altéré, un SHA
+différent, une sortie existante ou un chemin ambigu refusent la publication.
+Si une incohérence est constatée après le renommage, la sortie est laissée
+en place pour diagnostic et ne donne pas PASS (#119).

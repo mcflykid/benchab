@@ -2,6 +2,21 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.20.0 — 2026-11-11
+
+- Reprise : prépare une copie passive d’un original déclaré dans une
+  sauvegarde TAR, avec empreintes, manifeste et sortie neuve (suite de #119).
+- Densité : construit deux ou plusieurs bandes sous une face déclarée ;
+  un coupon natif mesure séparément la zone modifiée et le témoin (#83).
+- Tranchage : qualifie les deux états de la paroi supplémentaire alternée
+  sur le binaire observé ; aucune résistance n’est déduite (#80, #81).
+- Supports : consigne deux G-code différents à entrée identique pour le
+  style arborescent fort ; la répétabilité reste NON VÉRIFIÉE (#89, #208).
+- Continuité : affiche un résumé avec le rapport privé complet et précise
+  les limites des arcs planaires (#35, #123).
+- Maintenance : documente les contrats du cache, des rapports courants
+  et de l’inspection structurelle des paquets (#127).
+
 ## 1.19.0 — 2026-11-11
 
 - Fiches d’incident : vérifie sur demande une tentative CI publique du
