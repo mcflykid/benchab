@@ -66,7 +66,8 @@ membre G-code, les masses et le stock avant et après. SQLite enregistre
 la décision et le débit dans la même transaction. Le même appel retrouve
 la décision et rétablit l’export si nécessaire. Une pesée contradictoire
 pour la même impression, plaque et outil, une pesée chevauchante pour
-la même bobine ou un stock inconnu ou insuffisant provoque un refus.
+la même bobine même entre deux impressions, ou un stock inconnu ou
+insuffisant provoque un refus. Deux intervalles adjacents restent admis.
 
 Le code 0 signifie que l’imputation est enregistrée ou déjà présente.
 Un refus donne le code 2 avec son motif. Le champ `validation_physique`

@@ -49,18 +49,17 @@ def _confirmation(prive, chemin, empreinte, sha_pesee):
     return contenu, chemin.relative_to(prive).as_posix()
 
 
-def _refuser_chevauchement(connexion, projet, impression, bobine, avant, apres):
-    """Refuse deux pesées qui couvrent une même baisse en g pour la même impression et bobine."""
+def _refuser_chevauchement(connexion, bobine, avant, apres):
+    """Refuse deux pesées qui couvrent une même baisse en g pour la même bobine."""
     lignes = connexion.execute(
-        "SELECT donnees_json FROM decisions WHERE projet_id=? "
-        "AND json_extract(donnees_json,'$.type')='imputation_bobine' "
-        "AND json_extract(donnees_json,'$.impression_id')=? AND json_extract(donnees_json,'$.bobine_id')=?",
-        (projet, impression, bobine),
+        "SELECT donnees_json FROM decisions WHERE json_extract(donnees_json,'$.type')='imputation_bobine' "
+        "AND json_extract(donnees_json,'$.bobine_id')=?",
+        (bobine,),
     )
     for (brut,) in lignes:
         trace = _json_objet(brut)
         if min(avant, trace["pesee_avant_g"]) > max(apres, trace["pesee_apres_g"]):
-            raise ValueError("Pesées qui se chevauchent pour cette impression et cette bobine.")
+            raise ValueError("Pesées qui se chevauchent pour cette bobine.")
 
 
 def imputer(base, retour_id, preuve_pesee, sha_pesee, confirmation, sha_confirmation):
@@ -81,6 +80,11 @@ def imputer(base, retour_id, preuve_pesee, sha_pesee, confirmation, sha_confirma
         if pesee["statut"] != "DÉCLARATION LIÉE":
             raise ValueError(pesee["raison"])
         attestation, chemin = _confirmation(base.prive, confirmation, sha_confirmation, sha_pesee)
+        fichier_pesee = sans_lien(Path(preuve_pesee).expanduser().absolute(), racine=base.prive, strict=True)
+        fichier_confirmation = sans_lien(base.prive / chemin, racine=base.prive, strict=True)
+        for fichier, attendu in ((fichier_pesee, sha_pesee), (fichier_confirmation, sha_confirmation)):
+            if hashlib.sha256(_lire_fiche_bornee(fichier, limite=64 * 1024)).hexdigest() != attendu:
+                raise ValueError("Une preuve a changé pendant le contrôle de l’imputation.")
         ligne, _, _ = _lire_retour(connexion, retour_id)
         projet, impression = ligne["projet_id"], ligne["impression_id"]
         identite = json.dumps([impression, pesee["plaque"], pesee["index_gcode"]], separators=(",", ":"))
@@ -100,14 +104,13 @@ def imputer(base, retour_id, preuve_pesee, sha_pesee, confirmation, sha_confirma
         if quantite <= 0:
             raise ValueError("Une baisse de masse strictement positive est requise.")
         bobine = pesee["bobine_id"]
-        _refuser_chevauchement(connexion, projet, impression, bobine, avant, apres)
+        _refuser_chevauchement(connexion, bobine, avant, apres)
         stock = connexion.execute("SELECT masse_restante_g FROM bobines WHERE id=?", (bobine,)).fetchone()[0]
         if type(stock) not in (float, int) or not math.isfinite(stock) or Decimal(str(stock)) < quantite:
             raise ValueError("Stock de la bobine inconnu ou insuffisant.")
         reste = float(Decimal(str(stock)) - quantite)
         if reste >= stock:
             raise ValueError("Baisse de masse trop petite pour la précision du stock enregistré.")
-        fichier_pesee = sans_lien(Path(preuve_pesee).expanduser().absolute(), racine=base.prive, strict=True)
         trace = {
             "schema": 1, "type": "imputation_bobine", "decision_id": decision_id, "statut": "IMPUTATION ENREGISTRÉE",
             "retour_id": retour_id, "impression_id": impression, "bobine_id": bobine,

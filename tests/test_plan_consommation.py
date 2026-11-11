@@ -279,6 +279,56 @@ class PlanConsommation(unittest.TestCase):
             imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
         self.assertEqual(self.base.connexion.execute("SELECT masse_restante_g FROM bobines").fetchone()[0], 68.25)
 
+    def test_imputation_compare_les_pesees_de_la_bobine_entre_impressions(self):
+        """Un intervalle commun est refusé et une deuxième pesée adjacente est permise."""
+        from benchab.projets.imputation_bobine import imputer
+
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        retour = json.loads(self.base.connexion.execute(
+            "SELECT donnees_json FROM retours WHERE id=?", (self.retour_id,),
+        ).fetchone()[0])
+        autre = "retour-seconde-impression"
+        retour["id"] = autre
+        brut = json.dumps(retour)
+        with self.base.transaction() as connexion:
+            connexion.execute(
+                "INSERT INTO impressions(id,preparation_id,resultat,donnees_json) VALUES(?,?,'reussie',?)",
+                ("impression-2", self.preparation_id, brut),
+            )
+            connexion.execute(
+                "INSERT INTO retours(id,impression_id,texte,source,donnees_json) VALUES(?,?,?,?,?)",
+                (autre, "impression-2", "Fixture", "fixture", brut),
+            )
+        preuve, sha = self._declaration_pesee(retour_id=autre, masse_avant_g=98, masse_apres_g=86)
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        with self.assertRaisesRegex(ValueError, "se chevauchent"):
+            imputer(self.base, autre, preuve, sha, confirmation, sha_confirmation)
+        preuve, sha = self._declaration_pesee(retour_id=autre, masse_avant_g=88.25, masse_apres_g=87.25)
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        self.assertEqual(imputer(self.base, autre, preuve, sha, confirmation, sha_confirmation)["stock_apres_g"], 67.25)
+
+    def test_imputation_refuse_une_declaration_modifiee_pendant_le_controle(self):
+        """Le débit conserve un lien vérifiable vers la déclaration de pesée."""
+        from unittest.mock import patch
+
+        from benchab.projets import imputation_bobine
+
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        original = imputation_bobine._confirmation
+
+        def modifier(*args):
+            resultat = original(*args)
+            preuve.write_bytes(preuve.read_bytes() + b"\n")
+            return resultat
+
+        with patch.object(imputation_bobine, "_confirmation", side_effect=modifier):
+            with self.assertRaisesRegex(ValueError, "preuve a changé"):
+                imputation_bobine.imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        self.assertEqual(self.base.connexion.execute("SELECT masse_restante_g FROM bobines").fetchone()[0], 80)
+
     def test_pesee_refuse_identite_membre_outil_ou_bobine_non_etablie(self):
         """Un décalage ne doit pas fabriquer une quantité de stock imputable."""
         from benchab.projets.plan_consommation import planifier_lecture
