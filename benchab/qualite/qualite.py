@@ -10,15 +10,20 @@ Score de risque d'accroche : indicateur heuristique documenté dans README.md, j
 import hashlib
 import json
 import math
+import os
 import re
+import stat
 import subprocess
 import sys
+import uuid
 import zipfile
 from pathlib import Path
 
 from benchab import reglages as schema_reglages
+from benchab.controles.rapports import _protege
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 from benchab.machine.configuration import charger as configuration_machine
+from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, valider_chemins
 from benchab.qualite.statuts import code_statut
 
 OK, KO, AV, NV = "PASS", "FAIL", "WARNING", "NON VÉRIFIÉ"
@@ -46,28 +51,56 @@ def sha(p):
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 
+def _lire_preuve_existante(path):
+    """Lit une ancienne preuve régulière sans suivre de lien ni accepter une lecture instable."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(fd, "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size > 32 * 1024 * 1024:
+            raise ValueError("Destination de rapport non régulière ou trop volumineuse")
+        contenu = flux.read(32 * 1024 * 1024 + 1)
+        apres = os.fstat(flux.fileno())
+
+    def identite(info):
+        return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+    if len(contenu) > 32 * 1024 * 1024 or identite(avant) != identite(apres):
+        raise ValueError("Destination modifiée pendant la comparaison")
+    courant = path.lstat()
+    if not stat.S_ISREG(courant.st_mode) or identite(courant) != identite(apres):
+        raise ValueError("Destination remplacée pendant la comparaison")
+    return contenu
+
+
 class Rapport:
     def __init__(self, nom, cfg_path):
         self.nom, self.items = nom, []
         self.base = Path(cfg_path).resolve().parent
+        self.entrees = [Path(cfg_path).resolve()]
+
+    def ajouter_entrees(self, *chemins):
+        """Enregistre les fichiers lus pour interdire leur collision avec les preuves publiées."""
+        for chemin in chemins:
+            if chemin is not None:
+                self.entrees.append(Path(chemin).absolute())
 
     def add(self, controle, statut, detail="", **extra):
         self.items.append({"controle": controle, "statut": statut, "detail": detail, **extra})
         return statut
 
-    def ecrire(self):
-        """Rend les contrôles et leurs statuts dans les rapports de projet."""
+    def ecrire(self, supplementaires=None):
+        """Publie les rapports JSON/Markdown et preuves complémentaires sans écrasement.
+
+        Un rejeu identique est sans écriture ; un contenu différent est rangé en dossier
+        `rejeu-*`. Les rapports du même contrôle sont préparés et publiés ensemble.
+        """
         out = self.base / "preuves/qualite"
-        out.mkdir(parents=True, exist_ok=True)
         cpt = {s: sum(1 for i in self.items if i["statut"] == s) for s in (OK, KO, AV, NV)}
         global_ = KO if cpt[KO] else (NV if cpt[NV] else (AV if cpt[AV] else OK))
-        (out / f"{self.nom}.json").write_text(
-            json.dumps(
-                {"niveau": self.nom, "statut_global": global_, "compte": cpt, "controles": self.items},
-                indent=1,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
+        contenu_json = json.dumps(
+            {"niveau": self.nom, "statut_global": global_, "compte": cpt, "controles": self.items},
+            indent=1,
+            ensure_ascii=False,
         )
         lignes = [
             f"# {self.nom} : {global_}  ({cpt[OK]} PASS, {cpt[KO]} FAIL, {cpt[AV]} WARNING, {cpt[NV]} NON VÉRIFIÉ)",
@@ -78,7 +111,53 @@ class Rapport:
             for i in self.items
             if i["statut"] != OK
         ]
-        (out / f"{self.nom}.md").write_text("\n".join(lignes) + "\n", encoding="utf-8")
+        contenus_base = {
+            f"{self.nom}.json": contenu_json,
+            f"{self.nom}.md": "\n".join(lignes) + "\n",
+        }
+        supplementaires = supplementaires or {}
+        if set(contenus_base) & set(supplementaires):
+            raise ValueError("Preuve complémentaire en collision avec le rapport principal")
+        contenus = {**contenus_base, **supplementaires}
+        if any(not isinstance(nom, str) or Path(nom).name != nom or nom in (".", "..") for nom in contenus):
+            raise ValueError("Nom de preuve complémentaire invalide")
+        cibles = [out / nom for nom in contenus]
+        for cible in cibles:
+            _protege(cible)
+        entrees = [_sans_lien(p).resolve() for p in self.entrees]
+        cibles = [_sans_lien(p) for p in cibles]
+        cibles_resolues = [p.resolve() for p in cibles]
+        if len(set(cibles_resolues)) != len(cibles_resolues) or set(entrees) & set(cibles_resolues):
+            raise ValueError("Collision entrée, sortie ou rapport : écrasement refusé.")
+        existants = {}
+        for cible in cibles:
+            try:
+                existants[cible] = _lire_preuve_existante(cible)
+            except FileNotFoundError:
+                continue
+        if len(existants) == len(cibles) and all(
+            existants[cible] == contenus[cible.name].encode("utf-8") for cible in cibles
+        ):
+            pass
+        else:
+            destination = out
+            if existants:
+                for _ in range(8):
+                    destination = out / f"rejeu-{uuid.uuid4().hex}"
+                    if not destination.exists() and not destination.is_symlink():
+                        break
+                else:
+                    raise FileExistsError("Impossible de réserver une nouvelle preuve de rejeu")
+                cibles = [destination / nom for nom in contenus]
+                for cible in cibles:
+                    _protege(cible)
+            valider_chemins(entrees, cibles)
+            with PublicationNeuve(self.entrees, cibles) as publication:
+                for cible in cibles:
+                    publication.temporaire(cible).write_text(contenus[cible.name], encoding="utf-8")
+                publication.publier()
+            if destination != out:
+                print(f"Résultat différent conservé dans une nouvelle preuve : {destination}")
         print("\n".join(lignes[:1] + lignes[2:40]))
         return global_
 
@@ -117,6 +196,12 @@ def niveau1(cfg_path):
     S = json.loads(man.read_text())
     R.add("manifeste présent", OK)
     modeles = {**S["models"], **S.get("options", {})}
+    R.ajouter_entrees(
+        man,
+        *(P("stl_assemblage") / (m + ".stl") for m in modeles),
+        *(P("stl_impression") / (m + ".stl") for m in modeles),
+        *(P(k) for k in ("plaques_3mf", "tranche_3mf") if k in cfg),
+    )
     inst = {p["name"]: p["model"] for p in S["parts"]}
     inst.update({n: n for n in S.get("options", {})})
     vol = cfg.get("volume_impression_mm", configuration_machine()["placement"]["plateau_xyz_mm"])
@@ -261,6 +346,7 @@ def niveau3(cfg_path):
     cfg, base, P = charger(cfg_path)
     R = Rapport("niveau3", cfg_path)
     t3, pl = P("tranche_3mf"), P("placement")
+    R.ajouter_entrees(t3, pl, P("plaques_3mf") if "plaques_3mf" in cfg else None)
     if not t3.exists():
         R.add("3MF tranché présent", KO, str(t3))
         return R.ecrire()
@@ -283,6 +369,7 @@ def niveau3(cfg_path):
         return R.ecrire()
     noms = [p["nom"] for p in objets_3mf(t3)]
     obj = json.loads(pl.read_text())["objects"] if pl.exists() else []
+    R.ajouter_entrees(*(P("stl_impression") / (o["model"] + ".stl") for o in obj if "model" in o))
     od = cfg.get("objectifs_duree_h", {})
     marge = od.get("marge", 0.15)
     tableau = []
@@ -372,6 +459,7 @@ def niveau3(cfg_path):
     from benchab.controles.routine import controler as routine
 
     if P("plaques_3mf").exists() and pl.exists():
+        _protege(base / "preuves/audit/slicer")
         controle = routine(P("plaques_3mf"), t3, pl, base / "preuves/audit/slicer")
         R.add(
             "routine controler-3mf.sh (placement, réglages, disposition, débits)",
@@ -380,12 +468,7 @@ def niveau3(cfg_path):
         )
     else:
         R.add("routine controler-3mf.sh", NV, "fichiers manquants")
-    (base / "preuves/qualite").mkdir(parents=True, exist_ok=True)
-    (base / "preuves/qualite/plaques.json").write_text(
-        json.dumps(tableau, indent=1, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    return R.ecrire()
+    return R.ecrire({"plaques.json": json.dumps(tableau, indent=1, ensure_ascii=False)})
 
 
 def incrementiel(cfg_path, ancien):
@@ -432,7 +515,11 @@ def main(argv=None):
     if f is None:
         print(__doc__)
         return 2
-    s = f(a[1])
+    try:
+        s = f(a[1])
+    except (OSError, ValueError, KeyError, TypeError) as erreur:
+        print(f"Publication de qualité refusée : {erreur}", file=sys.stderr)
+        return 2
     return code_statut(s) if s is not None else 0
 
 
