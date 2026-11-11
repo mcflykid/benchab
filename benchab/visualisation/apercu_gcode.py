@@ -25,13 +25,14 @@ import json
 import math
 import re
 import sys
-import zipfile
 from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
 
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, est_temporaire, sans_lien
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.qualite.ecritures import PublicationNeuve
 
 TYPES = [
@@ -79,19 +80,22 @@ COULEURS = [
 Q = 20.0
 
 
-def gcodes(f):
+def _parcourir_gcodes(f, taille_max_archive=None):
+    """Produit une plaque à la fois depuis l'index 3MF unique ; budget total en octets."""
     f = Path(f)
-    if f.suffix == ".gcode":
-        return [(1, f.read_text(errors="replace"))]
-    with zipfile.ZipFile(f) as z:
-        return [
-            (int(re.search("plate_(\\d+)", n).group(1)), z.read(n).decode(errors="replace"))
-            for n in sorted(
-                z.namelist(),
-                key=lambda n: int(re.search("(\\d+)", n.split("/")[-1]).group(1)) if re.search("\\d", n) else 0,
-            )
-            if re.fullmatch("Metadata/plate_\\d+\\.gcode", n)
-        ]
+    if f.suffix.lower() == ".gcode":
+        yield 1, f.read_text(errors="replace")
+        return
+    options = {"taille_max_totale": taille_max_archive} if taille_max_archive is not None else {}
+    with Archive3MF(f, **options) as archive:
+        # L'index commun refuse les doublons et les chemins ambigus avant toute publication (#140).
+        for numero, nom in plaques_gcode_archive(archive):
+            yield numero, archive.lire(nom).decode(errors="replace")
+
+
+def gcodes(f):
+    """Renvoie les couples (numéro de plaque, texte G-code) ; source inchangée, ZIP malformé refusé."""
+    return list(_parcourir_gcodes(f))
 
 
 def couches(g):
@@ -208,12 +212,12 @@ def alertes(zones=None, colonnes=None):
     return a
 
 
-def page(f, sortie, defauts=None, titre=None, zones=None, colonnes=None):
-    """Construit une page locale autonome; G-code inchangé, sortie neuve privée/temporaire."""
+def page(f, sortie, defauts=None, titre=None, zones=None, colonnes=None, *, taille_max_archive=None):
+    """Construit une page locale autonome ; budget 3MF en octets, source inchangée et sortie neuve."""
     sortie = sans_lien(sortie)
     entrees = [f, *[p for p in (defauts, zones, colonnes) if p and Path(p).is_file()]]
     with PublicationNeuve(entrees, [sortie]) as pub:
-        plaques = [{"n": k, "couches": couches(g)} for k, g in gcodes(f)]
+        plaques = [{"n": k, "couches": couches(g)} for k, g in _parcourir_gcodes(f, taille_max_archive)]
         al = alertes(zones, colonnes)
         d = json.loads(Path(defauts).read_text()).get("plaques", {}) if defauts and Path(defauts).exists() else {}
         for p in plaques:

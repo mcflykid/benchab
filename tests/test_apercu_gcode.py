@@ -19,6 +19,49 @@ G = (
 
 
 class Apercu(unittest.TestCase):
+    def test_archive_avec_deux_planches_ordonnees_sans_changer_la_source(self):
+        """Les plaques numériques sont rendues dans l'ordre et les octets d'origine restent intacts."""
+        from zipfile import ZipFile
+
+        with tempfile.TemporaryDirectory() as dossier:
+            source = Path(dossier) / "test.3mf"
+            with ZipFile(source, "w") as z:
+                z.writestr("Metadata/plate_10.gcode", G)
+                z.writestr("Metadata/plate_2.gcode", G)
+            avant = source.read_bytes()
+            resultat = A.page(source, source.with_suffix(".html"))
+            self.assertEqual(resultat["plaques"], [(2, 1), (10, 1)])
+            self.assertEqual(source.read_bytes(), avant)
+
+    def test_archive_avec_membre_duplique_ne_publie_pas(self):
+        """Deux plaques de même chemin ne donnent ni aperçu ambigu ni fichier de sortie."""
+        from zipfile import ZipFile
+
+        with tempfile.TemporaryDirectory() as dossier:
+            source = Path(dossier) / "test.3mf"
+            with ZipFile(source, "w") as z:
+                z.writestr("Metadata/plate_1.gcode", G)
+                with self.assertWarns(UserWarning):
+                    z.writestr("Metadata/plate_1.gcode", G)
+            cible = source.with_suffix(".html")
+            with self.assertRaisesRegex(ValueError, "membre dupliqué"):
+                A.page(source, cible)
+            self.assertFalse(cible.exists())
+
+    def test_deux_graphies_pour_la_meme_plaque_ne_publient_pas(self):
+        """Le numéro de plaque affiché doit être unique même si deux chemins ZIP diffèrent."""
+        from zipfile import ZipFile
+
+        with tempfile.TemporaryDirectory() as dossier:
+            source = Path(dossier) / "test.3mf"
+            with ZipFile(source, "w") as z:
+                z.writestr("Metadata/plate_1.gcode", G)
+                z.writestr("Metadata/plate_01.gcode", G)
+            cible = source.with_suffix(".html")
+            with self.assertRaisesRegex(ValueError, "numéro de plaque dupliqué"):
+                A.page(source, cible)
+            self.assertFalse(cible.exists())
+
     def test_titre_litteral_peut_contenir_le_marqueur_des_donnees(self):
         """Le titre reste littéral et les données de la page autonome restent un JSON valide."""
         import re

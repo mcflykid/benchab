@@ -2,6 +2,7 @@
 
 import copy
 import json
+import math
 from functools import lru_cache
 from importlib.resources import files
 
@@ -177,6 +178,20 @@ def verifier(donnees, contexte=None, *, identite_slicer=None):
         statut = "PASS"
         if d["type"] == "inconnu":
             statut = "NON VÉRIFIÉ"
+        elif d["type"] == "diametre_buse":
+            valeur_buse = valeur[0] if isinstance(valeur, list) and len(valeur) == 1 else valeur
+            if isinstance(valeur, list) and len(valeur) != 1:
+                statut = "NON VÉRIFIÉ"
+            elif not isinstance(valeur_buse, str):
+                statut = "NON VÉRIFIÉ"
+            else:
+                try:
+                    nombre_buse = float(valeur_buse)
+                except ValueError:
+                    statut = "NON VÉRIFIÉ"
+                else:
+                    if not math.isfinite(nombre_buse) or nombre_buse <= 0:
+                        statut = "NON VÉRIFIÉ"
         elif d["type"] == "chaine" and not isinstance(valeur, str):
             statut = "FAIL"
         elif d["type"] == "valeur_simple" and isinstance(valeur, (list, dict)):
@@ -249,8 +264,12 @@ class Reglages(dict):
         self.contexte = dict(contexte if contexte is not None else getattr(donnees, "contexte", {}))
 
     def __setitem__(self, cle, valeur):
+        """Affecte un réglage natif ; refuse changement de clé en lecture seule ou cardinalité invalide."""
         d = definition(cle, valeur=dict.get(self, cle, valeur))
         cible = definition(cle, valeur=valeur)
+        lecture_seule = d.get("lecture_seule") or cible.get("lecture_seule")
+        if lecture_seule and (cle not in self or dict.__getitem__(self, cle) != valeur):
+            raise ValueError("Réglage en lecture seule : transformation interdite : " + cle)
         if (d["type"] == "inconnu" or cible["type"] == "inconnu") and (
             cle not in self or dict.__getitem__(self, cle) != valeur
         ):
@@ -284,7 +303,11 @@ class Reglages(dict):
         return resultat
 
     def __delitem__(self, cle):
-        if definition(cle, valeur=self[cle])["type"] == "inconnu":
+        """Supprime une clé modifiable ; les réglages inconnus et en lecture seule sont conservés."""
+        d = definition(cle, valeur=self[cle])
+        if d.get("lecture_seule"):
+            raise ValueError("Réglage en lecture seule : suppression interdite : " + cle)
+        if d["type"] == "inconnu":
             raise ValueError("Réglage de type inconnu NON VÉRIFIÉ : suppression interdite : " + cle)
         dict.__delitem__(self, cle)
 
@@ -362,7 +385,16 @@ def encoder(donnees, **options):
                 definition(cle, valeur=origine)["type"] == "inconnu"
                 or definition(cle, valeur=cible)["type"] == "inconnu"
             )
-            if inconnu and (cle not in donnees or cle not in donnees.original or donnees[cle] != donnees.original[cle]):
+            lecture_seule = definition(cle, valeur=origine).get("lecture_seule") or definition(
+                cle, valeur=cible
+            ).get("lecture_seule")
+            modifiee = (
+                cle not in donnees or cle not in donnees.original
+                or donnees[cle] != donnees.original[cle]
+            )
+            if lecture_seule and modifiee:
+                raise ValueError("Réglage en lecture seule modifié : " + cle)
+            if inconnu and modifiee:
                 raise ValueError("Réglage inconnu modifié : " + cle)
             if cle in donnees and _mode_origine_non_verifie(cle, donnees, donnees[cle]):
                 raise ValueError("Vecteur machine d'origine NON VÉRIFIÉ : mutation imbriquée interdite : " + cle)

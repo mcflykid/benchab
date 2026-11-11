@@ -17,10 +17,13 @@ from pathlib import Path
 from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.controles import zones_locales as ZL
+from benchab.controles.commandes_machine import SOURCE_FORMAT_S1, verifier_format_s1
+from benchab.controles.controle_buse import controler as controler_buse
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.rapports import RapportCourant
 from benchab.gcode import debit
 from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.machine.compatibilite_ace import evaluer_alimentation
 from benchab.qualite.statuts import code_statut
 
 
@@ -194,8 +197,15 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         risques_locaux.extend(local["zones"])
         erreurs_locales.extend(local["erreurs"])
         dem = demarrage(g)
+        if "format_demarrage" in DEC:
+            format_s1 = verifier_format_s1(g, ps, DEC["format_demarrage"])
+            ajouter_note(
+                res, pl, "format du démarrage déclaré", format_s1["statut"], format_s1["detail"], SOURCE_FORMAT_S1,
+                obligatoire=False,
+            )
         exts = sorted({int(obj_ext.get(o, "1")) for o in plate_obj.get(pl, [])})
         attendus = [e - 1 for e in exts]
+        res.extend({**ligne, "plaque": pl} for ligne in controler_buse(ps, DEC, exts))
         # S1 natif mono-filament : G9111 prépare l'unique buse sans émettre T0.
         # Ne rien déduire d'une déclaration seule, d'un projet multi-filament ou d'un autre dialecte.
         mono_natif = (
@@ -315,21 +325,34 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                 "G-code (calcul ; ce n'est pas une mesure sur la machine)",
             )
             vide = not any(slots.values())
+            emplacement = fd.get("emplacement_ace")
+            alimentation = fd.get("alimentation")
+            arriere = isinstance(alimentation, dict) and alimentation.get("chemin") == "arriere"
+            if arriere:
+                detail_ace = "entrée arrière déclarée ; affectation ACE physique non vérifiée"
+            elif vide:
+                detail_ace = (
+                    f"déclaré : emplacement {emplacement} ({fd['matiere']}) → T{e - 1} ; "
+                    "vecteurs ace_t_* vides dans ce 3MF : l'affectation se fait à l'envoi dans l'interface"
+                )
+            else:
+                detail_ace = f"déclaré : emplacement {emplacement} ; 3MF : {slots}"
             ajouter_note(
                 res,
                 pl,
                 f"correspondance ACE (filament {e})",
                 "NON VÉRIFIÉ",
-                (
-                    f"déclaré : emplacement {fd['emplacement_ace']} ({fd['matiere']}) → T{e - 1} ; "
-                    "vecteurs ace_t_* vides dans ce 3MF : l'affectation se fait à l'envoi dans l'interface"
-                    if vide
-                    else f"déclaré : emplacement {fd['emplacement_ace']} ; 3MF : {slots}"
-                )
-                + " ; routage physique non vérifié sans essai",
+                detail_ace + " ; routage physique non vérifié sans essai",
                 "déclaration ; 3MF : ace_t_*",
                 obligatoire=False,
             )
+            # Les déclarations historiques gardent leur constat ACE non vérifié.
+            if "alimentation" in fd:
+                type_3mf = schema_reglages.valeur_brute_indice(ps, "filament_type", e - 1, lecteur="index_exact")
+                mesures = evaluer_alimentation(alimentation, emplacement, type_3mf)
+                for cle, libelle in (("acheminement", "acheminement déclaré"), ("bobine", "bobine déclarée")):
+                    statut, detail, source = mesures[cle]
+                    ajouter_note(res, pl, f"{libelle} (filament {e})", statut, detail, source, obligatoire=False)
         if ref:
             rp = plaques(ref)
             if pl not in rp:

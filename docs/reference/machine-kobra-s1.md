@@ -42,6 +42,22 @@ Un relevé réseau peut être ancien ; une session ou une caméra ne remplace pa
 la confirmation du fichier et de la bobine. Les stocks, comptes et identifiants
 restent privés. Toute commande physique exige une demande explicite.
 
+Le rapport d’envoi accepte un objet `alimentation` par filament déclaré. Pour
+un passage par l’ACE, préciser `chemin: "ace"`, `generation_ace: "ACE Pro"` ou
+`"ACE 2 Pro"`, le `produit` exact et l’`emplacement_ace` du filament
+(entier de 1 à 4). Le type de bobine peut être déclaré avec
+`bobine: "carton"`. Pour une entrée arrière, indiquer `chemin: "arriere"`
+et omettre l’emplacement ACE. `"sechage"` indique le séchage seulement et
+ne qualifie pas une alimentation d’impression.
+
+Le contrôle distingue la compatibilité documentaire de l’affectation physique.
+Pour le type TPU confirmé par la case exacte du 3MF, Anycubic TPU 95A est
+documenté comme incompatible en alimentation ACE Pro et ACE 2 Pro ;
+Anycubic TPU 68D est documenté compatible avec l’ACE 2 Pro. Ces conclusions
+ne valent que pour les références nommées. Le carton déclenche un avertissement,
+pas un refus ; le constructeur signale glissement et débris. Produit,
+génération ou type absent ou ambigu : NON VÉRIFIÉ.
+
 Le parcours de référence utilise le constructeur et son G-code de démarrage.
 Les essais Rinkhals/Orca/LAN sont décrits dans
 [l’historique des choix](../explications/transports-historiques.md), pas prescrits pour
@@ -55,3 +71,8 @@ Kobra S1 Combo (buse déclarée le 26/10), profils système Slicer Next 2.0.0.3 
 fiches d’expérience. Provenance par empreinte et portée dans
 [le corpus technique](../../benchab/reference/connaissances.jsonl) et
 [son catalogue de sources](../../benchab/reference/sources-savoir.jsonl).
+
+Sources fabricant relues le 11/11/2026 : [ACE Pro](https://wiki.anycubic.com/en/fdm-3d-printer/kobra-3-combo/ace-pro-notes),
+[ACE 2 Pro](https://wiki.anycubic.com/en/fdm-3d-printer/ace-2-pro/warm-tips),
+[TPU 95A](https://store.anycubic.com/products/tpu-filament?variant=44896641548477) et
+[TPU 68D](https://store.anycubic.com/products/tpu-68d?variant=47608800510114).

@@ -81,6 +81,28 @@ def test_mutations_indirectes_inconnues_refusees():
         reglages.encoder(reglages.Reglages(valeurs))
 
 
+def test_diametre_buse_est_type_en_lecture_seule_sur_tous_les_chemins():
+    """Lit nozzle_diameter typé mais conserve le verrou d’écriture des réglages inconnus."""
+    valeurs = reglages.Reglages({"nozzle_diameter": ["0.4"]})
+    assert reglages.definition("nozzle_diameter")["type"] == "diametre_buse"
+    assert reglages.valeur_unique(valeurs, "nozzle_diameter") == "0.4"
+    for operation in (
+        lambda: valeurs.__setitem__("nozzle_diameter", ["0.6"]),
+        lambda: valeurs.__delitem__("nozzle_diameter"),
+        lambda: valeurs.pop("nozzle_diameter"),
+        lambda: valeurs.update({"nozzle_diameter": ["0.6"]}),
+        lambda: valeurs.__ior__({"nozzle_diameter": ["0.6"]}),
+    ):
+        with pytest.raises(ValueError, match="lecture seule"):
+            operation()
+        assert valeurs["nozzle_diameter"] == ["0.4"]
+    with pytest.raises(ValueError, match="lecture seule"):
+        reglages.Reglages().setdefault("nozzle_diameter", ["0.4"])
+    valeurs["nozzle_diameter"][0] = "0.6"
+    with pytest.raises(ValueError, match="lecture seule"):
+        reglages.encoder(valeurs)
+
+
 def test_limites_toml_identiques_au_profil_fabricant_par_mode():
     """Compare la transcription TOML au profil fabricant sourcé, mm/s et mm/s² ; aucun réglage modifié."""
     from benchab.machine.configuration import charger

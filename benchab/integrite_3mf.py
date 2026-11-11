@@ -182,11 +182,15 @@ def verifier(source, destination, permis=()):
     apres, types_apres = instantane(destination, avec_types=True)
     reel = difference(avant, apres)
     for d in reel:
-        if any(
-            types[d["chemin"]]["type"] == "inconnu"
-            for types, present in [(types_avant, d["present_avant"]), (types_apres, d["present_apres"])]
+        definitions = [
+            types[d["chemin"]]
+            for types, present in ((types_avant, d["present_avant"]), (types_apres, d["present_apres"]))
             if present
-        ):
+        ]
+        # Un réglage nouvellement documenté peut rester réservé à la lecture (#71).
+        if any(definition.get("lecture_seule") for definition in definitions):
+            raise ValueError("Intégrité FAIL : réglage en lecture seule modifié, même déclaré : " + d["chemin"])
+        if any(definition["type"] == "inconnu" for definition in definitions):
             raise ValueError("Intégrité FAIL : réglage de type inconnu modifié, même déclaré : " + d["chemin"])
     attendu = sorted(list(permis), key=lambda d: d["chemin"])
     if len({d["chemin"] for d in attendu}) != len(attendu):

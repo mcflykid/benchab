@@ -168,3 +168,8 @@
 {"date_relecture": "2026-11-05", "id": "source-f861c5d060380506", "sha256": "143984c3588f2c7ebcac653a01246d87084e7cb3ce68c845e6bdfb8e8815cd5d", "type": "trace technique historique anonymisée"}
 {"date_relecture": "2026-11-05", "id": "source-fb4207bf16d47523", "sha256": "365c153887e827153ab065af35bd184b94fb3a82a99f1f8530442be48f814b1e", "type": "trace technique historique anonymisée"}
 {"date_relecture": "2026-11-05", "id": "source-fea6d71181cd7b6b", "sha256": "65a4decfea77ddc237ed6906a9d012fabe995441c9bb8f8f837a0de482bc2ee3", "type": "trace technique historique anonymisée"}
+{"date_relecture": "2026-11-11", "id": "source-ace-pro-notes-anycubic", "sha256": null, "type": "documentation fabricant", "url": "https://wiki.anycubic.com/en/fdm-3d-printer/kobra-3-combo/ace-pro-notes"}
+{"date_relecture": "2026-11-11", "id": "source-ace-2-pro-notes-anycubic", "sha256": null, "type": "documentation fabricant", "url": "https://wiki.anycubic.com/en/fdm-3d-printer/ace-2-pro/warm-tips"}
+{"date_relecture": "2026-11-11", "id": "source-tpu-95a-anycubic", "sha256": null, "type": "documentation fabricant", "url": "https://store.anycubic.com/products/tpu-filament?variant=44896641548477"}
+{"date_relecture": "2026-11-11", "id": "source-tpu-68d-anycubic", "sha256": null, "type": "documentation fabricant", "url": "https://store.anycubic.com/products/tpu-68d?variant=47608800510114"}
+{"date_relecture": "2026-11-11", "id": "source-erreurs-anycubic-famille-s1", "sha256": null, "type": "documentation fabricant", "url": "https://wiki.anycubic.com/fr/error-codes"}

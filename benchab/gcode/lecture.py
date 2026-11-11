@@ -122,6 +122,21 @@ def membres_gcode_3mf(chemin: str | Path) -> tuple[str, ...]:
     return tuple(sorted(nom for nom in membres if re.fullmatch(r"Metadata/plate_\d+\.gcode", nom)))
 
 
+def plaques_gcode_archive(archive):
+    """Renvoie (numéro de plaque, membre) en ordre numérique depuis un contexte 3MF ouvert.
+
+    Les numéros sont sans unité ; lève sur ambiguïté entre deux graphies sans lire ni modifier le G-code.
+    """
+    plaques = sorted(
+        (int(match[1]), nom)
+        for nom in archive.noms()
+        if (match := re.fullmatch(r"Metadata/plate_(\d+)\.gcode", nom))
+    )
+    if len({numero for numero, _ in plaques}) != len(plaques):
+        raise ValueError("numéro de plaque dupliqué dans l'archive")
+    return plaques
+
+
 def lire_texte_gcode_3mf(
     chemin: str | Path,
     membre: str,
