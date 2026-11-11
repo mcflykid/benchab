@@ -195,7 +195,25 @@ la longueur XY d’un cercle éventuel. Si la direction est indéterminée,
 les rayons sont incompatibles ou l’angle peut franchir zéro ou un tour,
 la sonde ne fournit pas de longueur.
 
-Le statut reste **NON VÉRIFIÉ** : les intervalles n’établissent ni l’existence
-d’un cercle satisfaisant les arrondis, ni le mouvement du firmware. Le lecteur
+Pour établir la compatibilité des champs, la sonde calcule exactement les
+extrema de la différence des rayons au carré. Avec `q = arrivée − départ`
+et `d = (I, J)`, cette différence vaut `2 q·d − |q|²`. La preuve porte
+sur la représentation décimale courte des nombres reçus, pas sur les
+lexèmes d’une ligne G-code. Ces décimales sont interprétées comme des
+fractions : chaque composante de `q` varie à ± deux demi-pas, et celle de
+`d` à ± un demi-pas. Si les
+extrema entourent strictement zéro, il existe un cercle dans les bornes ;
+une égalité nominale exacte suffit aussi. Un contact isolé en frontière
+ne qualifie pas l’arrondi, et si les extrema excluent zéro, la sonde
+ne fournit pas de longueur.
+
+Le statut reste **NON VÉRIFIÉ** : un cercle compatible avec l’hypothèse
+ne prouve ni le cercle d’origine, ni le mouvement du firmware. Le lecteur
 exact, les contrôles géométriques et U25 ne consomment pas ces intervalles
 (#134).
+
+Sur un cylindre tranché avec ASN 2.0.0.3, les 700 arcs observés ont un
+cercle compatible avec l’hypothèse d’un demi-pas de 0,0005 mm par champ.
+L’intervalle de longueur XY le plus large mesure 0,01450 mm. Le lecteur
+strict refuse toujours les mêmes 697 arcs de cette sonde. Ce résultat
+n’identifie pas le code du firmware et ne modifie aucun seuil.

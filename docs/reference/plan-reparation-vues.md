@@ -172,3 +172,19 @@ copie au projet. Une archive changée, un membre absent ou altéré, un SHA
 différent, une sortie existante ou un chemin ambigu refusent la publication.
 Si une incohérence est constatée après le renommage, la sortie est laissée
 en place pour diagnostic et ne donne pas PASS (#119).
+
+La copie préparée peut être relue à partir du SHA-256 de `preuve.json`
+fourni par la préparation :
+
+```sh
+benchab --prive /chemin/atelier controle verifier-reprise-source \
+  --preuve /chemin/atelier/rapports/reprise-source/preuve.json \
+  --sha256-preuve SHA256_PREUVE
+```
+
+Le code 0 atteste seulement que la preuve et la copie concordent. L’état de
+l’original est rapporté séparément : IDENTIQUE, MANQUANT, DIVERGENT ou NON
+VÉRIFIÉ si son chemin ou sa lecture est hors contrat. Le code 2 refuse une
+preuve ou une copie illisible, liée ou altérée. La commande ne rouvre pas
+le TAR, ne crée ni original ni base, et ne donne pas d’accord de restauration
+(#119).

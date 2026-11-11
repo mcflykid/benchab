@@ -34,6 +34,7 @@ UTILES = re.compile(r"^(G9111|M140|M190|M104|M109|M201|M203|M204|M205|M900|M106 
 
 
 def chemin_local(value):
+    """Convertit une valeur en chemin absolu et harmonise l’alias macOS /var, sans lire le fichier."""
     p = Path(value).absolute()
     if sys.platform == "darwin" and p.is_relative_to("/var") and Path("/var").resolve() == Path("/private/var"):
         p = Path("/private/var") / p.relative_to("/var")
@@ -46,6 +47,7 @@ def plaques(z):
 
 
 def demarrage(g):
+    """Extrait les commandes avant le premier marqueur de couche, sinon dans les 20 000 premiers caractères."""
     s = g[: g.find(";LAYER_CHANGE")] if ";LAYER_CHANGE" in g else g[:20000]
     out = {}
     for ligne in s.splitlines():
@@ -117,6 +119,7 @@ def _texte_reglage(valeur):
 
 
 def ajouter_note(resultats, pl, controle, statut, detail, source, obligatoire=True):
+    """Ajoute au rapport une observation de contrôle, son statut, sa source et son caractère obligatoire."""
     resultats.append(
         {
             "plaque": pl,
@@ -440,6 +443,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
 
 
 def main(argv=None):
+    """Exécute le contrôle CLI d’un envoi 3MF ; retourne son code de statut sans action machine."""
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in ("-h", "--help"):
         print(__doc__)

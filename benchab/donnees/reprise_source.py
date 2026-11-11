@@ -465,3 +465,97 @@ def preparer(prive, archive, sha256_archive, membre, sha256_source, sortie):
         verification="PASS après relecture exacte de la copie et de la preuve ; copie non appliquée.",
     )
     return resultat
+
+
+def _lire_preuve_source(chemin, sha_attendu):
+    """Lit une preuve JSON de 64 Kio au plus et lie le SHA aux mêmes octets."""
+    limite = 64 * 1024
+    with os.fdopen(os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size > limite:
+            raise ValueError("Preuve de reprise non régulière ou supérieure à 64 Kio.")
+        brut = flux.read(limite + 1)
+        if len(brut) != avant.st_size or _signature(avant) != _signature(os.fstat(flux.fileno())):
+            raise ValueError("La preuve de reprise a changé pendant sa lecture.")
+        if _signature(avant) != _signature(chemin.lstat()):
+            raise ValueError("La preuve de reprise a été remplacée.")
+    if hashlib.sha256(brut).hexdigest() != sha_attendu:
+        raise ValueError("Le SHA-256 de la preuve ne correspond pas à la déclaration.")
+    try:
+        contenu = json.loads(
+            brut.decode("utf-8"), object_pairs_hook=_objet_sans_doublons,
+            parse_constant=_constante_json_interdite,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as erreur:
+        raise ValueError("La preuve de reprise n’est pas un JSON UTF-8 valide.") from erreur
+    return contenu, _signature(avant)
+
+
+def _etat_original(racine, nom, sha_attendu):
+    """Distingue absence, identité, divergence et chemin hors contrat, en lecture seule."""
+    try:
+        chemin = sans_lien(racine / nom, racine=racine, strict=True)
+        sha = _sha_fichier(chemin, MAX_MEMBER)
+    except FileNotFoundError:
+        return {"statut": "MANQUANT", "sha256": None}
+    except (OSError, ValueError) as erreur:
+        return {"statut": "NON VÉRIFIÉ", "sha256": None, "raison": str(erreur)}
+    return {"statut": "IDENTIQUE" if sha == sha_attendu else "DIVERGENT", "sha256": sha}
+
+
+def verifier_copie(prive, preuve, sha256_preuve):
+    """Relit une copie candidate et distingue l’état de l’original déclaré.
+
+    Requiert preuve.json sous rapports et son SHA-256. Tailles en octets ;
+    PASS porte sur la preuve et la copie exactes. L’original est IDENTIQUE,
+    MANQUANT, DIVERGENT ou NON VÉRIFIÉ. Refus par ValueError/OSError. Ne
+    rouvre pas le TAR et n’écrit ni dans le projet, ni dans la base.
+    """
+    if not isinstance(sha256_preuve, str) or not _SHA256.fullmatch(sha256_preuve):
+        raise ValueError("Un SHA-256 exact de preuve est requis.")
+    racine = atelier_prive(prive)
+    rapports = sans_lien(racine / "rapports", racine=racine, strict=True)
+    chemin_preuve = sans_lien(Path(preuve).expanduser().absolute(), racine=rapports, strict=True)
+    if chemin_preuve.name != "preuve.json" or chemin_preuve.parent == rapports:
+        raise ValueError("preuve.json doit être dans un dossier de reprise sous rapports.")
+    candidat, signature_preuve = _lire_preuve_source(chemin_preuve, sha256_preuve)
+    if (
+        not isinstance(candidat, dict)
+        or type(candidat.get("schema")) is not int
+        or candidat["schema"] != 1
+        or candidat.get("statut") != "CANDIDAT"
+        or candidat.get("applique") is not False
+    ):
+        raise ValueError("Preuve de reprise CANDIDAT non appliquée requise.")
+    nom = _nom_source(candidat.get("membre"))
+    octets = candidat.get("octets_source")
+    octets_archive = candidat.get("archive_octets")
+    if (
+        type(octets) is not int or not 0 <= octets <= MAX_MEMBER
+        or type(octets_archive) is not int or not 0 < octets_archive <= _MAX_ARCHIVE_OCTETS
+    ):
+        raise ValueError("Tailles de la source et du TAR hors contrat.")
+    for champ in ("sha256_source", "archive_sha256", "manifeste_sha256"):
+        valeur = candidat.get(champ)
+        if not isinstance(valeur, str) or not _SHA256.fullmatch(valeur):
+            raise ValueError("Empreinte de preuve hors contrat : " + champ)
+    copie_relative = Path("source") / PurePosixPath(nom).name
+    if candidat.get("copie") != copie_relative.as_posix():
+        raise ValueError("La preuve ne désigne pas le nom exact de la copie.")
+    copie = sans_lien(chemin_preuve.parent / copie_relative, racine=rapports, strict=True)
+    signature_copie = _signature(copie.lstat())
+    sha = _sha_fichier(copie, MAX_MEMBER)
+    if sha != candidat["sha256_source"] or signature_copie[2] != octets:
+        raise ValueError("La copie ne correspond pas aux octets déclarés.")
+    original = _etat_original(racine, nom, sha)
+    preuve_relue = sans_lien(chemin_preuve, racine=rapports, strict=True)
+    copie_relue = sans_lien(copie, racine=rapports, strict=True)
+    if _signature(preuve_relue.lstat()) != signature_preuve or _signature(copie_relue.lstat()) != signature_copie:
+        raise ValueError("La preuve ou la copie a changé pendant la vérification.")
+    return {
+        "statut": "PASS", "applique": False, "membre": nom, "original": original,
+        "sha256_preuve": sha256_preuve, "sha256_copie": sha, "octets_source": octets,
+        "archive_sha256_declare": candidat["archive_sha256"], "archive_relue": False,
+        "manifeste_sha256_declare": candidat["manifeste_sha256"],
+        "limite": "Identité locale de la copie et état observé de l’original ; aucune application.",
+    }

@@ -28,10 +28,11 @@ import os
 import re
 import sys
 from pathlib import Path
+from zipfile import BadZipFile
 
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
-from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
 from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, remplacer_texte, sortie_privee
 
 # Critères de la revue P07 (26/10/2026), seuils théoriques jusqu'aux retours d'impression ; les réviser avec date.
@@ -46,6 +47,7 @@ NUM = re.compile(r"-?[\d.]+$")
 
 
 def sha(p):
+    """Retourne le SHA-256 hexadécimal minuscule des octets du fichier indiqué."""
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 
@@ -87,6 +89,7 @@ def mesurer_plaque(g):
 
 
 def faits_zone(zo, m):
+    """Extrait les mesures d’une zone : Z et étendue en mm, couche, temps en s et vitesse nominale en mm/s."""
     x0, y0, x1, y1 = zo["bbox_xy_mm"]
     marge = CRITERES["marge_support_mm"]
     couches = [k for k in m["zs"] if zo["z_min_mm"] - 1e-6 <= k <= zo["z_max_mm"] + 1e-6] or [zo["z_min_mm"]]
@@ -158,6 +161,7 @@ def juger(v):
 
 
 def juger_geometrie(zo, plaques, gcodes):
+    """Produit une suggestion depuis les zones et G-code fournis, ou None si insuffisants ; sans validation physique."""
     stem = Path(zo.get("fichier", "")).stem
     porteuses = [
         pl
@@ -190,16 +194,30 @@ def juger_geometrie(zo, plaques, gcodes):
 
 
 def revoir(tranche, envoi, revue_p, faits_p):
+    """Compare le SHA d’envoi au 3MF exact et prépare les décisions locales.
+
+    Les mesures sont nominales, en mm et s. Un alias de plaque est refusé
+    avant mesure ; aucun fichier ni avis humain n’est modifié. Le résultat
+    distingue les suggestions, décisions conservées et zones à revoir.
+    """
     env = json.loads(Path(envoi).read_text())["zones_locales"]
-    with Archive3MF(tranche) as zf:
-        noms = {int(m.group(1)): n for n in zf.noms() if (m := re.match(r"Metadata/plate_(\d+)\.gcode$", n))}
-    gcodes = {pl: lire_texte_gcode_3mf(tranche, n, erreurs="ignore") for pl, n in noms.items()}
+    with Archive3MF(tranche) as archive:
+        # Un SHA valide ne résout pas deux graphies du même numéro (#212).
+        if env.get("tranche_sha256") != archive.sha256():
+            print(
+                "ARRÊT : controle-envoi.json ne correspond pas à ce tranchage ; relancer controle_envoi.py",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        plaques_par_membre = {nom: plaque for plaque, nom in plaques_gcode_archive(archive)}
+        # La garde commune valide les numéros ; le rapport garde l’ordre ZIP
+        # utilisé historiquement dans les revues déjà conservées (#212).
+        gcodes = {
+            plaques_par_membre[nom]: lire_texte_gcode_3mf(tranche, nom, erreurs="ignore", archive=archive)
+            for nom in archive.noms() if nom in plaques_par_membre
+        }
+        archive.verifier_source(tranche)
     plaques = {pl: mesurer_plaque(g) for pl, g in gcodes.items()}
-    if env.get("tranche_sha256") != sha(tranche):
-        print(
-            "ARRÊT : controle-envoi.json ne correspond pas à ce tranchage ; relancer controle_envoi.py", file=sys.stderr
-        )
-        sys.exit(2)
     ancien = {}
     if Path(revue_p).is_file():
         r = json.loads(Path(revue_p).read_text())
@@ -326,10 +344,10 @@ def main(argv):
     try:
         if appliquer:
             revue_p, faits_p = _valider_sorties_application(tranche, envoi, revue_p, faits_p)
-    except (OSError, ValueError, TypeError) as erreur:
+        res = revoir(tranche, envoi, revue_p, faits_p)
+    except (OSError, ValueError, TypeError, KeyError, BadZipFile) as erreur:
         print(f"Revue refusée : {erreur}", file=sys.stderr)
         return 2
-    res = revoir(tranche, envoi, revue_p, faits_p)
     sortie = {
         "zones": len(res["env"]["zones"]),
         "justifiees_automatiquement": len(res["auto"]),

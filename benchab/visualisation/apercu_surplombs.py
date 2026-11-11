@@ -19,6 +19,10 @@ def _diagnostic(rapport):
     for groupe in rapport["groupes"]:
         mesure = groupe["visibilite_verticale_plateau"]["visées_échantillonnées"]
         omis += mesure["rayons_omis"]
+        pont = groupe.get("pont_possible", {})
+        precision = f"Îlot de {groupe['aire_mm2']:g} mm² ; barycentre de la face sélectionnée."
+        if pont.get("statut") == "HYPOTHÈSE":
+            precision += f" Hypothèse géométrique : axe {pont['axe']}, portée {pont['portee_mm']:g} mm."
         for vis in mesure["echantillons"]:
             nom = f"{groupe['id']} · face {vis['face_id']}"
             z = vis["point_xyz_mm"][2]
@@ -40,7 +44,7 @@ def _diagnostic(rapport):
                 "valeur": z,
                 "seuil": plan,
                 "condition": f"Altitude du départ et plan déclaré, en mm. {detail}",
-                "precision": f"Îlot de {groupe['aire_mm2']:g} mm² ; barycentre de la face sélectionnée.",
+                "precision": precision,
                 "limite": _LIMITE,
             })
     return {"piece": _PIECE, "anomalies": marqueurs}, omis
@@ -51,7 +55,8 @@ def publier(maillage, rapport, sortie, *, prive=None):
 
     Entrées : rapport et maillage en mm, issus du même STL déjà empreinté ; chemin sans unité.
     Sortie : chemins de la page et du rapport. Un marqueur n'est jamais un objet exporté.
-    Le contrôle numérique ponctuel ne valide ni appui ni pont ; aucun réglage n'est modifié.
+    Les visées et éventuelles hypothèses sont numériques ; aucun pont ou appui
+    réel n’est validé et aucun réglage n'est modifié.
     """
     destination = destination_neuve(sortie, prive=prive)
     diagnostic, omis = _diagnostic(rapport)

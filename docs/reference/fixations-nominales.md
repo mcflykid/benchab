@@ -71,3 +71,21 @@ La surface triangulaire est échantillonnée à 64 secteurs et au moins
 aucune entrée de filet, troncature ISO, tolérance de fabrication ou
 compensation n’est déduite. Le STL est rouvert pour contrôler son volume
 et son empreinte ; il ne constitue pas une validation de montage.
+
+### Profil nominal à méplats déclarés
+
+Ajouter ensemble `--meplat-crete-mm` et `--meplat-fond-mm` pour obtenir
+un profil trapézoïdal dans une coupe axiale. Les deux plateaux et chaque
+flanc doivent occuper au moins un intervalle axial nominal, soit un
+seizième du pas. Le rapport indique leur largeur et l’angle théorique
+entre flancs. Le jeu radial d’un outil intérieur déplace les deux rayons
+sans changer le pas ni l’angle. Sans ces options, le profil triangulaire
+garde son contrat et ses octets.
+
+Les références [ISO 68-1](https://www.iso.org/standard/85107.html)
+pour le profil, [ISO 724](https://www.iso.org/standard/85104.html) pour
+les dimensions de base et [ISO 965-1](https://www.iso.org/standard/87889.html)
+pour les tolérances couvrent des propriétés différentes. Ce profil à
+cotes déclarées ne reproduit ni un fond arrondi normatif ni une classe
+de tolérance ; aucun ajustement avec une vis ou un écrou réel n’est
+certifié (#27).

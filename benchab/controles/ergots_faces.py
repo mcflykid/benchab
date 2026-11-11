@@ -69,6 +69,7 @@ def faces_contact(a, b, contact=0.6, aire_min=100.0):
 
 
 def repere(o, n):
+    """Construit la projection XYZ mm vers le repère 2D mm d’une face définie par origine et normale."""
     u = np.cross(n, [0, 0, 1.0] if abs(n[2]) < 0.9 else [1.0, 0, 0])
     u /= np.linalg.norm(u)
     v = np.cross(n, u)
@@ -93,6 +94,7 @@ def trous(m, o, n, en2d, prof):
 
 
 def compter(a, b, o, n, tris, prof=1.0):
+    """Renvoie le nombre de groupes d’ergots et l’aire projetée de la zone de contact en mm², sans preuve physique."""
     en2d = repere(o, n)
     zone = unary_union([Polygon(en2d(t)).buffer(0.3) for t in tris]).buffer(-0.2)
     lg = [h for h in trous(a, o, n, en2d, prof) + trous(b, o, -n, en2d, prof) if h.area >= 4 and h.intersects(zone)]

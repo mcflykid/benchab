@@ -20,6 +20,7 @@ from benchab import reglages as schema_reglages
 from benchab.archives_3mf import decoder_xml
 from benchab.controles.contact_support import ContactSupport
 from benchab.controles.gcode_interpreter import Interpreter
+from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.organisation.synthese_fichiers import (
     MAX_JSON,
     _archive_liee,
@@ -172,6 +173,9 @@ def _archives(root, projet, fiche):
             debut_tranches = len(tranches)
             debut_supports = len(supports)
             with _archive_liee(path, ref.get("sha256")) as z:
+                # Des empreintes exactes ne rendent pas deux graphies d’une
+                # même plaque mesurables séparément (#213).
+                membres_gcode = [nom for _, nom in plaques_gcode_archive(z)]
                 if "Metadata/project_settings.config" in z.noms():
                     cfg = schema_reglages.decoder(_membre(z, "Metadata/project_settings.config", MAX_JSON))
                     if not isinstance(cfg, dict):
@@ -205,12 +209,10 @@ def _archives(root, projet, fiche):
                     durees = anycubic.resultats_xml(_membre(z, "Metadata/slice_info.config", MAX_JSON))
                 except (KeyError, ValueError, ParseError, zipfile.BadZipFile):
                     alertes.append("Durée et masse estimées du slicer indisponibles")
-                for name in sorted(z.noms()):
-                    m = re.fullmatch("Metadata/plate_(\\d+)\\.gcode", name)
-                    if not m:
-                        continue
+                for name in sorted(membres_gcode):
                     raw = _membre(z, name, MAX_GCODE)
-                    index = m.group(1)
+                    # Le manifeste historique lie la graphie exacte du membre.
+                    index = name.removeprefix("Metadata/plate_").removesuffix(".gcode")
                     digest = hashlib.sha256(raw).hexdigest()
                     attendu = fiche.get("gcode", {}).get(index, {}).get("sha256")
                     if not attendu or digest != attendu:

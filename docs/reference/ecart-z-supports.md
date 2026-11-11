@@ -110,3 +110,9 @@ contrôle reconnaît, sur deux archives de l’essai XY, une différence
 limitée à la date. Cela établit la variabilité dans les conditions
 observées, sans isoler sa cause ni la fréquence des résultats (#208).
 Les familles de support restent à qualifier dans #89.
+
+`--resume --sortie RAPPORT.json` affiche le statut, la plaque, l’écart
+minimum en mm et le chemin du rapport complet privé. Avec `--sortie`
+seule, le rapport complet reste aussi affiché. NON MESURABLE garde
+sa raison et le code 0 ; une erreur de lecture ou de destination
+donne le code 2. Aucune base ou mesure d’atelier n’est créée (#35).

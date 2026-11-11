@@ -149,6 +149,7 @@ def enveloppe(coque, internes, *, paroi=1.2, pas=None):
 
 
 def main(argv=None):
+    """Contrôle l’assemblage en mm ; codes 1 FAIL, 2 NON VÉRIFIÉ, 0 sinon, sans validation physique."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fichier", type=Path)
     parser.add_argument("--mode", choices=("assemblage", "contacts", "parois"), default="assemblage")

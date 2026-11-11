@@ -20,7 +20,7 @@ def _archive_peinte(
     path, *, dialect="paint_color", couleurs=("1", "2"), triangles=((0, 1, 2), (0, 2, 3)),
     x1="1", composant=False, relation_ambigue=False, objet_supplementaire=False,
     type_relation=None, cible_relation="/3D/3dmodel.model", mode_relation=None,
-    qname_relation=False, proprietes_objet=None, groupes_materiau=(), proprietes_facettes=None,
+    qname_relation=False, proprietes_objet=None, groupes_materiau=(), proprietes_facettes=None, transform=None,
 ):
     """Écrit un modèle OPC synthétique direct, avec deux facettes et un dialecte explicite."""
     from benchab.imports3d.lecture_3mf import NS, NS_REL, REL_MODELE
@@ -55,7 +55,9 @@ def _archive_peinte(
     if objet_supplementaire:
         ET.SubElement(ressources, NS + "object", id="2", type="model")
     construction = ET.SubElement(modele, NS + "build")
-    ET.SubElement(construction, NS + "item", objectid="1")
+    item = ET.SubElement(construction, NS + "item", objectid="1")
+    if transform is not None:
+        item.set("transform", transform)
     relations = ET.Element(NS_REL + "Relationships")
     attributs_relation = {"Id": "rModel", "Type": type_relation or REL_MODELE, "Target": cible_relation}
     if mode_relation is not None:
@@ -518,3 +520,38 @@ def test_core_herite_index_objet_avec_groupe_de_facette_explicite(tmp_path):
     )
     core = comparer(source, candidat)["peinture"]["proprietes_standard_3mf"]
     assert core["statut"] == "PASS" and core["differences"] == []
+
+
+def test_peinture_et_materiau_sur_deux_placements_translates_identiques(tmp_path):
+    """Les différences de déclaration restent visibles à placement direct égal."""
+    source, candidat = tmp_path / "source.3mf", tmp_path / "candidat.3mf"
+    translation = "1 0 0 0 1 0 0 0 1 10 -2.5 0"
+    base = dict(transform=translation, groupes_materiau=(("3", (("PLA", "#123456"),)),))
+    _archive_peinte(source, **base, proprietes_objet={"pid": "3", "pindex": "0"})
+    _archive_peinte(candidat, **base, couleurs=("1", None))
+    rapport = comparer(source, candidat)
+    assert rapport["peinture"]["extensions_asn_prusa"]["statut"] == "WARN"
+    assert rapport["peinture"]["proprietes_standard_3mf"]["statut"] == "WARN"
+    identique = comparer(source, source)
+    assert identique["peinture"]["extensions_asn_prusa"]["statut"] == "PASS"
+    assert identique["peinture"]["proprietes_standard_3mf"]["statut"] == "PASS"
+
+
+@pytest.mark.parametrize("matrice", [
+    "1 0 0 0 1 0 0 0 1 11 -2.5 0",
+    "1 1e-999 0 0 1 0 0 0 1 10 -2.5 0",
+    "1 0 0 0 1 0 0 0 1 NaN -2.5 0",
+    "1 0 0 0 1 0 0 0 1 1e+99999999999999 -2.5 0",
+    "1 0 0 0 1 0 0 0 1 10 -2.5",
+    "1 0 0 0 1 0 0 0 1 1000000000.000000000000000000000001 -2.5 0",
+    "1\u00a00 0 0 1 0 0 0 1 10 -2.5 0",
+])
+def test_placement_different_ou_matrice_non_qualifiee(tmp_path, matrice):
+    """Un déplacement ou une matrice hors contrat interdit la comparaison."""
+    source, candidat = tmp_path / "source.3mf", tmp_path / "candidat.3mf"
+    translation = "1 0 0 0 1 0 0 0 1 10 -2.5 0"
+    _archive_peinte(source, transform=translation)
+    _archive_peinte(candidat, transform=matrice)
+    assert comparer(source, candidat)["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+    if matrice != "1 0 0 0 1 0 0 0 1 11 -2.5 0":
+        assert comparer(candidat, candidat)["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"

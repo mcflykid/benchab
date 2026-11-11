@@ -282,13 +282,15 @@ def _visibilite_groupe(triangles, indices, plateau_z_mm, plan_valide, budget):
 
 def cartographier(
     maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None, plateau_z_mm=None, groupe_indices=None,
+    portee_pont_mm=None,
 ):
     """Mesure les groupes de faces orientées vers le bas sans prédire les supports physiques.
 
     Entrées : maillage triangulé, provenance, unité (« mm »), seuil en degrés et SHA-256 facultatif.
     Sortie : groupes connexes avec aires en mm², altitudes/hauteurs en mm et angles en degrés.
     La topologie est mesurée par égalité exacte des coordonnées ; aucun sommet n'est fusionné ni triangle réorienté.
-    Les visées opt-in exigent un SHA-256 du STL exact et sont bornées ; accès global et ponts restent NON VÉRIFIÉS.
+    Les visées et la portée de pont déclarée (mm) exigent le SHA-256 du STL exact.
+    HYPOTHÈSE ne qualifie ni franchissabilité, ni accès global, ni support physique.
     Le groupe nommé par ``groupe_indices`` inclut ses indices de triangles, sans unité.
     Aucun réglage n'est modifié.
     """
@@ -298,10 +300,14 @@ def cartographier(
         raise ValueError("L'angle maximal doit être fini, supérieur à 0 et inférieur ou égal à 90 degrés.")
     if not isinstance(maillage, trimesh.Trimesh) or len(maillage.faces) == 0:
         raise ValueError("Un maillage triangulé non vide est requis.")
-    if plateau_z_mm is not None and (
+    if (plateau_z_mm is not None or portee_pont_mm is not None) and (
         not isinstance(source_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", source_sha256) is None
     ):
-        raise ValueError("Les visées vers le plateau exigent le SHA-256 du STL exact.")
+        raise ValueError("Les visées ou l’hypothèse de pont exigent le SHA-256 du STL exact.")
+    if portee_pont_mm is not None:
+        if type(portee_pont_mm) not in (int, float) or not 0 < portee_pont_mm <= 1e6:
+            raise ValueError("Une portée de pont positive et finie est requise, en mm.")
+        from benchab.controles.hypothese_pont_surplomb import evaluer as evaluer_pont
     if len(maillage.faces) > MAX_FACES:
         raise ValueError(f"Le STL dépasse le budget de {MAX_FACES} triangles.")
     if not np.isfinite(maillage.vertices).all() or not np.isfinite(maillage.face_normals).all():
@@ -359,6 +365,8 @@ def cartographier(
             "acces_plateau": {"statut": "NON VÉRIFIÉ", "raison": "aucun test de visibilité ni de tranchage"},
             "pont_possible": {"statut": "NON VÉRIFIÉ", "raison": "franchissabilité non mesurée"},
         }
+        if portee_pont_mm is not None:
+            groupe["pont_possible"] = evaluer_pont(triangles, faces, voisins, topologie, portee_pont_mm)
         if groupe_indices == groupe["id"]:
             groupe["indices_faces"] = sorted(faces)
         if plateau_z_mm is not None:
@@ -394,6 +402,7 @@ def cartographier(
             "sens_normales": "calculées depuis l'ordre des sommets des triangles ; aucune réorientation appliquée",
         },
         "seuil_inclinaison_deg": angle_max_deg,
+        **({"portee_pont_max_mm_declaree": portee_pont_mm} if portee_pont_mm is not None else {}),
         "definition": "faces à normale descendante, inclinées au plus du seuil par rapport à l'horizontale",
         "interpretation": "mesures de maillage avant tranchage ; aucune nécessité physique de support n'est conclue",
         "groupes": groupes,
@@ -409,6 +418,10 @@ def _resume(rapport, sortie):
         "groupes_omis": len(groupes) - len(grands),
         "topologie": rapport["topologie_maillage"]["statut"],
         "appuis_et_ponts": "NON VÉRIFIÉS",
+        **({
+            "hypotheses_pont": sum(g["pont_possible"]["statut"] == "HYPOTHÈSE" for g in groupes),
+            "portee_pont_max_mm_declaree": rapport["portee_pont_max_mm_declaree"],
+        } if "portee_pont_max_mm_declaree" in rapport else {}),
         "points_importants": [
             {cle: groupe[cle] for cle in ("id", "aire_mm2", "altitude_mm", "nb_faces")}
             for groupe in grands
@@ -420,7 +433,7 @@ def _resume(rapport, sortie):
 def main(argv=None, *, prive=None):
     """Produit un JSON privé neuf depuis un STL ; unités mm déclarées par option, code 0 si mesuré.
 
-    Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés, plan --plateau-z-mm optionnel.
+    Entrées : chemin STL, --unite-mm, seuil en degrés, plan et portée de pont facultatifs en mm.
     Sortie : rapport JSON neuf et visionneuse optionnelle, visées en mm, résumé, détail ou JSON stdout ;
     erreurs d'entrée et de sortie code 2.
     L'entrée est empreintée avant et après lecture ; une sortie reste dans l'atelier privé choisi et est neuve.
@@ -436,6 +449,9 @@ def main(argv=None, *, prive=None):
     parser.add_argument(
         "--plateau-z-mm", type=float,
         help="Active des visées verticales ponctuelles vers un plan déclaré sous le maillage, en mm",
+    )
+    parser.add_argument(
+        "--portee-pont-mm", type=float, help="Étudie une hypothèse de pont sous la portée maximale déclarée",
     )
     sorties = parser.add_mutually_exclusive_group()
     sorties.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; sans option, écrit sur stdout")
@@ -465,6 +481,7 @@ def main(argv=None, *, prive=None):
             angle_max_deg=args.angle_max_deg,
             source_sha256=empreinte,
             plateau_z_mm=args.plateau_z_mm,
+            portee_pont_mm=args.portee_pont_mm,
         )
         if args.dossier_apercu:
             from benchab.visualisation.apercu_surplombs import publier

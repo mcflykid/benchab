@@ -157,3 +157,24 @@ de 313 à 316 s et de 2,37 à 2,48 g. Le rejeu à `1` donne les mêmes
 trajets de dépôt et estimations ; les 646 profils relus et l’archive
 d’origine gardent leurs empreintes. Ce constat ne qualifie pas les autres
 valeurs, ni la résistance, ni les dimensions de la pièce imprimée.
+
+### Hauteur maximale du remplissage combiné
+
+La [définition ASN épinglée](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L2996-L3008)
+décrit un maximum en mm ou en pourcentage de la buse. Sur le témoin S
+(couches nominales de 0,20 mm, buse déclarée de 0,40 mm), la combinaison
+reste activée dans les trois copies. La seule différence de réglage
+entre les deux cas est `infill_combination_max_layer_height`.
+
+| Valeur conservée | Niveaux Z de dépôt clairsemé | Hauteur déclarée dans le G-code | Segments et longueur | Estimation ASN |
+| --- | ---: | ---: | ---: | ---: |
+| `50%` | 12 | 0,20 mm | 5 500 ; 3 941,97 mm | 313 s ; 2,37 g |
+| `100%`, deux rejeux | 6 | 0,40 mm | 2 692 ; 1 944,59 mm | 306 s ; 2,32 g |
+
+Les niveaux Z sont lus sur les mouvements de dépôt ; la hauteur est une
+métadonnée du G-code. Les trajets extérieurs sont identiques et les deux
+rejeux à `100%` donnent les mêmes trajets clairsemés. La source et les 646
+profils relus sont inchangés. Les avertissements ASN sur la température de
+plateau et la dureté de buse restent présents dans les trois sorties.
+Le résultat est limité au binaire ASN 2.0.0.3 déjà identifié et à ce coupon.
+Il ne valide ni résistance, ni profil à adopter, ni impression (#80, #81).

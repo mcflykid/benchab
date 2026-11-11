@@ -27,8 +27,12 @@ La peinture par facette reste partielle. Pour un sous-cas direct et non ambigu,
 le lecteur suit un StartPart OPC unique vers un seul objet/maillage et un item
 de build direct. Il compare les coordonnées de sommets, leurs unités, l’ordre
 des indices de facettes et l’identité d’objet exactement avant de regarder les
-attributs. Composants, `p:path`, transformations, objets multiples, relations
-OPC ambiguës ou attributs d’extension inconnus restent `NON VÉRIFIÉ`.
+attributs. Une translation pure du build est admissible si sa déclaration
+est strictement identique des deux côtés. Les neuf coefficients linéaires
+doivent former exactement l’identité et les trois translations être bornées
+à 10⁹ unités du modèle. Un placement différent, une rotation, une échelle,
+un composant, `p:path`, des objets multiples, des relations OPC ambiguës ou
+des attributs d’extension inconnus restent `NON VÉRIFIÉS`.
 
 Dans ce sous-cas, les extensions ASN `paint_color` et Prusa
 `slic3rpe:mmu_segmentation` sont comparées comme attributs XML littéraux

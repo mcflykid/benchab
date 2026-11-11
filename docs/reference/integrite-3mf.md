@@ -203,3 +203,13 @@ conservent leurs budgets de parcours et ne chargent pas de réglages 3MF.
 Les rapports de synthèse et les membres des clones des trois témoins
 S/M/L ont été relus avant et après migration. Le contenu, l’ordre, les
 commentaires ZIP et les empreintes des sources sont identiques.
+
+La revue locale refuse également les graphies concurrentes d’un numéro de
+plaque, même quand l’empreinte SHA-256 est correcte. L’empreinte et les membres
+G-code viennent du même fichier ouvert ; aucune suggestion ni écriture n’est
+produite sur archive ambiguë (#212).
+
+La synthèse écarte aussi une archive lorsque deux membres désignent le même
+numéro de plaque, même si les deux SHA figurent dans la fiche. Elle garde
+les autres sources valides et laisse un diagnostic. Une plaque unique
+`plate_01.gcode` garde son nom exact pour la comparaison à la fiche (#213).

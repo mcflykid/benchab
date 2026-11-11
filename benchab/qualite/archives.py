@@ -24,6 +24,11 @@ MAX_DEPTH = 3
 
 
 def sha_stream(f, limit=None):
+    """Renvoie le SHA-256 et le nombre d’octets lus depuis la position courante.
+
+    Le flux binaire n’est pas fermé ni rembobiné. Une limite facultative,
+    en octets, est contrôlée après chaque bloc lu ; dépassement → ValueError.
+    """
     h = hashlib.sha256()
     n = 0
     while True:
@@ -38,6 +43,11 @@ def sha_stream(f, limit=None):
 
 
 def classify(rel, typ):
+    """Classe un chemin d’inventaire selon son suffixe, sa zone et son type.
+
+    Renvoie une catégorie et une description textuelle. Le contenu n’est
+    pas ouvert ; le classement ne vaut ni analyse ni validation physique.
+    """
     parts = rel.replace("!/", "/").split("/")
     suffix = Path(rel).suffix.lower()
     if typ == "directory":
@@ -66,6 +76,11 @@ def classify(rel, typ):
 
 
 def record(path, typ, size):
+    """Crée une entrée d’inventaire pour un chemin, un type et une taille en octets.
+
+    Renvoie un dictionnaire neuf sans empreinte ni décision. L’objet source
+    n’est pas lu ou changé.
+    """
     category, role = classify(path, typ)
     return dict(
         path=path,
@@ -89,6 +104,11 @@ def record(path, typ, size):
 
 
 def safe_member(name):
+    """Teste si le nom interne peut être représenté comme chemin POSIX relatif.
+
+    Retourne False pour un chemin absolu, une remontée, un segment vide
+    ou des caractères interdits. True ne valide aucun contenu et n’extrait rien.
+    """
     parts = name.rstrip("/").split("/")
     return (
         bool(name)
@@ -101,6 +121,11 @@ def safe_member(name):
 
 
 def archive_kind(name, signature=b""):
+    """Détermine le lecteur ZIP ou TAR à partir du nom et d’octets de préfixe.
+
+    Renvoie zip, tar ou None. Un suffixe reconnu suffit à choisir une
+    tentative de lecture ; il ne prouve pas l’intégrité du conteneur.
+    """
     n = name.lower()
     if signature[:4] in (b"PK\x03\x04", b"PK\x05\x06") or n.endswith((".zip", ".3mf", ".whl", ".jar")):
         return "zip"
@@ -110,6 +135,13 @@ def archive_kind(name, signature=b""):
 
 
 def inspect_archive(source, name, entries, depth=0, kind=None):
+    """Ajoute au manifeste les membres d’un ZIP ou TAR déjà désigné par l’appelant.
+
+    Reçoit un chemin contrôlé ou un flux repositionnable, son nom logique,
+    une liste modifiée sur place et une profondeur sans unité. Les tailles
+    et budgets sont en octets ; les limites et erreurs restent dans la liste.
+    Renvoie None. Aucun membre n’est extrait, exécuté ni suivi comme lien.
+    """
     if kind is None:
         if hasattr(source, "read"):
             pos = source.tell()
@@ -395,6 +427,12 @@ def inventory(root, archives=True):
 
 
 def main(argv=None, *, prive=None):
+    """Inventorie la source et publie un JSON privé neuf hors de celle-ci.
+
+    Affiche les compteurs, les tailles en octets et le chemin du rapport.
+    Codes : 0 PASS, 2 WARN, 1 FAIL. L’inventaire ne déplace aucun fichier
+    et ne valide pas le contenu ni l’usage physique des archives.
+    """
     p = argparse.ArgumentParser()
     p.add_argument("source")
     p.add_argument("output")

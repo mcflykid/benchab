@@ -61,6 +61,7 @@ class _Poche:
     largeur_y: float
     profondeur: float
     source_cotes: str
+    rayon_angle: float
 
 
 def _rayon_entree(trou):
@@ -150,6 +151,15 @@ def _normaliser_fraisage(fraisage, numero, rayon_passage, epaisseur):
     return _Fraisage(rayon, float(angle), profondeur, source)
 
 
+
+def _ecart_poche(x, y, demi_x, demi_y, rayon):
+    """Renvoie l’écart en mm au rectangle arrondi centré, négatif à l’intérieur."""
+    # Le contour est celui du noyau rectangulaire élargi par un disque ;
+    # mesurer la distance au noyau évite une fausse collision au coin (#32).
+    qx = abs(x) - (demi_x - rayon)
+    qy = abs(y) - (demi_y - rayon)
+    return math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - rayon
+
 def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
     """Valide le fond, la marge XY et les intersections au dessus du bloc."""
     if not isinstance(valeurs, list) or len(valeurs) > 4:
@@ -159,7 +169,7 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
     poches = []
     for numero, data in enumerate(valeurs, 1):
         etiquette = f"Poche {numero}"
-        if not isinstance(data, dict) or set(data) != cles:
+        if not isinstance(data, dict) or not cles <= set(data) <= cles | {"rayon_angle_mm"}:
             raise ValueError(f"{etiquette} : centre XY, deux largeurs, profondeur et source des cotes requis.")
         x = _cote(data["x_mm"], f"{etiquette} x", longueur=False)
         y = _cote(data["y_mm"], f"{etiquette} y", longueur=False)
@@ -167,31 +177,37 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
         ly = _cote(data["largeur_y_mm"], f"{etiquette} largeur y", longueur=True)
         profondeur = _cote(data["profondeur_mm"], f"{etiquette} profondeur", longueur=True)
         source = _source_cotes(data["source_cotes"], etiquette)
+        rayon = 0.0
+        if "rayon_angle_mm" in data:
+            rayon = _cote(data["rayon_angle_mm"], f"{etiquette} rayon d’angle", longueur=True)
+            if min(lx, ly) / 2 - rayon <= _MARGE_MM:
+                raise ValueError(f"{etiquette} : rayon d’angle strictement inférieur à chaque demi-largeur.")
         if rayon_base is None:
             marge = min((dx - lx) / 2 - abs(x), (dy - ly) / 2 - abs(y))
         else:
-            # Le coin le plus éloigné doit rester dans le disque réel.
-            marge = rayon_base - math.hypot(abs(x) + lx / 2, abs(y) + ly / 2)
+            # Le point le plus loin du centre de base appartient au coin
+            # du noyau, puis au rayon de l’arrondi dans la même direction.
+            marge = rayon_base - (math.hypot(abs(x) + lx / 2 - rayon, abs(y) + ly / 2 - rayon) + rayon)
         if marge <= _MARGE_MM:
             raise ValueError(f"{etiquette} : marge insuffisante au bord de la base.")
         if dz - profondeur <= _MARGE_MM:
             raise ValueError(f"{etiquette} : profondeur inférieure à l’épaisseur du bloc requise.")
         for trou in percages:
-            # Le point le plus proche sur le rectangle distingue un coin
-            # dégagé d'une vraie intersection avec le cercle du passage.
-            hx = max(0.0, abs(x - trou.x) - lx / 2)
-            hy = max(0.0, abs(y - trou.y) - ly / 2)
-            if math.hypot(hx, hy) - _rayon_entree(trou) <= _MARGE_MM:
+            if _ecart_poche(x - trou.x, y - trou.y, lx / 2, ly / 2, rayon) - _rayon_entree(trou) <= _MARGE_MM:
                 raise ValueError(
                     f"{etiquette} : chevauchement ou tangence avec un perçage, son lamage ou son fraisage."
                 )
         for voisine in poches:
-            if (
-                abs(x - voisine.x) - (lx + voisine.largeur_x) / 2 <= _MARGE_MM
-                and abs(y - voisine.y) - (ly + voisine.largeur_y) / 2 <= _MARGE_MM
-            ):
+            demi_x = (lx + voisine.largeur_x) / 2
+            demi_y = (ly + voisine.largeur_y) / 2
+            rayon_total = rayon + voisine.rayon_angle
+            if rayon_total:
+                touche = _ecart_poche(x - voisine.x, y - voisine.y, demi_x, demi_y, rayon_total) <= _MARGE_MM
+            else:
+                touche = abs(x - voisine.x) - demi_x <= _MARGE_MM and abs(y - voisine.y) - demi_y <= _MARGE_MM
+            if touche:
                 raise ValueError(f"{etiquette} : chevauchement ou tangence entre deux poches.")
-        poches.append(_Poche(x, y, lx, ly, profondeur, source))
+        poches.append(_Poche(x, y, lx, ly, profondeur, source, rayon))
     return poches
 
 
@@ -267,6 +283,8 @@ def _script(bloc, trous, poches, rayon_base=None):
         "from build123d import Align, Box, Cone, Cylinder, Pos"
         if any(trou.fraisage for trou in trous) else "from build123d import Align, Box, Cylinder, Pos"
     )
+    if any(poche.rayon_angle for poche in poches):
+        imports += ", RectangleRounded, extrude"
     lignes = [
         '"""Bloc CAO en mm issu d’une fiche BENCHAB ; aucune validation physique."""',
         "",
@@ -310,12 +328,20 @@ def _script(bloc, trous, poches, rayon_base=None):
     for poche in poches:
         # L'outil dépasse le dessus comme le cylindre du lamage ; le fond
         # reste à l'altitude explicite plutôt qu'au milieu du bloc.
-        lignes.extend([
-            f"    solide -= Pos({poche.x!r}, {poche.y!r}, {bloc[2] - poche.profondeur!r}) * Box(",
-            f"        {poche.largeur_x!r}, {poche.largeur_y!r}, {poche.profondeur + 1!r},",
-            "        align=(Align.CENTER, Align.CENTER, Align.MIN)",
-            "    )",
-        ])
+        if poche.rayon_angle:
+            lignes.extend([
+                f"    solide -= Pos({poche.x!r}, {poche.y!r}, {bloc[2] - poche.profondeur!r}) * extrude(",
+                f"        RectangleRounded({poche.largeur_x!r}, {poche.largeur_y!r}, {poche.rayon_angle!r}),",
+                f"        amount={poche.profondeur + 1!r},",
+                "    )",
+            ])
+        else:
+            lignes.extend([
+                f"    solide -= Pos({poche.x!r}, {poche.y!r}, {bloc[2] - poche.profondeur!r}) * Box(",
+                f"        {poche.largeur_x!r}, {poche.largeur_y!r}, {poche.profondeur + 1!r},",
+                "        align=(Align.CENTER, Align.CENTER, Align.MIN)",
+                "    )",
+            ])
     return "\n".join([*lignes, "    return solide", ""])
 
 
@@ -334,7 +360,11 @@ def _generer(source, sortie, *, prive):
         math.pi * f.profondeur * ((f.rayon - trou.rayon) * (f.rayon + 2 * trou.rayon) / 3)
         for trou in trous if (f := trou.fraisage)
     )
-    volume_poches = math.fsum(poche.largeur_x * poche.largeur_y * poche.profondeur for poche in poches)
+    # Quatre carrés de côté r laissent quatre quarts de disque de rayon r.
+    volume_poches = math.fsum(
+        (poche.largeur_x * poche.largeur_y - (4 - math.pi) * poche.rayon_angle**2) * poche.profondeur
+        for poche in poches
+    )
     attendu = {
         "dimensions_mm": bloc,
         "solides": 1,
@@ -366,6 +396,7 @@ def _generer(source, sortie, *, prive):
         **({"poches_rectangulaires": [
             {"x_mm": p.x, "y_mm": p.y, "largeur_x_mm": p.largeur_x, "largeur_y_mm": p.largeur_y,
              "profondeur_mm": p.profondeur, "source_cotes": p.source_cotes}
+            | ({"rayon_angle_mm": p.rayon_angle} if p.rayon_angle else {})
             for p in poches
         ]} if poches else {}),
         "attendu": attendu, "exigences_non_verifiees": exclus,

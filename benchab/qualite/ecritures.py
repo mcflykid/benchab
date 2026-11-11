@@ -81,6 +81,11 @@ def verifier_references_durables(valeur, prive, *, champ=None):
             verifier_references_durables(item, prive, champ=champ)
     elif isinstance(valeur, str):
         champs = {"fichier", "chemin", "rapport", "manifeste", "envoi_markdown"}
+        # Les textes relatifs ordinaires ne désignent pas une destination durable
+        # (docs/reference/donnees.md). Les champs de chemin et toutes les valeurs
+        # absolues gardent la vérification complète.
+        if not os.path.isabs(valeur) and champ not in champs:
+            return
         chemin = Path(valeur)
         temporaire = valeur.startswith(("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"))
         temporaire |= chemin.is_absolute() and chemin.is_relative_to(tempfile.gettempdir())

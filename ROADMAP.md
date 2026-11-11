@@ -307,7 +307,79 @@ Le contrôle des capacités lie l’empreinte aux membres qu’il analyse
 depuis le même fichier régulier (#210). Les maxima nominaux des arcs G17
 restent séparés de la cinématique, des seuils et des verdicts (#123).
 
-## Prochaine version : 1.22.0
+## Version 1.22.0 — fiabilité des preuves et préparation
+
+### Revue des plaques et CAO cotée
+
+La revue locale et la synthèse refusent deux graphies du même numéro de
+plaque avant de produire des mesures (#212, #213). Les contrôles valides
+et les décisions humaines conservées gardent leur portée.
+
+Le filet nominal peut déclarer deux méplats, sans revendiquer une conformité
+ISO ou un ajustement réel (#27). Une fiche CAO peut ajouter un rayon d’angle
+aux poches ; les STEP de recette concordent avec les volumes déclarés (#32).
+Le rapport de capacités est consultable avec un profil maître explicite
+et un résumé facultatif (#35). Les contrôles passent Ruff D10x pour la
+présence des annotations publiques ; les autres domaines restent à traiter (#127).
+
+### vérification des copies et hypothèses de pont
+
+Une copie de reprise est relue avec sa preuve et son SHA déclaré, puis
+comparée séparément à l’original s’il est accessible (#119). La relecture
+n’applique aucun changement au projet. Une carte de surplombs peut proposer
+un axe et une portée pour un plafond rectangulaire horizontal borné par
+deux côtés continus. Un témoin synthétique recoupe l’hypothèse dans deux
+G-code, sans établir la tenue physique (#93).
+
+#### Métadonnée Application : preuve encore incomplète
+
+Une sonde de densité change uniquement le texte `Application` du modèle 3MF.
+ASN 2.0.0.3 termine et le plan des matrices reste identique. La sortie est
+refusée par le contrôle d’intégrité : le champ inconnu
+`projet/different_settings_to_system` diffère. Cette sonde n’établit donc
+aucun effet de la métadonnée sur la peau ou le remplissage (#82).
+
+### bilan de purge et lecture des placements 3MF
+
+Le bilan de purge tire son empreinte du 3MF déjà ouvert (#216). Son résumé
+conserve le code et indique le rapport privé complet : sur les trois témoins
+S/M/L, le résultat est inchangé et la purge physique reste NON VÉRIFIÉE (#35).
+La comparaison de peinture et de matériaux accepte un maillage direct dont
+la translation Core est exactement la même des deux côtés ; un déplacement,
+une matrice générale ou un assemblage n’est pas qualifié (#43). Les contrats
+de sortie, de statut et de cache du lanceur qualité sont documentés (#127).
+
+### transactions et précision des arcs
+
+La validation évite de construire des chemins pour les textes relatifs sans
+rôle de fichier. Sur deux séries alternées, les médianes passent de 156–158 ms
+à environ 104 ms par transaction sur des copies du même atelier, avec des
+exports identiques. La validation continue à parcourir toute la base (#19).
+
+Une sonde exacte distingue les cercles géométriquement compatibles avec une
+hypothèse d’arrondi des seuls intervalles radiaux. Sur 700 arcs natifs, le
+modèle trouve une possibilité conditionnelle ; le lecteur strict refuse
+toujours les mêmes 697. Le mouvement du firmware reste non vérifié et U25
+ne consomme pas ces résultats (#134).
+
+### observation de tour et remplissage combiné
+
+Le bilan de purge peut relever séparément les déplacements déposés qui
+portent le rôle Prime tower, par outil et diamètre déclaré. Il n’attribue
+pas ce volume à une paire et ne mesure pas une purge physique (#72).
+Un témoin natif isole la hauteur maximale de remplissage combiné : deux
+rejeux concordent, et les trajets extérieurs restent identiques (#80, #81).
+
+### rapports lisibles et inventaire documenté
+
+Le contrôle des écarts Z des supports conserve un JSON privé complet et
+peut afficher le statut, le minimum et le chemin du détail. Deux coupons
+tranchés gardent leurs mesures nominales à l’identique (#35). Un guide
+recense les options de lecture courtes des parcours couverts. Les fonctions
+publiques de l’inventaire d’archives décrivent leurs budgets, unités et
+limites sans changement de comportement (#127).
+
+## Prochaine version : 1.23.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -315,7 +387,7 @@ Traiter les prérequis avant les nouveaux réglages :
 
 - **Annotations** : #127 suit le rattrapage des portées anciennes sous le
   contrôle Ruff D10x introduit par #37. Poursuivre les domaines historiques
-  restants, dont contrôles, conception et visualisation.
+  restants, dont conception et visualisation.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
   La mesure dans une boîte, l’enveloppe du dépôt et la revue des ponts et

@@ -131,3 +131,38 @@ def test_route_cli_transmet_l_atelier_prive_explicite(tmp_path, monkeypatch, cap
     assert recu == [explicite]
     assert not autre.exists()
     capsys.readouterr()
+
+
+def test_meplats_cotes_mesurables_et_jeu_radial_separe():
+    """Le profil conserve les plateaux et les flancs dans une coupe axiale connue."""
+    from benchab.conception.filetage_nominal import generer
+
+    cotes = _cotes(pas_mm=2, longueur_mm=8, profondeur_radiale_mm=0.75,
+                  meplat_crete_mm=0.5, meplat_fond_mm=0.5)
+    piece, rapport = generer(**cotes)
+    outil, r_outil = generer(**cotes, role="outil-interieur", jeu_radial_mm=0.2)
+    assert piece.is_volume and outil.is_volume
+    assert rapport["profil"] == "trapézoïdal nominal à méplats déclarés"
+    assert rapport["angle_flancs_deg"] == pytest.approx(67.380135)
+    assert r_outil["ajustement_reel"] == "NON VÉRIFIÉ"
+    axe = piece.vertices[:-2]
+    ligne = axe[(np.isclose(axe[:, 1], 0)) & (axe[:, 0] > 0)]
+    rayons = {round(z, 5): x for x, _y, z in ligne}
+    assert [rayons[z] for z in (0.0, 0.125, 0.25, 0.5, 0.75, 0.875, 1.0)] == pytest.approx(
+        [4.0, 4.0, 4.0, 3.625, 3.25, 3.25, 3.25],
+    )
+    ecart = np.linalg.norm(outil.vertices[:-2, :2], axis=1) - np.linalg.norm(piece.vertices[:-2, :2], axis=1)
+    assert ecart == pytest.approx(np.full(len(ecart), 0.2))
+
+
+@pytest.mark.parametrize("cotes", [
+    {"meplat_crete_mm": 0.3},
+    {"meplat_crete_mm": 0.01, "meplat_fond_mm": 0.3},
+    {"meplat_crete_mm": 0.8, "meplat_fond_mm": 0.8},
+])
+def test_meplats_incomplets_ou_flanc_insuffisant_refuses(cotes):
+    """Aucun profil incomplet ou sous la résolution ne reçoit PASS."""
+    from benchab.conception.filetage_nominal import generer
+
+    with pytest.raises(ValueError, match="méplat|flanc"):
+        generer(**_cotes(**cotes))

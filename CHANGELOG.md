@@ -2,6 +2,71 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.22.0 — 2026-11-11
+
+### Plaques et CAO
+
+- Revue locale : refuse les numéros de plaque homonymes et lie le SHA
+  aux membres réellement lus. L’ordre des archives valides est conservé (#212).
+- Synthèse : écarte les mesures et estimations d’une archive de plaques
+  ambiguë, même si chaque graphie a une empreinte déclarée (#213).
+- Fixations : ajoute deux méplats axiaux déclarés aux profils nominaux
+  sans modifier le filet triangulaire historique (suite de #27).
+- CAO : construit des poches à angles arrondis et vérifie les collisions
+  sur leur contour, avec des STEP numériques relus (suite de #32).
+- Capacités : ajoute un accès direct et un résumé court, avec profil
+  maître explicite et rapport complet conservé (suite de #35).
+- Annotations : complète les 24 dernières docstrings publiques manquantes
+  selon Ruff D10x dans les contrôles, sans modifier leur logique (#127).
+
+### Reprise, ponts et densité
+
+- Reprise : relit une preuve et sa copie privée sans toucher au projet.
+  La présence et l’identité de l’original font l’objet d’un verdict séparé
+  (suite de #119).
+- Surplombs : propose une portée et un axe pour des plafonds rectangulaires
+  horizontaux lorsque deux bords opposés continus sont établis. La tenue
+  physique reste NON VÉRIFIÉE (suite de #93).
+- Densité : consigne une sonde Application dont la sortie ne passe pas
+  le contrôle des réglages. L’effet sur le G-code reste non qualifié (#82).
+
+### Purge, 3MF et qualité
+
+- Purge : calcule le SHA depuis le 3MF déjà ouvert, avec la vérification
+  finale de la source conservée (#216).
+- Rapports : le bilan de purge propose un résumé avec rapport détaillé
+  privé, sans changer la somme conditionnelle ou le code (suite de #35).
+- 3MF : compare la peinture et les matériaux déclarés sur un objet direct
+  à translation identique. Aucune conversion de format (suite de #43).
+- Qualité : documente le cache, les états et les codes du lanceur local
+  sans changer sa logique (suite de #127).
+
+### Performance et arcs
+
+- Transactions : évite des constructions répétées lors de la validation
+  des textes relatifs ordinaires. Les références durables, le commit et les
+  exports gardent leurs vérifications (suite de #19).
+- Arcs : distingue une compatibilité géométrique sous hypothèse d’arrondi
+  d’un simple chevauchement de rayons. Aucun changement du lecteur strict,
+  de la validation du firmware ou d’U25 (suite de #134).
+
+### Observation de tour et remplissage
+
+- Purge : observe sur demande le dépôt nominal de rôle Prime tower par
+  outil et diamètre déclaré. Le bilan conditionnel reste séparé et la
+  purge physique non vérifiée (suite de #72).
+- Remplissage : mesure l’effet de la hauteur de combinaison sur les
+  niveaux de dépôt clairsemé, avec répétition et paroi externe inchangée
+  (suites de #80 et #81).
+
+### Rapports et inventaire
+
+- Rapports : le contrôle des écarts Z des supports propose un résumé et
+  conserve un rapport privé complet. Un guide explique comment retrouver
+  le détail des contrôles déjà couverts (suite de #35).
+- Inventaire : documente les budgets en octets et les limites de lecture
+  des archives sans modifier le comportement (suite de #127).
+
 ## 1.21.0 — 2026-11-11
 
 - Rejeux : compare deux ou trois reçus privés et les G-code qu’ils
