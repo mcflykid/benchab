@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.23.0 — 2026-11-11
+
+- Inventaire : calcule le SHA de l’envoi depuis son lecteur 3MF ouvert,
+  une seule fois, avec contrôle final de la source et rapport inchangé (#219).
+- 3MF : compare les déclarations d’un composant Core unique, local et
+  préalablement défini, à placements identiques (suite de #43).
+- G-code : clôt la vérification des usages G17 couverts, avec tests des
+  cercles complets refusés dans les contrôles linéaires. Les arcs arrondis
+  et le firmware restent hors du verdict (#123, #134).
+
 ## 1.22.0 — 2026-11-11
 
 ### Plaques et CAO
