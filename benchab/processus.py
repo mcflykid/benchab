@@ -18,6 +18,12 @@ from pathlib import Path
 
 @dataclass
 class Resultat:
+    """Résultat local d’une commande, durée en s, sorties et diagnostic éventuel.
+
+    Distingue le code du processus, le code de contrôle et le verdict dérivé
+    PASS, FAIL ou NON_VERIFIE. Ne relance pas la commande.
+    """
+
     args: object
     returncode: int | None
     code_controle: int
