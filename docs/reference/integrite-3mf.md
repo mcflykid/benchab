@@ -157,3 +157,11 @@ Le différentiel de réglages et d’affectation ne compare pas la géométrie d
 La normalisation prépare son ZIP dans un fichier temporaire unique sur le
 même volume. La relecture et le différentiel précèdent le remplacement
 atomique. Une erreur d’écriture conserve l’original et toute sortie précédente.
+
+Après tranchage, les noms des plaques sont restaurés dans un 3MF neuf.
+La sortie native est conservée et le lanceur ne publie que la copie après
+réouverture, comparaison des différences permises et vérification des
+membres. Le G-code et les membres non ciblés gardent leurs octets. Une
+source remplacée pendant le contrôle ou une sortie déjà occupée est
+refusée. L’appel historique sur place reste réservé à son appelant
+synchronisé ; la destination neuve est le chemin du lanceur (#182).

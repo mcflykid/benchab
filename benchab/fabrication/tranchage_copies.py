@@ -276,62 +276,123 @@ def normaliser(source, destination, usage="impression", identifiants=None, *, co
     }
 
 
-def restaurer_noms(chemin, noms):
-    """Restaure les noms sans unité et relit tous les membres ; retourne PASS ou lève FAIL, sans changer le G-code."""
-    chemin = Path(chemin)
-    avant = integrite_3mf.instantane(chemin)
-    permis = []
-    for i, nom_origine in enumerate(noms):
-        cle = f"plaque/{i}/plater_name"
-        if cle not in avant:
-            raise ValueError("Nom de plaque absent dans la sortie.")
-        if avant[cle] != nom_origine:
-            permis.append(integrite_3mf.autorisation(cle, avant[cle], nom_origine))
-    fd, nom = tempfile.mkstemp(prefix=".noms-", suffix=".3mf", dir=chemin.parent)
-    temporaire = Path(nom)
+def _identite_source(chemin):
+    """Empreinte de métadonnées pour refuser une substitution avant publication."""
+    info = chemin.lstat()
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _verifier_noms_restaures(chemin, empreintes, noms):
+    """Relit les CRC et l’empreinte de chaque membre avant publication."""
+    membre_modele = "Metadata/model_settings.config"
+    with Archive3MF(chemin, taille_max_xml=_BUDGET_XML_OCTETS) as archive:
+        if archive.noms() != tuple(empreintes):
+            raise ValueError("Réouverture du 3MF restauré invalide.")
+        modele = None
+        for membre, attendu in empreintes.items():
+            if membre == membre_modele:
+                brut = archive.lire(membre, limite_octets=_BUDGET_XML_OCTETS)
+                obtenu = hashlib.sha256(brut).hexdigest()
+                modele = decoder_xml(brut, limite_octets=_BUDGET_XML_OCTETS)
+            else:
+                with archive.ouvrir_flux(membre) as flux:
+                    obtenu = hashlib.file_digest(flux, "sha256").hexdigest()
+            if obtenu != attendu:
+                raise ValueError(f"Membre modifié lors de la restauration : {membre}")
+        if modele is None:
+            raise ValueError("Modèle des plaques absent après réouverture.")
+        obtenus = []
+        for plaque in modele.findall("plate"):
+            champs = [m for m in plaque.findall("metadata") if m.get("key") == "plater_name"]
+            if len(champs) != 1:
+                raise ValueError("Nom de plaque absent ou dupliqué après réouverture.")
+            obtenus.append(champs[0].get("value"))
+        if obtenus != noms:
+            raise ValueError("Noms de plaques différents après réouverture.")
+        archive.verifier_source(chemin)
+    return obtenus
+
+
+def restaurer_noms(chemin, noms, *, destination=None, empreinte_source=None):
+    """Restaure les noms (sans unité) et contrôle la copie avant publication.
+
+    Une destination neuve préserve le 3MF natif. Sans destination, l’appelant
+    historique doit tenir son verrou ; le remplacement atomique refuse toute
+    mutation détectée. L’empreinte source optionnelle lie la copie à son audit.
+    Retourne la réouverture PASS ou lève ValueError/OSError ; aucun G-code ni
+    réglage d’impression n’est modifié (docs/reference/integrite-3mf.md).
+    """
+    from benchab.chemins import sans_lien
+    from benchab.qualite.ecritures import destination_neuve, renommer_exclusif
+
+    chemin = sans_lien(chemin, strict=True)
+    cible = destination_neuve(destination) if destination is not None else chemin
+    if not isinstance(noms, (tuple, list)) or not all(isinstance(nom, str) for nom in noms):
+        raise ValueError("Liste des noms de plaque requise.")
+    noms = list(noms)
+    identite = _identite_source(chemin)
+    membre_modele = "Metadata/model_settings.config"
+    temporaire = None
     try:
-        os.close(fd)
-        with ZipFile(chemin) as entree, ZipFile(temporaire, "w") as sortie:
-            modele = ET.fromstring(
-                entree.read("Metadata/model_settings.config"),
-                parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True, insert_pis=True)),
+        with Archive3MF(chemin, taille_max_xml=_BUDGET_XML_OCTETS) as entree:
+            entree.verifier_source(chemin)
+            if _identite_source(chemin) != identite:
+                raise ValueError("Le 3MF source a changé avant le contrôle.")
+            if empreinte_source is not None and entree.sha256() != empreinte_source:
+                raise ValueError("Le 3MF source diffère de son empreinte contrôlée.")
+            brut = entree.lire(membre_modele, limite_octets=_BUDGET_XML_OCTETS)
+            # Le plan prend les valeurs typées du même XML, sans réécrire ses commentaires.
+            avant = integrite_3mf.instantane_config({}, brut)
+            modele = decoder_xml(
+                brut, limite_octets=_BUDGET_XML_OCTETS, commentaires=True, instructions_traitement=True,
             )
             plaques = modele.findall("plate")
             if len(plaques) != len(noms):
                 raise ValueError("Nombre de plaques modifié par le slicer : restauration refusée.")
-            for plaque, nom_origine in zip(plaques, noms):
+            permis = []
+            for i, (plaque, nom_origine) in enumerate(zip(plaques, noms, strict=True)):
                 champs = [m for m in plaque.findall("metadata") if m.get("key") == "plater_name"]
-                if len(champs) != 1:
+                cle = f"plaque/{i}/plater_name"
+                if len(champs) != 1 or cle not in avant:
                     raise ValueError("Nom de plaque absent ou dupliqué dans la sortie.")
+                if avant[cle] != nom_origine:
+                    permis.append(integrite_3mf.autorisation(cle, avant[cle], nom_origine))
                 champs[0].set("value", nom_origine)
-            sortie.comment = entree.comment
+
+            fd, nom = tempfile.mkstemp(prefix=".noms-", suffix=".3mf", dir=cible.parent)
+            temporaire = Path(nom)
+            os.close(fd)
             empreintes = {}
-            for membre in entree.infolist():
-                calcul = hashlib.sha256()
-                if membre.filename == "Metadata/model_settings.config":
-                    contenu = ET.tostring(modele, encoding="utf-8", xml_declaration=True)
-                    calcul.update(contenu)
-                    sortie.writestr(membre, contenu)
-                else:
-                    with entree.open(membre) as lecture, sortie.open(membre, "w") as ecriture:
-                        while bloc := lecture.read(1024 * 1024):
-                            calcul.update(bloc)
-                            ecriture.write(bloc)
-                empreintes[membre.filename] = calcul.hexdigest()
-        with ZipFile(temporaire) as relu:
-            if relu.testzip() is not None or len(relu.namelist()) != len(empreintes):
-                raise ValueError("Réouverture du 3MF restauré invalide.")
-            for membre, attendu in empreintes.items():
-                with relu.open(membre) as flux:
-                    obtenu = hashlib.file_digest(flux, "sha256").hexdigest()
-                if obtenu != attendu:
-                    raise ValueError(f"Membre modifié lors de la restauration : {membre}")
-            modele = ET.fromstring(relu.read("Metadata/model_settings.config"))
-            obtenus = [p.find("metadata[@key='plater_name']").get("value") for p in modele.findall("plate")]
-            if obtenus != noms:
-                raise ValueError("Noms de plaques différents après réouverture.")
-        integrite_3mf.verifier(chemin, temporaire, permis)
-        temporaire.replace(chemin)
+            with ZipFile(temporaire, "w") as sortie:
+                sortie.comment = entree.commentaire
+                for membre in entree.noms():
+                    info = entree.information(membre)
+                    calcul = hashlib.sha256()
+                    if membre == membre_modele:
+                        contenu = ET.tostring(modele, encoding="utf-8", xml_declaration=True)
+                        calcul.update(contenu)
+                        sortie.writestr(info, contenu)
+                    else:
+                        with entree.ouvrir_flux(membre) as lecture, sortie.open(info, "w") as ecriture:
+                            while bloc := lecture.read(1024 * 1024):
+                                calcul.update(bloc)
+                                ecriture.write(bloc)
+                    empreintes[membre] = calcul.hexdigest()
+            identite_copie = _identite_source(temporaire)
+            obtenus = _verifier_noms_restaures(temporaire, empreintes, noms)
+            integrite_3mf.verifier(chemin, temporaire, permis)
+            entree.verifier_source(chemin)
+        if _identite_source(chemin) != identite:
+            raise ValueError("Le 3MF source a changé avant la publication.")
+        if _identite_source(temporaire) != identite_copie:
+            raise ValueError("La copie restaurée a changé avant la publication.")
+        if destination is None:
+            temporaire.replace(cible)
+        else:
+            renommer_exclusif(temporaire, cible)
+        if _identite_source(cible)[:4] != identite_copie[:4]:
+            raise ValueError("La copie publiée ne correspond plus à la réouverture contrôlée.")
         return {"noms": obtenus, "reouverture": "PASS", "membres_verifies": len(empreintes)}
     finally:
-        temporaire.unlink(missing_ok=True)
+        if temporaire is not None:
+            temporaire.unlink(missing_ok=True)

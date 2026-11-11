@@ -698,7 +698,7 @@ def nommer_plaques(path, noms):
                         raise ValueError("3MF protégé : restauration de noms refusée.")
             # Le verrou stable sérialise les appels BENCHAB ; restaurer_noms valide les membres
             # et l'intégrité avant son remplacement atomique (docs/reference/integrite-3mf.md).
-            resultat = restaurer_noms(cible, noms)
+            resultat = restaurer_noms(cible, noms, empreinte_source=empreinte)
             return resultat
     finally:
         os.close(parent_fd)

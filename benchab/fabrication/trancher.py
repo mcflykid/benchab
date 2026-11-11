@@ -427,7 +427,12 @@ def _executer(demande):
                 resultat["integrite_apres_restauration_matrices"] = integrite_3mf.verifier(entree, fichier)
             else:
                 resultat["integrite_sortie_moteur"] = integrite_3mf.verifier(entree, fichier)
-            resultat["restauration_noms"] = restaurer_noms(fichier, normalisation["noms_origine"])
+            # Garder la sortie native intacte ; seule la copie restaurée est livrée (#182).
+            avec_noms = travail / "noms-restaures.3mf"
+            resultat["restauration_noms"] = restaurer_noms(
+                fichier, normalisation["noms_origine"], destination=avec_noms,
+            )
+            fichier = avec_noms
             resultat["modifications"] = [
                 *normalisation["modifications"],
                 *modifications_origine,
