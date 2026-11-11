@@ -12,6 +12,7 @@ from benchab.fabrication import comparer_remplissages as comparaison
 
 AIGUILLES = "\n".join(
     [
+        "M83",
         ";TYPE:Outer wall",
         "G1 X0 Y0 E1",
         ";TYPE:Sparse infill",
@@ -42,6 +43,8 @@ CONTINU = "\n".join(
 class TrajetsRemplissageTests(unittest.TestCase):
     def test_deplacements_et_ilots_courts(self):
         mesure = comparaison.trajets_remplissage(AIGUILLES)
+        self.assertEqual(mesure["statut"], "PASS")
+        self.assertTrue(mesure["couverture_complete"])
         self.assertEqual(
             (
                 mesure["deplacements"],
@@ -65,6 +68,35 @@ class TrajetsRemplissageTests(unittest.TestCase):
     def test_sections_hors_remplissage_ignorees(self):
         mesure = comparaison.trajets_remplissage(";TYPE:Outer wall\nG1 X0 Y0 E1\nG1 X50 Y0\nG1 X51 Y0 E.05")
         self.assertEqual((mesure["deplacements"], mesure["ilots"]), (0, 0))
+
+    def test_absence_de_depot_attribue_ne_valide_pas_les_trajets(self):
+        for gcode, fragment in (
+            ("M83\nG1 X10 E.4", "sans rôle"),
+            ("M83\n;TYPE:Sparse infill\nG0 X10", "Aucun dépôt"),
+        ):
+            with self.subTest(gcode=gcode):
+                mesure = comparaison.trajets_remplissage(gcode)
+                self.assertEqual(mesure["statut"], "NON VÉRIFIÉ")
+                self.assertFalse(mesure["couverture_complete"])
+                self.assertEqual(mesure["ilots"], 0)
+                self.assertIn(fragment, " ".join(mesure["raisons_couverture"]))
+
+    def test_role_manquant_conserve_mesures_partielles_sans_alerte_qualifiee(self):
+        mesure = comparaison.trajets_remplissage("M83\nG1 X2 E.4\n" + AIGUILLES)
+        self.assertEqual(mesure["ilots_courts"], 3)
+        self.assertEqual(mesure["statut"], "NON VÉRIFIÉ")
+        alerte = comparaison._alerte_trajets_remplissage(mesure)
+        self.assertIn("NON VÉRIFIÉS", alerte)
+        self.assertIn("sans rôle", alerte)
+        self.assertNotIn("risque de fils", alerte)
+
+    def test_role_du_lecteur_commun_et_diagnostics_sont_conserves(self):
+        source = "M83\n  ;TYPE:Sparse infill\nG1 X10 E.4"
+        valide = comparaison.trajets_remplissage(source)
+        self.assertEqual((valide["statut"], valide["ilots"]), ("PASS", 1))
+        invalide = comparaison.trajets_remplissage(source.split("\n", 1)[1])
+        self.assertEqual((invalide["statut"], invalide["ilots"]), ("NON VÉRIFIÉ", 1))
+        self.assertIn("mode extrusion absent", invalide["erreurs"][0])
 
     def test_indices_orca_indicatifs_conserves(self):
         self.assertEqual(comparaison.RESISTANCE_ORCA["lightning"], (2, 2))
@@ -299,11 +331,11 @@ class ComparaisonCliTests(unittest.TestCase):
                 )
                 archive.writestr(
                     "Metadata/plate_1.gcode",
-                    ";TYPE:Sparse infill\nG1 X0 Y0\nG1 X10 Y0 E1\n",
+                    "M83\n;TYPE:Sparse infill\nG1 X0 Y0\nG1 X10 Y0 E1\n",
                 )
                 archive.writestr(
                     "Metadata/plate_2.gcode",
-                    ";TYPE:Sparse infill\nG1 X0 Y0\nG1 X10 Y0 E1\n",
+                    "M83\nG1 X0 Y0\nG1 X10 Y0 E1\n",
                 )
             return destination, 4.0
 
@@ -320,7 +352,10 @@ class ComparaisonCliTests(unittest.TestCase):
         resultat = json.loads((dossier_resultats / "comparaison.json").read_text(encoding="utf-8"))
         self.assertEqual(resultat["tranchage_s"], 4.0)
         self.assertFalse(resultat["validation_physique"])
-        self.assertTrue((self.dossier_etude / "etude-sans-slicer/comparaison.md").is_file())
+        self.assertEqual([r["remplissage"]["statut"] for r in resultat["resultats"]], ["PASS", "NON VÉRIFIÉ"])
+        self.assertIn("sans rôle", resultat["alertes_imprimabilite"]["objet"]["variante"])
+        markdown = (dossier_resultats / "comparaison.md").read_text(encoding="utf-8")
+        self.assertIn("NON VÉRIFIÉ | — | —", markdown)
         preuve = json.loads((dossier_resultats / "provenance.json").read_text(encoding="utf-8"))
         self.assertEqual(preuve["statut"], "TERMINE")
 

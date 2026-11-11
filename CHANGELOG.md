@@ -2,6 +2,22 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir
+
+- Remplissage : un dépôt sans rôle ou l’absence de dépôt clairsemé attribué
+  ne valide plus les compteurs du comparateur (#183).
+- Tranchage : vérifie la machine avec le lecteur 3MF borné et refuse les
+  réglages illisibles, ambigus ou mal formés. Modèle et buse doivent rester
+  identiques dans la copie remise au moteur (#186).
+- Surplombs : ajoute des visées verticales échantillonnées vers un plan
+  déclaré et leur localisation dans la visionneuse (suite de #93).
+- Remplissage : qualifie le motif `supportcubic` pour le binaire et le
+  témoin observés, sans appliquer un réglage (suite de #80 et #81).
+- Retour photo : conserve en privé un original et un aperçu vérifiés ;
+  une confirmation déclarée reste séparée du projet (suite de #28).
+- CAO : ajoute le lamage supérieur à la fiche cotée, contrôle les
+  interférences et vérifie les volumes sur cinq pièces (suite de #27 et #32).
+
 ## 1.11.0 — 2026-11-11
 
 - Coutures : relie les débuts de boucles extérieures à des régions déclarées,

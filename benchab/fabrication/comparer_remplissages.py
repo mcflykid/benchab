@@ -286,7 +286,8 @@ RESISTANCE_ORCA = {
 def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
     """Mesure les trajets XY de remplissage en mm ; rapport PASS/NON VÉRIFIÉ, aucune commande machine.
 
-    Le lecteur commun conserve modes et dette de rétraction ; les mesures partielles restent explicites.
+    Le lecteur commun conserve modes et dette de rétraction. Un dépôt XY sans
+    rôle ou l'absence de dépôt clairsemé attribué laisse les compteurs partiels.
     """
     limite = float(ilot_court_mm)
     if not math.isfinite(limite) or limite < 0:
@@ -294,7 +295,7 @@ def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
     deplacements = retractions = courts = ilots = longs = 0
     longueur = 0.0
     lecteur = Interpreter(error_limit=128)
-    dans_remplissage = False
+    depot_non_attribue = False
     ilot = None
 
     def terminer_ilot():
@@ -307,16 +308,21 @@ def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
     for ligne in gcode.splitlines():
         dette_avant = lecteur.retracted.get(None, 0.0)
         mouvement = lecteur.feed_line(ligne)
-        if ligne.startswith(";TYPE:"):
+        if ligne.lstrip().startswith(";TYPE:"):
             terminer_ilot()
-            dans_remplissage = ligne[6:].strip() == "Sparse infill"
         if mouvement is None:
             continue
+        # Un dépôt sans rôle ne peut pas être exclu du remplissage avec certitude (#183).
+        if (
+            not mouvement["type"] and mouvement["deposited_length"] > 0
+            and mouvement["start"][:2] != mouvement["end"][:2]
+        ):
+            depot_non_attribue = True
         if mouvement["trajectory"] == "arc_g17_xy":
             lecteur.error("arc exact en longueur ; comparaison géométrique linéaire non vérifiée")
             terminer_ilot()
             continue
-        if not dans_remplissage:
+        if mouvement["type"] != "Sparse infill":
             continue
         if mouvement["extrusion"] < 0:
             terminer_ilot()
@@ -337,6 +343,13 @@ def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
         if depose > 0:
             ilot = (ilot or 0.0) + depose
     terminer_ilot()
+    raisons = []
+    if lecteur.errors:
+        raisons.append("La lecture des trajectoires n'est pas complète.")
+    if depot_non_attribue:
+        raisons.append("Au moins un dépôt XY est sans rôle.")
+    if not ilots:
+        raisons.append("Aucun dépôt XY attribué au remplissage clairsemé n'a été mesuré.")
     return {
         "deplacements": deplacements,
         "retractions": retractions,
@@ -344,10 +357,24 @@ def trajets_remplissage(gcode: str, ilot_court_mm: float = 3.0) -> dict:
         "longs_sans_retraction": longs,
         "ilots": ilots,
         "ilots_courts": courts,
-        "statut": "NON VÉRIFIÉ" if lecteur.errors else "PASS",
-        "couverture_complete": not lecteur.errors,
+        "statut": "NON VÉRIFIÉ" if raisons else "PASS",
+        "couverture_complete": not raisons,
         "erreurs": list(lecteur.errors),
+        **({"raisons_couverture": raisons} if raisons else {}),
     }
+
+
+def _alerte_trajets_remplissage(trajets):
+    """Explique la couverture avant tout avertissement déduit des compteurs."""
+    if not trajets.get("couverture_complete"):
+        raison = " ".join(trajets.get("raisons_couverture", []))
+        return f"Trajets de remplissage NON VÉRIFIÉS. {raison}".rstrip()
+    if trajets["ilots_courts"] >= PLANCHER_ILOTS:
+        return (
+            f"{trajets['ilots_courts']} îlots courts et {trajets['longs_sans_retraction']} "
+            "longs déplacements sans rétraction : risque de fils et de branches qui penchent"
+        )
+    return None
 
 
 def estimations(resultat: dict) -> dict:
@@ -552,11 +579,9 @@ def main(
             ligne["resistance_orca"] = RESISTANCE_ORCA.get(motif)
             trajets = ligne.get("remplissage") or {}
             alertes_ligne = []
-            if trajets.get("ilots_courts", 0) >= PLANCHER_ILOTS:
-                alertes_ligne.append(
-                    f"{trajets['ilots_courts']} îlots courts et {trajets['longs_sans_retraction']} "
-                    "longs déplacements sans rétraction : risque de fils et de branches qui penchent"
-                )
+            alerte_trajets = _alerte_trajets_remplissage(trajets)
+            if alerte_trajets:
+                alertes_ligne.append(alerte_trajets)
             if motif == "lightning" and piece.get("usage") not in (None, "decoratif"):
                 alertes_ligne.append("Lightning sur une pièce non décorative : aucun rôle de résistance interne")
             if alertes_ligne:
@@ -564,10 +589,13 @@ def main(
                 alertes.setdefault(piece["nom"], {})[ligne["nom"]] = ligne["alerte_imprimabilite"]
             temps = round(ligne["heures"] * 60)
             indice_orca = "/".join(map(str, ligne["resistance_orca"])) if ligne["resistance_orca"] else "?"
+            affichage_trajets = (
+                " | ".join(str(trajets[cle]) for cle in ("deplacements", "longs_sans_retraction", "ilots_courts"))
+                if trajets.get("couverture_complete") else "NON VÉRIFIÉ | — | —"
+            )
             lignes.append(
                 f"| {piece['nom']} | {ligne['nom']} | {temps // 60} h {temps % 60:02d} | {ligne['grammes']} g | "
-                f"{indice_orca} | {trajets.get('deplacements', '?')} | {trajets.get('longs_sans_retraction', '?')} | "
-                f"{trajets.get('ilots_courts', '?')} | {'oui' if ligne.get('acceptable') else 'non'} | "
+                f"{indice_orca} | {affichage_trajets} | {'oui' if ligne.get('acceptable') else 'non'} | "
                 f"{gain_temps:+.1f} % | {gain_matiere:+.1f} % |"
             )
         acceptables = [

@@ -10,7 +10,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
-from zipfile import BadZipFile, ZipFile, ZipInfo
+from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
 import pytest
 
@@ -334,6 +334,7 @@ def test_top_objet_8_et_projet_5_conserves_dans_sortie_tranchee(tmp_path, monkey
     ("modele", "buse"),
     [
         ("Anycubic Kobra S1 Max", ["0.4"]),
+        (["Anycubic Kobra S1"], ["0.4"]),
         ("Anycubic Kobra S1", ["0.6"]),
         ("Anycubic Kobra S1", None),
         (None, ["0.4"]),
@@ -365,6 +366,56 @@ def test_executer_refuse_modele_ou_buse_non_conformes_avant_popen(tmp_path, monk
         with pytest.raises(ValueError, match="Modèle embarqué|Buse embarquée"):
             trancher._executer({"source": str(source), "destination": str(destination)})
         assert not destination.exists()
+
+
+@pytest.mark.parametrize("defaut", ["doublon", "trop_grand"])
+def test_validation_machine_refuse_membre_projet_ambigu_ou_trop_grand(tmp_path, defaut):
+    """Le précontrôle partagé refuse l'index ou le budget avant lecture des réglages."""
+    source = tmp_path / "source.3mf"
+    membre = "Metadata/project_settings.config"
+    reglages = json.dumps({"printer_model": "Anycubic Kobra S1", "nozzle_diameter": ["0.4"]})
+    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
+        if defaut == "doublon":
+            archive.writestr(membre, reglages)
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                archive.writestr(membre, reglages)
+        else:
+            archive.writestr(membre, reglages + " " * (8 * 1024 * 1024))
+    avant = source.read_bytes()
+    with pytest.raises(ValueError, match="Machine embarquée absente ou illisible"):
+        trancher._verifier_machine_embarquee(source)
+    assert source.read_bytes() == avant
+
+
+@pytest.mark.parametrize(
+    ("modele", "buse", "message"),
+    [
+        ("Anycubic Kobra S1 Max", ("0.4",), "Modèle embarqué"),
+        ("Anycubic Kobra S1 Combo", ("0.4",), "différente entre source et copie"),
+        ("Anycubic Kobra S1", (0.4,), "différente entre source et copie"),
+    ],
+)
+def test_validation_machine_recontrole_la_copie_reellement_destinee_au_moteur(monkeypatch, modele, buse, message):
+    """La copie doit conserver modèle et buse, jusque dans leur représentation embarquée."""
+    with tempfile.TemporaryDirectory(prefix="benchab-copie-machine-", dir="/private/tmp") as racine:
+        dossier = Path(racine)
+        source = entree_3mf(dossier / "source.3mf")
+        travail = dossier / "travail"
+        travail.mkdir()
+        monkeypatch.setattr(trancher.tempfile, "mkdtemp", lambda **_options: str(travail))
+
+        def normalisation_divergente(_source, copie, *_args, **_options):
+            entree_3mf(copie, modele=modele, buse=buse)
+            return {}
+
+        def lancement_interdit(*_args, **_options):
+            raise AssertionError("Le moteur ne doit pas recevoir la copie divergente.")
+
+        monkeypatch.setattr(trancher, "normaliser", normalisation_divergente)
+        monkeypatch.setattr(trancher.subprocess, "Popen", lancement_interdit)
+        with pytest.raises(ValueError, match=message):
+            trancher._executer({"source": str(source), "destination": str(dossier / "sortie.3mf")})
+        assert not (dossier / "sortie.3mf").exists()
 
 
 def test_delai_tue_le_groupe_cree_sans_toucher_parent(tmp_path, monkeypatch):

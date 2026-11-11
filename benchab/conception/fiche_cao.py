@@ -9,6 +9,7 @@ import os
 import re
 import stat
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,6 +19,30 @@ from benchab.qualite.ecritures import destination_neuve, renommer_exclusif
 _MAX_FICHE = 16 * 1024
 # Écarter les tangences numériques, sans imposer de paroi d'impression.
 _MARGE_MM = 1e-6
+
+
+@dataclass(frozen=True, slots=True)
+class _Lamage:
+    """Conserve les cotes nominales de l’entrée (mm) et leur source déclarée."""
+
+    rayon: float
+    profondeur: float
+    source_cotes: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Percage:
+    """Décrit le passage traversant et son éventuel lamage supérieur, en mm."""
+
+    x: float
+    y: float
+    rayon: float
+    lamage: _Lamage | None
+
+
+def _rayon_entree(trou):
+    """Renvoie le rayon XY maximal au bord supérieur, en mm."""
+    return trou.lamage.rayon if trou.lamage else trou.rayon
 
 
 def _paires_uniques(paires):
@@ -62,6 +87,22 @@ def _cote(valeur, nom, *, longueur):
     return float(valeur) if valeur else 0.0
 
 
+def _normaliser_lamage(lamage, numero, rayon_passage, epaisseur):
+    """Valide un épaulement annulaire avec fond restant, à cotes et source déclarées."""
+    if not isinstance(lamage, dict) or set(lamage) != {"diametre_mm", "profondeur_mm", "source_cotes"}:
+        raise ValueError(f"Lamage {numero} : diamètre, profondeur et source des cotes requis.")
+    rayon = _cote(lamage["diametre_mm"], f"lamage {numero} diamètre", longueur=True) / 2
+    profondeur = _cote(lamage["profondeur_mm"], f"lamage {numero} profondeur", longueur=True)
+    source = lamage["source_cotes"]
+    if not isinstance(source, str) or not source.strip() or len(source) > 240 or not source.isprintable():
+        raise ValueError(f"Lamage {numero} : source des cotes sur une ligne de 240 caractères au plus.")
+    if rayon - rayon_passage <= _MARGE_MM:
+        raise ValueError(f"Lamage {numero} : diamètre supérieur à celui du passage requis.")
+    if epaisseur - profondeur <= _MARGE_MM:
+        raise ValueError(f"Lamage {numero} : profondeur inférieure à l’épaisseur du bloc requise.")
+    return _Lamage(rayon, profondeur, source)
+
+
 def _normaliser(data):
     requis = {"schema", "id", "bloc_mm", "percages"}
     if (
@@ -80,17 +121,21 @@ def _normaliser(data):
     if not isinstance(trous, list) or len(trous) > 8:
         raise ValueError("De zéro à huit perçages sont acceptés.")
     percages = []
+    cles_trou = {"x_mm", "y_mm", "diametre_mm"}
     for numero, trou in enumerate(trous, 1):
-        if not isinstance(trou, dict) or set(trou) != {"x_mm", "y_mm", "diametre_mm"}:
+        if not isinstance(trou, dict) or not cles_trou <= trou.keys() <= cles_trou | {"lamage"}:
             raise ValueError(f"Perçage {numero} : x_mm, y_mm et diametre_mm requis.")
         x = _cote(trou["x_mm"], f"perçage {numero} x", longueur=False)
         y = _cote(trou["y_mm"], f"perçage {numero} y", longueur=False)
         rayon = _cote(trou["diametre_mm"], f"perçage {numero} diamètre", longueur=True) / 2
-        if min(dx / 2 - abs(x), dy / 2 - abs(y)) - rayon <= _MARGE_MM:
+        lamage = _normaliser_lamage(trou["lamage"], numero, rayon, dz) if "lamage" in trou else None
+        operation = _Percage(x, y, rayon, lamage)
+        if min(dx / 2 - abs(x), dy / 2 - abs(y)) - _rayon_entree(operation) <= _MARGE_MM:
             raise ValueError(f"Perçage {numero} : marge insuffisante au bord du bloc.")
-        percages.append((x, y, rayon))
-    for ((x1, y1, r1), (x2, y2, r2)) in itertools.combinations(percages, 2):
-        if math.hypot(x1 - x2, y1 - y2) - r1 - r2 <= _MARGE_MM:
+        percages.append(operation)
+    for premier, second in itertools.combinations(percages, 2):
+        distance = math.hypot(premier.x - second.x, premier.y - second.y)
+        if distance - _rayon_entree(premier) - _rayon_entree(second) <= _MARGE_MM:
             raise ValueError("Perçages : chevauchement ou tangence entre deux trous.")
     exclus = data.get("hors_perimetre", [])
     if not isinstance(exclus, list) or len(exclus) > 8 or any(
@@ -115,13 +160,23 @@ def _script(bloc, trous):
         '    """Retourne le solide nominal ; origine XY centrée et base à z=0 mm."""',
         f"    solide = Box({bloc[0]!r}, {bloc[1]!r}, {bloc[2]!r}, align=(Align.CENTER, Align.CENTER, Align.MIN))",
     ]
-    for x, y, rayon in trous:
+    for trou in trous:
+        x, y, rayon = trou.x, trou.y, trou.rayon
         # Le cylindre dépasse les deux faces pour éviter un booléen coplanaire.
         lignes.extend([
             f"    solide -= Pos({x!r}, {y!r}, -1.0) * Cylinder(",
             f"        {rayon!r}, {bloc[2] + 2!r}, align=(Align.CENTER, Align.CENTER, Align.MIN)",
             "    )",
         ])
+        if trou.lamage:
+            # Le cylindre d’entrée dépasse le dessus mais s’arrête à la cote
+            # du fond. Le passage déjà soustrait ne compte qu'une fois.
+            lamage = trou.lamage
+            lignes.extend([
+                f"    solide -= Pos({x!r}, {y!r}, {bloc[2] - lamage.profondeur!r}) * Cylinder(",
+                f"        {lamage.rayon!r}, {lamage.profondeur + 1!r}, align=(Align.CENTER, Align.CENTER, Align.MIN)",
+                "    )",
+            ])
     return "\n".join([*lignes, "    return solide", ""])
 
 
@@ -130,17 +185,29 @@ def _generer(source, sortie, *, prive):
     destination = destination_neuve(sortie, prive=prive)
     script = _script(bloc, trous)
     dx, dy, dz = bloc
+    volume_lamages = math.fsum(
+        math.pi * (trou.lamage.rayon**2 - trou.rayon**2) * trou.lamage.profondeur
+        for trou in trous if trou.lamage
+    )
     attendu = {
         "dimensions_mm": bloc,
         "solides": 1,
-        "volume_mm3": (dx * dy - math.fsum(math.pi * rayon**2 for _, _, rayon in trous)) * dz,
+        "volume_mm3": (dx * dy - math.fsum(math.pi * trou.rayon**2 for trou in trous)) * dz - volume_lamages,
     }
     statut = "NON VÉRIFIÉ" if exclus else "PASS"
     plan = {
         "schema": 1, "id": identifiant, "statut": statut,
         "portee": "Gabarit nominal : script généré, aucun STEP construit ni validation physique.",
         "bloc_mm": bloc,
-        "percages": [{"x_mm": x, "y_mm": y, "diametre_mm": 2 * r} for x, y, r in trous],
+        "percages": [
+            {"x_mm": trou.x, "y_mm": trou.y, "diametre_mm": 2 * trou.rayon}
+            | ({"lamage": {
+                "diametre_mm": 2 * trou.lamage.rayon,
+                "profondeur_mm": trou.lamage.profondeur,
+                "source_cotes": trou.lamage.source_cotes,
+            }} if trou.lamage else {})
+            for trou in trous
+        ],
         "attendu": attendu, "exigences_non_verifiees": exclus,
         "script_sha256": hashlib.sha256(script.encode("utf-8")).hexdigest(),
     }

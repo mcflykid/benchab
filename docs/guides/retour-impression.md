@@ -23,6 +23,55 @@ couture inacceptable ; un dessus propre ne valide pas le dessous.
 Conserver photos privées et commentaire de l’auteur. Ne pas transformer une
 suggestion d’analyse d’image en observation confirmée. La saisie reste déclarative ; l’assistance à l’observation par zone est suivie dans #28.
 
+### Suggestion photo locale
+
+La commande `benchab visualisation retour-photo proposer PHOTO --destination DOSSIER`
+copie l’image choisie dans un dossier privé neuf, crée un aperçu JPEG et écrit
+`suggestion.json`. JPEG, PNG et HEIC sont acceptés ; HEIC est converti localement
+avec `sips` quand Pillow ne sait pas le lire. L’original est conservé octet pour
+octet et les deux fichiers reçoivent une empreinte SHA-256. La commande n’ouvre
+pas SQLite et ne modifie aucun projet.
+
+Si la publication échoue avant le renommage, le dossier d’étape privé reste
+conservé pour diagnostic ; BENCHAB ne le supprime ni ne le déplace.
+
+Une liaison région/Z facultative est fournie par une déclaration JSON privée,
+au schéma strict suivant :
+
+```json
+{
+  "schema": 1,
+  "source_sha256": "<SHA-256 du 3MF exact>",
+  "plaque": 1,
+  "region_id": "zone-choisie",
+  "z_min_mm": 1.0,
+  "z_max_mm": 4.0
+}
+```
+
+La plaque, l’identifiant de région et la plage Z restent des déclarations
+utilisateur. BENCHAB vérifie l’identité du 3MF, l’unicité du membre G-code de
+plaque et le membre de réglages `Metadata/project_settings.config`; il enregistre
+leurs SHA exacts quand les lectures sont valides. Une absence, une ambiguïté,
+une différence d’empreinte ou une erreur d’intégrité donne NON VÉRIFIÉ. Un statut
+PASS de liaison prouve seulement la correspondance des fichiers et déclarations,
+jamais que la photo montre cette pièce ou cette zone.
+
+La fiche reste `CANDIDAT` et marque l’interprétation photo NON VÉRIFIÉE. Pour
+consigner séparément une observation après examen humain, calculer l’empreinte
+de `suggestion.json` renvoyée par la première commande, puis lancer :
+
+```text
+benchab visualisation retour-photo confirmer DOSSIER/suggestion.json \
+  --sha256 EMPREINTE --observation "Texte observé" --sortie confirmation.json
+```
+
+Cette confirmation neuve garde le SHA de la fiche et la déclaration écrite ; elle
+ne modifie ni la fiche candidate, ni le projet, ni SQLite. Elle n’identifie pas
+un défaut, le modèle ou l’impression et ne constitue pas une mesure physique.
+La comparaison entre modèles de même origine ou entre machine et matière n’est
+pas réalisée par ce premier sous-lot.
+
 ## Distinguer fait, hypothèse et validation
 
 Écrire le défaut constaté d’abord. Pour chaque cause possible, indiquer les

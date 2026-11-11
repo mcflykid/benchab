@@ -21,6 +21,9 @@ from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
 
 MAX_SOURCE_OCTETS = 64 * 1024 * 1024
 MAX_FACES = 50_000
+MAX_VISIBILITE_RAYONS = 256
+TOLERANCE_VISIBILITE_MM = 1e-6
+TOLERANCE_POIDS_BARYCENTRIQUES = 1e-9
 
 
 def _compter_faces_stl(contenu):
@@ -143,13 +146,148 @@ def _composantes_faces(nombre_faces, adjacency):
     return numeros, voisins
 
 
-def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None):
+def _evaluer_rayon_vertical(triangles, face_source, point, plateau_z_mm):
+    """Classe une visée ponctuelle en mm ; contacts, projections dégénérées et doublons sont ambigus."""
+    x, y, z_depart = (float(valeur) for valeur in point)
+    tolerance = TOLERANCE_VISIBILITE_MM
+    # Seul le segment fermé doit entrer dans le calcul ; les contacts aux
+    # bornes sont ensuite distingués d'un obstacle strictement intermédiaire.
+    minimum, maximum = triangles.min(axis=1), triangles.max(axis=1)
+    candidats = (
+        (minimum[:, 0] - tolerance <= x) & (maximum[:, 0] + tolerance >= x)
+        & (minimum[:, 1] - tolerance <= y) & (maximum[:, 1] + tolerance >= y)
+        & (minimum[:, 2] - tolerance <= z_depart) & (maximum[:, 2] + tolerance >= plateau_z_mm)
+    )
+    candidats[face_source] = False
+    triangles = triangles[candidats]
+    if not len(triangles):
+        return {"statut": "DÉGAGÉE", "raison": "aucun triangle détecté sur le segment ouvert"}
+    xy = triangles[:, :, :2]
+    altitudes = triangles[:, :, 2]
+    a, b, c = xy[:, 0], xy[:, 1], xy[:, 2]
+    determinant = (
+        (b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1])
+        - (b[:, 1] - a[:, 1]) * (c[:, 0] - a[:, 0])
+    )
+    longueurs = np.stack((
+        np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1), np.linalg.norm(a - c, axis=1),
+    ), axis=1)
+    degeneres = np.abs(determinant) <= tolerance * longueurs.max(axis=1)
+    point_xy = np.asarray([x, y], dtype=float)
+    z_fibre_min = np.full(len(triangles), np.inf)
+    z_fibre_max = np.full(len(triangles), -np.inf)
+    for cote in range(3):
+        depart = xy[:, cote]
+        arrivee = xy[:, (cote + 1) % 3]
+        direction = arrivee - depart
+        longueur2 = np.einsum("ij,ij->i", direction, direction)
+        longueur_nulle = longueur2 <= tolerance * tolerance
+        proche_depart = np.linalg.norm(depart - point_xy, axis=1) <= tolerance
+        proche_arrivee = np.linalg.norm(arrivee - point_xy, axis=1) <= tolerance
+        aretes_ponctuelles = degeneres & longueur_nulle & proche_depart & proche_arrivee
+        z_debut, z_fin = altitudes[:, cote], altitudes[:, (cote + 1) % 3]
+        z_fibre_min = np.minimum(
+            z_fibre_min,
+            np.where(aretes_ponctuelles, np.minimum(z_debut, z_fin), np.inf),
+        )
+        z_fibre_max = np.maximum(
+            z_fibre_max,
+            np.where(aretes_ponctuelles, np.maximum(z_debut, z_fin), -np.inf),
+        )
+        assez_long = ~longueur_nulle
+        fractions = np.zeros(len(triangles), dtype=float)
+        fractions[assez_long] = np.clip(
+            np.einsum("ij,ij->i", point_xy - depart[assez_long], direction[assez_long])
+            / longueur2[assez_long], 0.0, 1.0,
+        )
+        projection = depart + fractions[:, None] * direction
+        distance = np.linalg.norm(projection - point_xy, axis=1)
+        touche_arete = degeneres & assez_long & (distance <= tolerance)
+        z_arete = z_debut + fractions * (z_fin - z_debut)
+        z_fibre_min = np.minimum(z_fibre_min, np.where(touche_arete, z_arete, np.inf))
+        z_fibre_max = np.maximum(z_fibre_max, np.where(touche_arete, z_arete, -np.inf))
+    # Les arêtes qui traversent le même XY décrivent les bornes Z de la fibre
+    # du triangle projeté dégénéré ; une seule arête ne suffit pas pour trancher.
+    fibre_touche_segment = (
+        degeneres & np.isfinite(z_fibre_min)
+        & (z_fibre_max >= plateau_z_mm - tolerance)
+        & (z_fibre_min <= z_depart + tolerance)
+    )
+    if np.any(fibre_touche_segment):
+        return {"statut": "AMBIGUË", "raison": "projection XY dégénérée sur la visée"}
+
+    denominateur = np.where(degeneres, 1.0, determinant)
+    alpha = ((b[:, 0] - x) * (c[:, 1] - y) - (b[:, 1] - y) * (c[:, 0] - x)) / denominateur
+    beta = ((c[:, 0] - x) * (a[:, 1] - y) - (c[:, 1] - y) * (a[:, 0] - x)) / denominateur
+    gamma = 1.0 - alpha - beta
+    poids = np.column_stack((alpha, beta, gamma))
+    interieur_ferme = (
+        (~degeneres)
+        & np.all(poids >= -TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
+        & np.all(poids <= 1 + TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
+    )
+    z_intersection = np.einsum("ij,ij->i", poids, altitudes)
+    avant_depart = z_intersection < z_depart - tolerance
+    if np.any(interieur_ferme & (np.abs(z_intersection - z_depart) <= tolerance)):
+        return {"statut": "AMBIGUË", "raison": "contact avec une autre face au départ"}
+    touche_plan = interieur_ferme & avant_depart & (np.abs(z_intersection - plateau_z_mm) <= tolerance)
+    if np.any(touche_plan):
+        return {"statut": "AMBIGUË", "raison": "contact avec le plan de plateau"}
+    frontiere = np.any(np.abs(poids) <= TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
+    au_dessus_du_plan = z_intersection > plateau_z_mm + tolerance
+    if np.any(interieur_ferme & avant_depart & au_dessus_du_plan & frontiere):
+        return {"statut": "AMBIGUË", "raison": "intersection sur la frontière d'une projection"}
+    contacts = np.sort(z_intersection[interieur_ferme & avant_depart & au_dessus_du_plan])
+    if len(contacts) > 1 and np.any(np.diff(contacts) <= tolerance):
+        return {"statut": "AMBIGUË", "raison": "superposition de triangles sur la visée"}
+    if len(contacts):
+        return {"statut": "OBSTRUÉE", "obstacle_z_mm": round(float(contacts[-1]), 6)}
+    return {"statut": "DÉGAGÉE", "raison": "aucun triangle détecté sur le segment ouvert"}
+
+
+def _visibilite_groupe(triangles, indices, plateau_z_mm, plan_valide, budget):
+    """Produit des visées ponctuelles bornées ; les faces non échantillonnées restent sans conclusion."""
+    if not plan_valide:
+        return {"visées_échantillonnées": {
+            "statut": "AMBIGUË", "raison": "plan de plateau invalide ou en contact avec le maillage",
+            "plateau_z_mm": plateau_z_mm if math.isfinite(plateau_z_mm) else None,
+            "methode": "barycentres de faces surplombantes, visées verticales vers −Z",
+            "portee": "visées échantillonnées ; ne décrit aucune face entière",
+            "faces_candidates": len(indices), "rayons_total": 0, "rayons_omis": len(indices),
+            "degages": 0, "obstrues": 0, "ambigus": 0, "echantillons": [],
+        }}
+    nombre = min(len(indices), budget)
+    positions = np.linspace(0, len(indices) - 1, num=nombre, dtype=int) if nombre else np.array([], dtype=int)
+    faces = [indices[int(position)] for position in positions]
+    echantillons = []
+    for face in faces:
+        point = np.asarray(triangles[face], dtype=float).mean(axis=0)
+        resultat = _evaluer_rayon_vertical(triangles, face, point, plateau_z_mm)
+        echantillons.append({
+            "face_id": int(face), "point_xyz_mm": [round(float(v), 6) for v in point], **resultat,
+        })
+    degages = sum(item["statut"] == "DÉGAGÉE" for item in echantillons)
+    obstrues = sum(item["statut"] == "OBSTRUÉE" for item in echantillons)
+    ambigus = len(echantillons) - degages - obstrues
+    omis = len(indices) - len(faces)
+    statut = "AMBIGUË" if ambigus or omis else "OBSTRUÉE" if obstrues else "DÉGAGÉE"
+    return {"visées_échantillonnées": {
+        "statut": statut, "plateau_z_mm": round(float(plateau_z_mm), 6),
+        "methode": "barycentres de faces surplombantes, visées verticales vers −Z",
+        "portee": "visées échantillonnées aux barycentres ; ne décrit aucune face entière ni le groupe complet",
+        "faces_candidates": len(indices), "rayons_total": len(echantillons), "rayons_omis": omis,
+        "degages": degages, "obstrues": obstrues, "ambigus": ambigus, "echantillons": echantillons,
+    }}
+
+
+def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None, plateau_z_mm=None):
     """Mesure les groupes de faces orientées vers le bas sans prédire les supports physiques.
 
-    Entrées : maillage triangulé, provenance, unité explicite (« mm »), seuil en degrés et SHA-256 facultatif.
+    Entrées : maillage triangulé, provenance, unité (« mm »), seuil en degrés et SHA-256 facultatif.
     Sortie : groupes connexes avec aires en mm², altitudes/hauteurs en mm et angles en degrés.
     La topologie est mesurée par égalité exacte des coordonnées ; aucun sommet n'est fusionné ni triangle réorienté.
-    Les accès au plateau et la possibilité de pont restent NON VÉRIFIÉS ; aucun réglage n'est modifié.
+    Les visées opt-in exigent un SHA-256 du STL exact et sont bornées ; accès global et ponts restent NON VÉRIFIÉS.
+    Aucun réglage n'est modifié.
     """
     if unite != "mm":
         raise ValueError("L'unité métrique doit être explicitement établie comme mm.")
@@ -157,22 +295,28 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
         raise ValueError("L'angle maximal doit être fini, supérieur à 0 et inférieur ou égal à 90 degrés.")
     if not isinstance(maillage, trimesh.Trimesh) or len(maillage.faces) == 0:
         raise ValueError("Un maillage triangulé non vide est requis.")
+    if plateau_z_mm is not None and (
+        not isinstance(source_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", source_sha256) is None
+    ):
+        raise ValueError("Les visées vers le plateau exigent le SHA-256 du STL exact.")
     if len(maillage.faces) > MAX_FACES:
         raise ValueError(f"Le STL dépasse le budget de {MAX_FACES} triangles.")
     if not np.isfinite(maillage.vertices).all() or not np.isfinite(maillage.face_normals).all():
         raise ValueError("Le maillage contient des coordonnées non finies.")
     normales = np.asarray(maillage.face_normals, dtype=float)
     aires = np.asarray(maillage.area_faces, dtype=float)
+    triangles = np.asarray(maillage.triangles, dtype=float)
     if not np.isfinite(aires).all() or np.any(aires <= 0):
         raise ValueError("Le maillage contient des faces d'aire nulle ou non finie.")
 
     # Le seuil décrit seulement une inclinaison géométrique ; il ne constitue pas une règle de support.
     angle_faces = np.degrees(np.arccos(np.clip(np.abs(normales[:, 2]), 0.0, 1.0)))
     selection = (normales[:, 2] < 0) & (angle_faces <= angle_max_deg)
-    adjacency, topologie = _adjacence_exacte(triangles := np.asarray(maillage.triangles, dtype=float))
+    adjacency, topologie = _adjacence_exacte(triangles)
     composante, voisins = _composantes_faces(len(maillage.faces), adjacency)
     groupes = []
     visites = set()
+    budget_rayon = MAX_VISIBILITE_RAYONS
     for depart in np.flatnonzero(selection):
         depart = int(depart)
         if depart in visites:
@@ -190,7 +334,7 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
         ids = np.asarray(faces, dtype=int)
         sommets_z = triangles[ids, :, 2].reshape(-1)
         poids = aires[ids]
-        groupes.append({
+        groupe = {
             "id": f"surplomb-{len(groupes) + 1:03d}",
             "composante_maillage": int(composante[depart]) + 1,
             "nb_faces": int(len(ids)),
@@ -211,7 +355,19 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
             },
             "acces_plateau": {"statut": "NON VÉRIFIÉ", "raison": "aucun test de visibilité ni de tranchage"},
             "pont_possible": {"statut": "NON VÉRIFIÉ", "raison": "franchissabilité non mesurée"},
-        })
+        }
+        if plateau_z_mm is not None:
+            # Un groupe au niveau du plateau ne prive pas un îlot distinct
+            # de visées au-dessus de ce même plan.
+            plateau_valide = math.isfinite(plateau_z_mm) and plateau_z_mm < (
+                float(sommets_z.min()) - TOLERANCE_VISIBILITE_MM
+            )
+            groupe["visibilite_verticale_plateau"] = _visibilite_groupe(
+                triangles, faces, float(plateau_z_mm), plateau_valide, budget_rayon
+            )
+            groupe["acces_plateau"]["raison"] = "visées ponctuelles uniquement ; aucun accès global ni tranchage établi"
+            budget_rayon -= groupe["visibilite_verticale_plateau"]["visées_échantillonnées"]["rayons_total"]
+        groupes.append(groupe)
     return {
         "schema": "benchab-surplombs-connexes-v1",
         "statut": "RENSEIGNÉE",
@@ -259,8 +415,8 @@ def _resume(rapport, sortie):
 def main(argv=None, *, prive=None):
     """Produit un JSON privé neuf depuis un STL ; unités mm déclarées par option, code 0 si mesuré.
 
-    Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés et --sortie facultative.
-    Sortie : rapport JSON neuf, résumé ou détail sur demande explicite, ou JSON sur stdout ;
+    Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés, plan --plateau-z-mm optionnel.
+    Sortie : rapport JSON neuf et visionneuse optionnelle, visées en mm, résumé, détail ou JSON stdout ;
     erreurs d'entrée et de sortie code 2.
     L'entrée est empreintée avant et après lecture ; une sortie reste dans l'atelier privé choisi et est neuve.
     Aucun appel de slicer, aucun réglage modifié, aucune validation physique.
@@ -272,14 +428,22 @@ def main(argv=None, *, prive=None):
         "--angle-max-deg", type=float, default=50.0,
         help="Seuil géométrique en degrés, sans verdict physique",
     )
-    parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; sans option, écrit sur stdout")
+    parser.add_argument(
+        "--plateau-z-mm", type=float,
+        help="Active des visées verticales ponctuelles vers un plan déclaré sous le maillage, en mm",
+    )
+    sorties = parser.add_mutually_exclusive_group()
+    sorties.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; sans option, écrit sur stdout")
+    sorties.add_argument("--dossier-apercu", type=Path, help="Dossier neuf pour le rapport et la visionneuse autonome")
     affichage = parser.add_mutually_exclusive_group()
     affichage.add_argument("--resume", action="store_true", help="Affiche cinq groupes au plus et le chemin du rapport")
     affichage.add_argument("--detail", action="store_true", help="Affiche aussi le rapport complet et son chemin")
     args = parser.parse_args(argv)
     try:
-        if (args.resume or args.detail) and args.sortie is None:
-            raise ValueError("--resume ou --detail exige --sortie.")
+        if (args.resume or args.detail) and args.sortie is None and args.dossier_apercu is None:
+            raise ValueError("--resume ou --detail exige --sortie ou --dossier-apercu.")
+        if args.dossier_apercu is not None and args.plateau_z_mm is None:
+            raise ValueError("--dossier-apercu exige --plateau-z-mm.")
         if not args.unite_mm:
             raise ValueError("--unite-mm est requis : STL ne porte pas d'unité déclarée.")
         if args.source.suffix.lower() != ".stl" or not args.source.is_file():
@@ -295,8 +459,15 @@ def main(argv=None, *, prive=None):
             unite="mm",
             angle_max_deg=args.angle_max_deg,
             source_sha256=empreinte,
+            plateau_z_mm=args.plateau_z_mm,
         )
-        if args.sortie:
+        if args.dossier_apercu:
+            from benchab.visualisation.apercu_surplombs import publier
+
+            chemins = publier(maillage, rapport, args.dossier_apercu, prive=prive)
+            synthese = rapport if args.detail else _resume(rapport, chemins["rapport"])
+            print(json.dumps({**synthese, **chemins}, ensure_ascii=False, allow_nan=False))
+        elif args.sortie:
             sortie = sortie_privee(args.sortie, prive=prive)
             ecrire_json_neuf(sortie, rapport, entrees=[args.source])
             if args.resume:

@@ -1,8 +1,9 @@
 # Préparer une pièce CAO depuis une fiche JSON
 
 Ce gabarit couvre un bloc rectangulaire et jusqu’à huit perçages cylindriques
-traversants, sans déplacement ni rotation du bloc. Les trois dimensions sont
-en millimètres. L’origine est au centre en XY et le dessous est à Z = 0 mm.
+traversants, avec un lamage supérieur facultatif par perçage. Les trois
+dimensions sont en millimètres. L’origine est au centre en XY et le dessous
+est à Z = 0 mm.
 
 ```json
 {
@@ -11,7 +12,8 @@ en millimètres. L’origine est au centre en XY et le dessous est à Z = 0 mm.
   "bloc_mm": [40, 20, 4],
   "percages": [
     {"x_mm": -10, "y_mm": 0, "diametre_mm": 4},
-    {"x_mm": 10, "y_mm": 0, "diametre_mm": 4}
+    {"x_mm": 10, "y_mm": 0, "diametre_mm": 4,
+     "lamage": {"diametre_mm": 7, "profondeur_mm": 1.5, "source_cotes": "plan nominal de la pièce"}}
   ],
   "hors_perimetre": ["Tenue sous charge"]
 }
@@ -24,6 +26,12 @@ recouvrants et ceux qui atteignent le bord du bloc ; la marge de calcul de
 admissible pour l’impression. Les cotes sont explicites et aucun jeu ou
 compensation n’est ajouté. Les formes hors gabarit, les assemblages et les
 exigences physiques peuvent être signalés dans `hors_perimetre`.
+
+Le lamage part du dessus du bloc. Son diamètre dépasse celui du passage,
+sa profondeur laisse un fond autour du passage et les contrôles de collision
+utilisent son diamètre d’entrée. La fiche doit citer la source des cotes ;
+elle ne déduit aucune cote de visserie. Le volume analytique retire le
+passage traversant, puis seulement l’anneau du lamage (#27, #32).
 
 ```sh
 benchab conception fiche-cao -- prive/fiche.json --sortie prive/plan-neuf
@@ -45,3 +53,12 @@ La deuxième commande construit le STEP avec le moteur verrouillé. Son
 manifeste permet de comparer nombre de solides, dimensions et volume au plan.
 Cette comparaison ne tranche rien et ne qualifie ni les jeux, ni les matériaux,
 ni le comportement de la pièce imprimée.
+
+La recette du lamage a construit deux fois cinq fiches : lamage central,
+excentré, mixte avec un perçage simple, deux lamages, puis quatre trous
+dont trois lamés. Avec cadgen 0.8.4 et build123d 0.13.0, les dix STEP
+forment chacun un seul solide valide ; volumes et dimensions concordent
+avec le calcul nominal. Plans et scripts sont identiques à chaque rejeu.
+Sur cette exécution locale, la préparation a pris 2,7 ms en médiane et la
+construction 26 ms (premier démarrage : 2,14 s). Les chemins normalisés
+pour la mesure, le résumé occupe 74 octets et le détail 848 à 1 427 octets.

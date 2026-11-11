@@ -79,3 +79,30 @@ triangles d’exclusion. L’interpréteur G-code n’a relevé aucune erreur da
 les trois sorties. La qualification porte sur la comparaison des motifs
 dans les fichiers obtenus ; ces messages n’établissent pas la fiabilité
 générale du moteur pour ce coupon.
+
+## Remplissage clairsemé cubique de support
+
+Sur une copie du témoin S, le même binaire a conservé `supportcubic` dans
+deux sorties identiques octet pour octet. La comparaison avec le témoin
+`gyroid` ne change que `sparse_infill_pattern` dans les réglages projet
+des archives tranchées. Le [code source publié par Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp)
+a fourni un nom candidat, sans preuve de correspondance avec le binaire.
+
+| Motif embarqué | Segments clairsemés déposés | Déplacements (nombre, longueur) | Îlots (total, < 3 mm) | Estimations du trancheur |
+| --- | ---: | --- | --- | --- |
+| `gyroid` | 5 500 | 44 ; 462 mm | 12 ; 0 | 313 s ; 2,37 g |
+| `supportcubic`, deux essais | 303 | 56 ; 384 mm | 30 ; 0 | 303 s ; 2,29 g |
+
+Les segments dépendent de la discrétisation du motif. Le seuil de 3 mm
+porte sur la longueur déposée continue, pas sur une surface du slicer.
+Les deux répétitions et le témoin n'ont produit aucune erreur de lecture du
+G-code. Les trois journaux natifs contiennent les deux mêmes messages
+d'exclusion malgré un code nul. Sur une autre géométrie, une boîte
+synthétique de 24 × 22 × 12 mm, le trancheur s'est arrêté avec un code
+`-11` dès le témoin gyroïde : aucun effet n'y est vérifié. Les 646 profils
+vérifiés et les entrées restent intacts dans les deux études.
+
+Le résultat qualifie cette valeur pour le binaire et le témoin S, sans
+conclure à la stabilité du moteur, à une économie sur un autre modèle ou à
+une résistance physique. Aucun motif n'est appliqué automatiquement
+(#80, #81).

@@ -669,6 +669,8 @@ if (carteContacts) {
 
 const diagnostics = D.diagnostics || [], anomalies = diagnostics.flatMap(d => d.anomalies || []);
 const libellesRisques = {surplomb_geometrique:'Surplomb potentiel',bord_ouvert:'Bord ouvert',arete_multiple:'Jonction de surfaces à vérifier',triangle_degenere:'Triangle sans aire',orientation_inversee:'Orientation du maillage à vérifier',petite_base_modele:'Petite base du modèle'};
+Object.assign(libellesRisques,{visee_degagee:'Visée dégagée',visee_obstruee:'Visée obstruée',visee_ambigue:'Visée ambiguë'});
+const couleursVisees=new Map([['visee_degagee',0x187260],['visee_obstruee',0xa83020],['visee_ambigue',0x8d530d]]);
 const nombre = n => new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3}).format(n);
 function afficherMesures(p) {
   if (!p) { $('mesuresSource').textContent='Sélectionner une pièce pour consulter sa source.'; return; }
@@ -714,9 +716,13 @@ function montrerAnomalie(a) {
     'Repère : ' + a.repere + ' ; point : ' + a.point_modele.map(x => x.toFixed(3)).join(', ') + ' mm', a.precision, a.limite].join('\n');
 }
 $('resumeAnomalies').textContent = diagnostics.length ? anomalies.length + ' zones localisées ; ' + diagnostics.reduce((n,d) => n + d.faces_detectees, 0) + ' faces en surplomb détectées. Sélection bornée par catégorie et pièce. Le repère choisi reste visible à travers la pièce. Les autres risques restent non vérifiés ; aucune absence d’alerte ne valide la fabrication.' : 'Aucun diagnostic géométrique fourni : risques non vérifiés.';
+if (D.source.visibilite_surplombs) {
+  $('blocAnomalies').querySelector('summary').textContent = 'Visées échantillonnées';
+  $('resumeAnomalies').textContent = D.source.visibilite_surplombs + '. Seuls les points calculés sont localisés.';
+}
 for (const type of [...new Set(anomalies.map(a=>a.type))]) $('filtreRisques').append(new Option(libellesRisques[type]||type,type));
 for (const a of anomalies) {
-  const b = document.createElement('button'); b.className = 'sec'; b.textContent = a.piece + ' — '+(libellesRisques[a.type]||a.type); b.dataset.anomalie = a.id; b.dataset.type=a.type;
+  const b = document.createElement('button'); b.className = 'sec'; b.textContent = (a.etiquette || a.piece) + ' — '+(libellesRisques[a.type]||a.type); b.dataset.anomalie = a.id; b.dataset.type=a.type;
   b.onclick = () => montrerAnomalie(a); $('anomalies').append(b);
 }
 $('filtreRisques').onchange=()=>{for(const b of $('anomalies').children)b.hidden=Boolean($('filtreRisques').value&&b.dataset.type!==$('filtreRisques').value);};
@@ -755,7 +761,7 @@ const poserAnomalies = () => {
   if (!pieces.every(p => p.mesh)) { requestAnimationFrame(poserAnomalies); return; }
   for (const a of anomalies) {
     const p = pieces.find(p => p.nom === a.piece); if (!p) continue;
-    const marque = new THREE.Mesh(new THREE.SphereGeometry(Math.max(D.taille / 350, .3), 8, 6), new THREE.MeshBasicMaterial({color:0xd84315,depthTest:false,depthWrite:false}));
+    const marque = new THREE.Mesh(new THREE.SphereGeometry(Math.max(D.taille / 350, .3), 8, 6), new THREE.MeshBasicMaterial({color:couleursVisees.get(a.type) ?? 0xd84315,depthTest:false,depthWrite:false}));
     marque.renderOrder = 10; marque.position.set(...a.point_modele); marque.userData.piece = p; marque.userData.anomalie = a; p.mesh.add(marque);
   }
 };
