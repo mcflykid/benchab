@@ -214,6 +214,35 @@ class PlanConsommation(unittest.TestCase):
         self.assertLess(len(court.getvalue()), len(complet.getvalue()))
         self.assertNotIn("bobine-fixture", court.getvalue())
 
+    def test_cli_resume_ne_divulgue_pas_le_chemin_de_la_declaration_refusee(self):
+        """Les refus système et de frontière gardent le diagnostic sans chemin privé."""
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        rapports = self.racine / "rapports"
+        rapports.mkdir(exist_ok=True)
+        absent = self.racine / "declaration-privee-absente.json"
+        lien = self.racine / "declaration-privee-liee.json"
+        lien.symlink_to(absent)
+        for n, preuve in enumerate((absent, lien, self.racine.parent / "declaration-hors-atelier.json")):
+            with self.subTest(n=n):
+                sortie = StringIO()
+                complet = rapports / f"consommation-{n}.json"
+                with redirect_stdout(sortie):
+                    code = main([
+                        "--prive", str(self.racine), "controle", "consommation-retour",
+                        "--retour", self.retour_id, "--preuve-pesee", str(preuve), "--sha256-preuve", "0" * 64,
+                        "--resume", "--sortie", str(complet),
+                    ])
+                self.assertEqual(code, 2)
+                self.assertNotIn(str(preuve), sortie.getvalue())
+                self.assertNotIn(str(preuve), complet.read_text())
+                declaration = json.loads(sortie.getvalue())["declaration_pesee"]
+                self.assertEqual(declaration["statut"], "NON VÉRIFIÉ")
+                self.assertIn("déclaration", declaration["raison"].lower())
+
     def test_cli_resume_refuse_absence_de_rapport_et_ecrasement(self):
         """Une sortie courte sans rapport serait une perte de preuve (#35)."""
         from contextlib import redirect_stderr, redirect_stdout

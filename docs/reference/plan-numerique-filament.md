@@ -50,3 +50,5 @@ les motifs de refus, le nombre de plaques estimées et le chemin du rapport.
 La commande écrit le JSON intégral avant d’afficher le résumé. Sans `--resume`,
 elle affiche le JSON intégral, avec ou sans copie demandée via `--sortie`.
 Un rapport existant est refusé ; le statut NON VÉRIFIÉ et le code 2 ne changent pas.
+Les motifs de refus de la déclaration n’exposent ni son chemin ni le texte
+brut d’une erreur de lecture.

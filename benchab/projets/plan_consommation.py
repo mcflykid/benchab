@@ -328,6 +328,10 @@ def _fichiers_auxiliaires_absents(chemin: Path) -> bool:
     return True
 
 
+class _RefusPesee(ValueError):
+    """Motif contrôlé qui peut être affiché sans exposer les chemins ni les octets lus."""
+
+
 def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
     """Rapproche une déclaration de pesée et les octets du membre, sans imputation."""
     inconnu = {
@@ -336,39 +340,44 @@ def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
     }
     try:
         if preuve is None or not isinstance(sha_preuve, str) or _SHA256.fullmatch(sha_preuve) is None:
-            raise ValueError("Fichier de déclaration et SHA-256 exact requis ensemble.")
-        p = sans_lien(Path(preuve).expanduser().absolute(), racine=prive, strict=True)
+            raise _RefusPesee("Fichier de déclaration et SHA-256 exact requis ensemble.")
+        try:
+            p = sans_lien(Path(preuve).expanduser().absolute(), racine=prive, strict=True)
+        except FileNotFoundError as erreur:
+            raise _RefusPesee("Fichier de déclaration absent.") from erreur
+        except ValueError as erreur:
+            raise _RefusPesee("Fichier de déclaration lié ou hors de l’atelier.") from erreur
         octets = _lire_fiche_bornee(p, limite=_MAX_PREUVE_PESEE)
         if hashlib.sha256(octets).hexdigest() != sha_preuve:
-            raise ValueError("SHA-256 de la déclaration différent.")
+            raise _RefusPesee("SHA-256 de la déclaration différent.")
         d = _json_objet(octets.decode("utf-8"))
         if set(d) != _CHAMPS_PESEE or type(d["schema"]) is not int or d["schema"] != 1:
-            raise ValueError("Champs ou schéma de déclaration non reconnus.")
+            raise _RefusPesee("Champs ou schéma de déclaration non reconnus.")
         estimation = rapport.get("estimation")
         envoi = rapport.get("envoi", {})
         if not estimation or d["retour_id"] != rapport["retour_id"] or d["envoi_sha256"] != envoi.get("sha256"):
-            raise ValueError("Retour complet et envoi identifié par le même SHA-256 requis.")
+            raise _RefusPesee("Retour complet et envoi identifié par le même SHA-256 requis.")
         plaque, outil = d["plaque"], d["index_gcode"]
         if type(plaque) is not int or plaque < 1 or type(outil) is not int or not 0 <= outil <= 999:
-            raise ValueError("Numéro de plaque ou index G-code non reconnu.")
+            raise _RefusPesee("Numéro de plaque ou index G-code non reconnu.")
         choix = next((p for p in estimation["plaques"] if p["numero"] == plaque), None)
         if choix is None or choix["gcode"] != d["membre_gcode"]:
-            raise ValueError("Plaque ou membre G-code différent du plan.")
+            raise _RefusPesee("Plaque ou membre G-code différent du plan.")
         indice = next((v for v in choix["outils"] if v["index_gcode"] == outil), None)
         if indice is None or not indice["indice_repere_dans_envoi"]:
-            raise ValueError("Index G-code absent du plan de cette plaque.")
+            raise _RefusPesee("Index G-code absent du plan de cette plaque.")
         for champ in ("emplacement_declare", "bobine_id"):
             valeur = d[champ]
             if not isinstance(valeur, str) or not valeur.strip() or len(valeur) > 120 or not valeur.isprintable():
-                raise ValueError("Emplacement et identifiant de bobine explicites requis.")
+                raise _RefusPesee("Emplacement et identifiant de bobine explicites requis.")
         if connexion.execute("SELECT 1 FROM bobines WHERE id=?", (d["bobine_id"],)).fetchone() is None:
-            raise ValueError("Bobine déclarée introuvable dans cet atelier.")
+            raise _RefusPesee("Bobine déclarée introuvable dans cet atelier.")
         avant, apres = d["masse_avant_g"], d["masse_apres_g"]
         if any(type(v) not in (float, int) or not 0 <= v <= 1_000_000 for v in (avant, apres)) or apres > avant:
-            raise ValueError("Masses déclarées incohérentes en grammes.")
+            raise _RefusPesee("Masses déclarées incohérentes en grammes.")
         sha_gcode = d["gcode_sha256"]
         if not isinstance(sha_gcode, str) or _SHA256.fullmatch(sha_gcode) is None:
-            raise ValueError("SHA-256 du membre G-code invalide.")
+            raise _RefusPesee("SHA-256 du membre G-code invalide.")
         fichier = _chemin_prive(prive, envoi["chemin"])
         explicite = False
         empreinte = hashlib.sha256()
@@ -376,18 +385,18 @@ def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
         # Le vecteur d’estimation seul peut repérer un outil par masse positive.
         with Archive3MF(fichier) as archive:
             if archive.sha256() != envoi["sha256"]:
-                raise ValueError("L’envoi ne correspond plus à son empreinte.")
+                raise _RefusPesee("L’envoi ne correspond plus à son empreinte.")
             with archive.ouvrir_flux(choix["gcode"]) as flux:
                 while ligne := flux.readline(_MAX_LIGNE_GCODE + 1):
                     if len(ligne) > _MAX_LIGNE_GCODE:
-                        raise ValueError("Ligne G-code au-delà du budget de lecture.")
+                        raise _RefusPesee("Ligne G-code au-delà du budget de lecture.")
                     empreinte.update(ligne)
                     selection = _T_EXPLICITE.fullmatch(ligne)
                     if selection is not None and int(selection[1]) == outil:
                         explicite = True
             archive.verifier_source(fichier)
         if empreinte.hexdigest() != sha_gcode or not explicite:
-            raise ValueError("SHA du membre différent ou aucune sélection T explicite pour cet index.")
+            raise _RefusPesee("SHA du membre différent ou aucune sélection T explicite pour cet index.")
         return {
             **inconnu, "statut": "DÉCLARATION LIÉE",
             "sha256_preuve": sha_preuve, "gcode_sha256": sha_gcode,
@@ -398,8 +407,11 @@ def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
             "estimation_slicer_g": indice["grammes_estimes"],
             "limite": "Déclaration reliée aux octets et à une bobine connue ; aucune mesure authentifiée.",
         }
-    except (BadZipFile, OSError, ValueError, TypeError, KeyError, RuntimeError, sqlite3.Error) as erreur:
+    except _RefusPesee as erreur:
         return {**inconnu, "raison": str(erreur)}
+    except (BadZipFile, OSError, ValueError, TypeError, KeyError, RuntimeError, sqlite3.Error) as erreur:
+        # Les erreurs de bibliothèque peuvent contenir le chemin ou le nom d’un membre privé (#35, #77).
+        return {**inconnu, "raison": f"Déclaration ou envoi illisible ({type(erreur).__name__})."}
 
 
 def planifier_lecture(
