@@ -10,7 +10,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
-from zipfile import BadZipFile, ZipFile, ZipInfo
+from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
 import pytest
 
@@ -334,6 +334,7 @@ def test_top_objet_8_et_projet_5_conserves_dans_sortie_tranchee(tmp_path, monkey
     ("modele", "buse"),
     [
         ("Anycubic Kobra S1 Max", ["0.4"]),
+        (["Anycubic Kobra S1"], ["0.4"]),
         ("Anycubic Kobra S1", ["0.6"]),
         ("Anycubic Kobra S1", None),
         (None, ["0.4"]),
@@ -365,6 +366,25 @@ def test_executer_refuse_modele_ou_buse_non_conformes_avant_popen(tmp_path, monk
         with pytest.raises(ValueError, match="Modèle embarqué|Buse embarquée"):
             trancher._executer({"source": str(source), "destination": str(destination)})
         assert not destination.exists()
+
+
+@pytest.mark.parametrize("defaut", ["doublon", "trop_grand"])
+def test_validation_machine_refuse_membre_projet_ambigu_ou_trop_grand(tmp_path, defaut):
+    """Le précontrôle partagé refuse l'index ou le budget avant lecture des réglages."""
+    source = tmp_path / "source.3mf"
+    membre = "Metadata/project_settings.config"
+    reglages = json.dumps({"printer_model": "Anycubic Kobra S1", "nozzle_diameter": ["0.4"]})
+    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
+        if defaut == "doublon":
+            archive.writestr(membre, reglages)
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                archive.writestr(membre, reglages)
+        else:
+            archive.writestr(membre, reglages + " " * (8 * 1024 * 1024))
+    avant = source.read_bytes()
+    with pytest.raises(ValueError, match="Machine embarquée absente ou illisible"):
+        trancher._verifier_machine_embarquee(source)
+    assert source.read_bytes() == avant
 
 
 def test_delai_tue_le_groupe_cree_sans_toucher_parent(tmp_path, monkeypatch):

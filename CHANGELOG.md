@@ -6,6 +6,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 - Remplissage : un dépôt sans rôle ou l’absence de dépôt clairsemé attribué
   ne valide plus les compteurs du comparateur (#183).
+- Tranchage : vérifie la machine avec le lecteur 3MF borné et refuse les
+  réglages illisibles, ambigus ou mal formés avant lancement (#186).
 
 ## 1.11.0 — 2026-11-11
 

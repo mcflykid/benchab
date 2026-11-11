@@ -22,7 +22,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile
 
 from benchab import integrite_3mf
 from benchab import reglages as schema_reglages
@@ -245,25 +245,25 @@ def inspecter_options(*, prive=None, mode="aide"):
 
 
 def _verifier_machine_embarquee(source):
-    """Vérifie source (chemin 3MF) ; retourne None/PASS implicite ou lève ValueError/FAIL.
+    """Vérifie le modèle et la buse en mm du 3MF ; retourne None ou lève ValueError.
 
-    Ne lit aucun profil installé et ne modifie aucun réglage embarqué.
+    La lecture bornée refuse un projet ambigu. Aucun profil installé n'est lu ni aucun réglage modifié.
     """
     try:
-        with ZipFile(source) as archive:
-            reglages = schema_reglages.decoder(archive.read("Metadata/project_settings.config").decode("utf-8"))
-    except (OSError, KeyError, BadZipFile, UnicodeDecodeError, ValueError) as erreur:
+        reglages = schema_reglages.lire_3mf(source)
+    except (OSError, KeyError, BadZipFile, ValueError) as erreur:
         raise ValueError("Machine embarquée absente ou illisible : lancement refusé.") from erreur
 
     machine = charger()["machine"]
     alias_autorises = {"Anycubic Kobra S1", "Anycubic Kobra S1 Combo"}
     modele = reglages.get("printer_model")
-    if modele not in alias_autorises or modele not in machine.get("modeles_slicer", []):
+    if not isinstance(modele, str) or modele not in alias_autorises or modele not in machine.get("modeles_slicer", []):
         raise ValueError("Modèle embarqué absent ou hors S1/S1 Combo : lancement refusé.")
     # Le schéma historique ne typait pas encore nozzle_diameter ; le décodeur
     # préserve sa représentation. On accepte uniquement les deux formes exactes
     # du contrat Source, sans conversion ni modification du réglage (voir règles).
-    if machine.get("buse_mm") != 0.4 or reglages.get("nozzle_diameter") not in (["0.4"], [0.4]):
+    buse = reglages.get("nozzle_diameter")
+    if machine.get("buse_mm") != 0.4 or buse not in (["0.4"], [0.4]):
         raise ValueError("Buse embarquée différente de l’unique 0,4 mm : lancement refusé.")
 
 
