@@ -80,6 +80,7 @@ def test_sortie_argparse_controle_preserve_message_et_delimiteur(tmp_path, monke
         ("imports", "maillage-avance", "benchab.imports3d.maillage_avance", {"prive": "prive"}),
         ("visualisation", "photo", "benchab.visualisation.rendu_photo", {"prive": "prive"}),
         ("references", "verifier", "benchab.references_visuelles.references", {}),
+        ("machine", "profils-cibles", "benchab.machine.profils_cibles", {}),
     ],
 )
 def test_familles_declarees_resolvent_module_options_et_arguments(
@@ -100,3 +101,17 @@ def test_familles_declarees_resolvent_module_options_et_arguments(
         for nom, valeur in options.items()
     }
     assert appels == [(["entree avec espaces", "--json"], attendu_options)]
+
+
+def test_qualite_route_speciale_ne_mange_pas_le_deuxieme_separateur(monkeypatch, atelier_initialise):
+    """Préserve le séparateur métier après le séparateur de délégation."""
+    module = importlib.import_module("benchab.qualite.tout")
+    appels = []
+
+    def executer(arguments):
+        appels.append(arguments)
+        return 4
+
+    monkeypatch.setattr(module, "main", executer)
+    assert main(["--prive", str(atelier_initialise), "qualite", "tout", "--", "--", "--", "preuve"]) == 4
+    assert appels == [["--", "preuve"]]

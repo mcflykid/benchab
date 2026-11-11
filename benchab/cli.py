@@ -74,6 +74,10 @@ ROUTES_NAMESPACE = {
             "visionneuse", "serveur", "apercu_gcode", "commentaires",
         }),
     },
+    "machine": {
+        "prefixe": "benchab.machine.",
+        "normalisation": "tirets_vers_underscore",
+    },
     "references": {
         "prefixe": "benchab.references_visuelles.",
         "normalisation": "aucune",
@@ -726,13 +730,7 @@ def executer(arguments, base):
             ),
         )
         print(json.dumps({"sortie": str(sortie), "rapport": rapport}, ensure_ascii=False, indent=2))
-    elif arguments.commande == "connaissances":
-        return _deleguer_namespace(arguments, base)
-    elif arguments.commande == "conception":
-        return _deleguer_namespace(arguments, base)
-    elif arguments.commande in {"imports", "visualisation"}:
-        return _deleguer_namespace(arguments, base)
-    elif arguments.commande == "references":
+    elif arguments.commande in ROUTES_NAMESPACE:
         return _deleguer_namespace(arguments, base)
     elif arguments.commande == "projet":
         from benchab.projets import nouveau
@@ -753,9 +751,6 @@ def executer(arguments, base):
         resultat = gestion_skill.appliquer(plan) if arguments.appliquer else plan
         print(json.dumps(resultat, ensure_ascii=False, indent=2))
         return 0
-    elif arguments.commande == "machine":
-        module = importlib.import_module("benchab.machine." + arguments.action.replace("-", "_"))
-        return _deleguer(module.main, arguments.arguments)
     elif arguments.commande == "qualite":
         if arguments.action == "syntaxe-privee":
             from benchab.qualite.references import verifier_scripts_projet
@@ -772,8 +767,10 @@ def executer(arguments, base):
             return _deleguer(module.main, arguments.arguments, options={"prive": base.prive})
         special = arguments.action in {"tout", "hooks"}
         module = importlib.import_module("benchab.qualite." + (arguments.action if special else "qualite"))
+        if special:
+            return _deleguer(module.main, arguments.arguments)
         directs = _arguments_delegues(arguments.arguments)
-        return _deleguer(module.main, directs if special else [arguments.action, *directs])
+        return _deleguer(module.main, [arguments.action, *directs])
     elif arguments.commande == "seance":
         from benchab.donnees import seance
 
