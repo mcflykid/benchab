@@ -181,6 +181,21 @@ def test_main_lit_et_ecrit_dans_base_prive(tmp_path):
         base.fermer()
 
 
+def test_main_refuse_un_json_sans_provenance_sans_le_modifier(tmp_path, capsys):
+    """Une destination étrangère donne un refus lisible et reste intacte."""
+    demande = tmp_path / "demande.json"
+    demande.write_text(json.dumps(_indicateurs(tmp_path)), encoding="utf-8")
+    cible = tmp_path / "rapport.json"
+    original = b'{"note":"a conserver"}'
+    cible.write_bytes(original)
+
+    assert main([str(demande), "--sortie", str(cible)], prive=tmp_path) == 2
+    sortie = capsys.readouterr()
+    assert "Destination existante non reconnue" in sortie.err
+    assert sortie.out == ""
+    assert cible.read_bytes() == original
+
+
 def test_rapport_declencheur_doit_etre_lie_a_la_piece_courante(tmp_path):
     donnees = _indicateurs(tmp_path, forme={"retrecissement_naturel": True, "volumes_fusionnes": False})
     rapport = tmp_path / donnees["rapports"]["forme"]["fichier"]
