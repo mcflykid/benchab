@@ -12,3 +12,6 @@ faire mesurer les impressions par l’utilisateur. Documenter les écarts et les
 limites physiques avant toute qualification. Un chargement TOML ou un tranchage
 réussi ne qualifie pas la nouvelle machine. Aucun mécanisme de connexion machine
 n’est nécessaire pour cette procédure.
+
+Le [parcours des premiers essais](premiers-essais.md) relie témoins numériques,
+mesures physiques et saisie du retour.
