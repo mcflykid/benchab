@@ -7,7 +7,8 @@
     "bottom_surface_pattern",
     "wall_sequence",
     "locked_skeleton_infill_pattern",
-    "locked_skin_infill_pattern"
+    "locked_skin_infill_pattern",
+    "support_interface_pattern"
   ],
   "binaires": {
     "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d": {
@@ -39,6 +40,10 @@
           "inner wall/outer wall": {"statut": "PASS", "valeur_embarquee": "inner wall/outer wall"},
           "outer wall/inner wall": {"statut": "PASS", "valeur_embarquee": "outer wall/inner wall"},
           "inner-outer-inner wall": {"statut": "PASS", "valeur_embarquee": "inner-outer-inner wall"}
+        },
+        "support_interface_pattern": {
+          "auto": {"statut": "PASS", "valeur_embarquee": "auto"},
+          "concentric": {"statut": "PASS", "valeur_embarquee": "concentric"}
         }
       }
     }

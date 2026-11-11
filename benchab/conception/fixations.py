@@ -4,7 +4,7 @@ import math
 
 import trimesh
 
-_FORMES = {"lamage", "insert_cylindrique", "ecrou_hexagonal"}
+_FORMES = {"lamage", "insert_cylindrique", "ecrou_hexagonal", "fraisage"}
 _SECTIONS_RONDES = 96
 
 
@@ -41,7 +41,9 @@ def generer_outil(
     Toutes les cotes sont en mm, l’angle dans le plan XY est en degrés.
     Le bloc va de l’origine aux dimensions XYZ ; l’entrée du logement est à z=0.
     La largeur est un diamètre pour les formes rondes et une cote sur plats pour
-    l’écrou. L’insert est borgne ; lamage et écrou exigent un passage traversant.
+    l’écrou. L’insert est borgne ; les autres formes exigent un passage traversant.
+    Le fraisage relie son diamètre d’entrée à celui du passage à la profondeur
+    déclarée ; son angle inclus en degrés est calculé, sans référence ISO.
     PASS concerne uniquement la géométrie, NON VÉRIFIÉ l’ajustement physique.
     Les cotes déclarées ne sont ni normalisées ni compensées. Aucune écriture.
     """
@@ -64,6 +66,7 @@ def generer_outil(
     if type(orientation_deg) not in (int, float) or not 0 <= orientation_deg < 360:
         raise ValueError("Orientation XY attendue entre 0 inclus et 360 degrés exclus")
     hexagonal = forme == "ecrou_hexagonal"
+    conique = forme == "fraisage"
     if not hexagonal and orientation_deg != 0:
         raise ValueError("L’orientation s’applique seulement à l’écrou hexagonal")
     if forme == "insert_cylindrique":
@@ -91,17 +94,26 @@ def generer_outil(
         "fond_hors_passage": bloc[2] - profondeur,
     }
     if passage is not None:
-        marges["epaulement"] = (largeur - passage) / 2
+        marges["marge_annulaire_entree" if conique else "epaulement"] = (largeur - passage) / 2
     insuffisantes = [f"{nom}={valeur:.6g} mm" for nom, valeur in marges.items() if valeur < marge_min]
     if insuffisantes:
         raise ValueError(f"Marges sous {marge_min:g} mm : " + ", ".join(insuffisantes))
 
-    outil = _cylindre(
-        rayon, profondeur, centre, sections=6 if hexagonal else _SECTIONS_RONDES, angle=orientation_deg,
-    )
-    if passage is not None:
-        foret = _cylindre(passage / 2, bloc[2], centre, sections=_SECTIONS_RONDES)
-        outil = trimesh.boolean.union([outil, foret], engine="manifold")
+    angle_inclus = None
+    if conique and passage is not None:
+        rayon_passage = passage / 2
+        angle_inclus = 2 * math.degrees(math.atan2(rayon - rayon_passage, profondeur))
+        # Un profil de révolution commun évite deux surfaces jointives au col.
+        profil = [(0, 0), (rayon, 0), (rayon_passage, profondeur), (rayon_passage, bloc[2]), (0, bloc[2])]
+        outil = trimesh.creation.revolve(profil, sections=_SECTIONS_RONDES)
+        outil.apply_translation((*centre, 0))
+    else:
+        outil = _cylindre(
+            rayon, profondeur, centre, sections=6 if hexagonal else _SECTIONS_RONDES, angle=orientation_deg,
+        )
+        if passage is not None:
+            foret = _cylindre(passage / 2, bloc[2], centre, sections=_SECTIONS_RONDES)
+            outil = trimesh.boolean.union([outil, foret], engine="manifold")
     if not outil.is_volume or outil.body_count != 1:
         raise ValueError("L’outil n’est pas un volume fermé et connexe")
     return outil, {
@@ -115,6 +127,7 @@ def generer_outil(
         "profondeur_mm": profondeur,
         "passage_mm": passage,
         "orientation_deg": float(orientation_deg),
+        **({"angle_inclus_deg": angle_inclus} if angle_inclus is not None else {}),
         "marge_min_mm": marge_min,
         "marges_mm": marges,
         "validation_physique": "NON VÉRIFIÉ",

@@ -171,3 +171,10 @@ Les sorties jetables sont permises dans le temporaire système hors partie
 publique du checkout. Une preuve durable ou une référence enregistrée ne
 sort pas de la racine privée de son atelier. Voir
 [la décision sur la portée](../decisions/2026-11-06-portee-controles-et-ecritures.md).
+
+Le contrôle de cohérence compare chaque export au registre en lecture seule.
+Un manifeste absent ou mal formé ne masque pas une table absente, liée,
+illisible ou différente. Même sans manifeste utilisable, les tables lisibles
+restent comparées au contenu SQLite attendu et les vues sont contrôlées.
+Un écart décrit l’état des octets ; il ne détermine pas sa cause et ne lance
+aucune régénération ni restauration.

@@ -5,7 +5,7 @@ import math
 import pytest
 
 from benchab.controles.gcode_interpreter import Interpreter
-from benchab.gcode.geometrie_arc import enveloppe_deposee_xyz
+from benchab.gcode.geometrie_arc import enveloppe_deposee_xyz, point_debut_deposee_xyz
 
 
 def mouvement_arc(*, sens=1, debut=0.0, z_fin=0.2, balayage=math.pi):
@@ -80,6 +80,18 @@ def test_enveloppe_arc_majeur_reel_du_lecteur_conserve_le_sens_et_le_rayon_signe
 
     assert enveloppe[0] == pytest.approx((-1.0, 1.0))
     assert enveloppe[1] == pytest.approx((-1.0, 1.0))
+
+
+def test_point_de_depot_apres_dette_est_evalue_sur_le_cercle_exact():
+    """Une dette de 0,5 mm déplace le départ à 45° sur un arc de rayon 1 mm."""
+    lecteur = Interpreter()
+    for ligne in ("G90", "M83", "G1 X1 Y0 Z0.2 F600", "G1 E-0.5"):
+        lecteur.feed_line(ligne)
+    mouvement = lecteur.feed_line("G3 X0 Y1 I-1 J0 E1")
+
+    point = point_debut_deposee_xyz(mouvement)
+
+    assert point == pytest.approx((math.sqrt(0.5), math.sqrt(0.5), 0.2))
 
 
 def test_enveloppe_refuse_valeurs_hors_domaine():

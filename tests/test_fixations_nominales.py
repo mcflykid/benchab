@@ -49,6 +49,27 @@ def test_ecrou_hexagonal_cote_sur_plats_et_rotation():
     assert trente["marges_mm"]["x_min"] == pytest.approx(9)
 
 
+def test_fraisage_cotes_et_angle_nominal():
+    """Le cône joint le diamètre d’entrée au passage sans cote ISO implicite."""
+    outil, preuve = generer_outil("fraisage", largeur_mm=10, passage_mm=4, **BASE)
+    cone = math.pi * 4 / 3 * (5**2 + 5 * 2 + 2**2)
+    attendu = cone + math.pi * 2**2 * 8
+    assert outil.is_volume and outil.body_count == 1
+    assert outil.bounds[0].tolist() == pytest.approx([10, 7, 0])
+    assert outil.bounds[1].tolist() == pytest.approx([20, 17, 12])
+    assert outil.volume == pytest.approx(attendu, rel=0.001)
+    assert preuve["angle_inclus_deg"] == pytest.approx(2 * math.degrees(math.atan2(3, 4)))
+    assert preuve["marges_mm"]["marge_annulaire_entree"] == 3
+    assert "epaulement" not in preuve["marges_mm"]
+    assert preuve["validation_physique"] == "NON VÉRIFIÉ"
+
+
+def test_fraisage_refuse_une_marge_annulaire_insuffisante():
+    """Les cotes non compatibles avec la marge déclarée n’émettent aucun outil."""
+    with pytest.raises(ValueError, match="marge_annulaire_entree"):
+        generer_outil("fraisage", largeur_mm=10, passage_mm=8, **BASE)
+
+
 @pytest.mark.parametrize("remplacement", [
     {"centre_xy_mm": (3, 12)},
     {"profondeur_mm": 11},
@@ -64,7 +85,7 @@ def test_marges_ou_donnees_invalides_sont_refusees(remplacement):
 
 
 @pytest.mark.parametrize("forme,passage", [
-    ("lamage", 4), ("insert_cylindrique", None), ("ecrou_hexagonal", 4),
+    ("lamage", 4), ("insert_cylindrique", None), ("ecrou_hexagonal", 4), ("fraisage", 4),
 ])
 def test_soustraction_dans_le_bloc_conserve_un_volume(forme, passage):
     """Le volume outil se soustrait au bloc déclaré sans fragment ni fuite."""

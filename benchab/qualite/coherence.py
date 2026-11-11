@@ -2,11 +2,17 @@
 
 import hashlib
 import json
+import os
 import re
 import sqlite3
+import stat
 from pathlib import Path
 
-from benchab.donnees.base import APPLICATION_ID, TABLES
+from benchab.donnees.base import (
+    APPLICATION_ID,
+    TABLES,
+    _signature_export,
+)
 from benchab.qualite.ecritures import _sans_lien
 
 
@@ -208,8 +214,205 @@ def _verifier_fiches_filaments(root, connexion):
     return erreurs
 
 
+def _cles_uniques(paires):
+    objet = {}
+    for cle, valeur in paires:
+        if cle in objet:
+            raise ValueError("Clé d’export dupliquée")
+        objet[cle] = valeur
+    return objet
+
+
+def _ouvrir_chaine_dossiers(chemin):
+    """Ouvre chaque dossier du chemin sans lien et conserve les descripteurs."""
+    chemin = Path(chemin)
+    if not chemin.is_absolute():
+        raise ValueError("Chemin privé absolu requis")
+    drapeaux = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+    descripteurs = [os.open(os.sep, drapeaux)]
+    noms = []
+    try:
+        for nom in chemin.parts[1:]:
+            descripteurs.append(os.open(nom, drapeaux, dir_fd=descripteurs[-1]))
+            noms.append(nom)
+        _verifier_chaine_dossiers(descripteurs, noms)
+        return descripteurs, noms
+    except BaseException:
+        for descripteur in reversed(descripteurs):
+            os.close(descripteur)
+        raise
+
+
+def _verifier_chaine_dossiers(descripteurs, noms):
+    """Confirme que chaque nom de dossier désigne toujours son descripteur ouvert."""
+    for parent, nom, enfant in zip(descripteurs, noms, descripteurs[1:]):
+        courant = os.stat(nom, dir_fd=parent, follow_symlinks=False)
+        if not stat.S_ISDIR(courant.st_mode) or _signature_export(courant) != _signature_export(os.fstat(enfant)):
+            raise ValueError("Dossier remplacé pendant le contrôle")
+
+
+def _ouvrir_membre_export(dossier_fd, nom):
+    """Ouvre un membre régulier depuis le dossier épinglé, sans suivre de lien."""
+    courant = os.stat(nom, dir_fd=dossier_fd, follow_symlinks=False)
+    if stat.S_ISLNK(courant.st_mode) or not stat.S_ISREG(courant.st_mode):
+        raise ValueError("Export lié ou spécial refusé")
+    signature = _signature_export(courant)
+    fd = os.open(nom, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dossier_fd)
+    if _signature_export(os.fstat(fd)) != signature:
+        os.close(fd)
+        raise ValueError("Export remplacé pendant l’ouverture")
+    return fd, signature
+
+
+def _verifier_membre_export(dossier_fd, nom, signature):
+    """Refuse une modification ou un remplacement après lecture du membre."""
+    courant = os.stat(nom, dir_fd=dossier_fd, follow_symlinks=False)
+    if _signature_export(courant) != signature:
+        raise ValueError("Export modifié pendant le contrôle")
+
+
+def _empreinte_membre_export(dossier_fd, nom):
+    """Calcule un SHA en flux borné en mémoire et vérifie le membre épinglé."""
+    fd, signature = _ouvrir_membre_export(dossier_fd, nom)
+    hachage = hashlib.sha256()
+    with os.fdopen(fd, "rb") as flux:
+        for bloc in iter(lambda: flux.read(1024 * 1024), b""):
+            hachage.update(bloc)
+        if _signature_export(os.fstat(flux.fileno())) != signature:
+            raise ValueError("Export modifié pendant la lecture")
+    _verifier_membre_export(dossier_fd, nom, signature)
+    return hachage.hexdigest(), signature
+
+
+def _manifeste_export(dossier_fd, erreurs, signatures):
+    """Lit le manifeste par le descripteur du dossier, dans la borne de 100 Ko."""
+    try:
+        fd, signature = _ouvrir_membre_export(dossier_fd, "manifest.json")
+        with os.fdopen(fd, "rb") as flux:
+            donnees = flux.read(100_001)
+            if _signature_export(os.fstat(flux.fileno())) != signature:
+                raise ValueError("Manifeste changé pendant la lecture")
+        _verifier_membre_export(dossier_fd, "manifest.json", signature)
+        signatures["manifest.json"] = signature
+    except FileNotFoundError:
+        erreurs.append("Manifeste d’export absent : export/manifest.json")
+        return None
+    except (OSError, ValueError) as exc:
+        erreurs.append(f"Manifeste d’export illisible ou lié : {type(exc).__name__}")
+        return None
+    try:
+        if len(donnees) > 100_000:
+            raise ValueError("Budget manifeste dépassé")
+        manifeste = json.loads(donnees, object_pairs_hook=_cles_uniques)
+        if not isinstance(manifeste, dict):
+            raise ValueError("Objet JSON attendu")
+    except (ValueError, RecursionError):
+        erreurs.append("Manifeste d’export mal formé : export/manifest.json")
+        return None
+    return manifeste
+
+
+def _verifier_exports(root, connexion):
+    """Compare chaque export au registre, même si un autre export ne peut pas être lu."""
+    erreurs = []
+    descripteurs = []
+    export_fd = None
+    try:
+        descripteurs, noms = _ouvrir_chaine_dossiers(root)
+        racine_fd = descripteurs[-1]
+        entree = os.stat("export", dir_fd=racine_fd, follow_symlinks=False)
+        if stat.S_ISLNK(entree.st_mode) or not stat.S_ISDIR(entree.st_mode):
+            raise ValueError("Dossier export lié ou non régulier")
+        signature_dossier = _signature_export(entree)
+        export_fd = os.open(
+            "export", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=racine_fd
+        )
+        if _signature_export(os.fstat(export_fd)) != signature_dossier:
+            raise ValueError("Dossier export remplacé pendant l’ouverture")
+    except FileNotFoundError:
+        erreurs.append("Manifeste d’export absent : export/manifest.json")
+        erreurs.extend("Export absent : " + table for table in TABLES)
+        if export_fd is not None:
+            os.close(export_fd)
+        for descripteur in reversed(descripteurs):
+            os.close(descripteur)
+        return erreurs
+    except (OSError, ValueError):
+        if export_fd is not None:
+            os.close(export_fd)
+        for descripteur in reversed(descripteurs):
+            os.close(descripteur)
+        return ["Dossier d’export lié ou remplacé pendant le contrôle : export/"]
+    try:
+        return _comparer_exports_epingles(connexion, descripteurs, noms, export_fd, signature_dossier)
+    finally:
+        os.close(export_fd)
+        for descripteur in reversed(descripteurs):
+            os.close(descripteur)
+
+
+def _comparer_exports_epingles(connexion, descripteurs, noms, export_fd, signature_dossier):
+    """Compare les exports ouverts et revalide tous leurs noms avant de rendre le rapport."""
+    erreurs = []
+    signatures = {}
+    manifeste = _manifeste_export(export_fd, erreurs, signatures)
+    empreintes = None
+    if manifeste is not None:
+        if manifeste.get("tables") != list(TABLES):
+            erreurs.append("Liste des tables exportées divergente")
+        schema = manifeste.get("schema")
+        if type(schema) is not int or schema != connexion.execute("PRAGMA user_version").fetchone()[0]:
+            erreurs.append("Version du schéma exporté divergente")
+        empreintes = manifeste.get("sha256")
+        if (
+            not isinstance(empreintes, dict) or set(empreintes) != set(TABLES)
+            or any(not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{64}", sha) for sha in empreintes.values())
+        ):
+            erreurs.append("Empreintes du manifeste d’export mal formées")
+            empreintes = None
+    for table in TABLES:
+        nom = table + ".jsonl"
+        try:
+            reel, signatures[nom] = _empreinte_membre_export(export_fd, nom)
+        except FileNotFoundError:
+            erreurs.append("Export absent : " + table)
+            continue
+        except ValueError as exc:
+            diagnostic = "lié refusé" if "lié ou spécial" in str(exc) else "illisible"
+            erreurs.append(f"Export {diagnostic} : {table} ({type(exc).__name__})")
+            continue
+        except OSError as exc:
+            erreurs.append(f"Export lié ou illisible : {table} ({type(exc).__name__})")
+            continue
+        attendu = hashlib.sha256()
+        for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
+            attendu.update(
+                (json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n").encode()
+            )
+        if attendu.hexdigest() != reel or (empreintes is not None and reel != empreintes[table]):
+            erreurs.append("Export non conforme au registre : " + table)
+    try:
+        _verifier_chaine_dossiers(descripteurs, noms)
+        courant = os.stat("export", dir_fd=descripteurs[-1], follow_symlinks=False)
+        if (
+            _signature_export(courant) != signature_dossier
+            or _signature_export(os.fstat(export_fd)) != signature_dossier
+        ):
+            raise ValueError("Dossier remplacé")
+        for nom, signature in signatures.items():
+            _verifier_membre_export(export_fd, nom, signature)
+    except (OSError, ValueError):
+        erreurs.append("Dossier d’export remplacé pendant le contrôle : export/")
+    return erreurs
+
+
 def verifier(root):
-    """Contrôle le registre/export/vues, en lecture seule ; renvoie [] pour PASS ou des erreurs FAIL claires."""
+    """Contrôle le registre, ses exports et ses vues depuis le chemin privé donné.
+
+    Sortie sans unité : [] pour PASS ou une liste de diagnostics FAIL. Un
+    export absent, illisible ou divergent ne masque pas les autres écarts.
+    Aucune donnée n'est régénérée et aucun original n'est modifié.
+    """
     root = _sans_lien(Path(root).absolute())
     base = _sans_lien(root / "benchab.sqlite")
     if not base.is_file():
@@ -225,22 +428,7 @@ def verifier(root):
             erreurs.append("Intégrité SQLite en échec")
         if connexion.execute("PRAGMA foreign_key_check").fetchall():
             erreurs.append("Relations SQLite invalides")
-        manifeste = json.loads(_sans_lien(root / "export/manifest.json").read_text())
-        if manifeste.get("tables") != list(TABLES):
-            erreurs.append("Liste des tables exportées divergente")
-        if manifeste.get("schema") != connexion.execute("PRAGMA user_version").fetchone()[0]:
-            erreurs.append("Version du schéma exporté divergente")
-        for table in TABLES:
-            attendu = hashlib.sha256()
-            for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
-                attendu.update(
-                    (json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n").encode()
-                )
-            fichier = _sans_lien(root / "export" / (table + ".jsonl"))
-            with fichier.open("rb") as flux:
-                reel = hashlib.file_digest(flux, "sha256").hexdigest()
-            if attendu.hexdigest() != reel or reel != manifeste.get("sha256", {}).get(table):
-                erreurs.append("Export non conforme au registre : " + table)
+        erreurs.extend(_verifier_exports(root, connexion))
         erreurs.extend(_verifier_vues(root, connexion))
         # Un registre/export cohérent ne prouve pas la présence des fichiers
         # qu'il désigne (docs/reference/donnees.md).

@@ -206,20 +206,21 @@ def iter_lignes_gcode_3mf(
             yield from texte
 
 
-def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1"):
-    """
-    Analyse en flux et met en cache un résultat JSON borné par SHA du 3MF, avec compteur atomique en octets.
+def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1", archive=None):
+    """Analyse un membre en flux et met en cache un résultat JSON borné.
 
-        Les résultats et les sources des analyseurs sont identifiés séparément ; les
-        seuils/options font partie de la clé. Le résultat retourné est décodé à neuf,
-        donc un appelant ne peut pas modifier l'objet conservé dans le cache.
-
+    Le cache est lié au SHA du 3MF, au membre, aux options et à la version.
+    Le contexte ouvert optionnel doit désigner la même source, même sur
+    cache chaud ; une mutation lève ValueError. Aucun original modifié.
+    Le résultat est décodé à neuf et ses unités relèvent de l’analyseur.
     """
+    if archive is not None:
+        archive.verifier_source(chemin)
     options_json = json.dumps(options, sort_keys=True, separators=(",", ":"), allow_nan=False)
     try:
         source = inspect.getsource(analyseur)
     except (TypeError, OSError):
-        return analyseur(iter_lignes_gcode_3mf(chemin, membre))
+        return analyseur(iter_lignes_gcode_3mf(chemin, membre, archive=archive))
     version_parseur = hashlib.sha256(source.encode("utf-8")).hexdigest()
     empreinte_initiale = empreinte_3mf(chemin)
     cle = (empreinte_initiale, membre, options_json, version, version_parseur)
@@ -227,11 +228,15 @@ def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1"
     if valeur is not None:
         if empreinte_3mf(chemin) != empreinte_initiale:
             raise ValueError("3MF modifié pendant la lecture du résultat d'analyse")
+        if archive is not None:
+            archive.verifier_source(chemin)
         return json.loads(valeur)
 
-    resultat = analyseur(iter_lignes_gcode_3mf(chemin, membre))
+    resultat = analyseur(iter_lignes_gcode_3mf(chemin, membre, archive=archive))
     if empreinte_3mf(chemin) != empreinte_initiale:
         raise ValueError("3MF modifié pendant l'analyse du G-code")
+    if archive is not None:
+        archive.verifier_source(chemin)
     serialise = json.dumps(resultat, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     _memoriser(cle, serialise, analyse=True)
     return json.loads(serialise)

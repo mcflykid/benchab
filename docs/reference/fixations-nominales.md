@@ -23,3 +23,10 @@ conditions ; elles ne sont pas transférées à une fixation différente. Le
 maillage renvoyé représente le vide à soustraire, pas une pièce à imprimer.
 La tenue, le frottement et l’ajustement restent NON VÉRIFIÉS. Les filetages,
 fraisages et l’intégration aux connecteurs de découpe restent à traiter (#27).
+
+Le fraisage traverse le bloc par un passage cylindrique. Le diamètre
+d’entrée et le diamètre du passage sont reliés par un tronc de cône sur
+la profondeur déclarée. Le rapport indique l’angle inclus calculé et la
+marge annulaire à l’entrée, distincte d’un épaulement plat. Les sections
+rondes sont maillées en 96 côtés ; les marges sont calculées d’après les
+cotes nominales. Aucune norme de vis ni correspondance physique n’est déduite.

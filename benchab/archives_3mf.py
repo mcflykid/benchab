@@ -14,11 +14,12 @@ from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
 
 
-def decoder_xml(contenu, *, limite_octets):
-    """Parse des octets ou du texte XML bornés ; renvoie une racine sans DTD ni entités déclarées.
+def decoder_xml(contenu, *, limite_octets, commentaires=False, instructions_traitement=False):
+    """Parse XML borné sans DTD/ENTITY ; conserve commentaires ou PI si demandé.
 
-    Le texte est compté en octets UTF-8. Une limite dépassée ou une déclaration
-    interdite lève ValueError ; une syntaxe invalide lève ParseError.
+    Le texte est compté en octets UTF-8 ; une limite dépassée ou une déclaration
+    interdite lève ValueError, une syntaxe invalide lève ParseError. Les options
+    ne normalisent pas les réglages ni ne modifient l’archive.
     """
     donnees = contenu.encode("utf-8") if isinstance(contenu, str) else contenu
     if len(donnees) > limite_octets:
@@ -26,7 +27,13 @@ def decoder_xml(contenu, *, limite_octets):
     # UTF-16/32 intercale des NUL dans les déclarations ASCII, sans changer leurs mots.
     if re.search(rb"<!\s*(?:DOCTYPE|ENTITY)\b", donnees.replace(b"\x00", b""), re.IGNORECASE):
         raise ValueError("DOCTYPE et ENTITY sont interdits dans le XML 3MF")
-    return ElementTree.fromstring(contenu)
+    if not commentaires and not instructions_traitement:
+        return ElementTree.fromstring(contenu)
+    constructeur = ElementTree.TreeBuilder(
+        insert_comments=commentaires,
+        insert_pis=instructions_traitement,
+    )
+    return ElementTree.fromstring(contenu, parser=ElementTree.XMLParser(target=constructeur))
 
 
 class _FluxBorne(io.RawIOBase):
@@ -280,12 +287,17 @@ class Archive3MF:
             if flux in self._flux_ouverts:
                 self._flux_ouverts.remove(flux)
 
-    def xml(self, membre):
-        """Analyse XML après refus des déclarations DTD/ENTITY, tous encodages usuels."""
+    def xml(self, membre, *, commentaires=False, instructions_traitement=False):
+        """Analyse XML borné, sans DTD/ENTITY ; conserve les lexèmes sur demande."""
         if self._infos[membre].file_size > self.taille_max_xml:
             raise ValueError(f"budget XML dépassé : {membre}")
         donnees = self.lire(membre, limite_octets=self.taille_max_xml)
-        return decoder_xml(donnees, limite_octets=self.taille_max_xml)
+        return decoder_xml(
+            donnees,
+            limite_octets=self.taille_max_xml,
+            commentaires=commentaires,
+            instructions_traitement=instructions_traitement,
+        )
 
     def reglages(self, membre="Metadata/project_settings.config"):
         """Décode les réglages via leur dictionnaire typé, sans normalisation nouvelle."""

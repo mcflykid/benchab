@@ -83,6 +83,30 @@ def enveloppe_deposee_xyz(mouvement):
     return tuple((min(p[axe] for p in points), max(p[axe] for p in points)) for axe in range(3))
 
 
+def point_debut_deposee_xyz(mouvement):
+    """Renvoie le premier point réellement déposé par un arc G17, en mm.
+
+    Entrée : mouvement analytique de l'interpréteur, avec centre en mm,
+    angles en rad et fraction de début de dépôt entre 0 et 1.
+    Sortie : coordonnées spatiales (X, Y, Z) du début de dépôt, en mm.
+    Échec : ValueError si l'arc est incohérent ou hors du domaine borné.
+    Le point est évalué sur le cercle exact, sans corde ni validation physique.
+    """
+    # L'enveloppe commune valide l'identité géométrique et les bornes avant
+    # toute utilisation du point dans un verdict (suite #123).
+    enveloppe_deposee_xyz(mouvement)
+    arc = mouvement["arc_g17"]
+    cx, cy = map(float, arc["centre_xy_mm"])
+    rayon = float(arc["rayon_mm"])
+    a0 = float(arc["angle_debut_rad"])
+    balayage = float(arc["balayage_signe_rad"])
+    debut = float(arc["debut_depot_fraction"])
+    z0, z1 = float(mouvement["start"][2]), float(mouvement["end"][2])
+    angle = a0 + balayage * debut
+    z = z0 + (z1 - z0) * debut
+    return (cx + rayon * math.cos(angle), cy + rayon * math.sin(angle), z)
+
+
 def longueur_deposee_dans_boite(mouvement, bornes):
     """Renvoie la longueur déposée G17 en mm dans la boîte cartésienne donnée.
 
