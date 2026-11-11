@@ -23,20 +23,25 @@ relancer avec une déclaration différente pour une autre intention.
 - `zone_fine` exige la couverture complète de l’intervalle et que chaque plage
   traversant cette zone respecte `hauteur_max_mm`.
 
-Le contrôle qualifie seulement les 3MF à un objet, un corps et une instance
-imprimable, dont l’identifiant de plage correspond à l’objet géométrique.
-L’instance peut être transformée en X/Y si les coefficients de sa coordonnée Z
-sont exactement `0, 0, 1, 0` ; même une inclinaison minime est NON VÉRIFIÉE. Une
-échelle, translation ou inclinaison en Z, plusieurs objets/instances, un
-assemblage ou une liaison ambiguë donnent **NON VÉRIFIÉ**. Une intention absente,
-un format de plage inconnu ou une géométrie illisible ne vaut pas PASS.
+Le contrôle qualifie une instance imprimable reliée exactement à un maillage.
+Il suit le modèle principal résolu par la relation OPC comme le lecteur 3MF.
+Il accepte aussi le format BENCHAB à un composant interne unique avec une cible
+de maillage vérifiée et un transform Z conservé sur chaque lien. Un `p:path`
+sur l’instance, une cible absente, un assemblage, plusieurs objets/instances
+ou une liaison ambiguë donnent **NON VÉRIFIÉ**.
+
+L’instance et chaque composant peuvent être transformés en X/Y si les
+coefficients de leur coordonnée Z sont exactement `0, 0, 1, 0` ; même une
+inclinaison minime est NON VÉRIFIÉE. Une échelle, translation ou inclinaison en
+Z donne **NON VÉRIFIÉ**. Une intention absente, un format de plage inconnu ou
+une géométrie illisible ne vaut pas PASS.
 
 Les intervalles sont les plages variables explicitement stockées dans le 3MF.
 Le contrôle ne reconstitue pas la hauteur de chaque couche après traitement par
 le slicer, ni le résultat du G-code. La tolérance de comparaison vaut 0,001 mm
 par défaut et peut être réglée jusqu’à 0,1 mm avec `--tolerance-mm`. Le code de
 sortie est 0 pour PASS, 2 pour FAIL et NON VÉRIFIÉ. Voir
-[l’issue #110](https://github.com/mcflykid/benchab/issues/110).
+le suivi du projet : #110.
 
 Quand `Metadata/project_settings.config` contient `layer_height`, le rapport
 restitue cette hauteur de base issue des réglages projet via le dictionnaire

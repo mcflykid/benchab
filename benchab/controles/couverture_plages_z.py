@@ -3,7 +3,9 @@
 import argparse
 import json
 import math
+import posixpath
 from pathlib import Path
+from urllib.parse import unquote
 from xml.etree import ElementTree
 from zipfile import BadZipFile
 
@@ -111,33 +113,123 @@ def _matrice_z_inchangee(item):
     return bool(np.array_equal(nombres[2], [0.0, 0.0, 1.0, 0.0]))
 
 
+def _chemin_modele_principal(archive, noms):
+    """Résout la même cible OPC que le lecteur 3MF ; membre ZIP ou None si ambigu."""
+    if "_rels/.rels" in noms:
+        relations = archive.xml("_rels/.rels")
+        candidates = [
+            relation for relation in relations
+            if relation.get("Type", "").endswith("/3dmodel") and relation.get("TargetMode") != "External"
+        ]
+        if len(candidates) > 1:
+            return None
+        if candidates:
+            cible = unquote(candidates[0].get("Target", "")).replace("\\", "/")
+            cible = posixpath.normpath(cible.lstrip("/") if cible.startswith("/") else cible)
+            return cible if cible in noms else None
+    return next((nom for nom in sorted(noms) if nom.lower() == "3d/3dmodel.model"), None)
+
+
+def _est_path(element):
+    """Reconnaît les extensions p:path même si leur URI de namespace varie."""
+    return any(nom == "path" or nom.rsplit("}", 1)[-1] == "path" for nom in element.attrib)
+
+
+def _valeur_path(element):
+    """Renvoie l’unique valeur p:path ; plusieurs extensions path restent ambiguës."""
+    valeurs = [
+        valeur for nom, valeur in element.attrib.items()
+        if nom == "path" or nom.rsplit("}", 1)[-1] == "path"
+    ]
+    return valeurs[0] if len(valeurs) == 1 else None
+
+
 def _lire_contexte(source, identifiant):
     """Lit une fois les déclarations XML et les réglages de projet typés, sans écrire."""
     with Archive3MF(source, taille_max_xml=_XML_MAX) as archive:
         noms = archive.noms()
-        modeles = [nom for nom in noms if nom.lower() == "3d/3dmodel.model"]
-        if len(modeles) != 1:
+        modele_principal = _chemin_modele_principal(archive, noms)
+        if modele_principal is None:
             return None, None, None, "modèle principal absent ou ambigu"
-        racine = archive.xml(modeles[0])
+        racine = archive.xml(modele_principal)
         membre_plages = "Metadata/layer_config_ranges.xml"
         plages = archive.xml(membre_plages) if membre_plages in noms else None
         membre_reglages = "Metadata/project_settings.config"
         reglages = archive.reglages(membre_reglages) if membre_reglages in noms else None
-    ressources = racine.findall(NS + "resources/" + NS + "object")
-    objets_mailles = [obj for obj in ressources if obj.find(NS + "mesh") is not None]
-    items = racine.findall(NS + "build/" + NS + "item")
-    if len(objets_mailles) != 1 or len(items) != 1:
-        return racine, plages, reglages, "plusieurs corps ou instances : liaison objet/plage NON VÉRIFIÉE"
-    obj, instance = objets_mailles[0], items[0]
-    if obj.get("id") != identifiant or instance.get("objectid") != identifiant:
-        return racine, plages, reglages, "identifiant de plage et géométrie non reliés sans ambiguïté"
-    if instance.get("printable", "1") != "1":
-        return racine, plages, reglages, "instance explicitement non imprimable"
-    if obj.findall(NS + "components/" + NS + "component"):
-        return racine, plages, reglages, "objet composé : repère des sous-composants NON VÉRIFIÉ"
-    if not _matrice_z_inchangee(instance):
-        return racine, plages, reglages, "transformation de l’objet modifie ou rend ambigu le repère Z"
-    return racine, plages, reglages, None
+        ressources = racine.findall(NS + "resources/" + NS + "object")
+        objets_par_id = {}
+        for objet in ressources:
+            identifiant_objet = objet.get("id")
+            if identifiant_objet in objets_par_id:
+                return racine, plages, reglages, "identifiant d’objet répété dans le modèle principal"
+            objets_par_id[identifiant_objet] = objet
+        items = racine.findall(NS + "build/" + NS + "item")
+        if len(items) != 1:
+            return racine, plages, reglages, "plusieurs instances : liaison objet/plage NON VÉRIFIÉE"
+        instance = items[0]
+        identifiant_racine = instance.get("objectid")
+        if identifiant_racine != identifiant:
+            return racine, plages, reglages, "identifiant de plage et géométrie non reliés sans ambiguïté"
+        if instance.get("printable", "1") != "1":
+            return racine, plages, reglages, "instance explicitement non imprimable"
+        if _est_path(instance):
+            return racine, plages, reglages, "instance liée à un autre modèle par p:path : NON VÉRIFIÉ"
+        if set(instance.attrib) - {"objectid", "transform", "printable"}:
+            return racine, plages, reglages, "attribut d’instance non qualifié"
+        if not _matrice_z_inchangee(instance):
+            return racine, plages, reglages, "transformation de l’objet modifie ou rend ambigu le repère Z"
+        objet_racine = objets_par_id.get(identifiant_racine)
+        if objet_racine is None:
+            return racine, plages, reglages, "objet d’instance absent du modèle principal"
+        composants = objet_racine.findall(NS + "components/" + NS + "component")
+        if objet_racine.find(NS + "mesh") is not None and not composants:
+            objets_mailles = [obj for obj in ressources if obj.find(NS + "mesh") is not None]
+            if len(objets_mailles) != 1 or objets_mailles[0] is not objet_racine:
+                return racine, plages, reglages, "plusieurs corps : liaison objet/plage NON VÉRIFIÉE"
+            return racine, plages, reglages, None
+        # Le producteur BENCHAB met les maillages dans pieces.model et lie chaque
+        # plaque par un seul component (docs/reference/integrite-3mf.md).
+        if objet_racine.find(NS + "mesh") is not None or len(composants) != 1:
+            return racine, plages, reglages, "assemblage ou liaison objet/plage non qualifiée"
+        composant = composants[0]
+        noms_path = {
+            nom for nom in composant.attrib if nom == "path" or nom.rsplit("}", 1)[-1] == "path"
+        }
+        if len(noms_path) > 1 or set(composant.attrib) - {"objectid", "transform"} - noms_path:
+            return racine, plages, reglages, "attribut de composant non qualifié"
+        if not _matrice_z_inchangee(composant):
+            return racine, plages, reglages, "transformation de composant modifie ou rend ambigu le repère Z"
+        identifiant_composant = composant.get("objectid")
+        if not identifiant_composant:
+            return racine, plages, reglages, "identifiant de composant absent"
+        chemin_composant = _valeur_path(composant)
+        if _est_path(composant) and chemin_composant is None:
+            return racine, plages, reglages, "chemin p:path ambigu"
+        if chemin_composant is None:
+            modele_composant, objets_composants = racine, objets_par_id
+        else:
+            chemin = unquote(chemin_composant).replace("\\", "/")
+            chemin = posixpath.normpath(chemin.lstrip("/") if chemin.startswith("/") else (
+                posixpath.join(posixpath.dirname(modele_principal), chemin)
+            ))
+            if chemin.startswith("../") or chemin not in noms:
+                return racine, plages, reglages, "chemin de composant absent ou hors archive"
+            modele_composant = archive.xml(chemin)
+            if modele_composant.get("unit", "millimeter") != racine.get("unit", "millimeter"):
+                return racine, plages, reglages, "unités différentes entre modèles : NON VÉRIFIÉ"
+            objets_composants = {}
+            for objet in modele_composant.findall(NS + "resources/" + NS + "object"):
+                cle = objet.get("id")
+                if cle in objets_composants:
+                    return racine, plages, reglages, "identifiant d’objet composant répété"
+                objets_composants[cle] = objet
+        cible = objets_composants.get(identifiant_composant)
+        maillages = [obj for obj in objets_composants.values() if obj.find(NS + "mesh") is not None]
+        if cible is None or cible.find(NS + "mesh") is None or len(maillages) != 1:
+            return racine, plages, reglages, "liaison du composant vers un maillage unique non vérifiée"
+        if cible.findall(NS + "components/" + NS + "component"):
+            return racine, plages, reglages, "composants imbriqués non qualifiés"
+        return racine, plages, reglages, None
 
 
 def _lire_geometrie(source, racine):
