@@ -2,12 +2,15 @@
 
 import hashlib
 import json
+import sqlite3
+import threading
 
 import pytest
 
 from benchab.donnees.base import Base
 from benchab.donnees.vues import generer
 from benchab.qualite import plan_reparation
+from benchab.qualite.ecritures import PublicationNeuve
 
 
 def _atelier(racine):
@@ -532,6 +535,58 @@ def test_appliquer_candidat_recree_la_cible_du_lien_sans_remplacer_le_lien(tmp_p
     assert preuve_json["cible_avant"] == "ABSENTE"
     assert preuve_json["candidat_sha256"] == hashlib.sha256(attendu).hexdigest()
     assert hashlib.sha256((prive / "benchab.sqlite").read_bytes()).hexdigest() == base_sha
+
+
+def test_ecriture_sqlite_concurrente_ne_committe_pas_entre_preuve_et_copie(tmp_path, monkeypatch):
+    """La transaction RO garde le rendu source fixe jusqu'à la copie du candidat."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    cible = prive / "vues/recuperation/INDEX.md"
+    cible.parent.mkdir()
+    attendu = index.read_bytes()
+    index.unlink()
+    index.symlink_to("recuperation/INDEX.md")
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(attendu)
+    rapport = plan_reparation.planifier(prive, candidats=["candidat.md"])
+    base = prive / "benchab.sqlite"
+    with sqlite3.connect(base) as connexion:
+        assert connexion.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal"
+    tentatives = []
+    publier = PublicationNeuve.publier
+
+    def tenter_ecriture_apres_preuve(publication):
+        resultat = publier(publication)
+        if not any(path.name.startswith("reprise-lien-") for path in publication.sorties):
+            return resultat
+
+        def ecrire():
+            try:
+                with sqlite3.connect(base, timeout=0.15) as connexion:
+                    connexion.execute(
+                        "UPDATE projets SET nom=? WHERE id=?", ("Projet concurrent", "demo")
+                    )
+                tentatives.append("COMMIT")
+            except sqlite3.OperationalError as erreur:
+                raison = str(erreur).lower()
+                tentatives.append("BLOQUÉE" if "locked" in raison or "busy" in raison else "ERREUR")
+
+        ecrivain = threading.Thread(target=ecrire)
+        ecrivain.start()
+        ecrivain.join(timeout=2)
+        assert not ecrivain.is_alive(), "L'écrivain doit terminer ou échouer avant la copie."
+        return resultat
+
+    monkeypatch.setattr(PublicationNeuve, "publier", tenter_ecriture_apres_preuve)
+
+    resultat = plan_reparation.appliquer_candidat_lien(prive, rapport, "vues/INDEX.md", "candidat.md")
+
+    assert resultat["statut"] == "PASS"
+    assert tentatives == ["BLOQUÉE"]
+    assert cible.read_bytes() == attendu
+    with sqlite3.connect(base) as connexion:
+        nom = connexion.execute("SELECT nom FROM projets WHERE id='demo'").fetchone()[0]
+    assert nom == "Projet témoin"
 
 
 def test_appliquer_candidat_refuse_candidat_change_et_cible_apparue(tmp_path):

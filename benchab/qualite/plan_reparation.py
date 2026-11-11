@@ -655,7 +655,8 @@ def appliquer_candidat_lien(
     Entrées : atelier privé, plan explicite, chemins relatifs de vue et de candidate.
     Sortie : PASS et preuve privée relue, ou refus sans annoncer de réparation.
     Invariants : conserve le lien et la candidate, refuse cible canonique/manifeste,
-    revalide SQLite sous le verrou, prouve l'état antérieur et publie la copie exclusivement.
+    tient le snapshot SQLite en lecture jusqu'au contrôle final, prouve l'état antérieur
+    et publie la copie exclusivement.
     """
     if type(rapport) is not dict or type(candidat) is not str:
         raise ValueError("Plan ou candidat invalide.")
@@ -710,8 +711,11 @@ def appliquer_candidat_lien(
     if not entete.startswith(b"SQLite format 3\0") or len(entete) != 20 or entete[18:20] != b"\x01\x01":
         raise ValueError("Format de journal SQLite non pris en charge pour la reprise.")
 
-    # Le verrou commun maintient le rendu, la preuve et la publication cohérents avec le générateur.
-    with verrou_publication(racine / "cache", "vues.lock"):
+    # En journal rollback, la lecture établie retarde les commits concurrents jusqu'au contrôle final.
+    # Le verrou commun sérialise aussi les écritures BENCHAB des vues.
+    with verrou_publication(racine / "cache", "vues.lock"), closing(
+        sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1)
+    ) as connexion:
         lien, texte_lien, destination, destination_rel, identite_lien = _instantane_lien(racine, cible)
         if (
             proposition["lien_sha256"] != hashlib.sha256(os.fsencode(texte_lien)).hexdigest()
@@ -722,20 +726,19 @@ def appliquer_candidat_lien(
         actuel = _empreinte_fichier(racine, candidat, lecture=True)
         if actuel["statut"] != "PRESENT" or actuel.get("sha256") != proposition["sha256"]:
             raise ValueError("Candidate absente, liée ou modifiée depuis le plan.")
-        with closing(sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1)) as connexion:
-            connexion.row_factory = sqlite3.Row
-            connexion.execute("PRAGMA query_only = ON")
-            connexion.execute("BEGIN")
-            application_id = connexion.execute("PRAGMA application_id").fetchone()[0]
-            version = connexion.execute("PRAGMA user_version").fetchone()[0]
-            identite_source = {"application_id": application_id, "user_version": version}
-            if identite_source != {
-                "application_id": source_plan["application_id"], "user_version": source_plan["user_version"],
-            }:
-                raise ValueError("Identité SQLite modifiée depuis le plan.")
-            rendu = vues._rendre(connexion)
-            fiches = vues._fiches_filaments(connexion)
-            attendus, empreintes_attendues, sha_source = _source_logique(rendu, fiches)
+        connexion.row_factory = sqlite3.Row
+        connexion.execute("PRAGMA query_only = ON")
+        connexion.execute("BEGIN")
+        application_id = connexion.execute("PRAGMA application_id").fetchone()[0]
+        version = connexion.execute("PRAGMA user_version").fetchone()[0]
+        identite_source = {"application_id": application_id, "user_version": version}
+        if identite_source != {
+            "application_id": source_plan["application_id"], "user_version": source_plan["user_version"],
+        }:
+            raise ValueError("Identité SQLite modifiée depuis le plan.")
+        rendu = vues._rendre(connexion)
+        fiches = vues._fiches_filaments(connexion)
+        attendus, empreintes_attendues, sha_source = _source_logique(rendu, fiches)
         if sha_source != source_plan["sha256_rendu_attendu"]:
             raise ValueError("Rendu SQLite modifié depuis le plan.")
         if cible not in attendus or empreintes_attendues[cible] != proposition["sha256"]:
