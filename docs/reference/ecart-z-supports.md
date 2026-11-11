@@ -82,3 +82,20 @@ les empreintes d’entrée identiques. Les 646 profils relus et la référence
 sont intacts. La variabilité observée ne suffit pas à en isoler la cause :
 la répétabilité du style reste NON VÉRIFIÉE (#208, suite de #89). Aucun
 choix de support ni verdict physique ne découle de cet essai.
+
+### Comparer deux ou trois rejeux déjà publiés
+
+`benchab controle rejeux-gcode RECU1.json RECU2.json --plaque 1`
+lit les reçus privés du lanceur et relit les archives 3MF de sortie
+identifiées par SHA-256. Les reçus doivent déclarer la même empreinte
+source et la même empreinte de copie fournie au moteur. La commande
+ne démarre pas le trancheur et n’authentifie pas les exécutions.
+Un SHA de binaire absent des reçus reste NON VÉRIFIÉ.
+
+Le rapport distingue l’égalité du G-code brut, l’égalité après exclusion
+du seul horodatage d’un en-tête ASN reconnu, l’égalité des dépôts de
+support et celle de leurs agrégats (segments et mm par rôle). Le code 0
+indique l’égalité hors date, 1 une divergence conservée, 2 une comparaison
+NON VÉRIFIÉE faute de preuve ou de couverture. `--sortie` peut publier
+un JSON privé neuf. Une divergence ne désigne ni une cause ni une variante
+à adopter (#208).

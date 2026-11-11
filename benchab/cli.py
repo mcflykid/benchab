@@ -236,6 +236,10 @@ def parser():
     )
     ecart_z.add_argument("source", type=Path, help="3MF exact à lire sans modification")
     ecart_z.add_argument("--plaque", type=int, help="Numéro de plaque si le 3MF en contient plusieurs")
+    rejeux = controle.add_parser("rejeux-gcode", help="Compare deux ou trois reçus et G-code archivés")
+    rejeux.add_argument("recus", nargs="+", type=Path, help="Deux ou trois reçus JSON privés")
+    rejeux.add_argument("--plaque", required=True, type=int, help="Numéro exact de la plaque")
+    rejeux.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
     comparaison_3mf = controle.add_parser(
         "comparer-projets-3mf", help="Compare deux projets 3MF sans modifier les archives"
     )
@@ -1012,6 +1016,7 @@ def main(argv=None):
             "entretien",
             "consommation-retour",
             "ecart-z-supports",
+            "rejeux-gcode",
             "comparer-projets-3mf",
             "coutures",
         }
@@ -1117,6 +1122,25 @@ def main(argv=None):
             return 0
         except (OSError, ValueError, KeyError, BadZipFile, RuntimeError) as erreur:
             print(f"BENCHAB : lecture de l’écart Z refusée : {erreur}", file=sys.stderr)
+            return 2
+    if arguments.commande == "controle" and arguments.controle == "rejeux-gcode":
+        from benchab.controles.rejeux_gcode import comparer
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
+
+        # Des rapports archivés sont lus sans Base() ni démarrage du moteur (#208).
+        try:
+            rapport = comparer(arguments.prive, arguments.recus, plaque=arguments.plaque)
+            if arguments.sortie is not None:
+                if arguments.sortie.suffix.lower() != ".json":
+                    raise ValueError("La sortie de comparaison doit être un fichier JSON neuf.")
+                cible = destination_neuve(
+                    arguments.sortie.absolute(), prive=atelier_prive(arguments.prive), temporaire=False,
+                )
+                ecrire_json_neuf(cible, rapport, entrees=arguments.recus)
+            print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+            return rapport["code"]
+        except (OSError, ValueError) as erreur:
+            print(f"BENCHAB : comparaison de rejeux refusée : {erreur}", file=sys.stderr)
             return 2
     if arguments.commande == "controle" and arguments.controle == "comparer-projets-3mf":
         from zipfile import BadZipFile
