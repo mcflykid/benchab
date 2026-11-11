@@ -37,6 +37,11 @@ def destination(value):
 
 
 def empreinte(path):
+    """Calcule le SHA-256 hexadécimal d'un fichier en lecture binaire.
+
+    Entrée : chemin Path. Sortie : 64 caractères sans unité.
+    Lit par blocs de 1 Mio ; n'écrit ni dans la source ni dans l'atelier.
+    """
     h = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -45,6 +50,12 @@ def empreinte(path):
 
 
 def inspect_step(path):
+    """Décrit un STEP relu par le noyau CAO sans modifier le fichier.
+
+    Entrée : chemin STEP. Sortie : validité booléenne, nombre de solides,
+    volume en mm³ et dimensions de la boîte englobante X, Y, Z en mm.
+    Ces contrôles géométriques ne qualifient ni le tranchage ni la tenue physique.
+    """
     import build123d as bd
 
     shape = bd.import_step(str(path))
@@ -109,6 +120,11 @@ def inspect_dxf(path):
 
 
 def parser():
+    """Construit les options de l'adaptateur sans lancer le moteur.
+
+    Sortie : ArgumentParser exigeant une opération et, selon le cas, une
+    source, des formats ou une destination ; aucun chemin n'est ouvert ici.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="operation", required=True)
     sub.add_parser("version")
@@ -266,6 +282,13 @@ def run(args, *, prive=None):
 
 
 def main(argv=None, *, prive=None):
+    """Exécute l'opération CAO explicite et publie un seul JSON sur stdout.
+
+    Entrées : options CLI et racine privée éventuelle. Sortie : code 0 si
+    l'opération réussit, 1 sur erreur du moteur avec diagnostic sur stderr.
+    Le parseur signale les arguments invalides par le code 2. Aucun envoi
+    à une imprimante ; les opérations d'écriture demandent un dossier neuf.
+    """
     args = parser().parse_args(argv)
     try:
         # Le moteur (et les scripts de confiance) peuvent journaliser sur stdout.
