@@ -8,7 +8,7 @@ import json
 import math
 import re
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
@@ -228,7 +228,7 @@ def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_regl
     Entrées : deux dictionnaires issus de la lecture 3MF, leurs G-codes, le SHA-256
     du maillage et les deux régions nommées ``zone``/``hors_zone`` en mm. Ces
     éléments forment un contexte déclaré, non authentifié par cette fonction.
-    portée accepte seulement le binaire ASN R1, 20→60 % de
+    Le contrôle accepte seulement le binaire ASN R1 déclaré, 20→60 % de
     ``sparse_infill_density``, un motif clairsemé qualifié, le rôle ``Sparse infill``
     et une même Application. Sortie :
     longueurs en mm et verdict PASS/FAIL/NON VÉRIFIÉ à 0,1 mm. Aucun réglage,
@@ -338,28 +338,12 @@ def evaluer_effet_reglage_gcode(temoin, variante, regions, type_trajet, cle_regl
     if differents != {cle_reglage}:
         return inconnu("Les variantes doivent différer uniquement par le réglage annoncé.")
 
-    def nombre_reglage(valeur):
-        if isinstance(valeur, bool) or not isinstance(valeur, (str, int, float)):
-            return None
-        texte = str(valeur).strip()
-        if texte.endswith("%"):
-            texte = texte[:-1].strip()
-        try:
-            nombre = Decimal(texte)
-        except (InvalidOperation, ValueError):
-            return None
-        return nombre if nombre.is_finite() else None
-
     valeur_brute_a = valeurs_a.get(cle_reglage, absent)
     valeur_brute_b = valeurs_b.get(cle_reglage, absent)
     motif_a = valeurs_a.get("sparse_infill_pattern", absent)
     motif_b = valeurs_b.get("sparse_infill_pattern", absent)
-    valeur_a = nombre_reglage(valeur_brute_a) if valeur_brute_a is not absent else None
-    valeur_b = nombre_reglage(valeur_brute_b) if valeur_brute_b is not absent else None
     if (
-        valeur_a is None
-        or valeur_b is None
-        or [valeur_brute_a, valeur_brute_b] != list(_DENSITES_MODIFICATEUR_QUALIFIEES)
+        (valeur_brute_a, valeur_brute_b) != _DENSITES_MODIFICATEUR_QUALIFIEES
         or motif_a != motif_b
         or not isinstance(motif_a, str)
         or motif_a not in _MOTIFS_ASN_QUALIFIES
