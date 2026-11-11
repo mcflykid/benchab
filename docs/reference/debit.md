@@ -30,3 +30,15 @@ rapport complet dans une destination neuve de l’atelier privé ou dans un
 temporaire système hors du dépôt. Une sortie existante, liée ou identique
 à l’archive est refusée. Le rapport d’un verdict FAIL peut être sauvegardé
 sans modifier le fichier 3MF.
+
+Une plaque est mesurée depuis le membre G-code exact du 3MF : un zéro
+initial dans un nom unique est accepté et deux noms pour le même numéro
+sont refusés (#174).
+
+Avec `--sortie RAPPORT.json`, `--resume` affiche le verdict, le chemin de
+la preuve et jusqu’à trois plaques, en commençant par celles en écart. Pour
+chaque plaque, le résumé donne jusqu’à trois erreurs et, s’il existe, le
+premier dépassement établi avec le nom de l’objet, le filament, le maximum
+et le plafond en mm³/s. `--detail` affiche le rapport complet. Dans les deux
+cas le fichier JSON reste intégral et le code de retour est inchangé.
+Sans ces options, l’affichage historique est conservé.

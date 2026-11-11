@@ -71,3 +71,30 @@ def test_sortie_publique_du_checkout_est_refusee(tmp_path, monkeypatch):
 
     assert debit_gcode.main([str(source), "--sortie", str(sortie)]) == 2
     assert not sortie.exists()
+
+
+def test_resume_et_detail_preservent_le_verdict_et_la_preuve(tmp_path, capsys):
+    """Les deux affichages gardent le même rapport, y compris ses erreurs."""
+    source = _archive(tmp_path)
+    attendu = debit_gcode.analyser(source)
+    for mode in ("--resume", "--detail"):
+        sortie = tmp_path / f"{mode}.json"
+        assert debit_gcode.main([str(source), "--sortie", str(sortie), mode]) == attendu["code"]
+        affiche = json.loads(capsys.readouterr().out)
+        assert json.loads(sortie.read_bytes()) == attendu
+        if mode == "--detail":
+            assert affiche == attendu
+        else:
+            assert affiche["statut"] == attendu["statut"]
+            assert affiche["rapport"] == str(sortie)
+            assert affiche["plaques"][0]["plaque"] == 1
+            assert affiche["plaques"][0]["erreurs"]
+            assert len(json.dumps(affiche, ensure_ascii=False)) < len(json.dumps(attendu, ensure_ascii=False))
+
+
+def test_modes_avec_rapport_requis_refuses_avant_lecture(tmp_path, capsys):
+    """Un affichage avec rapport promis doit refuser avant l’analyse sans destination."""
+    source = tmp_path / "absente.3mf"
+    assert debit_gcode.main([str(source), "--resume"]) == 2
+    erreur = capsys.readouterr().err
+    assert "--sortie" in erreur and "absente.3mf" not in erreur

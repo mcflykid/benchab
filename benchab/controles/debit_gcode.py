@@ -9,6 +9,7 @@ usage : debit_gcode.py <tranche.3mf> [--plafonds 1=32,2=16] [--sortie fichier.js
 
 import argparse
 import collections
+import json
 import re
 import sys
 import zipfile
@@ -213,14 +214,56 @@ def analyser(path, overrides=None, attendus=None):
         return res
 
 
+def _resume(resultat, cible):
+    # Donner d’abord la localisation des écarts ; le rapport neuf reste intégral (#35).
+    plaques = sorted(resultat["plaques"], key=lambda plaque: plaque["conforme"])
+    selection = []
+    for plaque in plaques[:3]:
+        erreurs = plaque["erreurs"]
+        ligne = {
+            "plaque": plaque["plaque"], "conforme": plaque["conforme"],
+            "erreurs": [erreur[:240] for erreur in erreurs[:3]],
+        }
+        if len(erreurs) > 3 or any(len(erreur) > 240 for erreur in erreurs[:3]):
+            ligne["erreurs_tronquees"] = True
+        premier_ecart = next(
+            ((objet, outil) for objet in plaque["objets"] for outil in objet.get("outils", [])
+             if outil["statut"] == "FAIL"), None,
+        )
+        if premier_ecart is not None:
+            objet, outil = premier_ecart
+            ligne["premier_depassement"] = {
+                "objet": objet["objet"][:120], "filament": outil["filament"],
+                "maximum_mm3_s": outil["debit_max"], "plafond_mm3_s": outil["plafond_mm3_s"],
+            }
+        selection.append(ligne)
+    resume = {
+        "statut": resultat["statut"], "rapport": str(cible),
+        "plaques": selection, "plaques_omises": len(plaques) - len(selection),
+    }
+    if resultat.get("motif"):
+        resume["motif"] = resultat["motif"][:240]
+    return resume
+
+
 def main(args):
-    """Contrôle U25 en mm³/s ; le rapport neuf est exclusif, verdict et 3MF préservés."""
+    """Contrôle U25 en mm³/s ; affiche le verdict et conserve le 3MF intact.
+
+    Reçoit les arguments CLI, dont la destination neuve du rapport optionnel.
+    Retourne le code historique de PASS, FAIL ou NON VÉRIFIÉ ; l’affichage
+    résumé/détaillé exige une preuve JSON écrite et ne modifie pas les mesures.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--plafonds", help="Plafonds déclarés, sous la forme 1=32,2=16.")
     parser.add_argument("--sortie", type=Path, help="Rapport JSON neuf dans l’atelier privé ou un temporaire système.")
+    affichage = parser.add_mutually_exclusive_group()
+    affichage.add_argument("--resume", action="store_true", help="trois plaques au plus et chemin du rapport")
+    affichage.add_argument("--detail", action="store_true", help="afficher le rapport intégral")
     try:
         options = parser.parse_args(args)
+        if (options.resume or options.detail) and options.sortie is None:
+            parser.error("--resume et --detail exigent --sortie RAPPORT.json")
     except SystemExit as arret:
         return arret.code
     try:
@@ -230,6 +273,10 @@ def main(args):
         result = analyser(options.source, overrides)
         if cible is not None:
             ecrire_json_neuf(cible, result, entrees=[options.source])
+        if options.resume or options.detail:
+            affichage = _resume(result, cible) if options.resume else result
+            print(json.dumps(affichage, ensure_ascii=False))
+            return result["code"]
         for p in result["plaques"]:
             print("plaque", p["plaque"], "conforme", p["conforme"], "erreurs", p["erreurs"])
         if result.get("motif"):
