@@ -45,11 +45,13 @@ utilisent son diamètre d’entrée. La fiche doit citer la source des cotes ;
 elle ne déduit aucune cote de visserie. Le volume analytique retire le
 passage traversant, puis seulement l’anneau du lamage (#27, #32).
 
-Une poche commence sur la face supérieure, a un fond plat et reste alignée
-sur les axes XY. Les deux largeurs définissent le rectangle centré en
-`x_mm`/`y_mm`. Le gabarit refuse les fonds débouchants et les poches
-tangentes ou recouvrantes, entre elles ou avec le diamètre d’entrée d’un
-perçage. Pour des coins droits, le volume retiré vaut largeur X × largeur Y
+Une poche borgne commence sur la face supérieure, a un fond plat et reste
+alignée sur les axes XY. Les deux largeurs définissent le rectangle centré en
+`x_mm`/`y_mm`. Le gabarit refuse une profondeur borgne qui atteint
+le dessous. Pour une ouverture traversante, remplacer `profondeur_mm`
+par `"traversante": true` ; le plan indique alors l’épaisseur retirée.
+Les poches et ouvertures tangentes ou recouvrantes sont refusées, entre
+elles et avec le diamètre d’entrée d’un perçage. Pour des coins droits, le volume retiré vaut largeur X × largeur Y
 × profondeur. Une poche peut déclarer `rayon_angle_mm`, compris entre
 0,1 mm et strictement moins que chacune de ses demi-largeurs. Son contour
 est celui du noyau rectangulaire agrandi d’un disque : les distances aux
@@ -79,7 +81,9 @@ refus. Une nouvelle destination est requise pour chaque génération.
 La deuxième commande construit le STEP avec le moteur verrouillé. Son
 manifeste permet de comparer nombre de solides, dimensions et volume au plan.
 Cette comparaison ne tranche rien et ne qualifie ni les jeux, ni les matériaux,
-ni le comportement de la pièce imprimée.
+ni le comportement de la pièce imprimée. Le gabarit vérifie les cotes de la
+fiche ; il ne détecte pas une demande libre omise. Inscrire les exigences
+non encodées dans `hors_perimetre` pour les garder NON VÉRIFIÉES.
 
 La recette du lamage a construit deux fois cinq fiches : lamage central,
 excentré, mixte avec un perçage simple, deux lamages, puis quatre trous
