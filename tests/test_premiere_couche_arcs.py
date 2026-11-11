@@ -1,9 +1,9 @@
 """Contrats opt-in des arcs planaires de première couche."""
 
-import unittest
 import json
 import math
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 

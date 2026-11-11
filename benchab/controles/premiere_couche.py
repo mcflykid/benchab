@@ -30,8 +30,8 @@ from scipy import ndimage
 
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
-from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
 from benchab.gcode.geometrie_arc import enveloppe_deposee_xyz
+from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
 from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 # Budget conservateur des tableaux NumPy/SciPy : 64 octets/cellule, 256 Mio.

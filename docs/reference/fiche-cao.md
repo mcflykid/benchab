@@ -75,3 +75,11 @@ avec le calcul nominal. Plans et scripts sont identiques à chaque rejeu.
 Sur cette exécution locale, la préparation a pris 2,7 ms en médiane et la
 construction 26 ms (premier démarrage : 2,14 s). Les chemins normalisés
 pour la mesure, le résumé occupe 74 octets et le détail 848 à 1 427 octets.
+
+La recette des poches couvre cinq autres fiches, de la poche seule à quatre
+poches et deux lamages, en passant par le coin dégagé près d’un perçage.
+Les dix constructions ont donné un seul solide valide par STEP, aux
+dimensions et volumes attendus. Plans et scripts concordent exactement
+entre les deux répétitions. La préparation a pris 3,0 ms en médiane et la
+construction 33 ms sur cette exécution (premier démarrage : 1,59 s). Le
+résumé normalisé occupe 74 octets et le détail 824 à 1 908 octets.

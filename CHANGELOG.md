@@ -2,6 +2,13 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir
+
+- Première couche : ajoute une mesure optionnelle des arcs G17 planaires,
+  sans approximation par la corde (suite de #123).
+- CAO : ajoute les poches rectangulaires aux fiches déterministes et
+  vérifie dix constructions répétées sur cinq nouvelles fiches (#32).
+
 ## 1.12.0 — 2026-11-11
 
 - Remplissage : un dépôt sans rôle ou l’absence de dépôt clairsemé attribué
