@@ -100,10 +100,12 @@ courbe. Le repère physique reste distinct du repère de commande après G92.
 Les longueurs sont arrondies à 0,1 mm ; aucune corde n’est comptée. Les
 bornes, extrémités et enveloppes circulaires au-delà de ±1 000 000 mm sont refusées.
 
-Cette extension concerne les mesures par boîte. Les contrôles de couverture
-première couche, de continuité et d’appuis qui attendent encore des segments
-restent NON VÉRIFIÉS pour les arcs. Les autres plans et centres absolus ne sont
-pas qualifiés. La mesure est numérique et ne valide pas une impression.
+Cette extension concerne les mesures par boîte. La continuité des parois
+extérieures suit les limites décrites plus haut ; les
+[appuis](couches-courtes.md) mesurent les arcs G17 planaires seulement avec
+`--arcs-planaires`. La couverture de première couche laisse les arcs NON
+VÉRIFIÉS. Les autres plans et centres absolus ne sont pas qualifiés. Ces
+mesures sont numériques et ne valident pas une impression.
 
 Dans un 3MF, un numéro de plaque désigne un seul membre G-code. Un nom
 unique avec un zéro initial est lisible ; plusieurs graphies du même numéro
