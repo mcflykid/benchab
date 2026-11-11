@@ -39,20 +39,22 @@ les absences ou tous les ajouts littéraux sont rapportés en `WARN`. Les
 facettes permutées, un dialecte/QName différent, un modèle ambigu, des
 relations OPC mal formées, un chemin URI non interne ou une facette dégénérée
 donnent `NON VÉRIFIÉ`. Aucune valeur n’est décodée ou transcodée.
-Les références Core `pid`, `p1`–`p3` et leurs ressources restent
-`NON VÉRIFIÉES`, car ce lot n’en résout pas la sémantique. Leur présence est
-signalée sans verdict sémantique, avec prise en compte de `pid`/`pindex` de
-l’objet et de `pid`/`p1`–`p3` des facettes. Aucun de ces constats ne prouve la
-compatibilité du slicer ou la conservation après conversion.
+Dans le même sous-cas direct, les groupes de matériaux de base Core
+(`basematerials`) résolvent le matériau déclaré sur l’objet et chaque facette.
+Le rapport compare le nom littéral et la couleur sRGB d’affichage, avec
+alpha `FF` implicite quand il n’est pas écrit. Un changement d’identifiant
+de groupe ou d’index sans changement de matériau ne compte pas comme une
+perte. Un matériau déclaré qui change ou disparaît est signalé en `WARN`.
+Le contrôle refuse les indices hors groupe, les identifiants ambigus, les
+gradients entre matériaux de base et les extensions requises hors de ce
+sous-cas. Deux modèles sans matériau attribué restent `NON VÉRIFIÉS`.
 
-Le statut général reste `NON VÉRIFIÉ`, car la comparaison littérale n’établit
-ni la sémantique des propriétés Core ni la compatibilité du slicer, même si les
-réglages projet, la palette ou les attributs littéraux sont identiques.
-Cette première étape ne satisfait donc qu’une partie de #43. Elle ne teste
-pas la réouverture par un slicer, les réglages au niveau objet/plaque, les
-propriétés standard de matériau ou les encodages de peinture ASN/Prusa.
-Fixtures synthétiques seulement ; aucune archive tierce, aucun profil
-installé et aucun moteur ne sont utilisés.
+La couleur d’affichage Core ne définit pas la couleur imprimée ni la
+correspondance d’un filament. Le statut général reste `NON VÉRIFIÉ` :
+le diagnostic ne convertit pas la peinture entre slicers et ne démontre
+pas qu’un slicer conserve les déclarations à la réouverture. Les composants,
+les extensions de matériau, les réglages au niveau objet/plaque et les
+encodages de peinture ASN/Prusa restent à qualifier (#43).
 
 Références de format et d’implémentation :
 

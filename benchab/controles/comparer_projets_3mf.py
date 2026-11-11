@@ -6,9 +6,9 @@ from pathlib import Path
 
 from benchab import reglages
 from benchab.archives_3mf import Archive3MF
+from benchab.controles.materiaux_core_3mf import NS_CORE, resoudre
 
 _CONFIG = "Metadata/project_settings.config"
-_NS_3MF = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
 _NS_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 _REL_MODELE = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
 _NS_PRUSA = "{http://schemas.slic3r.org/3mf/2017/06}"
@@ -70,13 +70,16 @@ def _lire_peinture_directe(archive):
     if modele in {"", "."} or modele not in noms:
         return {**inconnu, "raison": "Cible StartPart hors archive ou absente."}
     racine = archive.xml(modele)
-    if racine.tag != _NS_3MF + "model":
+    if racine.tag != NS_CORE + "model":
         return {**inconnu, "raison": "StartPart ne désigne pas un modèle Core reconnu."}
     unite = racine.get("unit", "millimeter")
-    ressources = racine.find(_NS_3MF + "resources")
-    construction = racine.find(_NS_3MF + "build")
-    objets = [] if ressources is None else ressources.findall(_NS_3MF + "object")
-    items = [] if construction is None else construction.findall(_NS_3MF + "item")
+    ressources_xml = racine.findall(NS_CORE + "resources")
+    constructions = racine.findall(NS_CORE + "build")
+    if len(ressources_xml) != 1 or len(constructions) != 1:
+        return {**inconnu, "raison": "Ressources ou build absents ou ambigus."}
+    ressources, construction = ressources_xml[0], constructions[0]
+    objets = ressources.findall(NS_CORE + "object")
+    items = construction.findall(NS_CORE + "item")
     if unite not in _UNITES_3MF or len(objets) != 1 or len(items) != 1:
         return {**inconnu, "raison": "Unité, cardinalité des objets ou ordre du build non qualifié."}
     objet, item = objets[0], items[0]
@@ -88,14 +91,18 @@ def _lire_peinture_directe(archive):
     if (
         not ident or item.get("objectid") != ident or item.get("printable", "1") != "1"
         or attributs_path or item.get("transform") is not None or objet.get("type") != "model"
-        or objet.find(_NS_3MF + "components") is not None
+        or objet.find(NS_CORE + "components") is not None
     ):
         return {**inconnu, "raison": "Instance, objet, composant ou p:path hors du sous-cas direct."}
-    maillage = objet.find(_NS_3MF + "mesh")
-    if maillage is None or objet.findall(_NS_3MF + "mesh") != [maillage]:
+    maillage = objet.find(NS_CORE + "mesh")
+    if maillage is None or objet.findall(NS_CORE + "mesh") != [maillage]:
         return {**inconnu, "raison": "Maillage direct absent ou ambigu."}
-    sommets = maillage.findall(_NS_3MF + "vertices/" + _NS_3MF + "vertex")
-    triangles = maillage.findall(_NS_3MF + "triangles/" + _NS_3MF + "triangle")
+    groupes_sommets = maillage.findall(NS_CORE + "vertices")
+    groupes_triangles = maillage.findall(NS_CORE + "triangles")
+    if len(groupes_sommets) != 1 or len(groupes_triangles) != 1:
+        return {**inconnu, "raison": "Listes de sommets ou de facettes absentes ou ambiguës."}
+    sommets = groupes_sommets[0].findall(NS_CORE + "vertex")
+    triangles = groupes_triangles[0].findall(NS_CORE + "triangle")
     if not sommets or not triangles:
         return {**inconnu, "raison": "Maillage vide."}
     coordonnees = []
@@ -151,7 +158,7 @@ def _lire_peinture_directe(archive):
         "facettes": faces,
         "peintures": peintures,
         "dialectes": sorted(dialectes),
-        "proprietes_core": {"objet": proprietes_objet, "facettes": proprietes_core},
+        "proprietes_core": resoudre(racine, ressources, proprietes_objet, proprietes_core),
     }
 
 
@@ -210,10 +217,35 @@ def _comparer_peinture(source, candidat):
     return resultat
 
 
-def _proprietes_core_presentes(peinture):
-    """Signale seulement la présence littérale de pid/pindex ou de propriétés de facette."""
-    proprietes = peinture.get("proprietes_core", {})
-    return bool(proprietes.get("objet")) or any(proprietes.get("facettes", ()))
+def _comparer_core(source, candidat):
+    """Compare nom et sRGB déclaré après résolution des matériaux et preuve du même maillage."""
+    avant, apres = source.get("proprietes_core", {}), candidat.get("proprietes_core", {})
+    resultat = {
+        "statut": "NON VÉRIFIÉ",
+        "present_source": avant.get("present", False),
+        "present_candidat": apres.get("present", False),
+        "facettes_comparees": 0,
+        "differences": [],
+    }
+    if any(p["statut"] != "PASS" for p in (source, candidat)):
+        return {**resultat, "raison": "StartPart ou maillage direct hors du sous-cas qualifié."}
+    if any(source[cle] != candidat[cle] for cle in ("identite", "coordonnees", "facettes")):
+        return {**resultat, "raison": "Identité, coordonnées ou ordre des facettes différents."}
+    if avant["statut"] != "PASS" or apres["statut"] != "PASS":
+        return {**resultat, "raison": avant.get("raison") or apres["raison"]}
+    if not (avant["present"] or apres["present"]):
+        return {**resultat, "raison": "Aucun matériau de base attribué dans les deux modèles."}
+    differences = []
+    if avant["objet"] != apres["objet"]:
+        differences.append({"portee": "objet", "source": avant["objet"], "candidat": apres["objet"]})
+    for facette, (a, b) in enumerate(zip(avant["facettes"], apres["facettes"], strict=True), start=1):
+        if a != b:
+            differences.append({"portee": "facette", "facette": facette, "source": a, "candidat": b})
+    return {
+        **resultat, "statut": "WARN" if differences else "PASS",
+        "facettes_comparees": len(avant["facettes"]), "differences": differences,
+        "limite": "Nom et sRGB d’affichage Core ; aucune correspondance de filament ni compatibilité du slicer.",
+    }
 
 
 def _type_qualifie(cle, valeur):
@@ -445,7 +477,7 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
 
     Les réglages projet reconnus sont identiques, différents ou NON VÉRIFIÉS.
     La peinture par facette est comparée littéralement dans un sous-cas direct qualifié ;
-    les propriétés Core et la compatibilité du slicer restent NON VÉRIFIÉES.
+    le sous-cas Core compare les matériaux de base déclarés. La compatibilité du slicer reste NON VÉRIFIÉE.
     """
     source = Path(source).expanduser()
     candidat = Path(candidat).expanduser()
@@ -456,7 +488,7 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
     extension_peinture = _comparer_peinture(peinture_source, peinture_candidat)
     return {
         "schema": 1,
-        "statut": "NON VÉRIFIÉ",  # Core et compatibilité de conversion restent hors qualification.
+        "statut": "NON VÉRIFIÉ",  # La compatibilité de conversion reste hors qualification.
         "source": str(source),
         "candidat": str(candidat),
         "sha256": {
@@ -467,12 +499,7 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
         "palette": palette,
         "peinture": {
             "statut": "NON VÉRIFIÉ",
-            "proprietes_standard_3mf": {
-                "statut": "NON VÉRIFIÉ",
-                "present_source": _proprietes_core_presentes(peinture_source),
-                "present_candidat": _proprietes_core_presentes(peinture_candidat),
-                "raison": "Les références Core pid/p1–p3 et leurs ressources ne sont pas résolues sémantiquement.",
-            },
+            "proprietes_standard_3mf": _comparer_core(peinture_source, peinture_candidat),
             "extensions_asn_prusa": extension_peinture,
             "raison": (
                 "Aucune équivalence n’est déduite entre matériaux standard 3MF et peinture par facette "
@@ -482,8 +509,8 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
         "limites": [
             "Comparaison en lecture seule des seuls réglages projet décodés par le dictionnaire typé.",
             "Les valeurs sont comparées dans leur forme native, sans normalisation ni réindexation.",
-            "Les propriétés de peinture Core restent NON VÉRIFIÉES ; les attributs connus ne sont comparés que "
-            "littéralement dans le sous-cas direct qualifié.",
+            "Seuls les matériaux de base Core déclarés et les attributs littéraux de peinture connus sont "
+            "comparés dans le sous-cas direct qualifié.",
             "Aucune conversion, réécriture, compatibilité de slicer ou validation physique n’est établie.",
         ],
     }
@@ -499,6 +526,7 @@ def resumer(rapport, chemin_rapport):
     """
     reglages_projet = rapport["reglages"]
     extensions = rapport["peinture"]["extensions_asn_prusa"]
+    core = rapport["peinture"]["proprietes_standard_3mf"]
     return {
         "statut": rapport["statut"],
         "rapport": str(chemin_rapport),
@@ -512,5 +540,7 @@ def resumer(rapport, chemin_rapport):
             "statut": rapport["peinture"]["statut"],
             "extensions": extensions["statut"],
             "differences_litterales": len(extensions["differences_litterales"]),
+            "materiaux_core": core["statut"],
+            "differences_core": len(core["differences"]),
         },
     }
