@@ -239,7 +239,21 @@ Deux variantes natives reproduisent l’effet d’une consigne d’écart Z
 supérieur sur le coupon d’interface (#89). Les autres familles, les
 mesures de retrait et les validations physiques restent ouvertes.
 
-## Prochaine version : 1.17.0
+## Version 1.17.0 — intégrité des archives et appuis G17
+
+La restauration conserve le commentaire global du ZIP et l’ordre des
+membres ; les lecteurs d’origine partagent la garde d’archive et leurs
+plafonds (#199, #122). Le producteur refuse aussi une géométrie différente
+de celle préparée, même si le CRC est valide (#200).
+
+Les appuis G-code peuvent mesurer les arcs G17 planaires exacts sur demande,
+avec un résumé et un rapport privé complet (#123, #35). Les témoins S/M/L
+conservent leurs rapports par défaut et leur verdict U25. L’archive native
+aux arcs arrondis reste NON VÉRIFIÉE. Le filetage triangulaire nominal peut
+produire un maillage extérieur ou un outil de soustraction ; les cotes ISO
+et les ajustements physiques restent ouverts (#27).
+
+## Prochaine version : 1.18.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -252,15 +266,16 @@ Traiter les prérequis avant les nouveaux réglages :
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
   La mesure dans une boîte, l’enveloppe du dépôt et la revue des ponts et
   surplombs attribués peuvent utiliser la courbe. La continuité des parois
-  extérieures et la première couche sur demande couvrent G17 à Z constant.
+  extérieures, la première couche et les appuis sur demande couvrent G17 à Z constant.
   Les hélices en continuité et la cinématique restent à qualifier. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs et
   écrivains spécialisés. La normalisation, la restauration des noms
   et le précontrôle machine utilisent le lecteur commun. Le plan d’origine
-  partage aussi la garde XML (#196). Les parcours de restauration et les
-  autres transformations du trancheur exigent leurs propres preuves ; les
+  partage aussi la garde XML (#196). Les lectures de restauration et la
+  vérification du producteur sont traitées. Les optimisations et les lecteurs
+  des synthèses à empreinte épinglée exigent leurs propres preuves ; les
   remplacements Core de 1.8 restent distincts.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
