@@ -1,4 +1,4 @@
-"""Maillage d’un profil triangulaire hélicoïdal à cotes déclarées, hors norme ISO."""
+"""Maillage d’un profil hélicoïdal nominal à cotes déclarées, hors norme ISO."""
 
 import argparse
 import hashlib
@@ -36,12 +36,16 @@ def generer(
     sens="droite",
     role="exterieur",
     jeu_radial_mm=None,
+    meplat_crete_mm=None,
+    meplat_fond_mm=None,
 ):
-    """Génère un filetage triangulaire nominal ou son outil intérieur à soustraire.
+    """Génère un filetage nominal ou son outil intérieur à soustraire.
 
     Diamètre de crête, longueur, pas par tour, profondeur radiale et jeu
-    sont en mm. La source des cotes est déclarée ; aucun choix ISO n’est
-    déduit. Le maillage est fermé sur Z = 0 et Z = longueur. Pour l’outil
+    sont en mm. Deux largeurs de méplats en coupe axiale peuvent être
+    déclarées ensemble ; sinon le profil reste triangulaire. L’angle de
+    flancs nominal est en degrés. La source des cotes est déclarée ;
+    aucun choix ni conformité ISO n’est déduit. Le maillage est fermé sur Z = 0 et Z = longueur. Pour l’outil
     intérieur, un jeu radial doit être donné et augmente tous les rayons
     nominaux de la même valeur. PASS signifie seulement volume numérique
     fermé ; l’ajustement et la tenue réels restent NON VÉRIFIÉS. Aucune écriture.
@@ -70,6 +74,16 @@ def generer(
             raise ValueError("Le jeu radial se déclare sur l’outil intérieur seulement")
         jeu = 0.0
 
+    profil_tronque = meplat_crete_mm is not None or meplat_fond_mm is not None
+    if profil_tronque:
+        # Chaque plateau et chaque flanc doivent couvrir au moins un
+        # intervalle axial nominal du maillage (#27).
+        resolution = pas / _SECTIONS_PAR_PAS
+        crete = _cote(meplat_crete_mm, "Largeur du méplat de crête", resolution, pas)
+        fond = _cote(meplat_fond_mm, "Largeur du méplat de fond", resolution, pas)
+        flanc = (pas - crete - fond) / 2
+        if flanc < resolution:
+            raise ValueError("Chaque flanc doit occuper au moins un intervalle axial du maillage")
     tours = longueur / pas
     if not 1 <= tours <= _MAX_TOURS:
         raise ValueError("Le budget exige entre un et soixante-quatre tours de filetage")
@@ -80,7 +94,12 @@ def generer(
     # Le profil est périodique : le dernier secteur se referme sur le premier.
     phase = np.mod(z[:, None] / pas - theta[None, :] / math.tau, 1.0)
     rayon_crete = diametre / 2 + jeu
-    rayon = rayon_crete - 2 * profondeur * np.minimum(phase, 1.0 - phase)
+    distance_phase = np.minimum(phase, 1.0 - phase)
+    if profil_tronque:
+        recul = np.clip((pas * distance_phase - crete / 2) / flanc, 0.0, 1.0)
+        rayon = rayon_crete - profondeur * recul
+    else:
+        rayon = rayon_crete - 2 * profondeur * distance_phase
     corps = np.stack((rayon * np.cos(theta), rayon * np.sin(theta), np.broadcast_to(z[:, None], rayon.shape)), axis=2)
     sommets = np.vstack((corps.reshape(-1, 3), (0.0, 0.0, 0.0), (0.0, 0.0, longueur)))
     bas, haut = len(sommets) - 2, len(sommets) - 1
@@ -104,7 +123,7 @@ def generer(
     maillage = trimesh.Trimesh(vertices=sommets, faces=faces, process=False)
     if not maillage.is_volume or maillage.body_count != 1:
         raise ValueError("Le maillage généré n’est pas un volume unique fermé")
-    return maillage, {
+    rapport = {
         "statut": "PASS",
         "role": role,
         "sens": sens,
@@ -124,17 +143,28 @@ def generer(
         "ajustement_reel": "NON VÉRIFIÉ",
         "limite": "Surface échantillonnée avec bouts plats, sans entrée de filet, résistance ou compensation mesurée.",
     }
+    if profil_tronque:
+        rapport.update(
+            profil="trapézoïdal nominal à méplats déclarés",
+            meplat_crete_mm=crete,
+            meplat_fond_mm=fond,
+            projection_axiale_flanc_mm=flanc,
+            angle_flancs_deg=math.degrees(2 * math.atan2(flanc, profondeur)),
+        )
+    return maillage, rapport
 
 
 def main(argv=None, *, prive=None):
     """Publie STL et rapport numérique dans un dossier neuf ; codes 0 ou 2, aucun tranchage."""
-    parser = argparse.ArgumentParser(description="Génère un filetage triangulaire nominal à cotes déclarées.")
+    parser = argparse.ArgumentParser(description="Génère un filetage nominal à cotes déclarées.")
     for nom in ("diametre-mm", "longueur-mm", "pas-mm", "profondeur-radiale-mm"):
         parser.add_argument("--" + nom, type=float, required=True)
     parser.add_argument("--source-cotes", required=True)
     parser.add_argument("--sens", choices=("droite", "gauche"), default="droite")
     parser.add_argument("--role", choices=("exterieur", "outil-interieur"), default="exterieur")
     parser.add_argument("--jeu-radial-mm", type=float)
+    parser.add_argument("--meplat-crete-mm", type=float, help="Largeur axiale de crête, avec méplat de fond")
+    parser.add_argument("--meplat-fond-mm", type=float, help="Largeur axiale de fond, avec méplat de crête")
     parser.add_argument("--sortie", required=True, type=Path, help="Dossier privé neuf")
     args = vars(parser.parse_args(argv))
     try:

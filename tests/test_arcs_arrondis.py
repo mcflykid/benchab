@@ -84,3 +84,25 @@ def test_arcs_deterministes_arrondis_restent_dans_leur_intervalle():
         )
         minimum, maximum = result["longueur_xy_conditionnelle_mm"]
         assert minimum <= r * balayage <= maximum
+        assert result["cercle_existant_prouve"] is True
+
+
+def test_cercle_compatible_avec_les_champs_arrondis_reste_conditionnel():
+    """L’existence sous l’hypothèse n’est ni un verdict de débit ni une trajectoire."""
+    from benchab.gcode.arcs_arrondis import intervalle_xy
+
+    rapport = intervalle_xy([10, 0], [-10.001, 0], [-10, 0], sens="G2", demi_pas_mm=0.0005)
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["cercle_existant_prouve"] is True
+    assert rapport["longueur_xy_conditionnelle_mm"] is not None
+    assert rapport["validation_physique"] is False
+
+
+def test_chevauchement_radial_ne_prouve_pas_la_compatibilite_des_champs():
+    """Un même centre ne peut réaliser toutes les variations radiales indépendantes."""
+    from benchab.gcode.arcs_arrondis import intervalle_xy
+
+    rapport = intervalle_xy([10, 0], [-10.0024, 0], [-10, 0], sens="G3", demi_pas_mm=0.0005)
+    assert rapport["raison"] == "arrondis_incompatibles"
+    assert rapport["cercle_existant_prouve"] is False
+    assert rapport["longueur_xy_conditionnelle_mm"] is None

@@ -113,6 +113,50 @@ class Revue(unittest.TestCase):
         self.assertIn("supports localisés", RL.juger_geometrie(local, pl, g))
         self.assertIsNone(RL.juger_geometrie(dict(z, fichier="Autre.stl"), pl, g))  # objet absent du G-code
 
+    def test_plaque_ambigue_refusee_meme_si_le_sha_est_exact(self):
+        """Un alias de plaque ne peut pas prendre la place du membre revu."""
+        with zipfile.ZipFile(self.tr, "a") as archive:
+            archive.writestr("Metadata/plate_01.gcode", "\n".join(["M83", *couche(0.2, 100)]))
+        self.env.write_text(json.dumps(
+            {"zones_locales": {"tranche_sha256": RL.sha(self.tr), "geometrie_sha256": None, "zones": self.zones}}
+        ))
+        with self.assertRaisesRegex(ValueError, "numéro de plaque dupliqué"):
+            RL.revoir(self.tr, self.env, self.d / "r.json", self.d / "f.json")
+
+        revue, faits = self.d / "r.json", self.d / "f.json"
+        arguments = [
+            str(self.tr), "--envoi", str(self.env), "--revue", str(revue), "--faits", str(faits), "--appliquer",
+        ]
+        self.assertEqual(RL.main(arguments), 2)
+        self.assertFalse(revue.exists())
+        self.assertFalse(faits.exists())
+
+    def test_plaque_valide_conserve_l_ordre_du_zip(self):
+        """La garde des alias ne modifie pas l’ordre historique d’un rapport valide."""
+        contenu = "\n".join(["M83", *couche(0.2, 100)])
+        with zipfile.ZipFile(self.tr, "w") as archive:
+            for numero in (2, 1):
+                archive.writestr(f"Metadata/plate_{numero}.gcode", contenu)
+        self.env.write_text(json.dumps({"zones_locales": {"tranche_sha256": RL.sha(self.tr), "zones": []}}))
+        resultat = RL.revoir(self.tr, self.env, self.d / "r.json", self.d / "f.json")
+        self.assertEqual(list(resultat["plaques"]), [2, 1])
+
+    def test_lecture_refuse_un_fichier_remplace_apres_le_sha(self):
+        """Un fichier régulier remplacé au même chemin n’hérite pas du SHA vérifié."""
+        from unittest.mock import patch
+
+        lire = RL.lire_texte_gcode_3mf
+
+        def remplacer(source, membre, **options):
+            copie = self.d / "remplacement.3mf"
+            copie.write_bytes(self.tr.read_bytes())
+            copie.replace(self.tr)
+            return lire(source, membre, **options)
+
+        with patch.object(RL, "lire_texte_gcode_3mf", side_effect=remplacer):
+            with self.assertRaisesRegex(ValueError, "modifiée"):
+                RL.revoir(self.tr, self.env, self.d / "r.json", self.d / "f.json")
+
     def test_tranchage_different_refuse(self):
         self.env.write_text(json.dumps({"zones_locales": {"tranche_sha256": "autre", "zones": []}}))
         with self.assertRaises(SystemExit):

@@ -51,6 +51,7 @@ CONTROLES_DIRECTS = {
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
     "appuis-gcode", "ecarts-profils-3mf", "plages-z", "surplombs-connexes", "ponts-surplombs",
+    "purge-changements",
 })
 
 # Les espaces homogènes gardent leur préfixe, leurs alias et leurs options en un seul endroit.
@@ -215,6 +216,11 @@ def parser():
     reprise_source.add_argument("--membre", required=True, help="Chemin projets/SLUG/sources/FICHIER")
     reprise_source.add_argument("--sha256-source", required=True, help="SHA-256 exact de l’original")
     reprise_source.add_argument("--sortie", type=Path, required=True, help="Dossier neuf sous prive/rapports/")
+    verifier_reprise = controle.add_parser(
+        "verifier-reprise-source", help="Relit une copie préparée et compare l’original, sans appliquer"
+    )
+    verifier_reprise.add_argument("--preuve", type=Path, required=True, help="preuve.json privée à relire")
+    verifier_reprise.add_argument("--sha256-preuve", required=True, help="SHA-256 exact du fichier de preuve")
     appliquer_reprise = controle.add_parser(
         "appliquer-reprise-export", help="Applique une table absente depuis une preuve CANDIDAT explicite"
     )
@@ -236,6 +242,13 @@ def parser():
     )
     ecart_z.add_argument("source", type=Path, help="3MF exact à lire sans modification")
     ecart_z.add_argument("--plaque", type=int, help="Numéro de plaque si le 3MF en contient plusieurs")
+    ecart_z.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    ecart_z.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
+    capacites = controle.add_parser("capacites-machine", help="Lit les demandes nominales et les plafonds déclarés")
+    capacites.add_argument("source", type=Path, help="3MF tranché dans l’atelier")
+    capacites.add_argument("--maitre", type=Path, required=True, help="Profil maître privé explicite")
+    capacites.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    capacites.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     rejeux = controle.add_parser("rejeux-gcode", help="Compare deux ou trois reçus et G-code archivés")
     rejeux.add_argument("recus", nargs="+", type=Path, help="Deux ou trois reçus JSON privés")
     rejeux.add_argument("--plaque", required=True, type=int, help="Numéro exact de la plaque")
@@ -1011,11 +1024,13 @@ def main(argv=None):
             "plan-reparation",
             "preparer-reprise-export",
             "preparer-reprise-source",
+            "verifier-reprise-source",
             "appliquer-reprise-export",
             "appliquer-reparation-vue",
             "entretien",
             "consommation-retour",
             "ecart-z-supports",
+            "capacites-machine",
             "rejeux-gcode",
             "comparer-projets-3mf",
             "coutures",
@@ -1078,6 +1093,17 @@ def main(argv=None):
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
+    if arguments.commande == "controle" and arguments.controle == "verifier-reprise-source":
+        from benchab.donnees.reprise_source import verifier_copie
+
+        # La copie est relue comme candidat ; aucun original n’est écrit (#119).
+        try:
+            rapport = verifier_copie(arguments.prive, arguments.preuve, arguments.sha256_preuve)
+        except (OSError, ValueError) as erreur:
+            print(f"BENCHAB : vérification de reprise refusée : {erreur}", file=sys.stderr)
+            return 2
+        print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+        return 0
     if arguments.commande == "controle" and arguments.controle == "appliquer-reprise-export":
         from benchab.qualite.reprise_export import appliquer
 
@@ -1112,16 +1138,57 @@ def main(argv=None):
     if arguments.commande == "controle" and arguments.controle == "ecart-z-supports":
         from zipfile import BadZipFile
 
-        from benchab.controles.ecart_z_supports import analyser
+        from benchab.controles.ecart_z_supports import analyser, resumer
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
         try:
+            if arguments.resume and arguments.sortie is None:
+                raise ValueError("--resume exige --sortie pour conserver le rapport complet.")
+            sortie = None
+            if arguments.sortie is not None:
+                if arguments.sortie.suffix.lower() != ".json":
+                    raise ValueError("La sortie de l’écart Z doit être un JSON neuf.")
+                sortie = destination_neuve(arguments.sortie, prive=arguments.prive, temporaire=False)
             rapport = analyser(arguments.source, arguments.plaque)
-            print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            if sortie is not None:
+                ecrire_json_neuf(sortie, rapport, entrees=[arguments.source])
+            affiche = resumer(rapport, sortie) if arguments.resume else rapport
+            print(json.dumps(affiche, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
             # Une absence de couverture reste un résultat valide NON MESURABLE ;
             # seules les entrées illisibles relèvent du code technique 2.
             return 0
         except (OSError, ValueError, KeyError, BadZipFile, RuntimeError) as erreur:
             print(f"BENCHAB : lecture de l’écart Z refusée : {erreur}", file=sys.stderr)
+            return 2
+    if arguments.commande == "controle" and arguments.controle == "capacites-machine":
+        from benchab.chemins import sans_lien
+        from benchab.controles.capacites_machine import analyser, resumer
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
+        from benchab.qualite.statuts import code_statut as code_capacites
+
+        # Consultation de deux fichiers déclarés ; ni base, ni connexion, ni
+        # sélection de profil implicite (docs/reference/commandes.md).
+        try:
+            if arguments.resume and arguments.sortie is None:
+                raise ValueError("--resume exige --sortie pour conserver le rapport complet.")
+            atelier = atelier_prive(arguments.prive)
+            source = sans_lien(arguments.source.expanduser().absolute(), racine=atelier, strict=True)
+            maitre = sans_lien(arguments.maitre.expanduser().absolute(), racine=atelier, strict=True)
+            sortie = None
+            if arguments.sortie is not None:
+                if arguments.sortie.suffix.lower() != ".json":
+                    raise ValueError("La sortie de capacités doit être un JSON neuf.")
+                sortie = destination_neuve(
+                    arguments.sortie.expanduser().absolute(), prive=atelier, temporaire=False,
+                )
+            rapport = analyser(source, maitre=maitre)
+            if sortie is not None:
+                ecrire_json_neuf(sortie, rapport, entrees=[source, maitre])
+            affiche = resumer(rapport, sortie) if arguments.resume else rapport
+            print(json.dumps(affiche, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            return code_capacites(rapport["statut"])
+        except (OSError, ValueError) as erreur:
+            print(f"BENCHAB : contrôle des capacités refusé : {erreur}", file=sys.stderr)
             return 2
     if arguments.commande == "controle" and arguments.controle == "rejeux-gcode":
         from benchab.controles.rejeux_gcode import comparer

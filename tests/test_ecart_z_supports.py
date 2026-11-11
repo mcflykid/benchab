@@ -187,3 +187,50 @@ def test_depot_hors_limite_ne_fait_pas_accuser_les_dimensions(tmp_path):
     assert rapport["exclusions"]["depots_inexploitables"] == 1
     assert "depots_sans_dimensions" not in rapport["exclusions"]
     assert rapport["couverture"]["segments_inexploitables"] == 1
+
+
+def test_resume_ecart_z_conserve_le_rapport_et_labsence_de_base(tmp_path, monkeypatch, capsys):
+    """Le résumé laisse l’estimation exacte dans un fichier neuf de l’atelier."""
+    prive = tmp_path / "atelier"
+    prive.mkdir()
+    source = tmp_path / "temoin.3mf"
+    _archive(source, {"Metadata/plate_1.gcode": _gcode()})
+    avant = source.read_bytes()
+
+    def interdit(*args, **kwargs):
+        """La commande passive ne crée ni base ni mesure d’atelier."""
+        raise AssertionError("aucune base ni mesure ne doit être ouverte")
+
+    monkeypatch.setattr(cli, "Base", interdit)
+    monkeypatch.setattr(cli, "Mesure", interdit)
+    sortie = prive / "ecart-z.json"
+    commande = ["--prive", str(prive), "controle", "ecart-z-supports", str(source)]
+    assert cli.main(commande) == 0
+    detail = json.loads(capsys.readouterr().out)
+    assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 0
+    resume = json.loads(capsys.readouterr().out)
+    assert resume["statut"] == "ESTIMATION"
+    assert resume["minimum_mm"] == 0.2
+    assert resume["rapport"] == str(sortie)
+    assert json.loads(sortie.read_bytes()) == detail
+    assert source.read_bytes() == avant
+    assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 2
+    assert "Sortie existante" in capsys.readouterr().err
+    assert json.loads(sortie.read_bytes()) == detail
+    assert not (prive / "benchab.sqlite").exists()
+
+
+def test_resume_ecart_z_conserve_raison_non_mesurable_et_code_zero(tmp_path, capsys):
+    """Une plaque non choisie reste non mesurable, avec son motif exact."""
+    prive = tmp_path / "atelier"
+    prive.mkdir()
+    source, sortie = tmp_path / "multi.3mf", prive / "ecart-z.json"
+    _archive(source, {"Metadata/plate_1.gcode": _gcode(), "Metadata/plate_2.gcode": _gcode()})
+    commande = ["--prive", str(prive), "controle", "ecart-z-supports", str(source)]
+    assert cli.main([*commande, "--resume", "--sortie", str(sortie)]) == 0
+    resume = json.loads(capsys.readouterr().out)
+    assert resume["statut"] == "NON MESURABLE"
+    assert resume["raison"] == "choix_plaque_requis"
+    assert json.loads(sortie.read_bytes())["raison"] == resume["raison"]
+    assert cli.main([*commande, "--resume"]) == 2
+    assert "--resume exige --sortie" in capsys.readouterr().err

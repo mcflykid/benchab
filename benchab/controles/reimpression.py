@@ -96,6 +96,7 @@ def verifier(projet):
 
 
 def main(argv=None):
+    """Vérifie le projet déclaré ; codes 0 PASS, 1 FAIL, 2 autre statut, sans action machine ni modification."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--projet", type=Path, required=True)
     args = parser.parse_args(argv)

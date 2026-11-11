@@ -24,6 +24,7 @@ from benchab.qualite.empreintes import sha256_fichier as sha
 
 
 def interne(d, rel):
+    """Résout un chemin relatif à l’atelier ; refuse les chemins absolus et les remontées."""
     if not isinstance(rel, str) or not rel or Path(rel).is_absolute() or ".." in Path(rel).parts:
         raise ValueError("Chemin de livrable interne requis")
     p = d / rel
@@ -60,6 +61,7 @@ def figer(d, motifs, version="", note="", *, prive=None):
 
 
 def verifier(d):
+    """Compare SHA-256 et présence des livrables ; retourne 0 intact, 1 écart, ou lève si le manifeste est invalide."""
     d = Path(d).resolve()
     data = json.loads(interne(d, "LIVRABLES.json").read_text())
     ecarts = []
@@ -80,6 +82,7 @@ def verifier(d):
 
 
 def main(argv=None):
+    """Traite figer/verifier ; retourne 0 en succès, 1 en écart et 2 en refus."""
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
     p = sub.add_parser("figer")

@@ -816,3 +816,35 @@ def analyser(p3mf, maitre=None, limites_filaments=None):
             },
             "limites": ["Analyse impossible ; aucune mesure effectuée ni validation physique."],
         }
+
+
+
+def resumer(rapport, destination):
+    """Garde verdict et localisations prioritaires, sans modifier le rapport détaillé.
+
+    Entrées : dict de capacités et chemin du JSON publié. Sortie : compteurs
+    sans unité et au plus cinq localisations, classées FAIL, NON VÉRIFIÉ puis
+    WARN. Les mesures en mm, mm/s et mm³/s restent dans le rapport complet.
+    """
+    from benchab.qualite.statuts import code_statut
+
+    contraintes = rapport["contraintes"]
+    priorites = []
+    for statut in ("FAIL", "NON VÉRIFIÉ", "WARN"):
+        for c in contraintes:
+            if len(priorites) == 5:
+                break
+            if c["statut"] != statut:
+                continue
+            lignes = c.get("lignes") or ()
+            priorites.append({
+                "statut": statut, "controle": c["controle"], "plaque": c.get("plaque"),
+                "ligne": lignes[0] if lignes else None,
+            })
+    return {
+        "statut": rapport["statut"], "code": code_statut(rapport["statut"]),
+        "decision": rapport["decision"], "rapport": str(destination),
+        "sha256": rapport["entrees"].get("tranche_sha256"),
+        "plaques": len(rapport["plaques"]), "groupes": len(rapport["metriques"].get("groupes", ())),
+        "contraintes": len(contraintes), "priorites": priorites,
+    }

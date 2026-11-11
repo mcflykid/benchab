@@ -2,7 +2,7 @@
 
 Ce gabarit couvre un bloc rectangulaire ou une base cylindrique, avec jusqu’à
 huit perçages traversants et un lamage supérieur facultatif par perçage. Jusqu’à
-quatre poches rectangulaires peuvent aussi être déclarées au-dessus.
+quatre poches rectangulaires, avec angles arrondis en option, peuvent aussi être déclarées au-dessus.
 Les cotes sont en millimètres. L’origine est au centre en XY et le dessous
 est à Z = 0 mm.
 
@@ -28,7 +28,7 @@ Pour une base cylindrique, remplacer `bloc_mm` par
 `"base_cylindrique": {"diametre_mm": 30, "epaisseur_mm": 6}`. Une seule base
 est permise. Les perçages, lamages et poches utilisent le même repère. La
 marge d’un trou se mesure depuis son bord le plus éloigné du centre et
-celle d’une poche depuis son coin le plus éloigné. Cela évite d’accepter
+celle d’une poche depuis le point le plus éloigné de son contour. Cela évite d’accepter
 une opération située dans la boîte englobante mais hors du disque.
 
 Les dimensions et diamètres sont compris entre 0,1 et 1 000 mm. Les centres
@@ -49,9 +49,16 @@ Une poche commence sur la face supérieure, a un fond plat et reste alignée
 sur les axes XY. Les deux largeurs définissent le rectangle centré en
 `x_mm`/`y_mm`. Le gabarit refuse les fonds débouchants et les poches
 tangentes ou recouvrantes, entre elles ou avec le diamètre d’entrée d’un
-perçage. Le volume retiré vaut largeur X × largeur Y × profondeur. Les
-rayons d’angle, orientations, chanfreins et parois physiques ne sont pas
-déduits (#32).
+perçage. Pour des coins droits, le volume retiré vaut largeur X × largeur Y
+× profondeur. Une poche peut déclarer `rayon_angle_mm`, compris entre
+0,1 mm et strictement moins que chacune de ses demi-largeurs. Son contour
+est celui du noyau rectangulaire agrandi d’un disque : les distances aux
+autres opérations et au bord d’une base ronde tiennent compte des coins
+retirés. Le volume diminue de `(4 − π) × rayon² × profondeur` par rapport
+à la poche à coins droits de mêmes largeurs. Le moteur construit l’outil
+avec [le rectangle arrondi de build123d](https://build123d.readthedocs.io/en/stable/build_sketch.html)
+et l’extrude jusqu’au fond déclaré. Orientations, chanfreins et parois
+physiques ne sont pas déduits (#32).
 
 ```sh
 benchab conception fiche-cao -- prive/fiche.json --sortie prive/plan-neuf
@@ -122,3 +129,12 @@ STEP ont un solide valide, avec dimensions et volume conformes au calcul
 indépendant. Les plans et scripts sont identiques entre répétitions ; les
 cinq fiches cylindriques historiques gardent aussi leurs octets. Il s’agit
 d’une vérification numérique, sans ajustement imprimé établi (#27, #32).
+
+La recette des angles arrondis a construit deux fois trois fiches :
+un coin dégagé près d’un perçage, une poche au bord d’une base ronde et
+deux poches dont les encombrements se chevauchent. Avec cadgen 0.8.4 et
+build123d 0.13.0, chacun des six STEP relus contient un solide valide
+aux dimensions et au volume attendus. Plans et scripts se reproduisent
+octet pour octet. Cinq fiches antérieures sans arrondi gardent les mêmes
+plans et scripts. Sur cette exécution locale, la préparation a pris
+2,0 ms en médiane et la construction 42,6 ms.

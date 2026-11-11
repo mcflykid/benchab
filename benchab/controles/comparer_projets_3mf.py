@@ -2,6 +2,7 @@
 
 import math
 import re
+from decimal import Decimal
 from pathlib import Path
 
 from benchab import reglages
@@ -17,6 +18,25 @@ _DIALECTES_PEINTURE = {
     _NS_PRUSA + "mmu_segmentation": "slic3rpe:mmu_segmentation",
 }
 _UNITES_3MF = {"micron", "millimeter", "centimeter", "inch", "foot", "meter"}
+
+
+_NOMBRE_MATRICE = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]{1,3})?")
+_IDENTITE_LINEAIRE = (1, 0, 0, 0, 1, 0, 0, 0, 1)
+
+
+def _translation_directe_qualifiee(texte):
+    """Vérifie une translation pure Core, dans les unités déclarées du modèle."""
+    if texte is None:
+        return True
+    if len(texte) > 512 or not re.fullmatch(r"[0-9eE+ .\t\r\n-]+", texte):
+        return False
+    champs = texte.split()
+    if len(champs) != 12 or any(not _NOMBRE_MATRICE.fullmatch(c) for c in champs):
+        return False
+    # Core §3.3 : neuf coefficients linéaires puis trois translations.
+    # Decimal évite de transformer un cisaillement minuscule en zéro.
+    valeurs = tuple(map(Decimal, champs))
+    return valeurs[:9] == _IDENTITE_LINEAIRE and all(v.copy_abs() <= 10**9 for v in valeurs[9:])
 
 
 def _lire(chemin):
@@ -88,12 +108,15 @@ def _lire_peinture_directe(archive):
         cle: objet.get(cle) for cle in ("pid", "pindex") if cle in objet.attrib
     }
     attributs_path = [cle for cle in item.attrib if cle.rsplit("}", 1)[-1] == "path"]
+    transform = item.get("transform")
     if (
         not ident or item.get("objectid") != ident or item.get("printable", "1") != "1"
-        or attributs_path or item.get("transform") is not None or objet.get("type") != "model"
+        or attributs_path or objet.get("type") != "model"
         or objet.find(NS_CORE + "components") is not None
     ):
         return {**inconnu, "raison": "Instance, objet, composant ou p:path hors du sous-cas direct."}
+    if not _translation_directe_qualifiee(transform):
+        return {**inconnu, "raison": "Placement hors des translations directes qualifiées."}
     maillage = objet.find(NS_CORE + "mesh")
     if maillage is None or objet.findall(NS_CORE + "mesh") != [maillage]:
         return {**inconnu, "raison": "Maillage direct absent ou ambigu."}
@@ -152,7 +175,7 @@ def _lire_peinture_directe(archive):
         "statut": "PASS",
         "identite": {
             "partie_opc": modele, "objet_id": ident, "unite": unite,
-            "transform": item.get("transform"), "build_index": 1,
+            "transform": transform, "build_index": 1,
         },
         "coordonnees": coordonnees,
         "facettes": faces,

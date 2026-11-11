@@ -1,6 +1,7 @@
 """Calcule des intervalles XY conditionnels ; ne qualifie ni trajectoire ni débit."""
 
 import math
+from fractions import Fraction
 
 
 def _xy(valeurs, nom):
@@ -14,15 +15,37 @@ def _xy(valeurs, nom):
     return tuple(float(v) for v in valeurs)
 
 
+def _ecarts_rayons_carres(depart, arrivee, decalage, demi_pas):
+    """Renvoie minimum, maximum et valeur nominale exacts de r0² − r1² en mm²."""
+    h = Fraction(str(demi_pas))
+    minimum = maximum = nominal = Fraction(0)
+    for debut, fin, centre in zip(depart, arrivee, decalage, strict=True):
+        q = Fraction(str(fin)) - Fraction(str(debut))
+        d = Fraction(str(centre))
+        bas, haut = q - 2 * h, q + 2 * h
+        # q (fin − début) et d (I/J) sont indépendants dans l’hypothèse.
+        # Pour chaque d extrême, 2qd − q² est concave en q : minimum
+        # aux bords, maximum au sommet q=d ou au bord le plus proche.
+        angles = tuple(x * (2 * y - x) for x in (bas, haut) for y in (d - h, d + h))
+        sommets = tuple(
+            x * (2 * y - x) for y in (d - h, d + h)
+            for x in (min(max(y, bas), haut),)
+        )
+        minimum += min(angles)
+        maximum += max(sommets)
+        nominal += q * (2 * d - q)
+    return minimum, maximum, nominal
+
+
 def intervalle_xy(depart_xy_mm, arrivee_xy_mm, decalage_ij_mm, *, sens, demi_pas_mm):
     """Encadre rayon, balayage et longueur XY d’un éventuel cercle avant arrondi.
 
     Les coordonnées XY et les décalages I/J relatifs sont en mm ; le sens
     G2/G3 et le demi-pas maximal par champ sont déclarés par l’appelant.
     Le résultat reste NON VÉRIFIÉ, avec intervalles en mm et radians si
-    l’hypothèse ne donne pas de contradiction immédiate. Il ne démontre pas
-    l’existence d’un cercle commun, ne reconstruit aucune trajectoire et ne
-    sert pas au contrôle de débit U25. Aucun fichier ni réglage n’est modifié.
+    l’hypothèse est compatible. Un cercle peut être prouvé sous cette
+    hypothèse, en lisant les décimales fournies ; aucune trajectoire n’est
+    reconstruite. Le débit U25, les fichiers et les réglages restent intacts.
     """
     depart, arrivee, decalage = (
         _xy(valeurs, nom)
@@ -68,12 +91,20 @@ def intervalle_xy(depart_xy_mm, arrivee_xy_mm, decalage_ij_mm, *, sens, demi_pas
     if not 0 < angle_min <= angle_max < math.tau:
         # Une branche voisine du tour complet n’est pas assimilable à un arc court.
         return {**rapport, "raison": "balayage_discontinu"}
+    minimum, maximum, nominal = _ecarts_rayons_carres(depart, arrivee, decalage, demi_pas_mm)
+    if minimum > 0 or maximum < 0:
+        return {**rapport, "raison": "arrondis_incompatibles"}
+    # Par continuité, un signe de chaque côté garantit un zéro même à
+    # l’intérieur des intervalles. Un simple contact laisse l’arrondi de
+    # frontière indéterminé ; le cas nominal exact est déjà un témoin.
+    cercle_existant = minimum < 0 < maximum or nominal == 0
     rayon = [max(0.0, math.nextafter(rayon_min, -math.inf)), math.nextafter(rayon_max, math.inf)]
     balayage = [math.nextafter(angle_min, -math.inf), math.nextafter(angle_max, math.inf)]
     longueur = [math.nextafter(rayon[0] * balayage[0], -math.inf), math.nextafter(rayon[1] * balayage[1], math.inf)]
     return {
         **rapport,
         "raison": "intervalle_conditionnel",
+        "cercle_existant_prouve": cercle_existant,
         "rayon_conditionnel_mm": rayon,
         "balayage_conditionnel_rad": balayage,
         "longueur_xy_conditionnelle_mm": longueur,

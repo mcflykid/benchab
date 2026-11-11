@@ -3,6 +3,8 @@
 Toutes passent par `uv run benchab`. `--prive CHEMIN` précède la famille de commandes.
 `--help` décrit les arguments de la famille ; pour les adaptateurs à arguments
 libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
+Le [guide de lecture des rapports](../guides/lire-les-rapports.md) indique les
+options de résumé et de détail déjà couvertes.
 
 | Famille | Usage |
 | --- | --- |
@@ -16,6 +18,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `conception filetage-nominal -- OPTIONS` | STL et rapport privé à partir de cotes déclarées en mm : filet triangulaire extérieur ou outil de soustraction avec jeu radial explicite ; hors norme ISO et sans preuve d’ajustement |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
+| `controle capacites-machine SOURCE.3mf --maitre PROFIL.json` | Demandes nominales, limites et contraintes numériques depuis deux entrées privées ; `--resume --sortie RAPPORT.json` garde le détail privé |
 | `controle rejeux-gcode RECU1 RECU2 --plaque N` | Compare les G-code déjà publiés et distingue les octets, les dépôts de support et les agrégats ; rapport neuf facultatif |
 | `controle plages-z` | Compare les plages de couches d’un 3MF à une intention Z explicite, en mm ; `--sortie` donne un résumé borné et un rapport privé, `--detail` ajoute le JSON complet à stdout |
 | `fabrication exportable`, `rattachements`, `envois-slicer`, `retour`, `planning` | Livrables, historique et retours |
@@ -26,9 +29,10 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `controle comparer-projets-3mf SOURCE CANDIDAT` | [Diagnostic en lecture seule](comparer-projets-3mf.md) des réglages, palettes et peinture littérale, sans conversion |
 | `controle coutures` | [Contrôle et aperçu de coutures sur régions déclarées](../explications/coutures.md#contrôle-sur-des-régions-déclarées) |
 | `controle preparer-reprise-export` | [Copie vérifiée d’une table exportée absente](plan-reparation-vues.md#préparer-la-reprise-dune-table-exportée), sans l’appliquer |
+| `controle verifier-reprise-source --preuve FICHIER --sha256-preuve SHA` | Relit la preuve et la copie locales, distingue l’état de l’original sans appliquer ni rouvrir le TAR |
 | `controle preparer-reprise-source` | [Copie non appliquée d’un original depuis un tar](plan-reparation-vues.md#préparer-une-copie-dun-original-depuis-une-sauvegarde), avec SHA d’archive et de membre |
 | `controle appliquer-reprise-export` | Applique une table absente depuis une preuve CANDIDAT et son SHA explicitement déclaré |
-| `controle surplombs-connexes SOURCE.stl --unite-mm [--plateau-z-mm Z [--dossier-apercu DOSSIER_NEUF]]` | Groupes de triangles orientés vers le bas ; visées ponctuelles vers un plan Z déclaré en mm et visionneuse privée en option, sans validation d’appui |
+| `controle surplombs-connexes SOURCE.stl --unite-mm [--plateau-z-mm Z [--dossier-apercu DOSSIER_NEUF]] [--portee-pont-mm PORTEE]` | Groupes de triangles orientés vers le bas ; visées ponctuelles vers un plan Z déclaré en mm et visionneuse privée en option, sans validation d’appui |
 | `controle ponts-surplombs STL TRANCHE.3mf` | [Axes de pont projetés sur un îlot](../explications/surplombs-ponts-supports.md#comparer-un-îlot-à-une-plaque-choisie), avec SHA, plaque et translation déclarés |
 | `controle entretien --historique FICHIER [--sortie RAPPORT]` | Bilan conditionnel depuis un historique privé explicite, sans SQLite ni action machine |
 | `controle ecarts-profils-3mf` | Compare les réglages 3MF aux profils explicitement fournis ; rapport privé |

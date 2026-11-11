@@ -182,8 +182,9 @@ class Base:
             yield self.connexion
             for table in TABLES:
                 for ligne in self.connexion.execute(f'SELECT * FROM "{table}"'):
-                    json.dumps(dict(ligne), allow_nan=False)
-                    for cle, valeur in dict(ligne).items():
+                    donnees = dict(ligne)
+                    json.dumps(donnees, allow_nan=False)
+                    for cle, valeur in donnees.items():
                         if not isinstance(valeur, str):
                             continue
                         if cle.endswith("_json") and "/" in valeur:

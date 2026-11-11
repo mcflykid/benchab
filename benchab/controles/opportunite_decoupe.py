@@ -346,6 +346,7 @@ def _rapport_final(*, statut, declencheurs, rapports, comparaison, manquants) ->
 
 
 def main(argv=None, *, base=None, prive=None) -> int:
+    """Évalue les indicateurs et comparaisons déclarés ; retourne leur code sans détecter ni produire une découpe."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Manifeste JSON privé des indicateurs et comparaisons.")
     parser.add_argument("--sortie", type=Path, help="Rapport JSON, dans l'espace privé de BENCHAB.")

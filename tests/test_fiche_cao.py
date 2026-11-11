@@ -303,3 +303,80 @@ def test_fraisage_invalide_ne_publie_aucun_plan(tmp_path, fraisage, autres, mess
     with pytest.raises(ValueError, match=message):
         generer(source, tmp_path / "sortie")
     assert not (tmp_path / "sortie").exists()
+
+
+def test_poche_arrondie_volume_et_script_deterministes(tmp_path):
+    """Le plan retire seulement l’aire aux coins arrondis, à la profondeur déclarée."""
+    from math import pi
+
+    from benchab.conception.fiche_cao import generer
+
+    fiche = _fiche()
+    fiche["poches_rectangulaires"] = [{**_poche(-8, 2), "rayon_angle_mm": 1}]
+    source = tmp_path / "fiche.json"
+    for i in (0, 1):
+        source.write_text(json.dumps(fiche, indent=i, sort_keys=bool(i)), encoding="utf-8")
+        generer(source, tmp_path / f"p{i}")
+    plan = json.loads((tmp_path / "p0/plan.json").read_bytes())
+    assert plan["poches_rectangulaires"][0]["rayon_angle_mm"] == 1
+    assert plan["attendu"]["volume_mm3"] == pytest.approx(2400 - pi * 2.5**2 * 4 - (24 - 4 + pi) * 2)
+    script = (tmp_path / "p0/modele.py").read_bytes()
+    assert b"RectangleRounded(6.0, 4.0, 1.0)" in script
+    assert script == (tmp_path / "p1/modele.py").read_bytes()
+    assert (tmp_path / "p0/plan.json").read_bytes() == (tmp_path / "p1/plan.json").read_bytes()
+
+
+@pytest.mark.parametrize("centre,accepte", [(2.0, True), (1.8, False)])
+def test_poche_arrondie_et_percage_verifient_le_contour_reel(tmp_path, centre, accepte):
+    """Un perçage peut libérer un coin arrondi tout en croisant l’encombrement."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {**_fiche(), "poches_rectangulaires": [{**_poche(0, 0, lx=4, ly=4), "rayon_angle_mm": 1.8}],
+             "percages": [{"x_mm": centre, "y_mm": centre, "diametre_mm": 1}]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche))
+    if accepte:
+        assert generer(source, tmp_path / "p")["statut"] == "NON VÉRIFIÉ"
+    else:
+        with pytest.raises(ValueError, match="chevauchement"):
+            generer(source, tmp_path / "p")
+
+
+@pytest.mark.parametrize("rayon", [0, 2, 3])
+def test_poche_arrondie_refuse_rayon_absurde(tmp_path, rayon):
+    """Un rayon nul ou tangentiel ne déclenche pas une forme dégénérée."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {**_fiche(), "poches_rectangulaires": [{**_poche(-8, 2), "rayon_angle_mm": rayon}]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche))
+    with pytest.raises(ValueError, match="rayon"):
+        generer(source, tmp_path / "p")
+    assert not (tmp_path / "p").exists()
+
+
+def test_poche_arrondie_tient_dans_un_disque_ou_le_coin_carre_touche(tmp_path):
+    """La portée radiale est mesurée sur le contour et non le coin supprimé."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {"schema": 1, "id": "disque", "base_cylindrique": {"diametre_mm": 20, "epaisseur_mm": 4},
+             "percages": [], "poches_rectangulaires": [{**_poche(6, 4, lx=4, ly=4), "rayon_angle_mm": 1.5}]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche))
+    assert generer(source, tmp_path / "p")["statut"] == "PASS"
+
+
+@pytest.mark.parametrize("decalage,accepte", [(3.6, True), (3.0, False)])
+def test_poches_arrondies_intersection_selon_leurs_deux_contours(tmp_path, decalage, accepte):
+    """Deux arrondis voisins peuvent rester disjoints malgré des boîtes qui se croisent."""
+    from benchab.conception.fiche_cao import generer
+
+    poches = [{**_poche(c, c, lx=4, ly=4), "rayon_angle_mm": 1.5} for c in (0, decalage)]
+    fiche = {**_fiche(), "percages": [], "poches_rectangulaires": poches}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche))
+    if accepte:
+        assert generer(source, tmp_path / "p")["statut"] == "NON VÉRIFIÉ"
+    else:
+        with pytest.raises(ValueError, match="chevauchement"):
+            generer(source, tmp_path / "p")

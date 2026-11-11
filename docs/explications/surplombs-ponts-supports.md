@@ -149,3 +149,27 @@ les lignes trop longues et les diagnostics du lecteur laissent la
 comparaison NON VÉRIFIÉE. PASS signifie que la comparaison nominale est
 couverte, même quand aucun axe ne correspond. Il ne valide ni un appui,
 ni la largeur d’un cordon, ni l’impression.
+
+### Hypothèse géométrique avant tranchage
+
+`controle surplombs-connexes --unite-mm --portee-pont-mm PORTEE`
+peut signaler un plafond horizontal rectangulaire aligné si ses quatre
+côtés sont complets et si deux côtés opposés entiers touchent des faces
+voisines qui descendent sous lui. La portée est la distance entre ces
+côtés. Le maximum est déclaré pour la comparaison ; aucune valeur
+universelle n’est choisie. Un seul côté, une portée supérieure, une
+topologie ouverte ou une géométrie ambiguë restent NON VÉRIFIÉS (#93).
+
+Le rapport et, avec le plan de visée déclaré, l’aperçu indiquent l’axe
+et la portée. L’hypothèse ne décide ni d’un réglage de support, ni d’une
+franchissabilité. Les trajets `Bridge` du G-code sont une vérification
+distincte ; l’adhésion et l’appui réels exigent encore une observation.
+
+Sur un témoin synthétique fermé, le plafond rectangulaire a une portée de
+4 mm suivant X. Deux tranchages hors ligne avec ASN 2.0.0.3, supports
+désactivés, donnent chacun neuf axes `Bridge` concordants en projection et
+en altitude (36 mm au total). Le rôle `Internal Bridge` recoupe la projection,
+mais aucun de ses axes n’est au niveau nominal du plafond. Sur le coupon
+de 224 mm² décrit plus haut, l’hypothèse reste NON VÉRIFIÉE : les deux bords
+entiers ne sont pas établis par cette géométrie. L’absence d’hypothèse
+n’interdit donc pas au slicer de générer des ponts.

@@ -1,0 +1,40 @@
+# Lire un rapport sans perdre les preuves
+
+Pour vérifier une préparation, commencez par le statut et les points à
+examiner. Conservez le JSON complet dans l’atelier : il garde les
+détails de chaque plaque, les raisons du verdict et, selon le contrôle,
+l’empreinte de la source.
+
+| Contrôle | Affichage court avec rapport complet | Afficher le détail |
+| --- | --- | --- |
+| Envoi, plages Z | `--sortie RAPPORT.json` | Ajouter `--detail` |
+| Continuité, capacités, comparaison 3MF, purge, écarts Z des supports | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
+| Débit U25, `surplombs-connexes` | `--resume --sortie RAPPORT.json` | Remplacer `--resume` par `--detail` |
+| Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
+
+Choisissez une destination neuve dans `prive/rapports/`. Les options
+d’entrée restent propres à chaque commande : voir les
+[commandes](../reference/commandes.md) et leur aide. Le résumé ne change ni
+le verdict, ni le code de la commande. Un résultat NON VÉRIFIÉ garde sa
+raison ; une erreur qui empêche la lecture peut être signalée sur stderr
+sans produire de rapport.
+
+Par exemple, pour un fichier déjà tranché :
+
+```sh
+uv run benchab controle purge-changements prive/archives/temoin.3mf \
+  --resume --sortie prive/rapports/purge-01.json
+```
+
+Sur trois témoins S/M/L, cet affichage occupait 297 octets chacun, contre
+1 227 octets pour l’affichage complet. Les rapports gardés contenaient les
+mêmes données. Sur ces témoins mono, la purge physique est restée NON VÉRIFIÉE.
+Les résultats d’un essai ne préjugent pas de la taille d’un autre rapport.
+
+Pour chercher un détail, lisez directement le JSON avec votre éditeur ou
+filtrez les champs utiles avec `jq`. Dans un assistant de code déjà équipé de
+[Context Mode](https://github.com/mksglu/context-mode/blob/main/README.md),
+ce plugin facultatif peut limiter ce qui est remonté dans le contexte.
+Il n’est pas requis par BENCHAB et ne remplace pas le rapport complet.
+Pour un rapport privé, transmettez seulement les champs nécessaires au
+contexte de travail et gardez le JSON brut dans l’atelier (#35).

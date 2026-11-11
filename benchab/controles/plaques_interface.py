@@ -16,6 +16,7 @@ from benchab.qualite.statuts import code_statut
 
 
 def chemin(value):
+    """Convertit une valeur en chemin absolu et harmonise l’alias macOS /var, sans lire le fichier."""
     path = Path(value).absolute()
     if sys.platform == "darwin" and path.is_relative_to("/var") and Path("/var").resolve() == Path("/private/var"):
         return Path("/private/var") / path.relative_to("/var")
@@ -36,6 +37,7 @@ def mat(texte):
 
 
 def points(key, oid, matrice, meshes, composants):
+    """Retourne les sommets transformés d’un objet en coordonnées XYZ mm, en suivant ses composants déclarés."""
     identite = (key, oid)
     if identite in meshes:
         sommets = meshes[identite]

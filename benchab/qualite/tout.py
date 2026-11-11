@@ -69,6 +69,11 @@ def executer_commande(cmd, base, log, stage):
 
 
 def ecrire_si_change(path, contenu):
+    """Écrit le texte UTF-8 à la destination déjà contrôlée par l’appelant.
+
+    Renvoie None ; si les octets sont identiques, conserve le fichier en place.
+    Sinon, publie par remplacement atomique depuis le même répertoire.
+    """
     data = contenu.encode()
     if path.exists() and path.read_bytes() == data:
         return
@@ -85,6 +90,11 @@ def ecrire_si_change(path, contenu):
 
 
 def evenement(record):
+    """Projette un état d’exécution pour la comparaison avec son historique.
+
+    Renvoie un dictionnaire sans date, durée en secondes ni indicateur de cache.
+    Les statuts et les empreintes restent présents ; l’entrée n’est pas modifiée.
+    """
     # Durées et utilisation du cache ne changent pas une preuve.
     return {
         k: ([{a: b for a, b in step.items() if a not in ("secondes", "cache")} for step in v] if k == "steps" else v)
@@ -94,6 +104,13 @@ def evenement(record):
 
 
 def etat(base, cfg, steps, previous, statut, anomalies):
+    """Publie l’état du pipeline dans le projet préalablement contrôlé.
+
+    Reçoit la configuration, les étapes, l’état précédent, le statut courant
+    et les anomalies. Renvoie le nouvel état avec horodatage et empreinte du
+    manifeste si disponible. L’historique exclut RUNNING et les états répétés ;
+    les journaux d’échec archivés sont identifiés par leur SHA-256.
+    """
     out = base / "preuves/qualite"
     out.mkdir(parents=True, exist_ok=True)
     mp = base / cfg["manifeste"]
@@ -189,12 +206,22 @@ class ContexteCache:
     """Mémoisation strictement limitée à une exécution, signatures avec ctime."""
 
     def __init__(self):
+        """Initialise un cache vide pour une seule exécution.
+
+        Les compteurs de lectures et d’octets commencent à zéro ; aucune donnée
+        n’est chargée et aucun état n’est partagé avec un autre lancement.
+        """
         self.hashes = {}
         self.versions = None
         self.octets_lus = 0
         self.lectures = 0
 
     def empreinte(self, p):
+        """Renvoie le SHA-256 du chemin à partir de sa signature de fichier.
+
+        Une lecture nouvelle incrémente les compteurs en lectures et en octets.
+        Le cache ne s’applique qu’à cette exécution et le fichier reste intact.
+        """
         p = Path(p)
         st = p.stat()
         sig = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
@@ -329,6 +356,12 @@ def empreinte(base, stage, cfg=None, contexte=None):
 
 
 def statut_preuves(base, proofs):
+    """Agrège les statuts des rapports JSON nommés relativement au projet.
+
+    Un JSON illisible donne FAIL ; sans rapport portant un statut, renvoie
+    PASS pour cet agrégat seul. La présence des autres preuves est vérifiée
+    par le pipeline ; aucune preuve n’est modifiée.
+    """
     states = []
     for name in proofs:
         p = base / name
@@ -498,6 +531,12 @@ def run(path, incremental=False, only_verify=False):
 
 
 def main(argv=None):
+    """Traduit les arguments du pipeline local en un appel à run.
+
+    Reçoit le chemin de configuration et les options de contrôle ou de cache.
+    Renvoie le code du pipeline : 0 pour PASS ou WARNING, 1 pour FAIL, 2 si
+    une décision humaine reste attendue. Aucun pilotage d’imprimante.
+    """
     p = argparse.ArgumentParser()
     p.add_argument("configuration")
     p.add_argument("--incremental", action="store_true")

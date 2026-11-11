@@ -166,3 +166,20 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
                 "physique": "Ne mesure ni contact, retrait, déformation, adhérence ni tenue physique.",
             },
         }
+
+def resumer(rapport: dict, sortie: Path) -> dict:
+    """Retient le statut, la plaque, le minimum en mm et le chemin du JSON.
+
+    Le rapport privé complet a été publié par l’appelant. PARTIEL,
+    ESTIMATION et NON MESURABLE gardent leurs codes ; aucune mesure de
+    contact physique n’est déduite.
+    """
+    return {
+        "statut": rapport["statut"],
+        "code": rapport["code"],
+        "plaque": rapport.get("plaque", {}).get("numero"),
+        "minimum_mm": rapport.get("ecart_z_local_mm", {}).get("minimum"),
+        "surface_contact_physique_mm2": None,
+        "rapport": str(sortie),
+        **({"raison": rapport["raison"]} if "raison" in rapport else {}),
+    }

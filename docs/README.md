@@ -13,6 +13,7 @@ Chaque méthode a une page de référence. Les guides renvoient aux règles comm
 | Adapter une machine | [Autre imprimante](guides/autre-imprimante.md) |
 | Faire les premiers essais d’une machine ou d’une bobine | [Parcours d’essai](guides/premiers-essais.md) |
 | Trouver une commande | [Commandes](reference/commandes.md) |
+| Retrouver un verdict et son détail | [Lire les rapports](guides/lire-les-rapports.md) |
 | Trancher sans modifier les réglages | [Fabrication](reference/fabrication.md) |
 | Comprendre les contrôles | [Contrôles](reference/controles.md) |
 | Décrire le placement attendu | [Contrat de placement](reference/placement.md) |

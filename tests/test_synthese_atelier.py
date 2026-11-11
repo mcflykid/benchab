@@ -144,6 +144,41 @@ class Synthese(unittest.TestCase):
             S._membre(archive, "Metadata/project_settings.config", S.MAX_JSON)
         archive.lire.assert_not_called()
 
+    def test_bilan_refuse_deux_graphies_d_une_plaque_meme_avec_deux_sha_valides(self):
+        """Le même numéro ne produit pas deux mesures d’atelier."""
+        fiche = self.p / "preparations/P01/PREPARATION.json"
+        declaration = json.loads(fiche.read_bytes())
+        archive = self.r / declaration["tranche_3mf"]["fichier"]
+        autre = self.gcode.replace("X20", "X30")
+        with ZipFile(archive, "a") as z:
+            z.writestr("Metadata/plate_01.gcode", autre)
+        empreinte = sha(archive)
+        declaration["tranche_3mf"]["sha256"] = empreinte
+        declaration["gcode"]["01"] = {"sha256": hashlib.sha256(autre.encode()).hexdigest()}
+        embarques, tranches, supports, durees, alertes = S._archives(self.r, self.p, declaration)
+        self.assertEqual((tranches, supports, durees), ([], [], []))
+        self.assertIn("plaques_3mf", embarques)
+        self.assertNotIn("tranche_3mf", embarques)
+        self.assertTrue(any("numéro de plaque dupliqué" in alerte for alerte in alertes))
+        self.assertEqual(sha(archive), empreinte)
+
+    def test_bilan_conserve_le_nom_exact_si_la_plaque_est_unique(self):
+        """Un zéro initial ne crée pas d’ambiguïté sans second membre du même numéro."""
+        fiche = self.p / "preparations/P01/PREPARATION.json"
+        declaration = json.loads(fiche.read_bytes())
+        archive = self.r / declaration["tranche_3mf"]["fichier"]
+        copie = archive.with_name("zero-initial.3mf")
+        with ZipFile(archive) as z, ZipFile(copie, "w") as cible:
+            for nom in z.namelist():
+                nom_cible = "Metadata/plate_01.gcode" if nom == "Metadata/plate_1.gcode" else nom
+                cible.writestr(nom_cible, z.read(nom))
+        declaration["tranche_3mf"] = {"fichier": copie.relative_to(self.r).as_posix(), "sha256": sha(copie)}
+        declaration["gcode"]["01"] = declaration["gcode"].pop("1")
+        _, tranches, supports, _, alertes = S._archives(self.r, self.p, declaration)
+        self.assertEqual([p["plaque"] for p in tranches], [1])
+        self.assertEqual([p["plaque"] for p in supports], [1])
+        self.assertFalse(any("G-code plaque" in alerte for alerte in alertes))
+
     def test_bilan_refuse_le_xml_de_modele_hors_contrat(self):
         """Un XML avec déclaration DTD ne doit pas alimenter la synthèse."""
         fiche = self.p / "preparations/P01/PREPARATION.json"

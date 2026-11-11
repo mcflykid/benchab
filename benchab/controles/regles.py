@@ -134,6 +134,7 @@ def controler(fichier: str | Path) -> dict:
 
 
 def main(argv=None, *, base=None, prive=None) -> int:
+    """Exécute les contrôles de règles et publie le rapport privé ; retourne son code de statut ou 2 en cas de refus."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--sortie", type=Path, help="Rapport JSON, dans l’espace privé de BENCHAB.")

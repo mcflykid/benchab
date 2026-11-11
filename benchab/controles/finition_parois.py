@@ -643,6 +643,7 @@ def _ecrire(path, text):
 
 
 def rendre_html(rapport, sortie):
+    """Écrit la visualisation HTML des vitesses nominales (mm/s), hauteurs (mm) et durées (s) du rapport."""
     rows = []
     charts = []
     for s in rapport["series"]:
@@ -759,6 +760,7 @@ def rendre_html(rapport, sortie):
 
 
 def main(argv=None):
+    """Analyse la paroi en mm et mm/s ; codes 1 FAIL, 2 refus, 0 sinon, aucune validation physique."""
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="action", required=True)
     a = sub.add_parser("analyser")

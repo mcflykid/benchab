@@ -14,6 +14,7 @@ from benchab.machine.configuration import charger as charger_configuration
 
 
 def chemin(value):
+    """Convertit une valeur en chemin absolu et harmonise l’alias macOS /var, sans lire le fichier."""
     path = Path(value).absolute()
     if sys.platform == "darwin" and path.is_relative_to("/var") and Path("/var").resolve() == Path("/private/var"):
         return Path("/private/var") / path.relative_to("/var")
@@ -93,6 +94,7 @@ def analyser(fichier, placement, plateau=None):
 
 
 def controler(fichier, emplacement, sortie):
+    """Compare l’enveloppe linéaire déposée du 3MF au placement déclaré, en mm, et publie un rapport numérique."""
     source, path_placement, destination = map(chemin, (fichier, emplacement, sortie))
     publication = RapportCourant(destination, [source, path_placement], "disposition_reelle")
     placement = json.loads(path_placement.read_text())
@@ -102,6 +104,7 @@ def controler(fichier, emplacement, sortie):
 
 
 def main(argv=None):
+    """Lance le contrôle numérique de disposition ; retourne 0 conforme, 1 écart ou 2 refus, sans preuve physique."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("placement", type=Path)

@@ -464,3 +464,78 @@ def test_budget_cumule_entetes_meme_si_chacune_est_petite(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="budget cumulé des extensions"):
         _appel(prive, archive, sha_archive, sha_source, prive / "rapports" / "sortie")
     assert list((prive / "rapports").iterdir()) == []
+
+
+@pytest.mark.parametrize("etat", ["MANQUANT", "IDENTIQUE", "DIVERGENT", "NON VÉRIFIÉ"])
+def test_verifier_copie_distingue_l_original_sans_ecrire(tmp_path, etat):
+    """Une preuve correcte peut coexister avec un original absent ou différent."""
+    from benchab.donnees.reprise_source import verifier_copie
+
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+    archive = tmp_path / "sauvegarde.tar"
+    contenu = b"source connue\n"
+    sha_source = _archive(archive, contenu=contenu)
+    sortie = prive / "rapports" / "copie"
+    preparation = _appel(prive, archive, hashlib.sha256(archive.read_bytes()).hexdigest(), sha_source, sortie)
+    original = prive / MEMBRE
+    if etat != "MANQUANT":
+        original.parent.mkdir(parents=True)
+        if etat == "NON VÉRIFIÉ":
+            original.symlink_to(archive)
+        else:
+            original.write_bytes(contenu if etat == "IDENTIQUE" else b"autres octets")
+    avant = original.read_bytes() if original.is_file() and not original.is_symlink() else None
+    resultat = verifier_copie(prive, sortie / "preuve.json", preparation["preuve_sha256"])
+    assert resultat["statut"] == "PASS" and resultat["applique"] is False
+    assert resultat["original"]["statut"] == etat
+    assert resultat["sha256_copie"] == sha_source
+    assert not (prive / "benchab.sqlite").exists()
+    if avant is not None:
+        assert original.read_bytes() == avant
+    elif etat == "MANQUANT":
+        assert not original.exists()
+
+
+@pytest.mark.parametrize("cible", ["preuve", "copie", "copie-liee"])
+def test_verifier_copie_refuse_octets_alteres_ou_lien(tmp_path, cible):
+    """Une preuve liée ou altérée ne devient pas une source de réparation."""
+    from benchab.donnees.reprise_source import verifier_copie
+
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+    archive = tmp_path / "sauvegarde.tar"
+    sha_source = _archive(archive)
+    sortie = prive / "rapports" / "copie"
+    preparation = _appel(prive, archive, hashlib.sha256(archive.read_bytes()).hexdigest(), sha_source, sortie)
+    preuve = sortie / "preuve.json"
+    copie = sortie / preparation["copie"]
+    if cible == "preuve":
+        preuve.write_bytes(preuve.read_bytes() + b"\n")
+    elif cible == "copie":
+        copie.write_bytes(b"octets alteres")
+    else:
+        copie.rename(copie.with_suffix(".copie"))
+        copie.symlink_to(copie.with_suffix(".copie"))
+    with pytest.raises((OSError, ValueError)):
+        verifier_copie(prive, preuve, preparation["preuve_sha256"])
+
+
+def test_cli_verifie_copie_sans_ouvrir_la_base(tmp_path, capsys, monkeypatch):
+    """La route passive n’initialise ni atelier ni original absent."""
+    from benchab import cli
+
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+    archive = tmp_path / "sauvegarde.tar"
+    sha_source = _archive(archive)
+    sortie = prive / "rapports" / "copie"
+    prep = _appel(prive, archive, hashlib.sha256(archive.read_bytes()).hexdigest(), sha_source, sortie)
+    monkeypatch.setattr(cli, "Base", lambda *_a, **_k: pytest.fail("Base ne doit pas être ouverte"))
+    assert cli.main([
+        "--prive", str(prive), "controle", "verifier-reprise-source", "--preuve", str(sortie / "preuve.json"),
+        "--sha256-preuve", prep["preuve_sha256"],
+    ]) == 0
+    resultat = json.loads(capsys.readouterr().out)
+    assert resultat["statut"] == "PASS" and resultat["original"]["statut"] == "MANQUANT"
+    assert not resultat["archive_relue"] and not (prive / MEMBRE).exists()
