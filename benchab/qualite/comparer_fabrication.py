@@ -182,6 +182,12 @@ def normaliser(t):
 
 
 def comparer(attendu, obtenu, sortie, *, prive=None):
+    """Compare deux dossiers et publie un rapport privé neuf sans modifier les entrées.
+
+    Les verdicts PASS/FAIL ou À ANALYSER distinguent géométrie, fabrication,
+    identité binaire et documentation. Les détails d’archives sont bornés en
+    octets ; aucune différence n’autorise de validation physique.
+    """
     attendu, obtenu, sortie = Path(attendu), Path(obtenu), Path(sortie)
     sortie = sortie_privee(sortie, prive=prive)
     valider_chemins([attendu, obtenu], [sortie])
