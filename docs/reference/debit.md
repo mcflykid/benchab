@@ -24,3 +24,9 @@ U21 n’impose aucun plafond universel : un réglage déclaré supérieur à
 12 mm³/s n’est pas refusé pour cette seule raison. Les observations de réussite
 restent liées à leurs conditions ; elles ne modifient pas automatiquement
 les réglages ni les plafonds d’un autre projet.
+
+`benchab controle debit-gcode FICHIER --sortie RAPPORT.json` conserve le
+rapport complet dans une destination neuve de l’atelier privé ou dans un
+temporaire système hors du dépôt. Une sortie existante, liée ou identique
+à l’archive est refusée. Le rapport d’un verdict FAIL peut être sauvegardé
+sans modifier le fichier 3MF.
