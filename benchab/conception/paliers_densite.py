@@ -205,10 +205,13 @@ def modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers, *
         limite="Tranches parallèles au plan déclaré ; aucun effet G-code ni tenue physique établis.",
     )
 
-    for region, palier in zip(volumes, rapport["paliers"][:len(volumes)], strict=True):
+    if not volumes:
+        return volumes, rapport
+    for region, palier in zip(volumes, rapport["paliers"], strict=True):
         profondeurs = altitude - np.asarray(region["mesh"].vertices) @ normale
         if (
-            profondeurs.min() < palier["profondeur_min_mm"] - tolerance_mm
+            not np.isfinite(profondeurs).all()
+            or profondeurs.min() < palier["profondeur_min_mm"] - tolerance_mm
             or profondeurs.max() > palier["profondeur_max_mm"] + tolerance_mm
         ):
             return [], {

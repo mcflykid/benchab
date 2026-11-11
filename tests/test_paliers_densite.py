@@ -116,3 +116,23 @@ def test_plan_traversant_detache_ou_inverse_ne_donne_pas_de_paliers(point, norma
     piece = trimesh.creation.box((12, 8, 10))
     with pytest.raises(ValueError, match="Plan"):
         modificateurs_depuis_plan(piece, point, normale, [{"profondeur_mm": 2, "densite": "60%"}])
+
+
+def test_palier_refuse_un_maillage_converti_deplace_hors_tranche(monkeypatch):
+    """Un volume correct ne suffit pas si ses sommets sortent des bornes de profondeur."""
+    from benchab.conception import paliers_densite
+
+    convertir = paliers_densite._vers_trimesh
+
+    def deplacer(solide):
+        mesh = convertir(solide)
+        mesh.apply_translation((0, 0, 1))
+        return mesh
+
+    monkeypatch.setattr(paliers_densite, "_vers_trimesh", deplacer)
+    volumes, r = paliers_densite.modificateurs_depuis_plan(
+        trimesh.creation.box((12, 8, 10)), [0, 0, 5], [0, 0, 1],
+        [{"profondeur_mm": 2, "densite": "60%"}],
+    )
+    assert not volumes and r["statut"] == "NON VÉRIFIÉ"
+    assert "Sommet" in r["raison"]
