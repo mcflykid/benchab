@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
 from benchab import integrite_3mf
@@ -36,13 +37,23 @@ def _decoder_types(contenu):
     return b"", contenu.decode(encodage), encodage
 
 
+def _xml_borne(contenu, limite):
+    """Parse un XML 3MF borné et convertit une syntaxe illisible en refus explicite."""
+    try:
+        return decoder_xml(contenu, limite_octets=limite)
+    except ET.ParseError as erreur:
+        raise ValueError("XML 3MF malformé") from erreur
+
+
 def _types_avec_override(contenu):
     """Insère un Override exact avant la racine, en conservant l'ordre et le texte existant."""
     if len(contenu) > MAX_TYPES:
         raise ValueError("Content_Types.xml dépasse le budget XML")
-    racine = decoder_xml(contenu, limite_octets=MAX_TYPES)
+    racine = _xml_borne(contenu, MAX_TYPES)
     if racine.tag != f"{{{ESPACE_TYPES}}}Types":
         raise ValueError("Content_Types.xml a une racine inattendue")
+    if any(enfant.tag not in {f"{{{ESPACE_TYPES}}}Default", f"{{{ESPACE_TYPES}}}Override"} for enfant in racine):
+        raise ValueError("Content_Types.xml contient un enfant inattendu")
     signature_types = any(
         "digital-signature" in element.get("ContentType", "").casefold()
         or "digital signature" in element.get("ContentType", "").casefold()
@@ -56,18 +67,39 @@ def _types_avec_override(contenu):
             raise ValueError("Archive déjà marquée par BENCHAB")
     marque, texte, encodage = _decoder_types(contenu)
     racine_texte = re.search(r"<(?P<prefix>[A-Za-z_][\w.-]*:)?Types(?=[\s>])", texte)
-    fermeture = list(re.finditer(r"</(?P<prefix>[A-Za-z_][\w.-]*:)?Types\s*>", texte))
-    if not racine_texte or not fermeture:
+    if not racine_texte:
         raise ValueError("Content_Types.xml ne peut pas être modifié sans réécriture")
     prefixe = racine_texte.group("prefix") or ""
-    if (fermeture[-1].group("prefix") or "") != prefixe:
+    balises = re.compile(r"<!--.*?-->|<!\[CDATA\[.*?\]\]>|<\?.*?\?>|<![^>]*>|</[^>]*>|<[^>]*>", re.S)
+    fermetures = []
+    for balise in balises.finditer(texte):
+        if balise.group().startswith(("<!--", "<![CDATA[", "<?", "<!")):
+            continue
+        match_fermeture = re.fullmatch(r"</(?P<prefix>[A-Za-z_][\w.-]*:)?Types\s*>", balise.group())
+        if match_fermeture:
+            fermetures.append(balise)
+    if len(fermetures) != 1:
+        raise ValueError("Fermeture unique de la racine Types introuvable")
+    prefixe_fermeture = re.match(
+        r"</(?P<prefix>[A-Za-z_][\w.-]*:)?Types", fermetures[0].group()
+    ).group("prefix") or ""
+    if prefixe_fermeture != prefixe:
         raise ValueError("Préfixe XML de fermeture incohérent")
     insertion = (
         f'<{prefixe}Override PartName="/{PARTIE}" ContentType="{TYPE_PARTIE}"/>'
     )
-    position = fermeture[-1].start()
+    enfants_avant = [ET.tostring(enfant) for enfant in racine]
+    position = fermetures[0].start()
     resultat = marque + (texte[:position] + insertion + texte[position:]).encode(encodage)
-    decoder_xml(resultat, limite_octets=MAX_TYPES)
+    racine_apres = _xml_borne(resultat, MAX_TYPES)
+    override_attendu = [
+        enfant for enfant in racine_apres
+        if enfant.tag == f"{{{ESPACE_TYPES}}}Override"
+        and enfant.attrib == {"PartName": "/" + PARTIE, "ContentType": TYPE_PARTIE}
+    ]
+    if (len(override_attendu) != 1 or len(racine_apres) != len(enfants_avant) + 1
+            or [ET.tostring(enfant) for enfant in list(racine_apres)[:-1]] != enfants_avant):
+        raise ValueError("Override absent ou enfants Content_Types.xml modifiés")
     return resultat
 
 
@@ -89,6 +121,8 @@ def _empreinte_flux(flux):
 def tracer(source, sortie, *, prive=None):
     """Crée une copie 3MF privée neuve avec SHA source ; réglages et membres existants inchangés."""
     source, sortie = Path(source), Path(sortie).expanduser().absolute()
+    if sortie.suffix.casefold() != ".3mf":
+        raise ValueError("La sortie doit avoir l’extension .3mf")
     sortie = destination_neuve(sortie, prive=prive, temporaire=True)
     empreinte_source = sha256_fichier(source)
     with Archive3MF(source, taille_max_xml=MAX_TYPES) as archive:
@@ -108,8 +142,8 @@ def tracer(source, sortie, *, prive=None):
         with PublicationNeuve([source], [sortie]) as publication:
             temporaire = publication.temporaire(sortie)
             empreintes_sources = {CONTENU_TYPES: hashlib.sha256(types_apres).hexdigest()}
-            with ZipFile(source, "r") as entree, ZipFile(temporaire, "w") as destination:
-                destination.comment = entree.comment
+            with ZipFile(temporaire, "w") as destination:
+                destination.comment = archive.commentaire
                 for nom in noms:
                     info = archive.information(nom)
                     if info.flag_bits & 0x1:
@@ -121,10 +155,19 @@ def tracer(source, sortie, *, prive=None):
                         continue
                     with archive.ouvrir_flux(nom) as flux_source, destination.open(copie_info, "w") as flux_sortie:
                         digest = hashlib.sha256()
+                        relation = bytearray() if nom.casefold().endswith(".rels") else None
+                        if relation is not None and archive.taille_membre(nom) > MAX_TYPES:
+                            raise ValueError("Relation OPC trop volumineuse pour exclure une signature")
                         for bloc in iter(lambda: flux_source.read(1024 * 1024), b""):
                             digest.update(bloc)
                             flux_sortie.write(bloc)
+                            if relation is not None:
+                                relation.extend(bloc)
                         empreintes_sources[nom] = digest.hexdigest()
+                        if relation is not None:
+                            racine_relation = _xml_borne(bytes(relation), MAX_TYPES)
+                            if any("digital-signature" in lien.get("Type", "").casefold() for lien in racine_relation):
+                                raise ValueError("Archive signée : relation de signature OPC refusée")
                 destination.writestr(PARTIE, provenance, compress_type=8)
             # Relecture structurelle, CRC, budget, intégrité des réglages et SHA de chaque autre partie.
             with Archive3MF(temporaire, taille_max_xml=MAX_TYPES) as archive_apres:

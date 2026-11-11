@@ -20,6 +20,7 @@ CONTENUS_TYPES = (
 def _archive(chemin, *, noms_extra=()):
     """Crée un petit 3MF XML/G-code déterministe pour tester le clone privé."""
     with ZipFile(chemin, "w") as archive:
+        archive.comment = b"commentaire conserve"
         archive.writestr("[Content_Types].xml", CONTENUS_TYPES)
         archive.writestr("Metadata/project_settings.config", "{}")
         archive.writestr("Metadata/model_settings.config", "<config/>\n")
@@ -45,6 +46,7 @@ def test_trace_cree_une_copie_privee_avec_seules_differences_autorisees(tmp_path
     assert resultat["statut"] == "PASS"
     assert resultat["source_sha256"] == hashlib.sha256(source_avant).hexdigest()
     with ZipFile(sortie) as archive:
+        assert archive.comment == b"commentaire conserve"
         assert set(archive.namelist()) == {*hashes, "Metadata/benchab-provenance.json"}
         for nom, attendu in hashes.items():
             if nom != "[Content_Types].xml":
@@ -105,3 +107,55 @@ def test_refuse_sortie_existante_sans_la_remplacer(tmp_path):
     with pytest.raises(FileExistsError):
         tracer_3mf.tracer(source, sortie, prive=prive)
     assert sortie.read_bytes() == b"conserver"
+
+
+def test_insertion_ignore_la_fausse_fermeture_dans_commentaire_apres_racine():
+    """Insère dans la racine XML et conserve ses enfants malgré un commentaire externe piégeux."""
+    contenu = (CONTENUS_TYPES + "<!-- commentaire </Types> après racine -->").encode()
+    resultat = tracer_3mf._types_avec_override(contenu)
+    from benchab.archives_3mf import decoder_xml
+
+    racine = decoder_xml(resultat, limite_octets=tracer_3mf.MAX_TYPES)
+    marqueurs = [
+        enfant for enfant in racine
+        if enfant.tag.endswith("}Override")
+        and enfant.get("PartName") == "/Metadata/benchab-provenance.json"
+        and enfant.get("ContentType") == "application/json"
+    ]
+    assert len(marqueurs) == 1
+    assert len(racine) == 3
+    assert resultat.replace(
+        b'<Override PartName="/Metadata/benchab-provenance.json" ContentType="application/json"/>', b""
+    ) == contenu
+
+
+def test_refuse_sortie_sans_extension_3mf(tmp_path):
+    """Le traceur ne publie pas un paquet 3MF sous une extension trompeuse."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = tmp_path / "source.3mf"
+    _archive(source)
+
+    with pytest.raises(ValueError, match="extension .3mf"):
+        tracer_3mf.tracer(source, prive / "trace.zip", prive=prive)
+
+
+def test_refuse_une_relation_de_signature_opc(tmp_path):
+    """Une relation Open Packaging signature suffit au refus, même sans entrée _xmlsignatures."""
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    source = tmp_path / "source.3mf"
+    sortie = prive / "trace.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("[Content_Types].xml", CONTENUS_TYPES)
+        archive.writestr("Metadata/project_settings.config", "{}")
+        archive.writestr("_rels/.rels", (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="sig" Type="http://schemas.openxmlformats.org/package/2006/relationships/'
+            'digital-signature/origin" Target="_xmlsignatures/origin.sigs"/>'
+            '</Relationships>'
+        ))
+
+    with pytest.raises(ValueError, match="signée"):
+        tracer_3mf.tracer(source, sortie, prive=prive)
+    assert not sortie.exists()
