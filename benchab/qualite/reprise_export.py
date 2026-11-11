@@ -14,6 +14,7 @@ from benchab.chemins import atelier_prive, sans_lien
 from benchab.donnees.base import APPLICATION_ID, TABLES, _signature_export, lignes_export
 from benchab.qualite.coherence import (
     _contrat_manifeste_export,
+    _empreinte_membre_export,
     _manifeste_export,
     _ouvrir_chaine_dossiers,
     _verifier_chaine_dossiers,
@@ -122,24 +123,8 @@ def _ouvrir_dossier_epingle(chemin):
 
 
 def _sha_membre(dossier_fd, nom):
-    """Hache un membre régulier relatif à un dossier épinglé, sans suivre de lien."""
-    avant = os.stat(nom, dir_fd=dossier_fd, follow_symlinks=False)
-    if not stat.S_ISREG(avant.st_mode):
-        raise ValueError("Un membre temporaire n’est pas un fichier régulier.")
-    signature = _signature_export(avant)
-    fd = os.open(nom, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dossier_fd)
-    hachage = hashlib.sha256()
-    with os.fdopen(fd, "rb") as flux:
-        if _signature_export(os.fstat(flux.fileno())) != signature:
-            raise ValueError("Un membre temporaire a changé pendant son ouverture.")
-        for bloc in iter(lambda: flux.read(1024 * 1024), b""):
-            hachage.update(bloc)
-        if _signature_export(os.fstat(flux.fileno())) != signature:
-            raise ValueError("Un membre temporaire a changé pendant sa lecture.")
-    courant = os.stat(nom, dir_fd=dossier_fd, follow_symlinks=False)
-    if _signature_export(courant) != signature:
-        raise ValueError("Un membre temporaire a été remplacé pendant sa lecture.")
-    return hachage.hexdigest()
+    """Réutilise l’empreinte bornée d’un membre depuis le dossier épinglé."""
+    return _empreinte_membre_export(dossier_fd, nom)[0]
 
 
 def _quarantiner(destination, identite_stage):
