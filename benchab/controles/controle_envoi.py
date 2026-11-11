@@ -17,6 +17,7 @@ from pathlib import Path
 from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.controles import zones_locales as ZL
+from benchab.controles.commandes_machine import SOURCE_FORMAT_S1, verifier_format_s1
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.rapports import RapportCourant
 from benchab.gcode import debit
@@ -195,6 +196,12 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         risques_locaux.extend(local["zones"])
         erreurs_locales.extend(local["erreurs"])
         dem = demarrage(g)
+        if "format_demarrage" in DEC:
+            format_s1 = verifier_format_s1(g, ps, DEC["format_demarrage"])
+            ajouter_note(
+                res, pl, "format du démarrage déclaré", format_s1["statut"], format_s1["detail"], SOURCE_FORMAT_S1,
+                obligatoire=False,
+            )
         exts = sorted({int(obj_ext.get(o, "1")) for o in plate_obj.get(pl, [])})
         attendus = [e - 1 for e in exts]
         # S1 natif mono-filament : G9111 prépare l'unique buse sans émettre T0.
