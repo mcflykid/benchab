@@ -52,16 +52,15 @@ def _lire(chemin):
     return (dict(donnees) if donnees is not None else None, empreinte, peinture)
 
 
-def _composant_core_unique(racine, ressources, objets, item):
-    """Identifie une feuille Core locale et sa translation, en unités du modèle."""
+def _composants_core_locaux(racine, ressources, objets, item):
+    """Identifie au plus seize feuilles locales uniques, dans l’ordre du parent."""
     if (
-        len(objets) != 2 or len(ressources) > 4096 or racine.get("requiredextensions", "").strip()
+        not 2 <= len(objets) <= 17 or len(ressources) > 4096 or racine.get("requiredextensions", "").strip()
         or set(item.attrib) - {"objectid", "transform", "printable"} or len(item)
     ):
         return None
-    feuille, parent = objets
-    # Core §4 et §4.2.1 : la feuille précède sa référence et le parent ne
-    # porte aucun matériau. Les ressources partagent le même espace d’ID.
+    *feuilles, parent = objets
+    # Core §4 : les feuilles précèdent leurs références et partagent l’espace d’ID des matériaux.
     ids = set()
     for ressource in ressources:
         ident = ressource.get("id", "")
@@ -74,27 +73,33 @@ def _composant_core_unique(racine, ressources, objets, item):
         ids.add(ident)
     if (
         parent.get("id") != item.get("objectid") or set(parent.attrib) - {"id", "type"}
+        or (len(feuilles) > 1 and parent.get("type", "model") != "model")
         or len(parent) != 1 or parent[0].tag != NS_CORE + "components"
-        or set(feuille.attrib) - {"id", "type", "pid", "pindex"}
-        or len(feuille) != 1 or feuille[0].tag != NS_CORE + "mesh"
+        or any(set(f.attrib) - {"id", "type", "pid", "pindex"}
+               or len(f) != 1 or f[0].tag != NS_CORE + "mesh" for f in feuilles)
     ):
         return None
     composants = parent[0]
-    if composants.attrib or len(composants) != 1:
+    if composants.attrib or len(composants) != len(feuilles):
         return None
-    composant = composants[0]
-    translation = composant.get("transform")
-    if (
-        composant.tag != NS_CORE + "component" or set(composant.attrib) - {"objectid", "transform"}
-        or len(composant) or composant.get("objectid") != feuille.get("id")
-        or not _translation_directe_qualifiee(translation)
-    ):
-        return None
-    return feuille, {"parent_id": parent.get("id"), "transform_composant": translation}
+    disponibles = {f.get("id"): f for f in feuilles}
+    resultat = []
+    for composant in composants:
+        translation = composant.get("transform")
+        if (
+            composant.tag != NS_CORE + "component" or set(composant.attrib) - {"objectid", "transform"}
+            or len(composant) or not _translation_directe_qualifiee(translation)
+        ):
+            return None
+        feuille = disponibles.pop(composant.get("objectid"), None)
+        if feuille is None:
+            return None
+        resultat.append((feuille, {"parent_id": parent.get("id"), "transform_composant": translation}))
+    return resultat
 
 
 def _lire_peinture_directe(archive):
-    """Lit les facettes d’un maillage Core direct ou d’une unique feuille locale."""
+    """Lit le maillage direct ou les feuilles locales d’un assemblage Core borné."""
     noms = set(archive.noms())
     relation_root = "_rels/.rels"
     inconnu = {"statut": "NON VÉRIFIÉ", "raison": "StartPart OPC et maillage direct non qualifiés."}
@@ -141,31 +146,46 @@ def _lire_peinture_directe(archive):
     ressources, construction = ressources_xml[0], constructions[0]
     objets = ressources.findall(NS_CORE + "object")
     items = construction.findall(NS_CORE + "item")
-    if unite not in _UNITES_3MF or len(items) != 1 or len(objets) not in (1, 2):
+    if unite not in _UNITES_3MF or len(items) != 1 or not 1 <= len(objets) <= 17:
         return {**inconnu, "raison": "Unité, cardinalité des objets ou ordre du build non qualifié."}
     item = items[0]
-    assemblage = None
-    if len(objets) == 2:
-        choix = _composant_core_unique(racine, ressources, objets, item)
-        if choix is None:
-            return {**inconnu, "raison": "Assemblage hors du sous-cas Core à une feuille locale."}
-        objet, assemblage = choix
-    else:
-        objet = objets[0]
-    ident = objet.get("id")
-    proprietes_objet = {
-        cle: objet.get(cle) for cle in ("pid", "pindex") if cle in objet.attrib
-    }
     attributs_path = [cle for cle in item.attrib if cle.rsplit("}", 1)[-1] == "path"]
     transform = item.get("transform")
-    if (
-        not ident or (assemblage is None and item.get("objectid") != ident) or item.get("printable", "1") != "1"
-        or attributs_path or objet.get("type") != "model"
-        or objet.find(NS_CORE + "components") is not None
-    ):
-        return {**inconnu, "raison": "Instance, objet, composant ou p:path hors du sous-cas direct."}
+    if item.get("printable", "1") != "1" or attributs_path:
+        return {**inconnu, "raison": "Instance ou p:path hors du sous-cas direct."}
     if not _translation_directe_qualifiee(transform):
         return {**inconnu, "raison": "Placement hors des translations directes qualifiées."}
+    contexte = {"partie_opc": modele, "unite": unite, "transform": transform, "build_index": 1}
+    if len(objets) == 1:
+        objet = objets[0]
+        if not objet.get("id") or item.get("objectid") != objet.get("id"):
+            return {**inconnu, "raison": "Objet du build direct non identifié."}
+        return _lire_feuille_core(objet, contexte, racine, ressources, inconnu)
+
+    choix = _composants_core_locaux(racine, ressources, objets, item)
+    if choix is None:
+        return {**inconnu, "raison": "Assemblage hors du sous-cas Core à feuilles locales distinctes."}
+    if len(choix) == 1:
+        objet, assemblage = choix[0]
+        return _lire_feuille_core(objet, {**contexte, "assemblage": assemblage}, racine, ressources, inconnu)
+    if construction.attrib or len(construction) != 1:
+        return {**inconnu, "raison": "Build hors du sous-cas d’assemblage local."}
+    lectures = [
+        _lire_feuille_core(objet, {**contexte, "assemblage": assemblage}, racine, ressources, inconnu, strict=True)
+        for objet, assemblage in choix
+    ]
+    non_qualifie = next((lecture for lecture in lectures if lecture["statut"] != "PASS"), None)
+    if non_qualifie is not None:
+        return non_qualifie
+    return _assembler_feuilles(lectures)
+
+
+def _lire_feuille_core(objet, contexte, racine, ressources, inconnu, *, strict=False):
+    """Lit les attributs et le maillage d’une feuille ; l’identité reste littérale."""
+    ident = objet.get("id")
+    if objet.get("type") != "model" or objet.find(NS_CORE + "components") is not None:
+        return {**inconnu, "raison": "Objet de type model sans composants requis."}
+    proprietes_objet = {cle: objet.get(cle) for cle in ("pid", "pindex") if cle in objet.attrib}
     maillage = objet.find(NS_CORE + "mesh")
     if maillage is None or objet.findall(NS_CORE + "mesh") != [maillage]:
         return {**inconnu, "raison": "Maillage direct absent ou ambigu."}
@@ -177,6 +197,14 @@ def _lire_peinture_directe(archive):
     triangles = groupes_triangles[0].findall(NS_CORE + "triangle")
     if not sommets or not triangles:
         return {**inconnu, "raison": "Maillage vide."}
+    if strict and (
+        maillage.attrib or len(maillage) != 2
+        or any(g.attrib for g in (*groupes_sommets, *groupes_triangles))
+        or len(groupes_sommets[0]) != len(sommets) or len(groupes_triangles[0]) != len(triangles)
+        or any(set(s.attrib) != {"x", "y", "z"} or len(s) for s in sommets)
+        or any(len(t) for t in triangles)
+    ):
+        return {**inconnu, "raison": "Extension du maillage local non qualifiée."}
     coordonnees = []
     for sommet in sommets:
         valeurs = tuple(sommet.get(cle) for cle in ("x", "y", "z"))
@@ -222,17 +250,51 @@ def _lire_peinture_directe(archive):
         }
     return {
         "statut": "PASS",
-        "identite": {
-            "partie_opc": modele, "objet_id": ident, "unite": unite,
-            "transform": transform, "build_index": 1,
-            **({"assemblage": assemblage} if assemblage is not None else {}),
-        },
+        "identite": {**contexte, "objet_id": ident},
         "coordonnees": coordonnees,
         "facettes": faces,
         "peintures": peintures,
         "dialectes": sorted(dialectes),
         "proprietes_core": resoudre(racine, ressources, proprietes_objet, proprietes_core),
     }
+
+
+def _assembler_feuilles(lectures):
+    """Rassemble les comparaisons sans perdre l’identité et l’index local des facettes."""
+    identites = [f["identite"] for f in lectures]
+    ids = [i["objet_id"] for i in identites]
+    proprietes = [f["proprietes_core"] for f in lectures]
+    present = any(c["present"] for c in proprietes)
+    refus = next((c for c in proprietes if c["statut"] != "PASS"), None)
+    if refus is None:
+        core = {
+            "statut": "PASS", "present": present, "objet": [c["objet"] for c in proprietes],
+            "facettes": [facette for c in proprietes for facette in c["facettes"]],
+        }
+    else:
+        core = {**refus, "present": present}
+    return {
+        "statut": "PASS",
+        "identite": {"feuilles_locales": identites},
+        "objets_locaux": ids,
+        "facettes_locales": [
+            (ident, numero) for ident, f in zip(ids, lectures, strict=True)
+            for numero in range(1, len(f["facettes"]) + 1)
+        ],
+        # Garder les séparations de maillage : deux préfixes concaténés ne sont pas une preuve de correspondance.
+        "coordonnees": [f["coordonnees"] for f in lectures],
+        "facettes": [f["facettes"] for f in lectures],
+        "peintures": [valeur for f in lectures for valeur in f["peintures"]],
+        "dialectes": sorted({d for f in lectures for d in f["dialectes"]}),
+        "proprietes_core": core,
+    }
+
+
+def _identite_facette(source, index):
+    """Renvoie l’objet et l’index d’origine de la facette, à partir de un."""
+    if "facettes_locales" in source:
+        return source["facettes_locales"][index - 1]
+    return source["identite"]["objet_id"], index
 
 
 def _comparer_peinture(source, candidat):
@@ -275,8 +337,9 @@ def _comparer_peinture(source, candidat):
         valeur_source = peinture_source.get(dialecte_qname)
         valeur_candidat = peinture_candidat.get(dialecte_qname)
         if valeur_source != valeur_candidat:
+            objet, facette = _identite_facette(source, index)
             differences.append({
-                "objet_id": source["identite"]["objet_id"], "facette": index,
+                "objet_id": objet, "facette": facette,
                 "attribut": dialecte,
                 "source": valeur_source, "candidat": valeur_candidat,
                 "present_source": dialecte_qname in peinture_source,
@@ -309,11 +372,17 @@ def _comparer_core(source, candidat):
     if not (avant["present"] or apres["present"]):
         return {**resultat, "raison": "Aucun matériau de base attribué dans les deux modèles."}
     differences = []
-    if avant["objet"] != apres["objet"]:
+    if "objets_locaux" in source:
+        for ident, a, b in zip(source["objets_locaux"], avant["objet"], apres["objet"], strict=True):
+            if a != b:
+                differences.append({"portee": "objet", "objet_id": ident, "source": a, "candidat": b})
+    elif avant["objet"] != apres["objet"]:
         differences.append({"portee": "objet", "source": avant["objet"], "candidat": apres["objet"]})
-    for facette, (a, b) in enumerate(zip(avant["facettes"], apres["facettes"], strict=True), start=1):
+    for index, (a, b) in enumerate(zip(avant["facettes"], apres["facettes"], strict=True), start=1):
         if a != b:
-            differences.append({"portee": "facette", "facette": facette, "source": a, "candidat": b})
+            ident, facette = _identite_facette(source, index)
+            localisation = {"objet_id": ident} if "objets_locaux" in source else {}
+            differences.append({"portee": "facette", **localisation, "facette": facette, "source": a, "candidat": b})
     return {
         **resultat, "statut": "WARN" if differences else "PASS",
         "facettes_comparees": len(avant["facettes"]), "differences": differences,
@@ -549,8 +618,10 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
     """Compare deux 3MF sans les modifier ; valeurs sans conversion, empreintes SHA-256 exactes.
 
     Les réglages projet reconnus sont identiques, différents ou NON VÉRIFIÉS.
-    La peinture par facette est comparée littéralement dans un sous-cas direct qualifié ;
-    le sous-cas Core compare les matériaux de base déclarés. La compatibilité du slicer reste NON VÉRIFIÉE.
+    La peinture et les matériaux Core par facette sont comparés dans les
+    sous-cas directs ou locaux, à géométrie et ordre strictement identiques.
+    Les translations sont déclarées dans l’unité du modèle. La compatibilité
+    du slicer et la tenue physique restent NON VÉRIFIÉES.
     """
     source = Path(source).expanduser()
     candidat = Path(candidat).expanduser()
@@ -583,7 +654,7 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
             "Comparaison en lecture seule des seuls réglages projet décodés par le dictionnaire typé.",
             "Les valeurs sont comparées dans leur forme native, sans normalisation ni réindexation.",
             "Seuls les matériaux de base Core déclarés et les attributs littéraux de peinture connus sont "
-            "comparés dans le sous-cas direct qualifié.",
+            "comparés dans les sous-cas directs ou d’assemblage local qualifiés.",
             "Aucune conversion, réécriture, compatibilité de slicer ou validation physique n’est établie.",
         ],
     }

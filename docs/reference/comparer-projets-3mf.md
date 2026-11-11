@@ -35,11 +35,13 @@ doivent former exactement l’identité et les trois translations être bornées
 des attributs d’extension inconnus restent `NON VÉRIFIÉS`.
 
 Un assemblage Core est aussi admissible si son unique parent de build
-référence une unique feuille maillée déjà définie dans le même StartPart.
-Le parent ne porte pas de matériau et la feuille fournit ses propres
-attributions. L’identité compare le parent, la feuille et les déclarations
-de translation du build et du composant. Les références externes,
-imbriquées, répétées et les extensions requises ne sont pas qualifiées.
+référence une à seize feuilles maillées distinctes déjà définies dans le
+même StartPart. Le parent ne porte pas de matériau. La comparaison exige
+les mêmes identifiants, le même ordre des références, les mêmes coordonnées
+et facettes par feuille, et les mêmes translations de build et de composant.
+Avec plusieurs feuilles, les écarts nomment l’objet et la facette locale.
+Les références externes, imbriquées ou répétées, les objets sans référence
+et les extensions requises ne sont pas qualifiés.
 
 Dans ce sous-cas, les extensions ASN `paint_color` et Prusa
 `slic3rpe:mmu_segmentation` sont comparées comme attributs XML littéraux
