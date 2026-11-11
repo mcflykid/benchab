@@ -2,8 +2,10 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir — 1.6.0
+## 1.6.0 — 2026-11-11
 
+- Suivi : clôture le chantier de cohérence des réglages après relecture des deux
+  volets livrés et nouvelle comparaison de préparations en lecture seule (#39).
 - Surplombs : cartographie les groupes de triangles STL par arête partagée,
   sans déduire la possibilité d’un pont ou le besoin de support (suite de #93).
 - Rapports : ajoute une sortie privée complète et un résumé plafonné pour le
