@@ -393,6 +393,10 @@ sinon. Les cercles complets ne peuvent pas disparaître des contrôles
 linéaires. Les hélices en continuité restent hors de ce contrat, et la
 qualification du firmware et des arcs arrondis reste dans #134.
 
+Pour les supports normaux, la grille et le style ajusté donnent des trajets
+différents sur le même coupon, avec un écart Z médian nominal identique et
+deux rejeux ajustés concordants. Le retrait reste à mesurer (#80, #89).
+
 ## Prochaine version : 1.24.0
 
 ### 1. Fiabiliser les fondations et les preuves
