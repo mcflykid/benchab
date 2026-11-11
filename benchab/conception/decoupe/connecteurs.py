@@ -82,6 +82,7 @@ def politique_jeu(options):
 
 
 def conseiller(*, mobile=False, renfort=False, section_mm2=None):
+    """Conseille un connecteur selon la mobilité, le renfort et la section disponible en mm²."""
     choix = "rotule-double" if mobile else "canal-tige" if renfort else "douille"
     alternatives = {
         "douille": ("Goupille remplaçable et impression séparée", "Pièce supplémentaire, collage éventuel à qualifier"),

@@ -349,6 +349,7 @@ def ecrire(parties, pions, rapport, sortie, *, prive=None):
 
 
 def main(argv=None, *, prive=None):
+    """Route la découpe simple ou intelligente. La découpe simple renvoie 1 sur FAIL et 0 autrement."""
     import argparse
 
     argv = list(sys.argv[1:] if argv is None else argv)

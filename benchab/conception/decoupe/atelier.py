@@ -23,6 +23,7 @@ from benchab.qualite.empreintes import sha256_fichier
 
 
 def charger(source, unites):
+    """Lit les volumes source, normalise en mm et renvoie leur union, leurs maillages et la provenance."""
     if unites not in UNITES:
         raise ValueError("Unités source explicites exigées : mm, cm ou m")
     source = Path(source).expanduser().resolve(strict=True)
@@ -81,6 +82,7 @@ def charger(source, unites):
 
 
 def separer_identifiables(volumes, priorite=None):
+    """Attribue les volumes partagés en mm³ selon la priorité. Retourne PASS, WARN ou NON VÉRIFIÉ."""
     noms = list(volumes)
     corps = {n: G.solide(m) for n, m in volumes.items()}
     recouvrements = []
@@ -113,6 +115,7 @@ def separer_identifiables(volumes, priorite=None):
 
 
 def nouveau_plan(source, unites="mm", nombre=2, **options):
+    """Prépare un plan de découpe à partir de la source, de ses unités et du nombre de pièces demandé."""
     for cle in ("mobile", "renfort", "separer_volumes_source"):
         if cle in options and not isinstance(options[cle], bool):
             raise ValueError(cle + " doit être un booléen")
@@ -165,6 +168,7 @@ def nouveau_plan(source, unites="mm", nombre=2, **options):
 
 
 def calculer(plan, *, choisir_connecteurs=False):
+    """Calcule les pièces et leurs contrôles numériques en mm à partir d’une copie du plan."""
     plan = copy.deepcopy(plan)
     if plan.get("schema") != 1 or not isinstance(plan.get("source"), dict):
         raise ValueError("Plan de découpe schema1 exigé")

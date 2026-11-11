@@ -31,17 +31,20 @@ LIMITES = [
 
 
 def positif(x, nom):
+    """Retourne la valeur convertie en flottant si elle est finie et strictement positive."""
     if not math.isfinite(x) or x <= 0:
         raise ValueError(nom + " doit être positif et fini.")
     return float(x)
 
 
 def valide(mesh):
+    """Refuse un maillage dépourvu de surface non dégénérée."""
     if not mesh.nondegenerate_faces().any():
         raise ValueError("Aucune surface non dégénérée à comparer.")
 
 
 def topologie(mesh):
+    """Mesure les dimensions et la topologie sur une copie aux sommets soudés."""
     t = mesh.copy()
     t.merge_vertices()
     m = mesurer(t)
@@ -77,6 +80,7 @@ def preparation(mesh, axe_haut, hauteur_mm=None, poser=False):
 
 
 def points(mesh, nombre, graine):
+    """Échantillonne la surface en mm avec la graine donnée et ajoute des sommets dont le nombre est retourné."""
     if isinstance(nombre, bool) or not isinstance(nombre, int) or not 100 <= nombre <= 50000:
         raise ValueError("Échantillons : entier de 100 à 50000.")
     valide(mesh)
@@ -88,6 +92,7 @@ def points(mesh, nombre, graine):
 
 def distances(mesh, requetes):
     # Le maillage cible reste complet ; les lots bornent les matrices temporaires de rtree.
+    """Retourne les distances en mm de chaque point demandé à la surface du maillage complet."""
     resultats = []
     for debut in range(0, len(requetes), 256):
         _, d, _ = trimesh.proximity.closest_point(mesh, requetes[debut : debut + 256])
@@ -99,6 +104,7 @@ def distances(mesh, requetes):
 
 
 def statistiques(d, p, seuil):
+    """Résume les distances en mm, les pires points et la fraction sous la tolérance."""
     indices = np.argsort(d)[-5:][::-1]
     return {
         "moyenne_mm": float(d.mean()),
@@ -112,6 +118,7 @@ def statistiques(d, p, seuil):
 
 
 def comparer(reference, candidat, tolerance_mm=0.1, nombre=4000, graine=0):
+    """Compare les surfaces sans recalage à la tolérance en mm. Retourne ECART ou CONFORME_ECHANTILLONS."""
     seuil = positif(tolerance_mm, "Tolérance")
     if isinstance(graine, bool) or not isinstance(graine, int) or graine < 0:
         raise ValueError("Graine : entier positif ou nul.")
@@ -192,12 +199,14 @@ def recaler(reference, candidat, nombre=2000, graine=0, iterations=30):
 
 
 def chemins_neufs(source, sortie, rapport, reference=None):
+    """Contrôle la séparation des entrées et sorties neuves et exige le STL en mm pour le maillage écrit."""
     valider_chemins([source] + ([reference] if reference else []), [rapport] + ([sortie] if sortie else []))
     if sortie and Path(sortie).suffix.lower() != ".stl":
         raise ValueError("Sortie géométrique : STL en mm requis.")
 
 
 def main(argv=None):
+    """Prépare, compare ou recale expérimentalement. Renvoie 1 pour ECART, 0 autrement ou sort à 2 sur refus."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("commande", choices=["preparer", "comparer", "recaler-experimental"])
     p.add_argument("source", type=Path)

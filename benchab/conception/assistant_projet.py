@@ -13,6 +13,7 @@ from pathlib import Path
 
 
 def lire_conception(projet):
+    """Lit la fiche de conception du projet, ou retourne None si elle est absente."""
     fichier = Path(projet) / "CONCEPTION.json"
     if not fichier.exists():
         return None
@@ -33,16 +34,19 @@ def lire_conception(projet):
 
 
 def sha(path):
+    """Retourne le SHA-256 hexadécimal des octets du fichier."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def module_references():
+    """Charge le module public des références visuelles à la demande."""
     from benchab.references_visuelles import references
 
     return references
 
 
 def revue_concept_possible(rapport):
+    """Indique si toutes les vues autorisent une revue du concept malgré des perspectives non vérifiées."""
     vues = rapport.get("vues", {})
     return (
         rapport.get("liaison_modele") == "PASS"
@@ -74,6 +78,7 @@ def couvrir_candidats(projet, resultat):
 
 
 def retenir(projet, rapport, auteur, motif, concept=False):
+    """Construit la revue visuelle liée aux empreintes après vérification des candidats. L’appelant la publie."""
     projet = Path(projet).resolve()
     rapport = Path(rapport).resolve()
     contrat = projet / "REFERENCES-VISUELLES.json"
@@ -103,6 +108,7 @@ def retenir(projet, rapport, auteur, motif, concept=False):
 
 
 def proposer(data):
+    """Propose un parcours de conception et de contrôle à partir du type de forme déclaré."""
     forme = data["type_forme"]
     return {
         "technique": "CAO paramétrique",
@@ -112,6 +118,7 @@ def proposer(data):
 
 
 def diagnostic():
+    """Inventorie les outils et la cible déclarée sans modifier le profil du slicer."""
     from benchab.machine.configuration import charger
 
     slicer = charger()["slicer"]
@@ -134,6 +141,7 @@ def diagnostic():
 
 
 def verifier(projet):
+    """Vérifie la revue et ses empreintes. Retourne PASS, FAIL, NON VÉRIFIÉ, NON APPLICABLE ou REVU."""
     projet = Path(projet).resolve()
     data = lire_conception(projet)
     contrat = projet / "REFERENCES-VISUELLES.json"
@@ -179,6 +187,7 @@ def verifier(projet):
 
 
 def brief(projet):
+    """Prépare la synthèse de conception à partir du besoin et des données locales du projet."""
     projet = Path(projet).resolve()
     data = lire_conception(projet)
     if data is None or not data.get("objectif", "").strip():
@@ -211,6 +220,7 @@ def brief(projet):
 
 
 def main(argv=None):
+    """Exécute l’action de conception demandée. Renvoie 0 en cas de succès, 1 si non vérifié ou 2 sur refus."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("diagnostic", "brief", "verifier", "retenir"))
     parser.add_argument("--projet", type=Path, default=Path.cwd())

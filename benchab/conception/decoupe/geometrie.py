@@ -19,6 +19,7 @@ MAX_FACES = 3_000_000
 
 
 def solide(mesh):
+    """Convertit un maillage fermé en solide Manifold et refuse les coordonnées invalides ou hors budget."""
     if not isinstance(mesh, trimesh.Trimesh) or mesh.is_empty or len(mesh.faces) > MAX_FACES:
         raise ValueError("Maillage vide ou budget de trois millions de faces dépassé")
     if not np.isfinite(mesh.vertices).all() or not mesh.is_volume:
@@ -35,6 +36,7 @@ def separer_volumes(mesh):
 
 
 def orienter(mesh, normale=None, plateau=None):
+    """Oriente une copie sur le plateau en mm et retourne la transformation et le bilan numérique."""
     directions = [np.array([0.0, 0.0, -1.0])]
     if normale is not None:
         n = np.asarray(normale, float)
@@ -81,6 +83,7 @@ def _boucle(points, normale, fermee=True):
 
 
 def surface_courbe(mesh, coupe):
+    """Construit le volume de coupe courbe à partir des points en mm et retourne ses caractéristiques."""
     points = np.asarray(coupe["points"], float)
     origine, rotation, contour, polygone = _boucle(
         coupe["points"], coupe.get("normale", [0, 0, 1]), coupe.get("fermee", True)
@@ -135,6 +138,7 @@ def surface_courbe(mesh, coupe):
 
 
 def couper(mesh, coupe):
+    """Coupe le maillage et retourne les pièces en mm avec le bilan numérique de réassemblage."""
     corps = solide(mesh)
     if coupe.get("type", "plan") == "plan":
         o, n = _plan({k: coupe[k] for k in ("origine", "normale")})
@@ -155,6 +159,7 @@ def couper(mesh, coupe):
 
 
 def reassemblage(original, parties, *, volume_ajoute=0.0, volume_retire=0.0, tolerance=TOLERANCE_RELATIVE):
+    """Vérifie écarts et intersections en mm³ à tolérance relative donnée. Retourne PASS ou FAIL."""
     source = solide(original)
     corps = [(nom, solide(m)) for nom, m in parties.items()]
     if not 0 < tolerance <= 1e-3:
@@ -193,6 +198,7 @@ def reassemblage(original, parties, *, volume_ajoute=0.0, volume_retire=0.0, tol
 
 
 def boucles_section(mesh, origine, normale, nombre=12):
+    """Échantillonne en mm les boucles de section au plan donné par son origine et sa normale."""
     o, n = _plan({"origine": origine, "normale": normale})
     polygones, vers3d = section(mesh, o, n)
     if not polygones:
@@ -206,10 +212,12 @@ def boucles_section(mesh, origine, normale, nombre=12):
 
 
 def boucle_section(mesh, origine, normale, nombre=12):
+    """Retourne la première boucle de section échantillonnée dans le repère 3D en mm."""
     return boucles_section(mesh, origine, normale, nombre)[0]
 
 
 def proposer(mesh, nombre=2, *, plateau=None, faces_visibles=None, echantillons=49):
+    """Propose des plans de coupe numériques pour le maillage et le plateau en mm."""
     if type(nombre) is not int or not 1 <= nombre <= 12:
         raise ValueError("Nombre de pièces : entier de 1 à 12")
     if type(echantillons) is not int or not 15 <= echantillons <= 129:

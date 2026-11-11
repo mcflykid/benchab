@@ -11,6 +11,7 @@ PINS = {"pymeshlab": "2025.7.post1", "meshoptimizer": "0.2.30a0", "numpy": "2.5.
 
 
 def diagnostic():
+    """Retourne les capacités détectées des moteurs de reconstruction et de simplification."""
     import meshoptimizer
     import pymeshlab
 
@@ -26,6 +27,7 @@ def diagnostic():
 
 
 def calculer(v, f, commande, parametres):
+    """Traite les sommets en mm et faces triangulées. Retourne les tableaux résultants et les mesures du moteur."""
     if v.ndim != 2 or v.shape[1] != 3 or f.ndim != 2 or f.shape[1] != 3 or not len(f):
         raise ValueError("Tableaux triangulés non vides requis.")
     if not np.isfinite(v).all() or f.min() < 0 or f.max() >= len(v):
@@ -79,6 +81,7 @@ def calculer(v, f, commande, parametres):
 
 
 def main():
+    """Exécute le diagnostic ou le traitement isolé du maillage. Renvoie 0 ou 2."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("commande", choices=["diagnostic", "alpha-wrap", "simplifier"])
     p.add_argument("entree", nargs="?")
