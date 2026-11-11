@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.7.0
 
+- Tests : la recette CLI de sauvegarde simule l’espace libre sans changer la
+  réserve appliquée aux sauvegardes réelles (#163).
 - Preuves : conserve les rapports de qualité historiques et publie un nouveau
   dossier si le rejeu produit des résultats différents (#160).
 - Archives : partage le lecteur borné des fichiers de qualité et refuse les
