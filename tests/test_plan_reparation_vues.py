@@ -69,6 +69,8 @@ def test_vue_lien_est_signalee_sans_suivre(tmp_path):
 
     entree = next(ligne for ligne in rapport["vues"] if ligne["cible"] == "vues/INDEX.md")
     assert entree["statut"] == "LIEN_A_VERIFIER"
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["propositions_liens"] == []
     assert hashlib.sha256(cible.read_bytes()).hexdigest() == empreinte
     assert all(action["cible"] != "vues/INDEX.md" for action in rapport["actions"])
 
@@ -351,3 +353,113 @@ def test_commande_applique_une_vue_explicitement_sans_base_ni_mesure(tmp_path, m
     assert code == 0
     assert resultat["cible"] == "vues/INDEX.md"
     assert resultat["application_effectuee"] is True
+
+
+def test_plan_propose_candidat_prive_identique_pour_lien_sans_ecriture(tmp_path):
+    """Un SHA exact sur candidat privé permet une proposition passive pour un lien cassé."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    candidat = prive / "vues-recuperation/INDEX.md"
+    candidat.parent.mkdir()
+    candidat.write_bytes(attendu)
+    index.unlink()
+    index.symlink_to("cible-deplacee-absente.md")
+    avant = _empreintes(prive)
+
+    rapport = plan_reparation.planifier(prive, candidats=["vues-recuperation/INDEX.md"])
+
+    assert _empreintes(prive) == avant
+    entree = next(ligne for ligne in rapport["vues"] if ligne["cible"] == "vues/INDEX.md")
+    assert entree["statut"] == "LIEN_A_VERIFIER"
+    proposition = next(item for item in rapport["propositions_liens"] if item["cible"] == "vues/INDEX.md")
+    assert proposition["action"] == "PROPOSER_LIEN_CANDIDAT_SHA_EXACT"
+    assert proposition["candidat"] == "vues-recuperation/INDEX.md"
+    assert proposition["sha256"] == hashlib.sha256(attendu).hexdigest()
+    assert proposition["application_effectuee"] is False
+    assert rapport["statut"] == "WARN"
+
+
+def test_plan_refuse_candidats_ambigus_ou_non_prouves(tmp_path):
+    """Deux copies exactes restent ambiguës et un contenu différent ne prouve rien."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    index.unlink()
+    index.symlink_to("cible-deplacee-absente.md")
+    premier = prive / "candidats/un.md"
+    second = prive / "candidats/deux.md"
+    different = prive / "candidats/different.md"
+    premier.parent.mkdir()
+    premier.write_bytes(attendu)
+    second.write_bytes(attendu)
+    different.write_bytes("octets différents".encode("utf-8"))
+
+    ambigu = plan_reparation.planifier(
+        prive, candidats=["candidats/un.md", "candidats/deux.md"]
+    )
+    non_prouve = plan_reparation.planifier(prive, candidats=["candidats/different.md"])
+
+    assert ambigu["statut"] == "NON VÉRIFIÉ"
+    assert ambigu["propositions_liens"] == []
+    assert non_prouve["statut"] == "NON VÉRIFIÉ"
+    assert non_prouve["propositions_liens"] == []
+
+
+def test_plan_ne_propose_pas_de_remplacement_pour_un_lien_vivant(tmp_path):
+    """Le cas pris en charge est un lien relatif cassé, pas un lien déjà fonctionnel."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    candidat = prive / "candidats/INDEX.md"
+    candidat.parent.mkdir()
+    candidat.write_bytes(attendu)
+    index.unlink()
+    index.symlink_to(candidat.relative_to(prive))
+
+    rapport = plan_reparation.planifier(prive, candidats=["candidats/INDEX.md"])
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["propositions_liens"] == []
+
+
+def test_plan_rejette_candidat_hors_prive_et_candidat_lie(tmp_path):
+    """Les candidats hors privé ou symboliques ne sont jamais lus comme preuves."""
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    attendu = index.read_bytes()
+    index.unlink()
+    index.symlink_to("cible-deplacee-absente.md")
+    dehors = tmp_path / "candidat-externe.md"
+    dehors.write_bytes(attendu)
+    lien = prive / "lien.md"
+    lien.symlink_to(dehors)
+
+    rapport = plan_reparation.planifier(
+        prive, candidats=["../candidat-externe.md", "lien.md"]
+    )
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["propositions_liens"] == []
+
+
+def test_cli_plan_reparation_accepte_candidat_explicitement(tmp_path, capsys):
+    """La CLI transmet le chemin candidat privé au plan passif."""
+    from benchab import cli
+
+    prive = _atelier(tmp_path)
+    index = prive / "vues/INDEX.md"
+    candidat = prive / "candidat.md"
+    candidat.write_bytes(index.read_bytes())
+    index.unlink()
+    index.symlink_to("deplace-absent.md")
+
+    code = cli.main([
+        "--prive", str(prive), "controle", "plan-reparation",
+        "--candidat-lien", "candidat.md",
+    ])
+
+    rapport = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert rapport["propositions_liens"][0]["candidat"] == "candidat.md"
+    assert rapport["application_effectuee"] is False

@@ -10,7 +10,7 @@ import sqlite3
 import stat
 import uuid
 from contextlib import closing
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from benchab.chemins import atelier_prive, sans_lien
@@ -138,6 +138,7 @@ def _rapport_indisponible(erreur):
         "detail": erreur,
         "vues": [],
         "actions": [],
+        "propositions_liens": [],
     }
 
 
@@ -163,11 +164,67 @@ def _source_logique(rendu, fiches):
     return attendus, empreintes_attendues, sha_source
 
 
-def planifier(prive: Path | str | None = None) -> dict[str, Any]:
+def _candidats_par_sha(racine: Path, candidats: list[str]) -> dict[str, list[str]]:
+    """Indexe jusqu'à 64 candidats privés réguliers, sans lien et bornés, par SHA-256."""
+    index: dict[str, list[str]] = {}
+    if len(candidats) > 64:
+        return index
+    for relatif in candidats:
+        if not isinstance(relatif, str):
+            continue
+        chemin = PurePosixPath(relatif)
+        if chemin.is_absolute() or not chemin.parts or any(part in {"", ".", ".."} for part in chemin.parts):
+            continue
+        normalise = chemin.as_posix()
+        empreinte = _empreinte_fichier(racine, normalise, lecture=True)
+        if empreinte["statut"] != "PRESENT":
+            continue
+        identiques = index.setdefault(empreinte["sha256"], [])
+        if normalise not in identiques:
+            identiques.append(normalise)
+    return index
+
+
+def _lien_cible_absente(racine: Path, relatif: str) -> bool:
+    """Reconnaît seulement un lien feuille relatif vers une cible absente, sans le suivre."""
+    composants = PurePosixPath(relatif).parts
+    parent = racine
+    for composant in composants[:-1]:
+        parent = parent / composant
+        if parent.is_symlink():
+            return False
+    lien = parent / composants[-1]
+    try:
+        if not stat.S_ISLNK(lien.lstat().st_mode):
+            return False
+        cible = Path(os.readlink(lien))
+    except OSError:
+        return False
+    # Ce lot ne traite qu'un lien déplacé simple dans le privé ; les autres formes restent à vérifier.
+    if cible.is_absolute() or not cible.parts or any(part in {"", ".", ".."} for part in cible.parts):
+        return False
+    courant = racine
+    for composant in cible.parts:
+        courant = courant / composant
+        if courant.is_symlink():
+            return False
+    try:
+        courant.lstat()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
+def planifier(prive: Path | str | None = None, *, candidats: list[str] | None = None) -> dict[str, Any]:
     """Compare les vues privées à SQLite et prépare un plan JSON sans écriture ni mesure.
 
     Entrée : répertoire privé local. Sortie : statuts PASS/WARN/NON VÉRIFIÉ,
     chemins relatifs et SHA-256. Une divergence ne prouve aucune falsification.
+    `candidats` contient des chemins privés relatifs explicitement fournis ; un lien
+    de vue ne reçoit qu'une proposition si un candidat unique a le SHA rendu exact.
+    Invariant : les propositions ne modifient aucun lien ni fichier.
     Invariant : SQLite est ouvert en mode ro/query_only ; aucune source n'est réparée.
     """
     try:
@@ -199,7 +256,9 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
     identite = {"application_id": application_id, "user_version": version}
     lignes = []
     actions = []
+    propositions_liens = []
     incertitudes = False
+    index_candidats = _candidats_par_sha(racine, candidats or [])
 
     # SQLite fait foi pour les octets attendus ; le manifeste existant ne les autorise pas (#119).
     for relatif in sorted(attendus):
@@ -215,6 +274,20 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
         lignes.append(entree)
         if statut in {"ABSENTE", "DIVERGENTE"}:
             actions.append(_action(relatif, attendu, sha_source, "REGENERER_VUE", avant=entree, identite=identite))
+        elif statut == "LIEN_A_VERIFIER" and _lien_cible_absente(racine, relatif):
+            correspondants = index_candidats.get(attendu, [])
+            if len(correspondants) == 1:
+                propositions_liens.append({
+                    "action": "PROPOSER_LIEN_CANDIDAT_SHA_EXACT",
+                    "cible": relatif,
+                    "candidat": correspondants[0],
+                    "sha256": attendu,
+                    "source_sha256_rendu": sha_source,
+                    "application_effectuee": False,
+                    "limite": "Identité des octets prouvée ; origine et pertinence historique non établies.",
+                })
+            else:
+                incertitudes = True
         elif statut not in {"PRESENTE_IDENTIQUE"}:
             incertitudes = True
 
@@ -269,7 +342,7 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
     elif statut != "PRESENTE_IDENTIQUE":
         incertitudes = True
 
-    statut_global = "NON VÉRIFIÉ" if incertitudes else ("WARN" if actions else "PASS")
+    statut_global = "NON VÉRIFIÉ" if incertitudes else ("WARN" if actions or propositions_liens else "PASS")
     return {
         "schema": 1,
         "statut": statut_global,
@@ -282,6 +355,7 @@ def planifier(prive: Path | str | None = None) -> dict[str, Any]:
         },
         "vues": lignes,
         "actions": actions,
+        "propositions_liens": propositions_liens,
         "preconditions_futures_requises": {
             "sauvegarde_verifiee_avant": True,
             "source_recalculee_avant_application": True,
@@ -308,7 +382,8 @@ def appliquer_vue(prive: Path | str, rapport: dict[str, Any], cible: str) -> dic
         "actions",
         "preconditions_futures_requises",
     }
-    if type(rapport) is not dict or set(rapport) != cles_rapport:
+    cles_rapport_avec_propositions = cles_rapport | {"propositions_liens"}
+    if type(rapport) is not dict or set(rapport) not in (cles_rapport, cles_rapport_avec_propositions):
         raise ValueError("Plan incomplet ou avec un champ inattendu.")
     if (
         type(rapport["schema"]) is not int
