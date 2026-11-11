@@ -106,6 +106,12 @@ def construire(candidat, *, sha_suggestion, texte_declare, origine_media):
             "suggestion_sha256": sha_suggestion,
             "observation_declaree": texte_declare.strip(),
         },
+        # La confirmation du récit n’évalue ni une hypothèse ni un réglage.
+        "portee": {
+            "hypothese": "NON ÉVALUÉE",
+            "mesure_physique": "NON VÉRIFIÉE",
+            "reglage_manuel": "NON APPLIQUÉ",
+        },
         "limite": (
             "L’origine du média et l’observation sont déclarées par une personne. "
             "Aucune zone n’est reconnue dans les pixels ; cela ne prouve ni défaut, impression ni cause physique."

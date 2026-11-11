@@ -26,5 +26,10 @@
     "suggestion_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
     "observation_declaree": "Exemple fictif : texture irrégulière dans la zone choisie."
   },
+  "portee": {
+    "hypothese": "NON ÉVALUÉE",
+    "mesure_physique": "NON VÉRIFIÉE",
+    "reglage_manuel": "NON APPLIQUÉ"
+  },
   "limite": "L’origine du média et l’observation sont déclarées par une personne. Aucune zone n’est reconnue dans les pixels ; cela ne prouve ni défaut, impression ni cause physique."
 }

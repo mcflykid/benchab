@@ -50,6 +50,9 @@ def test_origines_media_partagent_le_meme_contrat_et_gardent_la_zone(origine):
     assert observation["schema"] == 1
     assert observation["nature"] == "OBSERVATION_ZONE"
     assert observation["statut"] == "CONFIRMATION_HUMAINE"
+    assert observation["portee"] == {
+        "hypothese": "NON ÉVALUÉE", "mesure_physique": "NON VÉRIFIÉE", "reglage_manuel": "NON APPLIQUÉ",
+    }
     assert observation["media"]["origine_declaree"] == origine
     assert observation["media"]["source_sha256"] == _candidate()["photo"]["source_sha256"]
     assert observation["zone"] == {

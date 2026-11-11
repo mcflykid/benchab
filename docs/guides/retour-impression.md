@@ -80,6 +80,8 @@ Le JSON de confirmation inclut `observation_zone`, le contrat partagé schema 1 
 média source et aperçu par SHA, origine déclarée, zone exacte si liée, plage Z
 en mm et observation déclarée. Sans liaison qualifiée, sa zone reste
 NON VÉRIFIÉE. L’image n’est pas interprétée pour détecter une région ou un défaut.
+L’observation confirmée reste distincte d’une hypothèse, d’une mesure
+physique et d’un réglage manuel ; la commande n’effectue aucune de ces actions.
 
 Un [exemple commun entièrement fictif](../examples/observation-zone-fictive.json)
 illustre le format. Pour une image déjà disponible, seule la valeur
@@ -110,6 +112,10 @@ matière unique embarqués concordent. En dehors de ces cas, la portée reste
 NON VÉRIFIÉE. Même source ne signifie pas même impression ; aucune
 géométrie physique, cause de défaut ou identité de bobine n’est déduite.
 Les images et les observations ne sont pas reproduites dans le rapport (#28).
+
+Le rapport privé porte les empreintes du 3MF, des réglages, du G-code et de
+l’identifiant de région, avec la plaque et la plage Z déclarées en mm. Le
+libellé de région et le texte de l’observation ne sont pas recopiés.
 
 ## Distinguer fait, hypothèse et validation
 
@@ -157,7 +163,3 @@ régénérabilité d'une recette et ne compte aucun gain accessible sans accord.
 Contrat de données et faits physiques déclarés en octobre–novembre 2026 :
 [données](../reference/donnees.md), [frontière publique/privée](../decisions/2026-11-04-frontiere-public-prive.md),
 [connaissances sourcées](../../benchab/reference/connaissances.jsonl).
-
-Le rapport privé porte les empreintes du 3MF, des réglages, du G-code et de
-l’identifiant de région, avec la plaque et la plage Z déclarées en mm. Le
-libellé de région et le texte de l’observation ne sont pas recopiés.
