@@ -139,3 +139,7 @@ régénérabilité d'une recette et ne compte aucun gain accessible sans accord.
 Contrat de données et faits physiques déclarés en octobre–novembre 2026 :
 [données](../reference/donnees.md), [frontière publique/privée](../decisions/2026-11-04-frontiere-public-prive.md),
 [connaissances sourcées](../../benchab/reference/connaissances.jsonl).
+
+Le rapport privé porte les empreintes du 3MF, des réglages, du G-code et de
+l’identifiant de région, avec la plaque et la plage Z déclarées en mm. Le
+libellé de région et le texte de l’observation ne sont pas recopiés.

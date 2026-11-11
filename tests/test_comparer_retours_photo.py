@@ -56,6 +56,14 @@ def test_meme_archive_et_meme_zone_declarees_sont_comparables(tmp_path):
     assert rapport["portee"] == "MEME_SOURCE_ET_ZONE_DECLAREE"
     assert rapport["validation_physique"] is False
     assert "Observation privée" not in json.dumps(rapport, ensure_ascii=False)
+    with ZipFile(archive) as contenu:
+        sha_gcode = hashlib.sha256(contenu.read("Metadata/plate_1.gcode")).hexdigest()
+        sha_reglages = hashlib.sha256(contenu.read("Metadata/project_settings.config")).hexdigest()
+    for source in rapport["sources"]:
+        assert source["region_id_sha256"] == hashlib.sha256(b"haut").hexdigest()
+        assert source["plage_z_mm_declaree"] == [0, 2]
+        assert source["gcode_sha256"] == sha_gcode
+        assert source["reglages_sha256"] == sha_reglages
 
 
 def test_archives_differentes_ne_comparent_que_machine_et_matiere(tmp_path):

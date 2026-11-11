@@ -114,7 +114,15 @@ def _liaison(chemin, liaison):
         and reglages.nombre_filaments_metadata(options) == 1
         and contexte["statut_contexte_filaments"] == "PASS" else None
     )
-    return (sha, plaque, zone, tuple(plage)), famille
+    return {
+        "source_sha256": sha,
+        "plaque": plaque,
+        # Une empreinte permet de relier la déclaration sans recopier son libellé privé.
+        "region_id_sha256": hashlib.sha256(zone.encode("utf-8")).hexdigest(),
+        "plage_z_mm_declaree": plage,
+        "gcode_sha256": hachage.hexdigest(),
+        "reglages_sha256": hashlib.sha256(config).hexdigest(),
+    }, famille
 
 
 def _source(racine, declaration):
@@ -172,8 +180,7 @@ def comparer(declaration, *, prive=None):
         "contexte_geometrique_declare_identique": meme_zone,
         "comparaison_geometrique": False,
         "modele_machine_et_matiere_declares_identiques": meme_famille,
-        "sources": [{"source_sha256": source[0][0], "plaque": source[0][1], "confirmation_sha256": source[2]}
-                    for source in (a, b)],
+        "sources": [{**source[0], "confirmation_sha256": source[2]} for source in (a, b)],
         "validation_physique": False,
         **({"motif": "Les sources ou zones diffèrent et la même famille de machine/matière n’est pas établie."}
            if portee == "AUCUNE" else {}),
