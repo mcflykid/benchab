@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 import pytest
 import trimesh
@@ -165,6 +165,21 @@ def test_plan_compose_translation_et_restaure_seulement_les_matrices():
             matrice = plan["liaisons"][1]["matrice_predite"]
             assert [matrice[i][3] for i in range(3)] == [20.0, 20.0, 8.0]
             natif = _native(source, racine / "natif.3mf", plan)
+            commentaire_zip = b"commentaire natif de fixture"
+            with ZipFile(natif, "a") as archive_natif:
+                archive_natif.comment = commentaire_zip
+            with ZipFile(natif) as archive_natif:
+                metadonnees_natives = {
+                    info.filename: (
+                        info.date_time,
+                        info.compress_type,
+                        info.external_attr,
+                        info.create_system,
+                        info.extra,
+                        info.comment,
+                    )
+                    for info in archive_natif.infolist()
+                }
             sortie = racine / "restaure.3mf"
             resultat = origine_3mf.restaurer(source, natif, sortie, plan)
             assert resultat["statut"] == "PASS"
@@ -172,6 +187,18 @@ def test_plan_compose_translation_et_restaure_seulement_les_matrices():
             assert resultat["membres_non_config_identiques_au_natif"] is True
             with ZipFile(natif) as archive_natif, ZipFile(sortie) as archive_sortie:
                 assert archive_natif.namelist() == archive_sortie.namelist()
+                assert archive_sortie.comment == commentaire_zip
+                assert {
+                    info.filename: (
+                        info.date_time,
+                        info.compress_type,
+                        info.external_attr,
+                        info.create_system,
+                        info.extra,
+                        info.comment,
+                    )
+                    for info in archive_sortie.infolist()
+                } == metadonnees_natives
                 for nom in archive_natif.namelist():
                     if nom != "Metadata/model_settings.config":
                         assert hashlib.sha256(archive_natif.read(nom)).digest() == hashlib.sha256(
@@ -261,6 +288,62 @@ def test_plan_refuse_un_xml_3mf_avec_declaration_doctype():
             assert invalide.read_bytes() == avant
 
         _avec_binaire(configuration, exercice)
+
+
+def test_manifeste_origine_refuse_une_hierarchie_zip_ambigue(tmp_path):
+    """L’inventaire refuse les collisions fichier/dossier de l’index 3MF."""
+    source = tmp_path / "hierarchie.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("3D/objets", b"fichier")
+        archive.writestr("3D/objets/piece.model", b"membre")
+    avant = source.read_bytes()
+
+    with pytest.raises(ValueError, match="hiérarchie ZIP ambiguë"):
+        origine_3mf._manifeste_zip(source)
+
+    assert source.read_bytes() == avant
+
+
+def test_manifeste_origine_conserve_ordre_et_empreintes_members(tmp_path):
+    """L’inventaire garde l’ordre ZIP et le SHA de chaque contenu décompressé."""
+    source = _source(tmp_path)
+    with ZipFile(source) as archive:
+        noms_attendus = archive.namelist()
+        empreintes_attendues = {
+            info.filename: hashlib.sha256(archive.read(info)).hexdigest()
+            for info in archive.infolist()
+        }
+
+    noms, empreintes = origine_3mf._manifeste_zip(source)
+
+    assert noms == noms_attendus
+    assert empreintes == empreintes_attendues
+
+
+def test_manifeste_origine_refuse_un_crc_member_invalide(tmp_path):
+    """L’inventaire lit chaque membre jusqu’à EOF et vérifie son CRC ZIP."""
+    source = tmp_path / "crc-invalide.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("3D/objet.model", b"contenu intact")
+    with ZipFile(source) as archive:
+        info = archive.getinfo("3D/objet.model")
+    octets = bytearray(source.read_bytes())
+    debut_contenu = info.header_offset + 30 + len(info.filename.encode("utf-8")) + len(info.extra)
+    octets[debut_contenu] ^= 1
+    source.write_bytes(octets)
+
+    with pytest.raises(BadZipFile, match="Bad CRC"):
+        origine_3mf._manifeste_zip(source)
+
+
+def test_lecture_bornee_origine_refuse_un_lien_symbolique(tmp_path):
+    """Les lectures d’origine ne suivent pas un alias de la source 3MF."""
+    source = _source(tmp_path)
+    alias = tmp_path / "alias.3mf"
+    alias.symlink_to(source)
+
+    with pytest.raises(ValueError, match="symbolique"):
+        origine_3mf._membre_borne(alias, "Metadata/model_settings.config", 8 * 1024 * 1024)
 
 
 def test_matrice_identite_garde_liaison_sans_permission_inutile():

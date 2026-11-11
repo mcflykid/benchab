@@ -7,7 +7,6 @@ import hashlib
 import math
 import os
 import shutil
-import stat
 import struct
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -132,47 +131,19 @@ def _valeur_meta(noeud, cle, *, portee="origine_part") -> str:
     return valeur
 
 
-def _archive(chemin: Path):
-    try:
-        archive = ZipFile(chemin)
-    except (OSError, BadZipFile) as exc:
-        raise ValueError("Archive 3MF illisible") from exc
-    noms = archive.namelist()
-    if len(noms) != len(set(noms)):
-        archive.close()
-        raise ValueError("Archive 3MF ambiguë : membre dupliqué")
-    if sum(info.file_size for info in archive.infolist()) > _MAX_ARCHIVE:
-        archive.close()
-        raise ValueError("Budget d’archive 3MF dépassé")
-    for info in archive.infolist():
-        membre = PurePosixPath(info.filename)
-        mode = info.external_attr >> 16
-        if (
-            not info.filename
-            or "\\" in info.filename
-            or membre.is_absolute()
-            or ".." in membre.parts
-            or stat.S_ISLNK(mode)
-        ):
-            archive.close()
-            raise ValueError("Nom de membre 3MF dangereux")
-    return archive
+def _archive_lecture(chemin: Path) -> Archive3MF:
+    """Ouvre une archive de lecture avec les plafonds de matrice qualifiés, sans suivre de lien."""
+    return Archive3MF(
+        chemin,
+        taille_max_membre=_MAX_ARCHIVE,
+        taille_max_totale=_MAX_ARCHIVE,
+        taille_max_xml=64 * 1024 * 1024,
+    )
 
 
-def _lire_xml(archive: ZipFile | Archive3MF, nom: str, maximum: int) -> ET.Element:
-    """Lit un XML sous budget, depuis le lecteur courant sans changer les octets source."""
-    if isinstance(archive, Archive3MF):
-        return _lire_xml_borne(archive, nom, maximum)
-    try:
-        info = archive.getinfo(nom)
-    except KeyError as exc:
-        raise _NonQualifie(f"Membre requis absent : {nom}") from exc
-    if info.file_size > maximum:
-        raise _NonQualifie(f"Membre XML trop volumineux : {nom}")
-    try:
-        return ET.fromstring(archive.read(nom))
-    except (ET.ParseError, BadZipFile) as exc:
-        raise _NonQualifie(f"Membre XML illisible : {nom}") from exc
+def _lire_xml(archive: Archive3MF, nom: str, maximum: int) -> ET.Element:
+    """Lit un XML depuis le contexte 3MF commun ; taille en octets, DTD/ENTITY refusés."""
+    return _lire_xml_borne(archive, nom, maximum)
 
 
 def _lire_xml_borne(archive: Archive3MF, nom: str, maximum: int) -> ET.Element:
@@ -206,7 +177,7 @@ def _configuration_binaire(binaire=None):
     }
 
 
-def _objets_composants(archive: ZipFile | Archive3MF):
+def _objets_composants(archive: Archive3MF):
     """Lit les objets du modèle principal depuis l’archive épinglée, sans écrire le 3MF."""
     racine = _lire_xml(archive, "3D/3dmodel.model", 64 * 1024 * 1024)
     modeles = {"3D/3dmodel.model": racine}
@@ -219,7 +190,7 @@ def _objets_composants(archive: ZipFile | Archive3MF):
     return modeles, objets
 
 
-def _lire_modeles_pieces(archive: ZipFile | Archive3MF, modeles):
+def _lire_modeles_pieces(archive: Archive3MF, modeles):
     """Lit les objets de pièces avec les budgets du même contexte ZIP."""
     nom = "3D/Objects/pieces.model"
     return _lire_objets_maillage(archive, "/" + nom, {})
@@ -240,7 +211,7 @@ def _membre_composant(chemin: str | None) -> str:
     return "/".join(pur.parts[1:])
 
 
-def _lire_objets_maillage(archive: ZipFile | Archive3MF, chemin: str, cache: dict[str, dict]):
+def _lire_objets_maillage(archive: Archive3MF, chemin: str, cache: dict[str, dict]):
     """Charge une fois les objets d’un modèle 3MF référencé par composant."""
     membre = _membre_composant(chemin)
     if membre in cache:
@@ -494,29 +465,31 @@ def planifier(entree, *, binaire=None) -> dict:
 
 
 def _manifeste_zip(chemin: Path) -> tuple[list[str], dict[str, str]]:
-    archive = _archive(chemin)
-    try:
+    """Retourne noms ordonnés et SHA des membres ; lecture complète bornée et CRC vérifiés."""
+    with Archive3MF(
+        chemin,
+        taille_max_membre=_MAX_ARCHIVE,
+        taille_max_totale=_MAX_ARCHIVE,
+        taille_max_xml=64 * 1024 * 1024,
+    ) as archive:
+        noms = archive.noms()
         empreintes = {}
-        for info in archive.infolist():
+        for nom in noms:
             hachage = hashlib.sha256()
-            with archive.open(info) as membre:
+            with archive.ouvrir_flux(nom) as membre:
                 for bloc in iter(lambda: membre.read(1024 * 1024), b""):
                     hachage.update(bloc)
-            empreintes[info.filename] = hachage.hexdigest()
-        return archive.namelist(), empreintes
-    finally:
-        archive.close()
+            empreintes[nom] = hachage.hexdigest()
+        archive.verifier_source(chemin)
+        return list(noms), empreintes
 
 
 def _membre_borne(chemin: Path, nom: str, maximum: int) -> bytes:
-    archive = _archive(chemin)
-    try:
-        info = archive.getinfo(nom)
-        if info.file_size > maximum:
-            raise ValueError(f"Membre ZIP trop volumineux : {nom}")
-        return archive.read(nom)
-    finally:
-        archive.close()
+    """Lit un membre 3MF en octets sous son plafond ; refuse lien et source remplacée."""
+    with _archive_lecture(chemin) as archive:
+        contenu = archive.lire(nom, limite_octets=maximum)
+        archive.verifier_source(chemin)
+        return contenu
 
 
 def _parties_par_chemin(racine):
@@ -571,8 +544,7 @@ def _verifier_plan_entree(entree: Path, plan: dict) -> dict:
 def _verifier_composants(source: Path, natif: Path, liaisons):
     """Vérifie rôle, liaison et géométrie locale float32 en mm, en tolérant les nouveaux identifiants natifs."""
     def lire(chemin):
-        archive = _archive(chemin)
-        try:
+        with _archive_lecture(chemin) as archive:
             settings = _lire_xml(archive, "Metadata/model_settings.config", _MAX_SETTINGS)
             _, objets = _objets_composants(archive)
             caches_maillages = {}
@@ -623,9 +595,8 @@ def _verifier_composants(source: Path, natif: Path, liaisons):
                         "component_path": component_path,
                         "matrice_composant": _matrice_composant(composant.get("transform")),
                     }
+            archive.verifier_source(chemin)
             return resultats
-        finally:
-            archive.close()
 
     avant, apres = lire(source), lire(natif)
     for liaison in liaisons:
@@ -684,15 +655,24 @@ def restaurer(entree, natif, sortie_neuve, plan) -> dict:
         fd, nom_temp = tempfile.mkstemp(prefix=".origine-3mf-", suffix=".tmp", dir=parent)
         os.close(fd)
         temporaire = Path(nom_temp)
-        with ZipFile(moteur) as entree_zip, ZipFile(temporaire, "w") as sortie_zip:
-            for info in entree_zip.infolist():
+        with Archive3MF(
+            moteur,
+            taille_max_membre=_MAX_ARCHIVE,
+            taille_max_totale=_MAX_ARCHIVE,
+            taille_max_xml=64 * 1024 * 1024,
+        ) as entree_archive, ZipFile(temporaire, "w") as sortie_zip:
+            # Recopier les métadonnées et le commentaire d’archive depuis l’index épinglé.
+            sortie_zip.comment = entree_archive.commentaire
+            for nom in entree_archive.noms():
+                info = entree_archive.information(nom)
                 cible = sortie_zip.open(copy.copy(info), "w")
                 with cible:
-                    if info.filename == nom_settings:
+                    if nom == nom_settings:
                         cible.write(xml_restaure)
                     else:
-                        with entree_zip.open(info) as membre:
+                        with entree_archive.ouvrir_flux(nom) as membre:
                             shutil.copyfileobj(membre, cible, length=1024 * 1024)
+            entree_archive.verifier_source(moteur)
         noms_sortie, sha_sortie = _manifeste_zip(temporaire)
         if noms_sortie != noms_natifs:
             raise ValueError("Restauration a modifié la liste ou l’ordre des membres ZIP")

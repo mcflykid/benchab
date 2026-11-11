@@ -165,3 +165,12 @@ membres. Le G-code et les membres non ciblés gardent leurs octets. Une
 source remplacée pendant le contrôle ou une sortie déjà occupée est
 refusée. L’appel historique sur place reste réservé à son appelant
 synchronisé ; la destination neuve est le chemin du lanceur (#182).
+
+### Relire la géométrie produite
+
+Le producteur relit les deux membres de géométrie du 3MF temporaire jusqu’à
+la fin et compare leurs SHA-256 à ceux des octets prévus. Le lecteur commun
+vérifie aussi le CRC des autres membres. Une différence d’unité ou de sommet
+avec un CRC recalculé est donc refusée avant publication (#200) ; la sortie
+antérieure reste intacte. Les réglages gardent leur comparaison typée et
+les différences permises restent déclarées avant la transformation.
