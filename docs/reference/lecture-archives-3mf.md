@@ -116,3 +116,8 @@ de l’original : aucune normalisation ni extraction n’est effectuée (#122).
 À la sortie d’un tranchage, les résultats, réglages attendus, membres de plaque
 et CRC sont vérifiés depuis une même lecture du 3MF. Deux fichiers G-code qui
 portent le même numéro sous des graphies différentes sont refusés (#171).
+
+`Archive3MF.sha256()` calcule aussi l’empreinte du fichier depuis le descripteur
+déjà ouvert et restaure le curseur ZIP. L’audit ACE lit ainsi les réglages, vérifie
+les CRC de tous les autres membres et lie le SHA source au même contexte, sans
+relecture indépendante du chemin (#122).
