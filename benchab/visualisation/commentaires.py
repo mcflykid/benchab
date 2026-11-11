@@ -14,14 +14,17 @@ from benchab.visualisation.stockage_commentaires import atomique, lire, transact
 
 
 def charger(f):
+    """Lit le JSON de commentaires au chemin fourni ; renvoie un objet vide si le fichier manque."""
     return lire(f)
 
 
 def ecrire(f, d):
+    """Publie atomiquement le document de commentaires validé au chemin fourni, sans résultat de retour."""
     atomique(f, d)
 
 
 def trouver(d, ref):
+    """Renvoie le commentaire par rang à partir de 1 ou par identifiant ; signale une référence introuvable."""
     cs = d.get("commentaires", [])
     if ref.isdigit() and 1 <= int(ref) <= len(cs):
         return cs[int(ref) - 1]

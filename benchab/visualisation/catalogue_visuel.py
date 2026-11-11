@@ -208,6 +208,7 @@ def couches(racine, nom, ressources_partagees=False):
 
 
 def accueil(racine):
+    """Renvoie le HTML UTF-8 du catalogue de l’atelier en octets, sans modifier les projets."""
     lignes = []
     for p in catalogue(racine):
         action = (
@@ -269,6 +270,7 @@ def accueil(racine):
 
 
 def scene(racine, nom, ressources_partagees=False, tranche=None, placement=None):
+    """Renvoie en octets la scène HTML du projet et ses aperçus facultatifs, sous verrou de génération et sans fabriquer."""
     with GENERATION:
         return _scene(racine, nom, ressources_partagees, tranche, placement)
 

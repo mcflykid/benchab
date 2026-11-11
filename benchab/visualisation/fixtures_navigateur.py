@@ -10,6 +10,7 @@ from benchab.visualisation.visionneuse import Visionneuse, translation
 
 
 def generer(sortie):
+    """Écrit une scène synthétique à deux blocs cotés en mm et renvoie le résultat de son export HTML."""
     sortie = valider_sortie(sortie)
     v = Visionneuse("Assemblage synthétique", note="Fixture numérique, aucune validation physique.")
     v.modele("Bloc", trimesh.creation.box((30, 20, 20)), couleur="vert")
@@ -19,6 +20,7 @@ def generer(sortie):
 
 
 def generer_anomalie(sortie):
+    """Écrit le STL témoin (mm) et sa scène transformée ; renvoie le résultat de l’export HTML."""
     from benchab.visualisation.anomalies_geometriques import charger_diagnostic
     from benchab.visualisation.visionneuse import rotation
 
