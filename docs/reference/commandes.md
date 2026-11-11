@@ -24,7 +24,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `visualisation visionneuse`, `serveur`, `apercu-gcode`, `commentaires`, `photo`, `inspection-scene`, `assemblage-dossier` | Inspection commune |
 | `atelier diagnostic --projet NOM`, `tests-impact` | Capacités et navigation |
 | `references verifier`, `analyser`, `contours` | Références liées aux preuves |
-| `connaissances memoire`, `etudes`, `bobine` | Savoir et mesures |
+| `connaissances memoire`, `etudes`, `bobine`, `pdf` | Savoir, mesures et lecture PDF textuelle optionnelle |
 | `donnees impressions`, `vues`, `reconstruire`, `sauvegarder`, `restaurer` | Requêtes et reconstruction |
 | `machine profils-cibles`, `affectations-ace` | Profils de travail et correspondance des filaments |
 | `machine cloud-lecture`, `telemetrie`, `session-compte` | Lecture Cloud ; tests simulés, autorisation réseau distincte |
@@ -35,6 +35,8 @@ Voir le format et les limites du [contrôle des plages Z](plages-z.md).
 Les contrôles spécialisés supplémentaires sont listés par `uv run benchab controle --help`.
 Les cibles Make des projets générés utilisent ces mêmes modules ; elles ne créent
 pas une deuxième chaîne de contrôle.
+
+La [lecture PDF textuelle](lecture-pdf.md) reste bornée et ne fait ni OCR ni rendu.
 
 La comparaison des réglages 3MF aux profils explicitement fournis est décrite dans
 [le guide des écarts de profils](ecarts-profils-3mf.md).

@@ -8,6 +8,7 @@ Chaque méthode a une page de référence. Les guides renvoient aux règles comm
 | Préparer une pièce | [Cycle de préparation](guides/preparer-une-piece.md) |
 | Découper et assembler | [Découpe intelligente](guides/decoupe.md) |
 | Examiner le modèle et le G-code | [Visionneuse](guides/visionneuse.md) |
+| Consulter le savoir public hors ligne | [Vitrine du corpus](reference/vitrine-savoir.md) |
 | Choisir une matière et apprendre d’un retour | [Matières et retours](guides/matieres-et-retours.md) |
 | Adapter une machine | [Autre imprimante](guides/autre-imprimante.md) |
 | Faire les premiers essais d’une machine ou d’une bobine | [Parcours d’essai](guides/premiers-essais.md) |

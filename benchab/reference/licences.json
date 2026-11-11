@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "declarations_sha256": "c3a8ac225dcfc3525966ed62e0608d717091859a6f78d05609a49e90ffe4b73d",
-  "lock_sha256": "74cf93a3794f5a562e9ce61621fe1e4a12d3e2025e298ac48af77ee54e5d20b7",
+  "declarations_sha256": "b094dcfee515c2bc1977bc2403f59ce08953504d0ce1908ba0c53f810e1cc992",
+  "lock_sha256": "bdbb77f97e0369942e67b25faf06e0dfa9205086244cce130d884643dd557ab1",
   "python": [
     {
       "nom": "anytree",
@@ -915,6 +915,18 @@
         {
           "fichier": "pyparsing-3.3.3.dist-info/licenses/LICENSE",
           "sha256": "a5425f9dc14ac74d4c5f0b679e941f2442e32cca7452a4418d5b1a49893ebe4e"
+        }
+      ]
+    },
+    {
+      "nom": "pypdf",
+      "version": "7.0.1",
+      "licence": "BSD-3-Clause",
+      "source": "notice du wheel pypdf 7.0.1 ; PyPI provenance vérifiée depuis py-pdf/pypdf",
+      "preuves": [
+        {
+          "fichier": "pypdf-7.0.1.dist-info/licenses/LICENSE",
+          "sha256": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524"
         }
       ]
     },

@@ -11,6 +11,26 @@ from benchab.gcode.lecture import membres_gcode_3mf
 from benchab.qualite.statuts import code_statut
 
 
+def resumer(rapport, *, maximum=5):
+    """Résume les diagnostics prioritaires et numéros de plaque, sans modifier le rapport ni ses statuts."""
+    priorite = {"FAIL": 0, "NON VÉRIFIÉ": 1, "WARN": 2}
+    diagnostics = [
+        {
+            "controle": resultat.get("controle", "Contrôle sans nom"),
+            "statut": resultat["statut"],
+            **({"plaque": resultat["plaque"]} if type(resultat.get("plaque")) is int else {}),
+        }
+        for resultat in rapport.get("resultats", [])
+        if isinstance(resultat, dict) and resultat.get("statut") in priorite
+    ]
+    diagnostics.sort(key=lambda item: (priorite[item["statut"]], item["controle"].casefold()))
+    return {
+        "statut": rapport["statut"],
+        "code": code_statut(rapport["statut"]),
+        "diagnostics_prioritaires": diagnostics[:maximum],
+    }
+
+
 def controler(
     chemin, declaration=None, *, reference=None, geometrie=None, revue_locale=None, relation_reference="inconnue"
 ):

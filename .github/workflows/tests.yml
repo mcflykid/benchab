@@ -37,3 +37,5 @@ jobs:
           fi
           uv run python -m benchab.qualite.annotations --base "$BENCHAB_BASE" --tete "$GITHUB_SHA" --racine .
       - run: uv run pytest -q
+      - name: Tester aussi la lecture PDF avec son extra
+        run: uv run --locked --extra pdf pytest -q tests/test_lecture_pdf.py

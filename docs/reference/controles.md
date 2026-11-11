@@ -8,6 +8,14 @@ Un statut global ne supprime pas les détails et les zones restant à vérifier.
 Les options `--declaration`, `--geometrie`, `--revue-locale` et `--reference`
 rattachent leurs preuves. `--relation-reference` distingue même source de modèle,
 seulement même machine/filament, et relation inconnue.
+Sans option, la commande conserve l’affichage JSON complet historique. Avec
+`--sortie CHEMIN_PRIVÉ_NEUF`, elle sauvegarde ce rapport complet dans l’atelier
+privé et affiche un résumé compact trié par FAIL, NON VÉRIFIÉ puis WARN ; les
+noms de contrôle et numéros de plaque disponibles restent visibles. Le champ
+`rapport` indique le fichier relatif à l’atelier ; les messages et chemins
+détaillés restent dans ce fichier. `--detail` affiche le rapport complet dans stdout, y
+compris lorsqu’une sortie fichier est demandée. Le chemin de sortie doit être
+privé et neuf ; une destination existante ou un lien est refusé.
 Le rapport conserve les [avertissements natifs du slicer](avertissements-slicer.md),
 y compris les codes inconnus et les origines non vérifiées. Seul le verdict
 global PASS active `conforme_numerique` ; le statut historique reste séparé.

@@ -13,6 +13,7 @@ from benchab.conception.decoupe import connecteurs as C
 from benchab.conception.decoupe import geometrie as G
 from benchab.controles.regles import verifier_nommage
 from benchab.imports3d.lecture_3mf import lire as lire_3mf
+from benchab.imports3d.maillage_indexe import lire as lire_indexe
 
 COUPE = {"type": "plan", "origine": [0, 0, 0], "normale": [0, 0, 1]}
 
@@ -107,7 +108,7 @@ def test_volumes_source_chevauchants_exigent_attribution_explicite():
     assert r["priorite_explicite"] == ["A", "B"]
 
 
-@pytest.mark.parametrize("format_", ["stl", "3mf"])
+@pytest.mark.parametrize("format_", ["stl", "3mf", "npz"])
 def test_chaine_export_reouvert_mm_pose_reversible_et_original_intact(tmp_path, format_):
     """Vérifie l’export géométrique et son état NON PRÊT sans profil configuré, en mm."""
     source = tmp_path / "original.stl"
@@ -123,15 +124,20 @@ def test_chaine_export_reouvert_mm_pose_reversible_et_original_intact(tmp_path, 
     assert len(rapport["fichiers"]) == 3  # deux pièces et une goupille
     for nom, pose in rapport["poses_export"].items():
         assert np.allclose(np.array(pose["vers_reassemblage"]) @ pose["vers_plateau"], np.eye(4))
-        recharge = (
-            lire_3mf(sortie / (nom + ".3mf")).to_mesh()
-            if format_ == "3mf"
-            else trimesh.load(sortie / (nom + ".stl"), force="mesh", process=True)
-        )
+        if format_ == "3mf":
+            recharge = lire_3mf(sortie / (nom + ".3mf")).to_mesh()
+        elif format_ == "npz":
+            recharge = lire_indexe(sortie / (nom + ".npz"))
+            bilan = rapport["controles_export"][nom]["topologie_indexee"]
+            assert bilan["statut"] == "PASS"
+            assert bilan["avant_export"] == bilan["relecture_brute"]
+            assert bilan["fusion"] == "NON APPLIQUÉE"
+        else:
+            recharge = trimesh.load(sortie / (nom + ".stl"), force="mesh", process=True)
         assert recharge.is_volume and recharge.bounds[0, 2] == pytest.approx(0, abs=1e-5)
         if format_ == "stl":
             assert b"units=mm" in (sortie / (nom + ".stl")).read_bytes()[:80]
-        else:
+        elif format_ == "3mf":
             assert verifier_nommage(sortie / (nom + ".3mf"))["statut"] == "PASS"
     with pytest.raises(FileExistsError):
         A.exporter(resultat, sortie, format_)

@@ -36,6 +36,12 @@ inclinaison minime est NON VÉRIFIÉE. Une échelle, translation ou inclinaison 
 Z donne **NON VÉRIFIÉ**. Une intention absente, un format de plage inconnu ou
 une géométrie illisible ne vaut pas PASS.
 
+Le rapport expose séparément la transformation de l’instance et celle du
+composant lié, si présentes : matrice 3MF dans l’unité du modèle, coefficients
+de Z sans unité et translation en mm. Un décalage Z visible peut rester
+NON VÉRIFIÉ pour la couverture : sa valeur n’établit pas le repère utilisé par
+le slicer. Une matrice non qualifiée reste signalée et n’est pas corrigée.
+
 Les intervalles sont les plages variables explicitement stockées dans le 3MF.
 Le contrôle ne reconstitue pas la hauteur de chaque couche après traitement par
 le slicer, ni le résultat du G-code. La tolérance de comparaison avec le
