@@ -12,10 +12,12 @@ options de résumé et de détail déjà couvertes.
 | `projet NOM --niveau S` | Projet transactionnel S/M/L |
 | `seance debut`, `seance fin`, `seance etat` | Verrou logique et journal |
 | `imports importer`, `geometrie`, `reparer`, `maillage-avance`, `echange-blender`, `placement` | Import, géométrie et placement explicitement déclaré |
-| `conception cad-engine`, `assistant-projet`, `variantes`, `dfam` | CAO et variantes |
+| `conception cad-engine`, `assistant-projet`, `dfam` | CAO et analyse numérique |
+| `conception variantes` | Compare les pièces nommées ; JSON et Markdown publiés dans un dossier neuf de l’atelier privé |
 | `conception fiche-cao` | [Plan et script CAO depuis des cotes JSON](fiche-cao.md) |
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
 | `conception filetage-nominal -- OPTIONS` | STL et rapport privé à partir de cotes déclarées en mm : filet triangulaire extérieur ou outil de soustraction avec jeu radial explicite ; hors norme ISO et sans preuve d’ajustement |
+| `conception gyroide-temoin` | [STL et rapport d’un coupon gyroïde numérique](gyroide-temoin.md) |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
 | `controle capacites-machine SOURCE.3mf --maitre PROFIL.json` | Demandes nominales, limites et contraintes numériques depuis deux entrées privées ; `--resume --sortie RAPPORT.json` garde le détail privé |
@@ -30,6 +32,7 @@ options de résumé et de détail déjà couvertes.
 | `controle coutures` | [Contrôle et aperçu de coutures sur régions déclarées](../explications/coutures.md#contrôle-sur-des-régions-déclarées) |
 | `controle preparer-reprise-export` | [Copie vérifiée d’une table exportée absente](plan-reparation-vues.md#préparer-la-reprise-dune-table-exportée), sans l’appliquer |
 | `controle verifier-reprise-source --preuve FICHIER --sha256-preuve SHA` | Relit la preuve et la copie locales, distingue l’état de l’original sans appliquer ni rouvrir le TAR |
+| `controle appliquer-reprise-source` | [Recrée un original manquant avec identité confirmée](plan-reparation-vues.md#appliquer-une-reprise-à-un-seul-original-manquant) |
 | `controle preparer-reprise-source` | [Copie non appliquée d’un original depuis un tar](plan-reparation-vues.md#préparer-une-copie-dun-original-depuis-une-sauvegarde), avec SHA d’archive et de membre |
 | `controle appliquer-reprise-export` | Applique une table absente depuis une preuve CANDIDAT et son SHA explicitement déclaré |
 | `controle surplombs-connexes SOURCE.stl --unite-mm [--plateau-z-mm Z [--dossier-apercu DOSSIER_NEUF]] [--portee-pont-mm PORTEE]` | Groupes de triangles orientés vers le bas ; visées ponctuelles vers un plan Z déclaré en mm et visionneuse privée en option, sans validation d’appui |

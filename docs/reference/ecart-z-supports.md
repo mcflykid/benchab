@@ -92,6 +92,12 @@ source et la même empreinte de copie fournie au moteur. La commande
 ne démarre pas le trancheur et n’authentifie pas les exécutions.
 Un SHA de binaire absent des reçus reste NON VÉRIFIÉ.
 
+Avec `--resume --sortie prive/rapports/rejeux.json`, le rapport intégral est
+publié avant l’affichage court. Le résumé garde la plaque, le statut, le
+code et les verdicts de comparaison. Les empreintes, les mesures et le
+motif exact d’un refus restent dans le JSON privé. Sans option, le
+rapport intégral est affiché.
+
 Le rapport distingue l’égalité du G-code brut, l’égalité après exclusion
 du seul horodatage de la deuxième ligne d’un bloc d’en-tête ASN complet,
 l’égalité des dépôts de

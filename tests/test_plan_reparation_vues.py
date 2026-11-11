@@ -838,3 +838,45 @@ def test_cli_applique_candidat_de_lien_explicitement(tmp_path, capsys):
     assert resultat["statut"] == "PASS"
     assert (prive / "vues/recuperation/INDEX.md").read_bytes() == candidat.read_bytes()
     assert index.is_symlink()
+
+
+def test_cli_resume_conserve_le_plan_complet_et_les_constats(tmp_path, capsys):
+    """Le plan WARN reste disponible en entier et rien n'est appliqué."""
+    from benchab.cli import main
+
+    prive = _atelier(tmp_path)
+    cible = prive / "vues" / "INDEX.md"
+    cible.unlink()
+    commande = ["--prive", str(prive), "controle", "plan-reparation"]
+    assert main(commande) == 1
+    historique = capsys.readouterr().out
+    sortie = prive / "rapports" / "plan.json"
+    assert main([*commande, "--resume", "--sortie", str(sortie)]) == 1
+    stdout = capsys.readouterr().out
+    resume = json.loads(stdout)
+    assert json.loads(sortie.read_text()) == json.loads(historique)
+    assert resume["rapport"] == str(sortie)
+    assert resume["statut"] == "WARN" and resume["code"] == 1
+    assert resume["vues_par_statut"]["ABSENTE"] == 1
+    assert resume["actions_proposees"] == 1 and resume["application_effectuee"] is False
+    assert len(stdout) < len(historique) and not cible.exists()
+
+
+def test_cli_plan_resume_exige_sortie_et_conserve_motif_nv(tmp_path, capsys):
+    """Une base absente garde sa raison sans ouvrir ni créer une base."""
+    from benchab.cli import main
+
+    commande = ["--prive", str(tmp_path), "controle", "plan-reparation", "--resume"]
+    assert main(commande) == 2
+    resultat = capsys.readouterr()
+    assert "exige --sortie" in resultat.err and not resultat.out
+    sortie = tmp_path / "plan.json"
+    assert main([*commande, "--sortie", str(sortie)]) == 2
+    resume = json.loads(capsys.readouterr().out)
+    assert resume["statut"] == "NON VÉRIFIÉ"
+    assert resume["detail"] == json.loads(sortie.read_text())["detail"]
+    assert not (tmp_path / "benchab.sqlite").exists()
+    avant = sortie.read_bytes()
+    assert main([*commande, "--sortie", str(sortie)]) == 2
+    assert "Sortie existante" in capsys.readouterr().err
+    assert sortie.read_bytes() == avant

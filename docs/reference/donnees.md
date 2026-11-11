@@ -5,8 +5,17 @@ transaction valide toujours les données, puis compare les treize exports à leu
 sérialisation canonique. Si les octets et le SHA réels concordent, le JSONL garde
 son inode ; un fichier divergent est reconstruit depuis SQLite. Le manifeste est
 publié en dernier et n'est jamais utilisé seul pour déclarer les JSONL valides
-(première étape #19). La validation et la comparaison parcourent encore la base
-entière : leur coût reste proportionnel à sa taille.
+(#19). Lorsqu’une écriture a validé un instantané SQLite, les SHA calculés sur
+sa sérialisation peuvent être réutilisés pour contrôler les fichiers. Les
+exports restent lus et vérifiés ; les absents ou divergents seuls sont
+resérialisés. Une modification entre connexions, détectée par
+[`PRAGMA data_version`](https://sqlite.org/pragma.html#pragma_data_version),
+ou un changement de schéma invalide le réemploi. Un export explicite sans
+instantané de transaction reprend la comparaison complète. Pendant la
+publication, BENCHAB réserve le verrou SQLite d’écriture, y compris en mode
+WAL, afin qu’un autre commit ne devance pas le manifeste. Il ne modifie
+aucune ligne dans cette phase. Un écrivain peut reprendre dès la libération
+du verrou (#226). La validation des références parcourt toujours toute la base.
 Les projets, leurs fichiers, les observations et les préférences restent privés.
 Le savoir général publiable est sélectionné séparément dans `benchab/reference/`.
 

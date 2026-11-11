@@ -1,4 +1,4 @@
-"""Prépare une copie isolée d’un original identifié dans une sauvegarde BENCHAB."""
+"""Prépare, vérifie et applique séparément la reprise d’un original identifié."""
 
 import hashlib
 import json
@@ -9,6 +9,7 @@ import tarfile
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
+from uuid import uuid4
 
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.donnees.sauvegarde import (
@@ -558,4 +559,121 @@ def verifier_copie(prive, preuve, sha256_preuve):
         "archive_sha256_declare": candidat["archive_sha256"], "archive_relue": False,
         "manifeste_sha256_declare": candidat["manifeste_sha256"],
         "limite": "Identité locale de la copie et état observé de l’original ; aucune application.",
+    }
+
+
+def _transferer_source(flux, taille, sortie=None):
+    """Hache exactement taille octets et les transmet si une sortie est déclarée."""
+    empreinte = hashlib.sha256()
+    restant = taille
+    while restant:
+        bloc = flux.read(min(restant, _TAILLE_BLOC))
+        if not bloc:
+            raise ValueError("Les octets de la source sont incomplets.")
+        empreinte.update(bloc)
+        if sortie is not None:
+            sortie.write(bloc)
+        restant -= len(bloc)
+    if flux.read(1):
+        raise ValueError("Les octets de la source dépassent la taille déclarée.")
+    return empreinte.hexdigest()
+
+
+def _lire_source_reguliere(chemin, taille, *, sortie=None, dir_fd=None):
+    """Hache et éventuellement copie un fichier régulier dont le nom reste épinglé."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    with os.fdopen(os.open(chemin, flags, dir_fd=dir_fd), "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size != taille:
+            raise ValueError("La taille ou le type de la source diffère de la preuve.")
+        sha = _transferer_source(flux, taille, sortie)
+        apres = os.fstat(flux.fileno())
+        nom = os.stat(chemin, dir_fd=dir_fd, follow_symlinks=False)
+        if _signature(avant) != _signature(apres) or _signature(avant) != _signature(nom):
+            raise ValueError("La source a changé pendant la lecture de reprise.")
+    return sha, _signature(avant)
+
+
+def _verifier_parent_reprise(parent, racine, fd_parent):
+    """Vérifie que le parent ouvert est toujours le dossier sans lien déclaré."""
+    try:
+        courant = sans_lien(parent, racine=racine, strict=True).lstat()
+    except (OSError, ValueError) as erreur:
+        raise ValueError("Le dossier source a changé pendant la reprise.") from erreur
+    if not os.path.samestat(courant, os.fstat(fd_parent)) or not stat.S_ISDIR(courant.st_mode):
+        raise ValueError("Le dossier source a changé pendant la reprise.")
+
+
+def appliquer_copie(prive, preuve, sha256_preuve, membre_attendu, sha256_source):
+    """Recrée un seul original manquant depuis une copie identifiée.
+
+    Entrées : atelier privé, chemin et SHA-256 de preuve.json, chemin
+    canonique du membre et SHA-256 de l’original déclarés séparément.
+    Sortie : PASS et octets/empreinte de l’original relu. ValueError ou
+    OSError si contrat, identité ou publication exclusive échouent.
+    N’écrase rien, ne crée aucun parent et ne change ni archive, copie,
+    preuve, SQLite, préparation, profil ou machine. Aucun tranchage.
+    """
+    membre = _nom_source(membre_attendu)
+    if not isinstance(sha256_source, str) or not _SHA256.fullmatch(sha256_source):
+        raise ValueError("Un SHA-256 indépendant de l’original est requis.")
+    racine = atelier_prive(prive)
+    verification = verifier_copie(racine, preuve, sha256_preuve)
+    if verification["membre"] != membre or verification["sha256_copie"] != sha256_source:
+        raise ValueError("Le membre ou le SHA source confirmé ne correspond pas à la preuve.")
+    if verification["original"]["statut"] != "MANQUANT":
+        raise ValueError("Seul un original MANQUANT peut être repris ; aucun remplacement.")
+
+    original = racine / membre
+    parent = sans_lien(original.parent, racine=racine, strict=True)
+    rapports = sans_lien(racine / "rapports", racine=racine, strict=True)
+    chemin_preuve = sans_lien(Path(preuve).expanduser().absolute(), racine=rapports, strict=True)
+    copie = sans_lien(chemin_preuve.parent / "source" / original.name, racine=rapports, strict=True)
+    taille = verification["octets_source"]
+    fd_parent = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        _verifier_parent_reprise(parent, racine, fd_parent)
+        temporaire = ".reprise-original-" + uuid4().hex
+        fd_temp = os.open(temporaire, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd_parent)
+        identite_temp = _signature(os.fstat(fd_temp))[:2]
+        try:
+            with os.fdopen(fd_temp, "wb") as flux:
+                sha_copie, signature_copie = _lire_source_reguliere(copie, taille, sortie=flux)
+                if sha_copie != sha256_source:
+                    raise ValueError("La copie a changé avant application.")
+                flux.flush()
+                os.fsync(flux.fileno())
+                signature_temp = _signature(os.fstat(flux.fileno()))
+            # Relire la preuve exacte juste avant la seule publication du projet (#119).
+            preuve_relue = sans_lien(chemin_preuve, racine=rapports, strict=True)
+            _lire_preuve_source(preuve_relue, sha256_preuve)
+            copie_relue = sans_lien(copie, racine=rapports, strict=True)
+            if _signature(copie_relue.lstat()) != signature_copie:
+                raise ValueError("La copie a été remplacée avant application.")
+            _verifier_parent_reprise(parent, racine, fd_parent)
+            info_temp = os.stat(temporaire, dir_fd=fd_parent, follow_symlinks=False)
+            if _signature(info_temp) != signature_temp:
+                raise ValueError("Le fichier préparé a changé avant application.")
+            # Le lien est exclusif sur le même parent épinglé, même si un original vient d’apparaître.
+            os.link(temporaire, original.name, src_dir_fd=fd_parent, dst_dir_fd=fd_parent, follow_symlinks=False)
+            sha, identite = _lire_source_reguliere(original.name, taille, dir_fd=fd_parent)
+            _verifier_parent_reprise(parent, racine, fd_parent)
+            if sha != sha256_source or identite[:2] != identite_temp:
+                raise ValueError("L’original publié diverge ; laissé en place pour diagnostic.")
+        finally:
+            # Ne retirer que le fichier temporaire créé par cette opération.
+            try:
+                reste = os.stat(temporaire, dir_fd=fd_parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                if _signature(reste)[:2] == identite_temp:
+                    os.unlink(temporaire, dir_fd=fd_parent)
+    finally:
+        os.close(fd_parent)
+    return {
+        "statut": "PASS", "applique": True, "statut_avant": "MANQUANT", "membre": membre,
+        "sha256_preuve": sha256_preuve, "sha256_original": sha, "octets_source": taille,
+        "archive_relue": False,
+        "limite": "Un seul fichier manquant publié et relu ; aucune autre donnée n’est reconstruite.",
     }

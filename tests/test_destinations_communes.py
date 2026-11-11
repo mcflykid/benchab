@@ -88,3 +88,39 @@ def test_echec_publication_preserve_ancien_etat_et_voisins(tmp_path, monkeypatch
     assert cible.read_text(encoding="utf-8") == "ancien"
     assert voisin.read_text(encoding="utf-8") == "autre"
     assert len(list(tmp_path.iterdir())) == 2
+
+
+def test_dossier_prive_reste_epingle_avant_creation_temporaire(tmp_path, monkeypatch):
+    """Un parent redirigé après la garde ne peut recevoir les octets du lot."""
+    import os
+
+    from benchab.qualite.ecritures import publier_dossier_neuf
+
+    prive = tmp_path / "atelier"
+    parent = prive / "rapports"
+    parent.mkdir(parents=True)
+    externe = tmp_path / "externe"
+    externe.mkdir()
+    deplace = prive / "ancien-parent"
+    mkdir = os.mkdir
+
+    def remplacer(nom, mode=0o777, *, dir_fd=None):
+        if dir_fd is not None and str(nom).startswith(".publication-dossier-"):
+            parent.rename(deplace)
+            parent.symlink_to(externe, target_is_directory=True)
+        return mkdir(nom, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "mkdir", remplacer)
+    with pytest.raises(ValueError):
+        publier_dossier_neuf(parent / "preuve", {"rapport.json": "preuve privée".encode()}, prive=prive)
+    assert list(externe.iterdir()) == []
+    assert list(deplace.iterdir()) == []
+
+
+def test_dossier_prive_refuse_les_noms_imbriques(tmp_path):
+    """Les fichiers du lot portent des noms simples ; aucun chemin n'est créé."""
+    from benchab.qualite.ecritures import publier_dossier_neuf
+
+    with pytest.raises(ValueError, match="nom simple"):
+        publier_dossier_neuf(tmp_path / "preuve", {"../hors.json": b""}, prive=tmp_path)
+    assert list(tmp_path.iterdir()) == []

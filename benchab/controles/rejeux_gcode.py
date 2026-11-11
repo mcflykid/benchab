@@ -225,3 +225,22 @@ def comparer(prive, recus, *, plaque):
         "mesures_supports_identiques": all(m["supports"] == mesures[0]["supports"] for m in mesures),
     }
 
+
+def resumer(rapport, sortie):
+    """Résume la comparaison dont le rapport complet a déjà été publié.
+
+    Entrées : rapport de comparer et chemin JSON privé. Sortie : plaque,
+    PASS/WARN/NON VÉRIFIÉ, code, comparaisons booléennes et chemin. Les
+    empreintes, mesures en mm et détails de refus restent dans le JSON.
+    Aucun démarrage du moteur, réglage, fichier ou état machine n'est modifié.
+    """
+    cles = (
+        "statut", "code", "plaque", "gcode_brut_identique", "gcode_hors_date_identique",
+        "depots_supports_identiques", "mesures_supports_identiques", "validation_physique",
+    )
+    return {
+        **{cle: rapport[cle] for cle in cles},
+        "rejeux_relus": len(rapport["rejeux"]),
+        "diagnostic_dans_rapport": "raison" in rapport,
+        "rapport": str(sortie),
+    }

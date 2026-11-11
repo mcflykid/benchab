@@ -539,3 +539,126 @@ def test_cli_verifie_copie_sans_ouvrir_la_base(tmp_path, capsys, monkeypatch):
     resultat = json.loads(capsys.readouterr().out)
     assert resultat["statut"] == "PASS" and resultat["original"]["statut"] == "MANQUANT"
     assert not resultat["archive_relue"] and not (prive / MEMBRE).exists()
+
+
+def _copie_pour_application(tmp_path):
+    """Prépare une copie et un projet synthétique avec dossier source déjà présent."""
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+    original = prive / MEMBRE
+    original.parent.mkdir(parents=True)
+    archive = tmp_path / "sauvegarde.tar"
+    sha_source = _archive(archive)
+    sha_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
+    preuve = prive / "rapports" / "reprise" / "preuve.json"
+    resultat = _appel(prive, archive, sha_archive, sha_source, preuve.parent)
+    return prive, original, archive, preuve, resultat["preuve_sha256"], sha_source
+
+
+def test_applique_un_seul_original_absent_avec_confirmation_independante(tmp_path):
+    """L’original publié a exactement le SHA déclaré ; la preuve ne devient pas un ordre."""
+    from benchab.donnees.reprise_source import appliquer_copie
+
+    prive, original, archive, preuve, sha_preuve, sha_source = _copie_pour_application(tmp_path)
+    copie = preuve.parent / "source" / original.name
+    avant = {p: p.read_bytes() for p in (preuve, copie, archive)}
+
+    rapport = appliquer_copie(prive, preuve, sha_preuve, MEMBRE, sha_source)
+
+    assert rapport["statut"] == "PASS" and rapport["applique"] is True
+    assert rapport["membre"] == MEMBRE and rapport["sha256_original"] == sha_source
+    assert rapport["statut_avant"] == "MANQUANT"
+    assert original.read_bytes() == avant[copie]
+    assert original.stat().st_ino != copie.stat().st_ino
+    assert {p: p.read_bytes() for p in avant} == avant
+    assert not (prive / "benchab.sqlite").exists()
+    assert list(original.parent.iterdir()) == [original]
+
+
+@pytest.mark.parametrize("cas", ["membre", "sha", "existant", "copie", "parent"])
+def test_appliquer_refuse_contrat_incomplet_sans_ecraser(tmp_path, cas):
+    """Les refus ne publient ni fichier de remplacement ni dossier implicite."""
+    from benchab.donnees.reprise_source import appliquer_copie
+
+    prive, original, _, preuve, sha_preuve, sha_source = _copie_pour_application(tmp_path)
+    membre = MEMBRE
+    if cas == "membre":
+        membre = "projets/fixture/sources/autre.stl"
+    elif cas == "sha":
+        sha_source = "0" * 64
+    elif cas == "existant":
+        original.write_bytes(b"existant")
+    elif cas == "copie":
+        (preuve.parent / "source" / original.name).write_bytes(b"copie divergente")
+    elif cas == "parent":
+        original.parent.rmdir()
+    with pytest.raises((ValueError, OSError)):
+        appliquer_copie(prive, preuve, sha_preuve, membre, sha_source)
+    if cas == "existant":
+        assert original.read_bytes() == b"existant"
+    else:
+        assert not original.exists()
+    if cas == "parent":
+        assert not original.parent.exists()
+
+
+def test_appliquer_preserve_une_collision_tardive(tmp_path, monkeypatch):
+    """Une apparition après vérification ne peut remplacer l’original arrivé."""
+    import os
+
+    from benchab.donnees.reprise_source import appliquer_copie
+
+    prive, original, _, preuve, sha_preuve, sha_source = _copie_pour_application(tmp_path)
+    lien = os.link
+
+    def collision(source, destination, *args, **kwargs):
+        original.write_bytes(b"apparu pendant la reprise")
+        return lien(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", collision)
+    with pytest.raises(FileExistsError):
+        appliquer_copie(prive, preuve, sha_preuve, MEMBRE, sha_source)
+    assert original.read_bytes() == b"apparu pendant la reprise"
+    assert list(original.parent.iterdir()) == [original]
+
+
+def test_cli_applique_seulement_avec_identite_confirmee(tmp_path, capsys):
+    """Le contrôle passif reste sans effet, la commande d'application est distincte."""
+    from benchab.cli import main
+
+    prive, original, _, preuve, sha_preuve, sha_source = _copie_pour_application(tmp_path)
+    prefixe = ["--prive", str(prive), "controle"]
+    preuve_cli = ["--preuve", str(preuve), "--sha256-preuve", sha_preuve]
+    assert main([*prefixe, "verifier-reprise-source", *preuve_cli]) == 0
+    assert json.loads(capsys.readouterr().out)["original"]["statut"] == "MANQUANT"
+    assert not original.exists()
+    assert main([*prefixe, "appliquer-reprise-source", *preuve_cli]) == 2
+    assert not original.exists()
+    capsys.readouterr()
+    assert main([
+        *prefixe, "appliquer-reprise-source", *preuve_cli, "--membre", MEMBRE, "--sha256-source", sha_source,
+    ]) == 0
+    assert json.loads(capsys.readouterr().out)["sha256_original"] == sha_source
+    assert not (prive / "benchab.sqlite").exists()
+
+
+def test_appliquer_ne_donne_pas_pass_si_le_parent_est_deplace(tmp_path, monkeypatch):
+    """Le contrôle final refuse une publication dans un dossier déplacé en concurrence."""
+    import os
+
+    from benchab.donnees.reprise_source import appliquer_copie
+
+    prive, original, _, preuve, sha_preuve, sha_source = _copie_pour_application(tmp_path)
+    deplace = tmp_path / "dossier-deplace"
+    lien = os.link
+
+    def deplacement(source, destination, *args, **kwargs):
+        original.parent.rename(deplace)
+        return lien(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", deplacement)
+    with pytest.raises(ValueError, match="dossier source a changé"):
+        appliquer_copie(prive, preuve, sha_preuve, MEMBRE, sha_source)
+    assert not original.exists()
+    assert list(deplace.iterdir()) == [deplace / original.name]
+    assert hashlib.sha256((deplace / original.name).read_bytes()).hexdigest() == sha_source

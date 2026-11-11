@@ -88,17 +88,26 @@ def _verifier_reste(archive, deja_lus):
                 pass
 
 
-def lire(p):
+def lire(p, *, sha256_attendu=None):
     """Inventorie un 3MF tranché sans écriture, avec masses estimées en g.
 
-    Le SHA et les membres proviennent du même lecteur. Le rapport conserve
-    la taille en octets, les réglages typés et le contrôle final de la source.
-    Une archive ambiguë ou illisible est refusée ; aucune impression n’est attestée.
+    Entrées : chemin et SHA-256 hexadécimal facultatif. Le SHA et les membres
+    proviennent du même lecteur ; l’empreinte déclarée doit correspondre avant
+    toute lecture d’un membre. Le rapport conserve la taille en octets, les
+    réglages typés et le contrôle final de la source. Une archive ambiguë,
+    divergente ou illisible est refusée ; aucune impression n’est attestée.
     """
     p = Path(p)
+    if sha256_attendu is not None and (
+        not isinstance(sha256_attendu, str) or re.fullmatch(r"[0-9a-f]{64}", sha256_attendu) is None
+    ):
+        raise ValueError("empreinte SHA-256 attendue invalide")
     try:
         with Archive3MF(p) as archive:
             initial = archive.sha256()
+            # Le plan de consommation n’a pas besoin de relire le fichier par son chemin (#223).
+            if sha256_attendu is not None and initial != sha256_attendu:
+                raise ValueError("empreinte SHA-256 de l’envoi différente")
             if _REGLES_PROJET not in archive.noms():
                 raise ValueError(f"{p.name} : réglages absents")
             st = archive.reglages(_REGLES_PROJET)

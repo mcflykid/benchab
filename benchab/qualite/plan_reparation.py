@@ -405,6 +405,33 @@ def planifier(prive: Path | str | None = None, *, candidats: list[str] | None = 
     }
 
 
+def resumer(rapport: dict[str, Any], sortie: Path) -> dict[str, Any]:
+    """Résume un plan passif dont le JSON complet a déjà été enregistré.
+
+    Entrées : rapport de planifier et chemin JSON privé, sans unité.
+    Sortie : verdict et code inchangés (PASS, WARN ou NON VÉRIFIÉ),
+    compteurs de vues et de propositions, diagnostic et chemin. Aucun
+    nom de candidat ni empreinte n'est recopié ; aucune action n'est appliquée.
+    """
+    comptes: dict[str, int] = {}
+    for vue in rapport["vues"]:
+        statut = vue["statut"]
+        comptes[statut] = comptes.get(statut, 0) + 1
+    resultat = {
+        "statut": rapport["statut"],
+        "code": rapport["code"],
+        "application_effectuee": rapport["application_effectuee"],
+        "vues_par_statut": comptes,
+        "actions_proposees": len(rapport["actions"]),
+        "liens_proposes": len(rapport["propositions_liens"]),
+        "rapport": str(sortie),
+    }
+    if "detail" in rapport:
+        # Le plan ne met ici que des diagnostics stables, sans chemins d’erreurs système.
+        resultat["detail"] = rapport["detail"]
+    return resultat
+
+
 def appliquer_vue(prive: Path | str, rapport: dict[str, Any], cible: str) -> dict[str, Any]:
     """Répare une seule vue privée depuis un plan exact ; renvoie PASS, refuse toute reprise ou source périmée.
 

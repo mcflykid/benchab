@@ -1,0 +1,154 @@
+"""Vérifie que le réemploi local ne masque pas une divergence SQLite ↔ export."""
+
+import hashlib
+import json
+import sqlite3
+
+import pytest
+
+from benchab.donnees.base import TABLES, Base
+
+
+def test_transaction_reutilise_les_digests_et_repare_un_export_falsifie(tmp_path, monkeypatch):
+    """Un manifeste altéré ne remplace jamais le SHA issu de l'instantané."""
+    base = Base(tmp_path)
+    try:
+        dossier = tmp_path / "export"
+        base.ecrire(
+            "INSERT INTO connaissances(id,texte,categorie,source) VALUES(?,?,?,?)",
+            ("preuve", "canonique", "numerique", "fixture"),
+        )
+        faux = dossier / "connaissances.jsonl"
+        attendu = faux.read_bytes()
+        alteration = attendu.replace(b"canonique", b"corrompue")
+        assert alteration != attendu and len(alteration) == len(attendu)
+        faux.write_bytes(alteration)
+        manifeste = dossier / "manifest.json"
+        donnees = json.loads(manifeste.read_bytes())
+        donnees["sha256"]["connaissances"] = hashlib.sha256(faux.read_bytes()).hexdigest()
+        manifeste.write_text(json.dumps(donnees))
+        projet = dossier / "projets.jsonl"
+        stables = dossier / "profils.jsonl"
+        inode = stables.stat().st_ino
+        lire = base._lignes_canoniques
+        tables = []
+
+        def mesurer(table):
+            tables.append(table)
+            return lire(table)
+
+        monkeypatch.setattr(base, "_lignes_canoniques", mesurer)
+        base.ecrire("INSERT INTO projets(id,nom) VALUES(?,?)", ("temoin", "Témoin"))
+        assert tables == ["projets", "connaissances"]
+        assert faux.read_bytes() == attendu
+        assert json.loads(projet.read_text())["id"] == "temoin"
+        assert stables.stat().st_ino == inode
+    finally:
+        base.fermer()
+
+
+@pytest.mark.parametrize("journal", ["delete", "wal"])
+def test_commit_externe_avant_export_invalide_tous_les_digests(tmp_path, monkeypatch, journal):
+    """Un commit extérieur ne doit pas faire publier un manifeste périmé."""
+    base = Base(tmp_path)
+    try:
+        assert base.connexion.execute(f"PRAGMA journal_mode={journal}").fetchone()[0] == journal
+        exporter = base.exporter
+        lire = base._lignes_canoniques
+        tables = []
+
+        def mesurer(table):
+            tables.append(table)
+            return lire(table)
+
+        def commit_avant_export():
+            with sqlite3.connect(tmp_path / "benchab.sqlite") as autre:
+                autre.execute("UPDATE projets SET nom=? WHERE id=?", ("Externe", "temoin"))
+            exporter()
+
+        monkeypatch.setattr(base, "_lignes_canoniques", mesurer)
+        monkeypatch.setattr(base, "exporter", commit_avant_export)
+        base.ecrire("INSERT INTO projets(id,nom) VALUES(?,?)", ("temoin", "Interne"))
+        assert set(tables) == set(TABLES)
+        assert json.loads((tmp_path / "export/projets.jsonl").read_text())["nom"] == "Externe"
+    finally:
+        base.fermer()
+
+
+def test_export_explicite_apres_transaction_recalcule_les_tables(tmp_path, monkeypatch):
+    """L’empreinte de transaction n’est pas conservée pour une publication ultérieure."""
+    base = Base(tmp_path)
+    try:
+        base.ecrire("INSERT INTO projets(id,nom) VALUES(?,?)", ("temoin", "Initial"))
+        with sqlite3.connect(tmp_path / "benchab.sqlite") as autre:
+            autre.execute("UPDATE projets SET nom=? WHERE id=?", ("Nouvelle valeur", "temoin"))
+        lire = base._lignes_canoniques
+        tables = []
+
+        def mesurer(table):
+            tables.append(table)
+            return lire(table)
+
+        monkeypatch.setattr(base, "_lignes_canoniques", mesurer)
+        base.exporter()
+        assert set(tables) == set(TABLES)
+        assert json.loads((tmp_path / "export/projets.jsonl").read_text())["nom"] == "Nouvelle valeur"
+    finally:
+        base.fermer()
+
+
+def test_export_qualifie_ne_laisse_pas_committer_un_tiers_pendant_wal(tmp_path, monkeypatch):
+    """Le snapshot WAL ne peut pas devenir obsolète avant la publication."""
+    base = Base(tmp_path)
+    try:
+        assert base.connexion.execute("PRAGMA journal_mode=wal").fetchone()[0] == "wal"
+        relever = base._version_export
+        appels = []
+
+        def apres_releve():
+            marqueur = relever()
+            appels.append(marqueur)
+            if len(appels) == 2:
+                with sqlite3.connect(tmp_path / "benchab.sqlite", timeout=0) as autre:
+                    with pytest.raises(sqlite3.OperationalError, match="locked"):
+                        autre.execute("UPDATE projets SET nom=? WHERE id=?", ("Externe", "temoin"))
+            return marqueur
+
+        monkeypatch.setattr(base, "_version_export", apres_releve)
+        base.ecrire("INSERT INTO projets(id,nom) VALUES(?,?)", ("temoin", "Initial"))
+        assert len(appels) == 2
+        assert json.loads((tmp_path / "export/projets.jsonl").read_text())["nom"] == "Initial"
+        with sqlite3.connect(tmp_path / "benchab.sqlite", timeout=0) as autre:
+            autre.execute("UPDATE projets SET nom=? WHERE id=?", ("Après", "temoin"))
+    finally:
+        base.fermer()
+
+
+@pytest.mark.parametrize("echec", [False, True])
+def test_export_direct_wal_libere_le_verrou_apres_publication(tmp_path, monkeypatch, echec):
+    """La voie directe réserve le snapshot, puis libère SQLite même sur exception."""
+    base = Base(tmp_path)
+    try:
+        assert base.connexion.execute("PRAGMA journal_mode=wal").fetchone()[0] == "wal"
+        base.ecrire("INSERT INTO projets(id,nom) VALUES(?,?)", ("temoin", "Initial"))
+        publier = base._exporter_tables
+
+        def pendant_publication():
+            with sqlite3.connect(tmp_path / "benchab.sqlite", timeout=0) as autre:
+                with pytest.raises(sqlite3.OperationalError, match="locked"):
+                    autre.execute("UPDATE projets SET nom=? WHERE id=?", ("Externe", "temoin"))
+            if echec:
+                raise RuntimeError("publication interrompue")
+            return publier()
+
+        monkeypatch.setattr(base, "_exporter_tables", pendant_publication)
+        if echec:
+            with pytest.raises(RuntimeError, match="publication interrompue"):
+                base.exporter()
+        else:
+            base.exporter()
+        assert not base.connexion.in_transaction
+        with sqlite3.connect(tmp_path / "benchab.sqlite", timeout=0) as autre:
+            autre.execute("UPDATE projets SET nom=? WHERE id=?", ("Après", "temoin"))
+    finally:
+        base.fermer()

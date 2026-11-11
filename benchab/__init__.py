@@ -1,3 +1,3 @@
 """Atelier BENCHAB ; source unique de la version du paquet et de sa CLI."""
 
-__version__ = "1.25.0"
+__version__ = "1.26.0"

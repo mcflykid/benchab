@@ -1,6 +1,6 @@
 """Comparer des variantes par partie nommée, sans classement automatique.
 
-python variantes.py variantes.json --sortie preuves/comparaison-neuve
+benchab conception variantes variantes.json --sortie prive/rapports/comparaison-neuve
 Sources intactes ; mesures de fabrication lues dans un 3MF tranché identifié.
 """
 
@@ -13,22 +13,36 @@ from zipfile import BadZipFile
 
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import sans_lien
+from benchab.qualite.ecritures import destination_neuve, publier_dossier_neuf
 
 NON_VERIFIE = "NON VÉRIFIÉ"
 
 
 def importer():
+    """Charge le module commun d'import 3D sans analyser de modèle.
+
+    Sortie : module qui fournit notamment la mesure et le SHA des sources.
+    """
     from benchab.imports3d import importer as importateur
 
     return importateur
 
 
 def chemin(base, value):
+    """Résout une référence de manifeste en chemin absolu.
+
+    Les références relatives partent de base. Cette résolution ne fixe
+    pas à elle seule une frontière de publication.
+    """
     p = Path(value)
     return (base / p).resolve() if not p.is_absolute() else p.resolve()
 
 
 def nombre(value):
+    """Vérifie une valeur numérique finie et positive ou nulle.
+
+    Les booléens sont refusés ; l'unité dépend du champ appelant.
+    """
     return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0
 
 
@@ -110,6 +124,13 @@ def fabrication(declaration, base, empreinte):
 
 
 def visuel(path, base, modeles, empreinte):
+    """Relit une évaluation de silhouettes liée aux modèles exacts.
+
+    Entrées : référence de rapport, dossier de base, modèles nommés avec
+    chemins/SHA et fonction d'empreinte. Sortie : NON VÉRIFIÉ sans
+    évaluation, FAIL sur lien incomplet ou verdict du contrôle visuel.
+    Aucun fichier n'est modifié et aucun résultat physique n'est déduit.
+    """
     if not path:
         return {"statut": NON_VERIFIE, "raison": "Aucune évaluation visuelle fournie."}
     path = chemin(base, path)
@@ -140,6 +161,13 @@ def visuel(path, base, modeles, empreinte):
 
 
 def comparer(manifeste):
+    """Compare en lecture seule des variantes par partie nommée.
+
+    Entrée : manifeste JSON qui désigne une base et au moins deux variantes.
+    Sortie : rapport PASS/WARN/FAIL, cotes en mm, volumes en mm³ et mesures
+    du slicer en secondes et grammes quand la preuve est liée. Aucun
+    classement automatique ni validation d'impression.
+    """
     manifeste = Path(manifeste).resolve()
     helper = importer()
     manifest_hash = helper.empreinte(manifeste)
@@ -260,6 +288,11 @@ def comparer(manifeste):
 
 
 def markdown(report):
+    """Formate un rapport de variantes sans recalculer ni écrire.
+
+    Sortie : texte Markdown avec dimensions en mm, volumes en mm³ et
+    statuts du rapport d'entrée ; aucun classement n'est ajouté.
+    """
     lines = [
         "# Comparaison de variantes",
         "",
@@ -322,23 +355,29 @@ def markdown(report):
     return "\n".join(lines)
 
 
-def main(argv=None):
+def main(argv=None, *, prive=None):
+    """Compare les modèles et publie les deux rapports dans un dossier privé neuf.
+
+    Entrées : manifeste JSON, destination et atelier privé ; données en mm,
+    mm³, s et g selon le rapport. Sortie CLI 0/1/2 pour PASS/WARN/FAIL,
+    ou 2 sur erreur. Les sources et les réglages ne sont pas modifiés ;
+    aucune tenue physique ni validation d’impression n’est déduite.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifeste", type=Path)
-    parser.add_argument("--sortie", type=Path, required=True)
+    parser.add_argument("--sortie", type=Path, required=True, help="Dossier neuf dans l’atelier privé")
     args = parser.parse_args(argv)
     try:
-        if args.sortie.exists():
-            raise ValueError("Dossier de sortie existant : écrasement refusé.")
+        cible = destination_neuve(args.sortie, prive=prive, temporaire=False)
+        if not cible.parent.is_dir():
+            raise ValueError("Le dossier parent de la sortie doit déjà exister.")
         report = comparer(args.manifeste)
-        args.sortie.mkdir(parents=True, exist_ok=False)
-        with (args.sortie / "rapport.json").open("x", encoding="utf-8") as output:
-            json.dump(report, output, ensure_ascii=False, indent=2, allow_nan=False)
-        with (args.sortie / "comparaison.md").open("x", encoding="utf-8") as output:
-            output.write(markdown(report))
-        print(
-            json.dumps({"statut": report["statut"], "rapport": str(args.sortie / "rapport.json")}, ensure_ascii=False)
-        )
+        # Épingler le parent pour que les rapports ne suivent pas une redirection tardive (#225).
+        cible = publier_dossier_neuf(cible, {
+            "rapport.json": json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8"),
+            "comparaison.md": markdown(report).encode("utf-8"),
+        }, prive=prive)
+        print(json.dumps({"statut": report["statut"], "rapport": str(cible / "rapport.json")}, ensure_ascii=False))
         return {"PASS": 0, "WARN": 1, "FAIL": 2}[report["statut"]]
     except (ValueError, KeyError, OSError, TypeError) as error:
         parser.exit(2, "ERREUR : " + str(error) + "\n")

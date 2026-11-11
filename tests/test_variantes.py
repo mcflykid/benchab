@@ -1,4 +1,5 @@
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -47,6 +48,84 @@ class VariantTests(unittest.TestCase):
                 f'<metadata key="weight" value="{grams}"/></plate></config>',
             )
         return {"source": filename, "sha256": variants.importer().empreinte(path)}
+
+    def test_commande_generale_compare_sans_ouvrir_de_base(self):
+        """Un atelier explicite et un dossier neuf suffisent à la comparaison."""
+        from benchab.cli import main
+
+        atelier = self.root / "atelier"
+        atelier.mkdir()
+        self.path.write_text(json.dumps(self.data))
+        cible = atelier / "rapport"
+        code = main([
+            "--prive", str(atelier), "conception", "variantes",
+            str(self.path), "--sortie", str(cible),
+        ])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads((cible / "rapport.json").read_text())["statut"], "WARN")
+        self.assertFalse((atelier / "benchab.sqlite").exists())
+
+    def test_cli_refuse_un_rapport_hors_atelier(self):
+        """Un rapport qui contient les chemins des modèles reste sous l’atelier."""
+        from unittest.mock import patch
+
+        prive = self.root / "atelier"
+        prive.mkdir()
+        self.path.write_text(json.dumps(self.data))
+        destination = self.root / "hors-atelier"
+        with patch.dict("os.environ", {"BENCHAB_PRIVE": str(prive)}):
+            with self.assertRaises(SystemExit) as refus:
+                variants.main([str(self.path), "--sortie", str(destination)])
+        self.assertEqual(refus.exception.code, 2)
+        self.assertFalse(destination.exists())
+
+    def test_cli_ne_prepare_rien_dans_un_parent_devenu_lien(self):
+        """Un parent redirigé pendant le calcul ne reçoit pas de fichiers de travail."""
+        from unittest.mock import patch
+
+        prive = self.root / "atelier"
+        parent = prive / "rapports"
+        parent.mkdir(parents=True)
+        externe = self.root / "externe"
+        externe.mkdir()
+        self.path.write_text(json.dumps(self.data))
+        comparer = variants.comparer
+
+        def comparer_puis_deplacer(manifeste):
+            resultat = comparer(manifeste)
+            parent.rename(prive / "rapports-originaux")
+            parent.symlink_to(externe, target_is_directory=True)
+            return resultat
+
+        with patch.object(variants, "comparer", comparer_puis_deplacer):
+            with self.assertRaises(SystemExit) as refus:
+                variants.main([str(self.path), "--sortie", str(parent / "rapport")], prive=prive)
+        self.assertEqual(refus.exception.code, 2)
+        self.assertEqual(list(externe.iterdir()), [])
+        self.assertEqual(list((prive / "rapports-originaux").iterdir()), [])
+
+    def test_cli_ne_remplace_pas_un_dossier_arrive_pendant_publication(self):
+        """Une collision tardive garde la sortie arrivée et ne laisse pas de lot partiel."""
+        from unittest.mock import patch
+
+        self.path.write_text(json.dumps(self.data))
+        destination = self.root / "rapport"
+        from benchab.qualite import ecritures
+
+        publier = ecritures.renommer_exclusif
+
+        def publier_puis_collision(source, cible, **options):
+            destination.mkdir()
+            (destination / "existant.txt").write_text("préserver")
+            publier(source, cible, **options)
+
+        with patch.object(ecritures, "renommer_exclusif", publier_puis_collision):
+            with self.assertRaises(SystemExit) as refus:
+                variants.main([str(self.path), "--sortie", str(destination)], prive=self.root)
+        self.assertEqual(refus.exception.code, 2)
+        self.assertEqual([p.name for p in destination.iterdir()], ["existant.txt"])
+        self.assertEqual((destination / "existant.txt").read_text(), "préserver")
+        self.assertFalse(list(self.root.glob(".publication-dossier-*")))
 
     def test_change_one_named_part_preserves_other(self):
         before = {p.name: p.read_bytes() for p in self.root.glob("*.stl")}
@@ -263,12 +342,13 @@ class VariantTests(unittest.TestCase):
             "--sortie",
             str(self.root / "report"),
         ]
-        result = subprocess.run(command, capture_output=True, text=True)
+        env = {**os.environ, "BENCHAB_PRIVE": str(self.root)}
+        result = subprocess.run(command, capture_output=True, text=True, env=env)
         self.assertEqual(result.returncode, 1, result.stderr)
         path = self.root / "report/rapport.json"
         original = path.read_bytes()
         self.assertIn("corps", (self.root / "report/comparaison.md").read_text())
-        self.assertEqual(subprocess.run(command, capture_output=True).returncode, 2)
+        self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 2)
         self.assertEqual(path.read_bytes(), original)
 
 

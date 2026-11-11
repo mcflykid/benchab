@@ -16,7 +16,6 @@ from benchab.chemins import atelier_prive, sans_lien
 from benchab.donnees.base import APPLICATION_ID, Base
 from benchab.fabrication import envois_slicer
 from benchab.qualite.ecritures import _sans_lien
-from benchab.qualite.empreintes import sha256_fichier
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _PLAQUE = re.compile(r"Metadata/plate_(\d+)\.gcode\Z")
@@ -231,11 +230,11 @@ def _estimer_retour(prive: Path, connexion: sqlite3.Connection, retour_id: str) 
         if association is None:
             return _nv(retour_id, "association d’envoi absente ou ambiguë")
         chemin = _chemin_prive(prive, chemin_envoi)
-        if sha256_fichier(chemin) != envoi_sha:
+        try:
+            rapport = envois_slicer.lire(chemin, sha256_attendu=envoi_sha)
+        except (OSError, ValueError):
+            # Préserver le motif de l’association rompue même si l’index ZIP ne s’ouvre plus (#223).
             return _nv(retour_id, "envoi absent, ambigu ou empreinte divergente")
-        rapport = envois_slicer.lire(chemin)
-        if rapport.get("sha256") != envoi_sha:
-            return _nv(retour_id, "empreinte relue de l’envoi divergente")
         details = rapport.get("details_plaques")
         if not isinstance(details, list) or not details:
             return _nv(retour_id, "détails de plaque absents")

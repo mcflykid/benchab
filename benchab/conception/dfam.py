@@ -45,6 +45,12 @@ def couverture_epaisseur(result):
 
 
 def charger(source=SOURCE):
+    """Charge le module DfAM local à empreinte exacte.
+
+    Entrée : chemin du script de confiance. Sortie : module dont les
+    mesures d’épaisseur signalent les corps sans échantillon. Refuse
+    tout SHA divergent avant exécution ; ne lit pas un bytecode précédent.
+    """
     source_bytes = source.read_bytes()
     if hashlib.sha256(source_bytes).hexdigest() != SOURCE_SHA256:
         raise ValueError("Skill DfAM modifie : revoir son contrat avant de renouveler son empreinte.")
@@ -63,6 +69,11 @@ def charger(source=SOURCE):
 
 
 def main(argv=None):
+    """Lance le contrôle DfAM local après validation des arguments.
+
+    Entrée : options CLI. Sortie : code 1 sur refus de chargement ou
+    d’arguments, sinon code du moteur. Les constats restent numériques.
+    """
     try:
         arguments = sys.argv[1:] if argv is None else argv
         valider_arguments(arguments)
