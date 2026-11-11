@@ -82,3 +82,24 @@ final vérifie leurs empreintes. `PASS` signifie que les octets copiés égalent
 rendu actuel de SQLite ; l'origine historique et la pertinence de la candidate
 restent **NON VÉRIFIÉES**. Un échec après la preuve garde celle-ci comme trace et
 ne revendique pas une réparation.
+
+## Préparer la reprise d’une table exportée
+
+Une table JSONL absente peut être recalculée dans un **dossier neuf** distinct
+d’`export/`. La commande ne publie pas cette copie à la place du fichier
+manquant et ne reconstruit pas SQLite.
+
+```sh
+benchab --prive /chemin/atelier controle preparer-reprise-export \
+  --table projets --sortie /chemin/atelier/rapports/reprise-projets
+```
+
+Le registre est ouvert en lecture seule, sans journal WAL ni fichier
+auxiliaire présent, et le manifeste d’export doit rester valide et stable.
+La table (64 Mio maximum) est sérialisée dans le même ordre et le même format
+que lors de l’export normal. La publication exclusive conserve le JSONL
+et `preuve.json` ensemble si le SHA-256 relu correspond au SHA déjà déclaré
+dans le manifeste. Une cible existante, liée, une source modifiée ou un SHA
+divergent donnent un refus sans dossier final. Les autres tables ne sont
+pas évaluées par cette commande. Le statut PASS qualifie une **copie non
+appliquée**, et ne dispense pas d’un contrôle de cohérence avant toute reprise.
