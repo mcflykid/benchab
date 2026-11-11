@@ -32,6 +32,7 @@ mesurée.
 import json
 import math
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -43,6 +44,7 @@ from benchab.controles import supports_requis as S
 from benchab.fabrication import anycubic as A
 from benchab.gcode.lecture import lire_texte_gcode_3mf
 from benchab.machine.configuration import charger as charger_configuration
+from benchab.qualite.ecritures import destination_neuve, renommer_exclusif, valider_chemins
 
 ICI = Path(__file__).resolve().parent
 SEUIL = math.cos(math.radians(50))  # normale à plus de 50° de la verticale vers le bas = pente < 40° sur l'horizontale
@@ -273,15 +275,35 @@ def trancher(cands, profil, reglages_support):
 
 
 def main(argv=None):
-    """Rapporte les orientations candidates et besoins en supports, sans imprimer."""
+    """Publie une étude neuve d’orientations et de supports, sans imprimer ni remplacer une preuve."""
     a = list(sys.argv[1:] if argv is None else argv)
     if "--profil" not in a or "--sortie" not in a:
         print(__doc__)
         return 2
     stls = [x for x in a[: min(a.index("--profil"), a.index("--sortie"))] if not x.startswith("--")]
-    sortie = Path(a[a.index("--sortie") + 1])
-    sortie.mkdir(parents=True, exist_ok=True)
-    profil = a[a.index("--profil") + 1]
+    try:
+        profil = a[a.index("--profil") + 1]
+        cible = destination_neuve(a[a.index("--sortie") + 1])
+        entrees = [*stls, profil]
+        valider_chemins(entrees, [cible])
+        if len({Path(f).stem.casefold() for f in stls}) != len(stls):
+            raise ValueError("Noms de pièces ambigus : choisir des noms de fichier distincts.")
+        cible.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".orientations-", dir=cible.parent) as dossier:
+            sortie = Path(dossier) / "export"
+            sortie.mkdir()
+            _calculer_orientations(a, stls, profil, sortie)
+            # Un dossier complet devient visible d’un bloc, sans écraser une étude.
+            valider_chemins(entrees, [cible])
+            renommer_exclusif(sortie, cible)
+    except (OSError, ValueError, IndexError) as erreur:
+        print(f"Orientations refusées : {erreur}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def _calculer_orientations(a, stls, profil, sortie):
+    """Écrit dans le seul dossier temporaire ; aucun résultat physique n’est déduit."""
     n = int(a[a.index("--tranches") + 1]) if "--tranches" in a else 4
     amin = float(a[a.index("--appui-min") + 1]) if "--appui-min" in a else 150.0
     plat = (
@@ -333,7 +355,6 @@ def main(argv=None):
         encoding="utf-8",
     )
 
-    return 0
 
 
 if __name__ == "__main__":
