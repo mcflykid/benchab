@@ -10,8 +10,11 @@ import tempfile
 import threading
 from pathlib import Path
 from urllib.parse import quote
+from zipfile import BadZipFile
 
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, sans_lien
+from benchab.gcode.lecture import membres_gcode_3mf
 from benchab.qualite.empreintes import sha256_fichier
 
 GENERATION = threading.Lock()
@@ -129,8 +132,6 @@ def source_couches(projet, q):
             raise ValueError("Fichiers de référence malformés")
         candidats += [f["chemin"] for f in files if f.get("chemin")]
     candidats += [str(p.relative_to(projet)) for p in (projet / "reference").rglob("*.gcode.3mf")]
-    import zipfile
-
     for rel in dict.fromkeys(candidats):
         from benchab.qualite.publication import chemin_projet
 
@@ -142,15 +143,15 @@ def source_couches(projet, q):
         if f.suffix.lower() != ".3mf":
             continue
         try:
-            with zipfile.ZipFile(f) as z:
-                if any((re.fullmatch("Metadata/plate_\\d+\\.gcode", n) for n in z.namelist())):
-                    return declare(f)
-        except zipfile.BadZipFile:
+            if membres_gcode_3mf(f):
+                return declare(f)
+        except BadZipFile:
             continue
     return None
 
 
 def couches(racine, nom, ressources_partagees=False):
+    """Rend l'aperçu des couches en octets HTML ; conserve sources et preuves du projet."""
     projet, q = projet_courant(racine, nom)
     ancien = interne(projet, "preuves/visualisation/apercu-gcode.html")
 
@@ -175,21 +176,16 @@ def couches(racine, nom, ressources_partagees=False):
         f = source_couches(projet, q)
         if f is None:
             raise ValueError("Aucun G-code ni aperçu conservé disponible")
-        import zipfile
-
         if f.stat().st_size > 128 * 1024 * 1024:
             raise ValueError("G-code volumineux : utiliser le visualiseur spécialisé")
-        if f.suffix.lower() == ".3mf":
-            with zipfile.ZipFile(f) as z:
-                if sum((x.file_size for x in z.infolist())) > 256 * 1024 * 1024:
-                    raise ValueError("Archive volumineuse : génération locale non exécutée")
         from benchab.visualisation.apercu_gcode import page
 
         avant = signature(f)
         empreinte = sha256_fichier(f)
         with GENERATION, tempfile.TemporaryDirectory(prefix="couches-atelier-") as tmp:
             out = Path(tmp) / "couches.html"
-            page(f, out, titre="Couches de " + nom)
+            # Appliquer le budget de la consultation dans le même contexte que le rendu (#122).
+            page(f, out, titre="Couches de " + nom, taille_max_archive=256 * 1024 * 1024)
             body = out.read_text()
         if signature(f) != avant:
             raise ValueError("Source G-code modifiée pendant sa lecture")
@@ -363,8 +359,6 @@ def _scene(racine, nom, ressources_partagees=False, tranche=None, placement=None
             if rel.startswith("projets/" + nom + "/"):
                 rel = rel[len("projets/" + nom + "/") :]
             source_tranche = interne(p, rel)
-            import zipfile
-
             from benchab.organisation.synthese_atelier import _lecture
 
             with tempfile.TemporaryDirectory(prefix="tranche-scene-") as frozen:
@@ -376,15 +370,11 @@ def _scene(racine, nom, ressources_partagees=False, tranche=None, placement=None
                         dest.write(chunk)
                 if digest.hexdigest() != tranche["sha256"]:
                     raise ValueError("Tranchage modifié")
-                with zipfile.ZipFile(copie) as archive:
-                    if sum((x.file_size for x in archive.infolist())) > 256 * 1024 * 1024:
-                        raise ValueError("Tranchage volumineux")
-                    if len(archive.namelist()) != len(set(archive.namelist())):
-                        raise ValueError("Membres dupliqués")
-                    for info in archive.infolist():
+                with Archive3MF(copie, taille_max_totale=256 * 1024 * 1024) as archive:
+                    for membre in archive.noms():
                         if (
-                            re.fullmatch("Metadata/plate_\\d+\\.gcode", info.filename)
-                            and info.file_size > 128 * 1024 * 1024
+                            re.fullmatch(r"Metadata/plate_\d+\.gcode", membre)
+                            and archive.taille_membre(membre) > 128 * 1024 * 1024
                         ):
                             raise ValueError("G-code volumineux")
                 source["tranche_sha256"] = tranche["sha256"]
