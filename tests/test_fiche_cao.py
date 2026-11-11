@@ -38,6 +38,61 @@ def test_plan_et_script_identiques_sur_rejeu(tmp_path):
     assert (tmp_path / "p1/modele.py").read_bytes() == script
 
 
+def test_lamage_superieur_ajoute_seulement_le_volume_annulaire_et_reste_deterministe(tmp_path):
+    """Le plan soustrait l’anneau à la profondeur demandée, en plus du trou traversant."""
+    from math import pi
+
+    from benchab.conception.fiche_cao import generer
+
+    fiche = _fiche()
+    fiche["percages"][0]["lamage"] = {"diametre_mm": 9, "profondeur_mm": 2, "source_cotes": "cotes déclarées"}
+    source = tmp_path / "fiche.json"
+    for i in (0, 1):
+        source.write_text(json.dumps(fiche, indent=i, sort_keys=bool(i)), encoding="utf-8")
+        generer(source, tmp_path / f"p{i}")
+    plan = json.loads((tmp_path / "p0/plan.json").read_bytes())
+    assert plan["attendu"]["volume_mm3"] == pytest.approx(2400 - pi * 2.5**2 * 4 - pi * (4.5**2 - 2.5**2) * 2)
+    assert plan["percages"][0]["lamage"] == {
+        "diametre_mm": 9, "profondeur_mm": 2, "source_cotes": "cotes déclarées",
+    }
+    assert (tmp_path / "p0/plan.json").read_bytes() == (tmp_path / "p1/plan.json").read_bytes()
+    script = (tmp_path / "p0/modele.py").read_bytes()
+    assert script == (tmp_path / "p1/modele.py").read_bytes()
+    assert plan["script_sha256"] == hashlib.sha256(script).hexdigest()
+    assert b"cotes d" not in script
+
+
+@pytest.mark.parametrize(
+    "x,diametre,profondeur,autre,source_cotes,message",
+    [
+        (0, 5, 1, False, "plan", "diamètre"),
+        (0, 9, 4, False, "plan", "profondeur"),
+        (11, 9, 2, False, "plan", "marge"),
+        (0, 9, 2, True, "plan", "chevauchement"),
+        (0, 9, 2, False, "", "source"),
+    ],
+)
+def test_lamage_refuse_la_collision_ou_les_cotes_sans_source(
+    tmp_path, x, diametre, profondeur, autre, source_cotes, message
+):
+    """Le rayon d’entrée, le fond restant et l’origine explicite des cotes sont contrôlés."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = _fiche()
+    fiche["percages"] = [{
+        "x_mm": x, "y_mm": 0, "diametre_mm": 5,
+        "lamage": {"diametre_mm": diametre, "profondeur_mm": profondeur, "source_cotes": source_cotes},
+    }]
+    if autre:
+        fiche["percages"].append({"x_mm": 6, "y_mm": 0, "diametre_mm": 5})
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche), encoding="utf-8")
+    cible = tmp_path / "sortie"
+    with pytest.raises(ValueError, match=message):
+        generer(source, cible)
+    assert not cible.exists()
+
+
 @pytest.mark.parametrize(
     "bloc,percages,message",
     [
