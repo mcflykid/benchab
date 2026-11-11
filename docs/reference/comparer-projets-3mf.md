@@ -23,15 +23,21 @@ des chaînes littérales, sans normalisation ni réindexation. L’ordre des aut
 listes typées est comparé exactement. Un écart reconnu produit `WARN` pour les
 réglages/palette ; une ambiguïté produit `NON VÉRIFIÉ`.
 
-La peinture par facette demeure `NON VÉRIFIÉE` dans ce premier lot. Le
-3MF Core décrit les propriétés d’objet et de triangle au moyen de références
-de groupe (`pid`), d’indices (`pindex`, `p1`–`p3`) et de ressources de
-matériau. Les attributs de peinture des slicers sont des représentations
-distinctes : Anycubic Slicer Next identifie `paint_color` dans sa source
-épinglée; PrusaSlicer 2.9.3 identifie `slic3rpe:mmu_segmentation`. Cette
-présence documentaire ne prouve ni une équivalence entre ces familles, ni
-leur conservation par une conversion. Le diagnostic ne lit pas les facettes,
-ne vérifie pas leur identité/ordre et ne compare aucune peinture.
+La peinture par facette reste partielle. Pour un sous-cas direct et non ambigu,
+le lecteur suit un StartPart OPC unique vers un seul objet/maillage et un item
+de build direct. Il compare les coordonnées de sommets, leurs unités, l’ordre
+des indices de facettes et l’identité d’objet exactement avant de regarder les
+attributs. Composants, `p:path`, transformations, objets multiples, relations
+OPC ambiguës ou attributs d’extension inconnus restent `NON VÉRIFIÉ`.
+
+Dans ce sous-cas, les extensions ASN `paint_color` et Prusa
+`slic3rpe:mmu_segmentation` sont comparées comme attributs XML littéraux
+uniquement si les deux archives utilisent le même QName. Une propriété absente
+sur une facette est signalée `WARN`; les facettes permutées ou un dialecte/QName
+différent donnent `NON VÉRIFIÉ`. Aucune valeur n’est décodée ou transcodée.
+Les références Core `pid`, `p1`–`p3` et leurs ressources restent
+`NON VÉRIFIÉES`, car ce lot n’en résout pas la sémantique. Aucun de ces constats
+ne prouve la compatibilité du slicer ou la conservation après conversion.
 
 Le statut général reste `NON VÉRIFIÉ` tant que la peinture par facette n’est
 pas qualifiée, même si les réglages projet et la palette sont identiques.

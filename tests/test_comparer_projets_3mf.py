@@ -1,6 +1,7 @@
 """Comparaison préparatoire de palettes entre archives synthétiques."""
 
 import json
+from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
 from benchab.cli import main as cli_main
@@ -11,6 +12,61 @@ def _archive(path, settings):
     """Écrit uniquement les réglages fictifs utiles au contrat de comparaison."""
     with ZipFile(path, "w") as archive:
         archive.writestr("Metadata/project_settings.config", json.dumps(settings))
+
+
+def _archive_peinte(
+    path, *, dialect="paint_color", couleurs=("1", "2"), triangles=((0, 1, 2), (0, 2, 3)),
+    x1="1", composant=False, relation_ambigue=False, objet_supplementaire=False,
+):
+    """Écrit un modèle OPC synthétique direct, avec deux facettes et un dialecte explicite."""
+    from benchab.imports3d.lecture_3mf import NS, NS_REL, REL_MODELE
+
+    modele = ET.Element(NS + "model", unit="millimeter")
+    ressources = ET.SubElement(modele, NS + "resources")
+    objet = ET.SubElement(ressources, NS + "object", id="1", type="model")
+    if composant:
+        ET.SubElement(objet, NS + "components")
+    maillage = ET.SubElement(objet, NS + "mesh")
+    sommets = ET.SubElement(maillage, NS + "vertices")
+    for x, y, z in (("0", "0", "0"), (x1, "0", "0"), ("1", "1", "0"), ("0", "1", "0")):
+        ET.SubElement(sommets, NS + "vertex", x=x, y=y, z=z)
+    faces = ET.SubElement(maillage, NS + "triangles")
+    for index, face in enumerate(triangles):
+        attributs = dict(zip(("v1", "v2", "v3"), map(str, face), strict=True))
+        if couleurs[index] is not None:
+            nom = (
+                "paint_color" if dialect == "paint_color"
+                else "{http://schemas.slic3r.org/3mf/2017/06}mmu_segmentation"
+            )
+            attributs[nom] = couleurs[index]
+        ET.SubElement(faces, NS + "triangle", **attributs)
+    if objet_supplementaire:
+        ET.SubElement(ressources, NS + "object", id="2", type="model")
+    construction = ET.SubElement(modele, NS + "build")
+    ET.SubElement(construction, NS + "item", objectid="1")
+    relations = ET.Element(NS_REL + "Relationships")
+    ET.SubElement(
+        relations,
+        NS_REL + "Relationship",
+        Id="rModel",
+        Type=REL_MODELE,
+        Target="/3D/3dmodel.model",
+    )
+    if relation_ambigue:
+        ET.SubElement(
+            relations,
+            NS_REL + "Relationship",
+            Id="rAlias",
+            Type=REL_MODELE,
+            Target="/3D/3dmodel.model",
+        )
+    with ZipFile(path, "w") as archive:
+        archive.writestr("_rels/.rels", ET.tostring(relations))
+        archive.writestr("3D/3dmodel.model", ET.tostring(modele))
+        archive.writestr("Metadata/project_settings.config", json.dumps({
+            "filament_settings_id": ["Profil A", "Profil B"],
+            "filament_colour": ["#112233", "#AABBCC"],
+        }))
 
 
 def test_palette_comparee_par_identite_et_ordre_sans_affirmer_peinture(tmp_path):
@@ -175,6 +231,78 @@ def test_absence_commune_de_palette_ne_devient_pas_une_difference(tmp_path):
     assert rapport["palette"]["association_profil_couleur"]["statut"] == "NON VÉRIFIÉ"
 
 
+def test_peinture_litterale_signale_une_couleur_facette_retiree(tmp_path):
+    """Une propriété retirée d’une facette est visible si l’identité et l’ordre restent établis."""
+    source, candidate = tmp_path / "source.3mf", tmp_path / "candidate.3mf"
+    _archive_peinte(source)
+    _archive_peinte(candidate, couleurs=("1", None))
+
+    rapport = comparer(source, candidate)
+
+    peinture = rapport["peinture"]
+    assert peinture["extensions_asn_prusa"]["statut"] == "WARN"
+    assert peinture["extensions_asn_prusa"]["dialecte"] == "paint_color"
+    assert peinture["extensions_asn_prusa"]["differences_litterales"] == [{
+        "objet_id": "1", "facette": 2, "attribut": "paint_color",
+        "source": "2", "candidat": None, "present_source": True, "present_candidat": False,
+        "statut": "DIFFÉRENT",
+    }]
+
+
+def test_peinture_non_comparee_si_ordre_des_facettes_change(tmp_path):
+    """La même couleur au même index ne suffit pas lorsque les facettes ont été permutées."""
+    source, candidate = tmp_path / "source.3mf", tmp_path / "candidate.3mf"
+    _archive_peinte(source)
+    _archive_peinte(candidate, triangles=((0, 2, 3), (0, 1, 2)), couleurs=("1", "2"))
+
+    rapport = comparer(source, candidate)
+
+    assert rapport["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+    assert "ordre" in rapport["peinture"]["extensions_asn_prusa"]["raison"].lower()
+    assert rapport["peinture"]["extensions_asn_prusa"]["differences_litterales"] == []
+
+
+def test_peinture_non_comparee_entre_qnames_de_dialectes_differents(tmp_path):
+    """Les valeurs ASN paint_color et Prusa mmu_segmentation ne sont jamais transcodées."""
+    source, candidate = tmp_path / "source.3mf", tmp_path / "candidate.3mf"
+    _archive_peinte(source, dialect="paint_color")
+    _archive_peinte(candidate, dialect="mmu_segmentation")
+
+    rapport = comparer(source, candidate)
+
+    assert rapport["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+    assert "dialecte" in rapport["peinture"]["extensions_asn_prusa"]["raison"].lower()
+    assert rapport["peinture"]["extensions_asn_prusa"]["differences_litterales"] == []
+
+
+def test_peinture_non_comparee_si_coordonnees_changees(tmp_path):
+    """Un maillage qui a bougé n’est pas pris pour la même surface peinte."""
+    source, candidate = tmp_path / "source.3mf", tmp_path / "candidate.3mf"
+    _archive_peinte(source)
+    _archive_peinte(candidate, x1="1.0")
+
+    rapport = comparer(source, candidate)
+
+    assert rapport["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+    assert "coordonnées" in rapport["peinture"]["extensions_asn_prusa"]["raison"].lower()
+
+
+def test_peinture_non_verifiee_si_composant_objet_ou_relation_ambigue(tmp_path):
+    """Composants, objets multiples et StartPart aliasés ne sont jamais choisis arbitrairement."""
+    for nom, options in (
+        ("composant", {"composant": True}),
+        ("objet", {"objet_supplementaire": True}),
+        ("relation", {"relation_ambigue": True}),
+    ):
+        source, candidate = tmp_path / f"{nom}-source.3mf", tmp_path / f"{nom}-candidate.3mf"
+        _archive_peinte(source, **options)
+        _archive_peinte(candidate)
+
+        rapport = comparer(source, candidate)
+
+        assert rapport["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
+
+
 def test_cle_inconnue_reste_non_verifiee_meme_identique(tmp_path):
     """Une clé hors dictionnaire n’est pas présentée comme préservée par égalité brute."""
     source = tmp_path / "source.3mf"
@@ -186,7 +314,7 @@ def test_cle_inconnue_reste_non_verifiee_meme_identique(tmp_path):
 
     assert rapport["reglages"]["statut"] == "NON VÉRIFIÉ"
     assert rapport["reglages"]["non_verifies"][0]["cle"] == "vendor_painted_faces"
-    assert rapport["peinture"]["extensions_asn_prusa"] == "NON VÉRIFIÉ"
+    assert rapport["peinture"]["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
 
 
 def test_absence_de_config_projet_reste_non_verifiee(tmp_path):

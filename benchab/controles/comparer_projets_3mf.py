@@ -1,5 +1,6 @@
 """Compare les réglages reconnus de deux projets 3MF, en lecture seule."""
 
+import math
 import re
 from pathlib import Path
 
@@ -7,18 +8,177 @@ from benchab import reglages
 from benchab.archives_3mf import Archive3MF
 
 _CONFIG = "Metadata/project_settings.config"
+_NS_3MF = "{http://schemas.microsoft.com/3dmanufacturing/core/2015/02}"
+_NS_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+_REL_MODELE = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
+_NS_PRUSA = "{http://schemas.slic3r.org/3mf/2017/06}"
+_DIALECTES_PEINTURE = {
+    "paint_color": "paint_color",
+    _NS_PRUSA + "mmu_segmentation": "slic3rpe:mmu_segmentation",
+}
+_UNITES_3MF = {"micron", "millimeter", "centimeter", "inch", "foot", "meter"}
 
 
 def _lire(chemin):
-    """Lit les réglages projet et le SHA exact dans un seul contexte 3MF."""
+    """Lit les réglages projet, peinture directe et SHA dans un contexte 3MF."""
     with Archive3MF(chemin) as archive:
         empreinte = archive.sha256()
         if _CONFIG in archive.noms():
             donnees = archive.reglages(_CONFIG)
         else:
             donnees = None
+        peinture = _lire_peinture_directe(archive)
         archive.verifier_source(chemin)
-    return (dict(donnees) if donnees is not None else None, empreinte)
+    return (dict(donnees) if donnees is not None else None, empreinte, peinture)
+
+
+def _lire_peinture_directe(archive):
+    """Lit uniquement un modèle OPC direct à objet/maillage unique ; refuse composants et alias."""
+    noms = set(archive.noms())
+    relation_root = "_rels/.rels"
+    inconnu = {"statut": "NON VÉRIFIÉ", "raison": "StartPart OPC et maillage direct non qualifiés."}
+    if relation_root not in noms:
+        return inconnu
+    relations = archive.xml(relation_root)
+    if relations.tag != _NS_REL + "Relationships":
+        return inconnu
+    candidates, ids = [], set()
+    for relation in relations:
+        identifiant, cible = relation.get("Id"), relation.get("Target")
+        mode, type_relation = relation.get("TargetMode", "Internal"), relation.get("Type", "")
+        if not identifiant or identifiant in ids or not cible or mode not in {"Internal", "External"}:
+            return inconnu
+        ids.add(identifiant)
+        if type_relation.endswith("/3dmodel"):
+            candidates.append((type_relation, mode, cible))
+    if len(candidates) != 1 or candidates[0][:2] != (_REL_MODELE, "Internal"):
+        return {**inconnu, "raison": "Relation OPC StartPart absente, externe ou ambiguë."}
+    import posixpath
+    from urllib.parse import unquote
+
+    cible = unquote(candidates[0][2]).replace("\\", "/")
+    modele = posixpath.normpath(cible.lstrip("/") if cible.startswith("/") else cible)
+    if modele.startswith("../") or modele in {"", "."} or modele not in noms:
+        return {**inconnu, "raison": "Cible StartPart hors archive ou absente."}
+    racine = archive.xml(modele)
+    if racine.tag != _NS_3MF + "model":
+        return {**inconnu, "raison": "StartPart ne désigne pas un modèle Core reconnu."}
+    unite = racine.get("unit", "millimeter")
+    ressources = racine.find(_NS_3MF + "resources")
+    construction = racine.find(_NS_3MF + "build")
+    objets = [] if ressources is None else ressources.findall(_NS_3MF + "object")
+    items = [] if construction is None else construction.findall(_NS_3MF + "item")
+    if unite not in _UNITES_3MF or len(objets) != 1 or len(items) != 1:
+        return {**inconnu, "raison": "Unité, cardinalité des objets ou ordre du build non qualifié."}
+    objet, item = objets[0], items[0]
+    ident = objet.get("id")
+    attributs_path = [cle for cle in item.attrib if cle.rsplit("}", 1)[-1] == "path"]
+    if (
+        not ident or item.get("objectid") != ident or item.get("printable", "1") != "1"
+        or attributs_path or item.get("transform") is not None or objet.get("type") != "model"
+        or objet.find(_NS_3MF + "components") is not None
+    ):
+        return {**inconnu, "raison": "Instance, objet, composant ou p:path hors du sous-cas direct."}
+    maillage = objet.find(_NS_3MF + "mesh")
+    if maillage is None or objet.findall(_NS_3MF + "mesh") != [maillage]:
+        return {**inconnu, "raison": "Maillage direct absent ou ambigu."}
+    sommets = maillage.findall(_NS_3MF + "vertices/" + _NS_3MF + "vertex")
+    triangles = maillage.findall(_NS_3MF + "triangles/" + _NS_3MF + "triangle")
+    if not sommets or not triangles:
+        return {**inconnu, "raison": "Maillage vide."}
+    coordonnees = []
+    for sommet in sommets:
+        valeurs = tuple(sommet.get(cle) for cle in ("x", "y", "z"))
+        try:
+            numeriques = tuple(float(valeur) for valeur in valeurs)
+        except (TypeError, ValueError):
+            return {**inconnu, "raison": "Coordonnées de sommets invalides."}
+        if any(not math.isfinite(valeur) for valeur in numeriques):
+            return {**inconnu, "raison": "Coordonnées non finies."}
+        coordonnees.append(valeurs)
+    faces = []
+    peintures = []
+    proprietes_core, dialectes, autres_extensions = [], set(), []
+    core = {"v1", "v2", "v3", "pid", "p1", "p2", "p3"}
+    for triangle in triangles:
+        indices = tuple(triangle.get(cle) for cle in ("v1", "v2", "v3"))
+        try:
+            entiers = tuple(int(valeur) for valeur in indices)
+        except (TypeError, ValueError):
+            return {**inconnu, "raison": "Indices de facettes invalides."}
+        if any(indice < 0 or indice >= len(sommets) for indice in entiers):
+            return {**inconnu, "raison": "Indice de facette hors du maillage."}
+        faces.append(indices)
+        proprietes_core.append({cle: triangle.get(cle) for cle in ("pid", "p1", "p2", "p3") if cle in triangle.attrib})
+        peinture = {}
+        for cle, valeur in triangle.attrib.items():
+            if cle in core:
+                continue
+            dialecte = _DIALECTES_PEINTURE.get(cle)
+            if dialecte is None:
+                autres_extensions.append(cle)
+            else:
+                dialectes.add(cle)
+                peinture[cle] = valeur
+        peintures.append(peinture)
+    if autres_extensions:
+        return {
+            **inconnu,
+            "raison": "Attribut de facette hors du dialecte de peinture reconnu.",
+            "attributs_non_qualifies": sorted(set(autres_extensions)),
+        }
+    return {
+        "statut": "PASS",
+        "identite": {
+            "partie_opc": modele, "objet_id": ident, "unite": unite,
+            "transform": item.get("transform"), "build_index": 1,
+        },
+        "coordonnees": coordonnees,
+        "facettes": faces,
+        "peintures": peintures,
+        "dialectes": sorted(dialectes),
+        "proprietes_core": proprietes_core,
+    }
+
+
+def _comparer_peinture(source, candidat):
+    """Compare les valeurs paint littérales après preuve exacte du modèle et de ses facettes."""
+    nv = {
+        "statut": "NON VÉRIFIÉ",
+        "dialecte": None,
+        "differences_litterales": [],
+    }
+    if source["statut"] != "PASS" or candidat["statut"] != "PASS":
+        return {**nv, "raison": source.get("raison") or candidat.get("raison") or "Modèle non qualifié."}
+    for cle in ("identite", "coordonnees", "facettes"):
+        if source[cle] != candidat[cle]:
+            raison = (
+                "Ordre ou indices des facettes différents."
+                if cle == "facettes" else "Identité/coordonnées différente."
+            )
+            return {**nv, "raison": raison}
+    dialectes_source, dialectes_candidat = source["dialectes"], candidat["dialectes"]
+    if dialectes_source != dialectes_candidat or len(dialectes_source) != 1:
+        return {**nv, "raison": "Dialecte/QName absent, mélangé ou différent entre les deux projets."}
+    dialecte_qname = dialectes_source[0]
+    dialecte = _DIALECTES_PEINTURE[dialecte_qname]
+    differences = []
+    for index, (peinture_source, peinture_candidat) in enumerate(
+        zip(source["peintures"], candidat["peintures"], strict=True), start=1
+    ):
+        valeur_source = peinture_source.get(dialecte_qname)
+        valeur_candidat = peinture_candidat.get(dialecte_qname)
+        if valeur_source != valeur_candidat:
+            differences.append({
+                "objet_id": source["identite"]["objet_id"], "facette": index,
+                "attribut": dialecte,
+                "source": valeur_source, "candidat": valeur_candidat,
+                "present_source": dialecte_qname in peinture_source,
+                "present_candidat": dialecte_qname in peinture_candidat,
+                "statut": "DIFFÉRENT",
+            })
+    statut = "WARN" if differences else "PASS"
+    return {"statut": statut, "dialecte": dialecte, "differences_litterales": differences}
 
 
 def _type_qualifie(cle, valeur):
@@ -254,10 +414,11 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
     """
     source = Path(source).expanduser()
     candidat = Path(candidat).expanduser()
-    etat_source, sha_source = _lire(source)
-    etat_candidat, sha_candidat = _lire(candidat)
+    etat_source, sha_source, peinture_source = _lire(source)
+    etat_candidat, sha_candidat, peinture_candidat = _lire(candidat)
     reglages_comparaison = _comparer_reglages(etat_source, etat_candidat)
     palette = _palette(etat_source, etat_candidat)
+    extension_peinture = _comparer_peinture(peinture_source, peinture_candidat)
     return {
         "schema": 1,
         "statut": "NON VÉRIFIÉ",  # La peinture par facette n’est pas qualifiée dans ce lot.
@@ -271,11 +432,16 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
         "palette": palette,
         "peinture": {
             "statut": "NON VÉRIFIÉ",
-            "proprietes_standard_3mf": "NON VÉRIFIÉ",
-            "extensions_asn_prusa": "NON VÉRIFIÉ",
+            "proprietes_standard_3mf": {
+                "statut": "NON VÉRIFIÉ",
+                "present_source": bool(peinture_source.get("proprietes_core")),
+                "present_candidat": bool(peinture_candidat.get("proprietes_core")),
+                "raison": "Les références Core pid/p1–p3 et leurs ressources ne sont pas résolues sémantiquement.",
+            },
+            "extensions_asn_prusa": extension_peinture,
             "raison": (
                 "Aucune équivalence n’est déduite entre matériaux standard 3MF et peinture par facette "
-                "spécifique aux slicers. Identité et ordre des facettes non établis."
+                "spécifique aux slicers. Aucun transcodage ni verdict de compatibilité n’est produit."
             ),
         },
         "limites": [
