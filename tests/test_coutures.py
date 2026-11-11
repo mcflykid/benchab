@@ -178,3 +178,41 @@ def test_identite_objet_repetee_n_est_pas_agregee_en_warn(tmp_path):
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["groupes_alignes"] == []
     assert any(item["cause"] == "identite_objet_repetee_ou_ambigue" for item in rapport["inconnues"])
+
+
+def test_g92_conserve_la_region_spatiale_du_depart(tmp_path):
+    """G92 et un remboursement de rétraction n’ajoutent ni ne déplacent une couture."""
+    source = _archive(
+        tmp_path,
+        "G90\nM83\nEXCLUDE_OBJECT_START NAME=PieceA\n;LAYER_CHANGE\n"
+        "G0 X0 Y0 Z0.2\nG1 E-0.5 F600\nG92 X100 Y100\n;TYPE:Outer wall\n"
+        "G1 E0.5 F600\nG1 X110 Y100 E1 F600\nG1 X110 Y110 E1\nG1 X100 Y110 E1\nG1 X100 Y100 E1\n"
+        "EXCLUDE_OBJECT_END NAME=PieceA\n",
+    )
+    rapport = analyser(source, _declaration(source))
+    assert rapport["statut"] == "PASS"
+    boucle, = rapport["boucles"]
+    assert boucle["point_depart_xyz_mm"] == [0.0, 0.0, 0.2]
+    assert boucle["region_id"] == "face-avant"
+
+
+def test_dette_de_retraction_ne_fabrique_pas_de_boucle_fermee(tmp_path):
+    """Une reprise de dépôt éloignée du retour de boucle reste hors contrat."""
+    contenu = _gcode(second_layer=False).replace(
+        "G1 X10 Y0 E1 F600", "G1 E-0.5 F600\nG1 X10 Y0 E1 F600",
+    )
+    source = _archive(tmp_path, contenu)
+    rapport = analyser(source, _declaration(source))
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert not rapport["groupes_alignes"]
+    assert all(not b["fermee"] for b in rapport["boucles"])
+
+
+def test_arc_de_paroi_reste_non_verifie(tmp_path):
+    """Le lot linéaire ne substitue pas une corde au dépôt sur l’arc."""
+    contenu = _gcode().replace("G1 X10 Y0 E1 F600", "G2 X10 Y0 I5 J0 E1 F600")
+    source = _archive(tmp_path, contenu)
+    rapport = analyser(source, _declaration(source))
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert not rapport["groupes_alignes"]
+    assert rapport["inconnues"]
