@@ -55,10 +55,12 @@ connecteur. Les [contrôles propres à la découpe](../guides/decoupe.md) sont d
 Le contrôle de publication est décrit dans le [guide développeur](../guides/developpement.md).
 
 Les rapports explicites des contrôles de débit, réglages, supports,
-décollement, ergots et ponts sont publiés dans un fichier neuf, sous l’atelier
-privé ou dans un temporaire système hors dépôt. Un fichier existant ou un
-lien est refusé. Les G-code conservés avec `supports-requis --garder` sont
-traités comme des preuves neuves, plaque par plaque.
+décollement, ergots, ponts, première couche, colonnes et géométrie sont publiés
+dans un fichier neuf, sous l’atelier privé ou dans un temporaire système hors
+dépôt. Un fichier existant ou un lien est refusé. Les G-code conservés avec
+`supports-requis --garder` sont traités comme des preuves neuves, plaque par
+plaque. Une étude d’orientation publie ensemble son rapport et ses STL dans
+un dossier neuf.
 
 La routine lit uniquement les résultats du contrôle courant. Relancer la
 routine conserve les fichiers identiques et publie les fichiers différents
