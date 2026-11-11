@@ -40,6 +40,10 @@ MAX_SAMPLES = 2_000_000
 MAX_SEGMENTS = 250_000
 MAX_KERNEL = 4096
 MAX_ARC_CELL_TESTS = 2_000_000
+MAX_ARCS_PLANAIRES = 8192
+MAX_DIAGNOSTICS_ARC = 128
+TOLERANCE_Z_MARQUEUR_MM = 0.0005
+TOLERANCE_RAYON_MM = 1e-9
 
 PIECE = (
     "Outer wall",
@@ -111,7 +115,9 @@ def _extraire_couches(g, arcs_planaires):
         couches, zs = deux_couches(g)
         return couches, zs, [[], []]
     couches, arcs, vus, w = [[], []], [[], []], [], 0.42
-    it = Interpreter()
+    z_courant = None
+    nombre_arcs = 0
+    it = Interpreter(error_limit=MAX_DIAGNOSTICS_ARC)
     for line in g.splitlines():
         if line.startswith(";Z:"):
             z = float(line[3:])
@@ -122,19 +128,30 @@ def _extraire_couches(g, arcs_planaires):
                 vus.append(z)
             if len(vus) > 2:
                 break
+            z_courant = z
         elif line.startswith(";WIDTH:"):
             w = float(line[7:])
             if not math.isfinite(w) or not 0 < w <= 10:
                 raise ValueError("largeur de ligne invalide (0 < largeur ≤ 10 mm)")
         move = it.feed_line(line)
         if move and vus and move["type"] in PIECE and move["deposited_length"] > 0:
-            couche = len(vus) - 1
+            if z_courant is None:
+                raise ValueError("arc déposé sans marqueur de couche Z déclaré")
+            couche = vus.index(z_courant)
             if sum(map(len, couches)) + sum(map(len, arcs)) >= MAX_SEGMENTS:
                 raise ValueError("budget de segments et arcs dépassé")
             if move["op"] in {"G2", "G3"}:
                 bornes = enveloppe_deposee_xyz(move)
                 if bornes[2][0] != bornes[2][1]:
                     raise ValueError("arc hélicoïdal : seules les trajectoires G17 à Z constant sont qualifiées")
+                if any(
+                    abs(float(point[2]) - z_courant) > TOLERANCE_Z_MARQUEUR_MM
+                    for point in (move["start"], move["end"])
+                ):
+                    raise ValueError("Z physique de l'arc incohérent avec le Z déclaré par la couche")
+                nombre_arcs += 1
+                if nombre_arcs > MAX_ARCS_PLANAIRES:
+                    raise ValueError("budget d'arcs planaires dépassé (8192 arcs)")
                 arcs[couche].append((move, w))
             else:
                 a, b = move["deposition_start"], move["end"]
@@ -163,7 +180,12 @@ def _preparer_arcs(arcs, origine, forme, pas):
         # Les tolérances plus larges de l'interpréteur servent à lire le G-code ;
         # ici on refuse les extrémités arrondies qui changent le cercle mesuré.
         if not all(
-            math.isclose(math.hypot(point[0] - cx, point[1] - cy), rayon, rel_tol=1e-12, abs_tol=1e-9)
+            math.isclose(
+                math.hypot(point[0] - cx, point[1] - cy),
+                rayon,
+                rel_tol=0.0,
+                abs_tol=TOLERANCE_RAYON_MM,
+            )
             for point in (start, end)
         ):
             raise ValueError("extrémité arrondie non qualifiée pour le cercle analytique")
@@ -213,7 +235,10 @@ def masquer_arcs(arcs, origine, forme, pas, *, budget=MAX_ARC_CELL_TESTS):
         distance_debut = np.hypot(xx - debut_xy[0], yy - debut_xy[1])
         distance_fin = np.hypot(xx - fin_xy[0], yy - fin_xy[1])
         distance = np.where(dans_arc, radial, np.minimum(distance_debut, distance_fin))
-        masque[i0 : i1 + 1, j0 : j1 + 1] |= distance <= demi + tol
+        couverture_arc = distance <= demi + tol
+        if not couverture_arc.any():
+            raise ValueError("arc déposé entièrement invisible sur la grille numérique")
+        masque[i0 : i1 + 1, j0 : j1 + 1] |= couverture_arc
     return masque
 
 
@@ -365,6 +390,10 @@ def _controler(g, ilot_max, creux_max, pas, *, arcs_planaires=False):
             "couches": [len(a1), len(a2)],
             "methode": "distance analytique aux arcs déposés, évaluée sur la grille numérique",
             "cellules_testees_max": MAX_ARC_CELL_TESTS,
+            "arcs_max": MAX_ARCS_PLANAIRES,
+            "diagnostics_max": MAX_DIAGNOSTICS_ARC,
+            "tolerance_z_marqueur_mm": TOLERANCE_Z_MARQUEUR_MM,
+            "tolerance_rayon_absolue_mm": TOLERANCE_RAYON_MM,
             "grille": {
                 "pas_mm": pas,
                 "origine_xy_mm": [round(o[0], 9), round(o[1], 9)],

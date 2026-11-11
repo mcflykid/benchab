@@ -52,7 +52,7 @@ class ArcsPremiereCouche(unittest.TestCase):
 
     def test_arcs_non_planaires_et_budget_sont_refuses(self):
         """Les hélices, arcs arrondis et dépassements de budget restent refusés."""
-        gcode_helice = "M83\n;Z:.2\n;TYPE:Outer wall\nG1 X10 Y0 E1 F600\nG3 X0 Y10 Z1 I-10 J0 E10"
+        gcode_helice = "M83\n;Z:.2\nG0 Z.2 F600\n;TYPE:Outer wall\nG1 X10 Y0 E1\nG3 X0 Y10 Z1 I-10 J0 E10"
         self.assertEqual(PC.controler(gcode_helice, arcs_planaires=True)["statut"], "NON VÉRIFIÉ")
         mouvement = mouvement_arc(
             "M83\nG1 X10 Y0 F600\n;TYPE:Outer wall\nG3 X0 Y10 Z1 I-10 J0 E10"
@@ -71,13 +71,62 @@ class ArcsPremiereCouche(unittest.TestCase):
 
     def test_budget_cumule_avant_toute_allocation_de_masque(self):
         """Les cellules candidates des arcs sont comptées avant les masques."""
-        gcode = "M83\n;Z:.2\n;TYPE:Outer wall\nG1 X10 Y0 E1 F600\nG3 X10 Y0 I-10 J0 E10"
+        gcode = "M83\n;Z:.2\nG0 Z.2 F600\n;TYPE:Outer wall\nG1 X10 Y0 E1\nG3 X10 Y0 I-10 J0 E10"
         with patch.object(PC, "MAX_ARC_CELL_TESTS", 1), patch.object(
             PC.np, "zeros", side_effect=AssertionError("allocation interdite")
         ):
             resultat = PC.controler(gcode, arcs_planaires=True)
         self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
         self.assertIn("budget", resultat["detail"])
+
+    def test_z_physique_arc_doit_correspondre_au_marqueur(self):
+        """Un commentaire de couche ne masque pas un arc physiquement à un autre Z."""
+        gcode = (
+            "M83\n;Z:.2\nG0 X10 Y0 Z4 F600\n;TYPE:Outer wall\n"
+            "G3 X0 Y10 I-10 J0 E10"
+        )
+        resultat = PC.controler(gcode, arcs_planaires=True)
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertIn("Z déclaré", resultat["detail"])
+
+    def test_retour_a_un_z_deja_vu_reutilise_son_index(self):
+        """Un marqueur revenant à la première couche ne classe pas son arc en deuxième."""
+        gcode = (
+            "M83\n;Z:.2\nG0 X10 Y0 Z.2 F600\n;TYPE:Outer wall\nG3 X10 Y0 I-10 J0 E1\n"
+            ";Z:.4\nG0 Z.4\nG3 X10 Y0 I-10 J0 E1\n;Z:.2\nG0 Z.2\nG3 X10 Y0 I-10 J0 E1"
+        )
+        _, _, arcs = PC._extraire_couches(gcode, True)
+        self.assertEqual([len(couche) for couche in arcs], [2, 1])
+
+    def test_arc_depose_invisible_sur_la_grille_est_non_verifie(self):
+        """Un arc sans aucun échantillon couvert ne peut produire un PASS vide."""
+        mouvement = mouvement_arc(
+            "M83\nG1 X0.02 Y0 F600\n;TYPE:Outer wall\nG3 X0.02 Y0 I-0.02 J0 E0.1"
+        )
+        with self.assertRaisesRegex(ValueError, "invisible"):
+            PC.masquer_arcs([(mouvement, 0.01)], (-1.0, -1.0), (21, 21), 0.1)
+        gcode = (
+            "M83\n;Z:.2\nG0 X-1 Y-1 Z.2 F600\n;TYPE:Outer wall\n"
+            "G1 X-0.5 E1\nG0 X0.037 Y0.017\n;WIDTH:0.01\n"
+            "G3 X0.037 Y0.017 I-0.014 J0 E0.1"
+        )
+        resultat = PC.controler(gcode, arcs_planaires=True)
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertIn("invisible", resultat["detail"])
+
+    def test_limites_opt_in_interpreteur_et_nombre_arcs(self):
+        """L'opt-in borne diagnostics et le nombre de dictionnaires d'arc retenus."""
+        gcode = (
+            "M83\n;Z:.2\nG0 X10 Y0 Z.2 F600\n;TYPE:Outer wall\n"
+            "G3 X10 Y0 I-10 J0 E1\nG3 X10 Y0 I-10 J0 E1"
+        )
+        with patch.object(PC, "Interpreter", wraps=Interpreter) as constructeur:
+            PC.controler(gcode, arcs_planaires=True)
+        constructeur.assert_called_with(error_limit=128)
+        with patch.object(PC, "MAX_ARCS_PLANAIRES", 1, create=True):
+            resultat = PC.controler(gcode, arcs_planaires=True)
+        self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
+        self.assertIn("budget d'arcs", resultat["detail"])
 
     def test_majoritaire_horaire_apres_g92_et_retraction_partielle(self):
         """Le grand balayage horaire suit le repère G92 et la fraction déposée."""
@@ -99,6 +148,11 @@ class ArcsPremiereCouche(unittest.TestCase):
             "M83\nG1 X20 Y0 F600\nG92 X10 Y0\n;TYPE:Outer wall\nG3 X0 Y10 I-10 J0 E10"
         )
         self.assertEqual(g92["arc_g17"]["centre_xy_mm"], (10.0, 0.0))
+        g92_z = (
+            "M83\n;Z:.2\nG0 X10 Y0 Z.2 F600\nG92 Z0\n;TYPE:Outer wall\n"
+            "G3 X0 Y10 I-10 J0 E10"
+        )
+        self.assertIn(PC.controler(g92_z, arcs_planaires=True)["statut"], {"PASS", "WARN"})
 
         retracte = mouvement_arc(
             "M83\nG1 X10 Y0 F600\nG1 E-0.5\n;TYPE:Outer wall\nG3 X0 Y10 I-10 J0 E1"
@@ -120,17 +174,19 @@ class ArcsPremiereCouche(unittest.TestCase):
 
     def test_option_absente_garde_le_refus_historique_et_opt_in_est_note(self):
         """Le refus historique subsiste sans option et le rapport opt-in l'identifie."""
-        gcode = "M83\n;Z:.2\n;TYPE:Outer wall\nG1 X10 Y0 E1 F600\nG3 X0 Y10 I-10 J0 E10"
+        gcode = "M83\n;Z:.2\nG0 Z.2 F600\n;TYPE:Outer wall\nG1 X10 Y0 E1\nG3 X0 Y10 I-10 J0 E10"
         self.assertEqual(PC.controler(gcode)["statut"], "NON VÉRIFIÉ")
         resultat = PC.controler(gcode, arcs_planaires=True)
         self.assertIn(resultat["statut"], {"PASS", "WARN"})
         self.assertEqual(resultat["arcs_planaires"]["nombre"], 1)
         self.assertEqual(resultat["arcs_planaires"]["grille"]["pas_mm"], 0.1)
         self.assertIn("aucune validation physique", resultat["arcs_planaires"]["portee"])
+        self.assertEqual(resultat["arcs_planaires"]["tolerance_z_marqueur_mm"], 0.0005)
+        self.assertEqual(resultat["arcs_planaires"]["tolerance_rayon_absolue_mm"], 1e-9)
 
     def test_cli_n_ecrit_le_bloc_arc_que_sur_demande(self):
         """Le rapport JSON n'ajoute son annotation arc que sur demande explicite."""
-        gcode = "M83\n;Z:.2\n;TYPE:Outer wall\nG1 X10 Y0 E1 F600\nG3 X0 Y10 I-10 J0 E10"
+        gcode = "M83\n;Z:.2\nG0 Z.2 F600\n;TYPE:Outer wall\nG1 X10 Y0 E1\nG3 X0 Y10 I-10 J0 E10"
         with tempfile.TemporaryDirectory() as temporaire:
             source = Path(temporaire) / "source.gcode"
             source.write_text(gcode)
