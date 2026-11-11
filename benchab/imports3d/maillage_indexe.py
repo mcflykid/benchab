@@ -62,7 +62,7 @@ def lire(fichier):
                 raise ValueError("NPZ de maillage : tableaux vertices et faces requis.")
             sommets = _tableau(archive, _SOMMETS, "<f8")
             faces = _tableau(archive, _FACES, "<i8")
-    except (BadZipFile, EOFError, SyntaxError, OSError) as erreur:
+    except (BadZipFile, EOFError, SyntaxError, OSError, RuntimeError) as erreur:
         raise ValueError("NPZ de maillage illisible.") from erreur
     _valider(sommets, faces)
     return trimesh.Trimesh(sommets, faces, process=False)
