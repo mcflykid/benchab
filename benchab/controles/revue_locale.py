@@ -310,6 +310,7 @@ def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
 
 
 def main(argv):
+    """Relit les zones en mm et applique sur demande une revue privée distincte des entrées."""
     if not argv or "--envoi" not in argv:
         print(__doc__)
         return 64
