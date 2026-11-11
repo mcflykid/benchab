@@ -183,3 +183,19 @@ manquante dans un contrôle exécutable garde le code NON VÉRIFIÉ.
 Les mesures de recul/recouvrement déclarées pour une revue de zone suivent le
 contrat explicité dans [mesures locales de recul et recouvrement](mesures-recul-recouvrement.md).
 Elles sont recalculées depuis les membres G-code de plaque avant acquittement.
+
+### Intervalles des arcs arrondis
+
+`benchab.gcode.arcs_arrondis.intervalle_xy` est une sonde numérique de G17.
+Elle reçoit les positions XY absolues, les décalages I/J relatifs, le sens
+G2/G3 et un demi-pas déclaré en mm. Pour chaque axe, le vecteur radial de
+départ hérite d’une erreur de champ ; celui d’arrivée en cumule trois.
+L’intersection des intervalles radiaux et les bornes du balayage encadrent
+la longueur XY d’un cercle éventuel. Si la direction est indéterminée,
+les rayons sont incompatibles ou l’angle peut franchir zéro ou un tour,
+la sonde ne fournit pas de longueur.
+
+Le statut reste **NON VÉRIFIÉ** : les intervalles n’établissent ni l’existence
+d’un cercle satisfaisant les arrondis, ni le mouvement du firmware. Le lecteur
+exact, les contrôles géométriques et U25 ne consomment pas ces intervalles
+(#134).

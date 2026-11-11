@@ -487,3 +487,30 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
             "Aucune conversion, réécriture, compatibilité de slicer ou validation physique n’est établie.",
         ],
     }
+
+
+
+def resumer(rapport, chemin_rapport):
+    """Rend les statuts et nombres d’écarts, avec le chemin du JSON complet.
+
+    Les compteurs sont sans unité et les statuts restent ceux du rapport
+    en entrée. Ne réinterprète ni un réglage, ni la couleur ni la compatibilité.
+    La publication du détail est du ressort de la commande.
+    """
+    reglages_projet = rapport["reglages"]
+    extensions = rapport["peinture"]["extensions_asn_prusa"]
+    return {
+        "statut": rapport["statut"],
+        "rapport": str(chemin_rapport),
+        "sha256": rapport["sha256"],
+        "reglages": {
+            "statut": reglages_projet["statut"],
+            **{cle: len(reglages_projet[cle]) for cle in ("identiques", "differences", "absences", "non_verifies")},
+        },
+        "palette": {"statut": rapport["palette"]["statut"]},
+        "peinture": {
+            "statut": rapport["peinture"]["statut"],
+            "extensions": extensions["statut"],
+            "differences_litterales": len(extensions["differences_litterales"]),
+        },
+    }

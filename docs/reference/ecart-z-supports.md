@@ -31,3 +31,14 @@ en mm. `PARTIEL` décrit une portion incomplète et expose ses exclusions. Aucun
 statut ne prouve un contact, une séparation, un retrait réussi, la tenue physique
 ou la qualité d’impression. Voir [ContactSupport](../explications/fiabilite-fdm.md)
 pour les limites de la projection.
+
+Sur le coupon d’interface, deux tranchages hors ligne ont augmenté la
+consigne `support_top_z_distance` de 0,18 à 0,38 mm, sans autre différence
+de réglages. Avec le binaire ASN 2.0.0.3 identifié dans la
+[recette des énumérations](enumerations-asn.md), la médiane estimée passe de
+0,20 à 0,40 mm et la projection de 177,5 à 176,75 mm². Les estimations
+de matière restent à 3,28 g et celles de durée passent de 990 à 989 s.
+Les deux répétitions donnent les mêmes mesures ; leur G-code ne diffère
+que par la date de génération. Les 3MF bruts gardent leurs empreintes
+distinctes. La source et les profils restent intacts. Ce constat qualifie
+l’effet numérique sur ce coupon, sans conclusion sur le retrait (#89).

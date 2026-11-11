@@ -226,10 +226,12 @@ def parser():
     ecart_z.add_argument("source", type=Path, help="3MF exact à lire sans modification")
     ecart_z.add_argument("--plaque", type=int, help="Numéro de plaque si le 3MF en contient plusieurs")
     comparaison_3mf = controle.add_parser(
-        "comparer-projets-3mf", help="Compare deux projets 3MF sans conversion ni écriture"
+        "comparer-projets-3mf", help="Compare deux projets 3MF sans modifier les archives"
     )
     comparaison_3mf.add_argument("source", type=Path, help="Projet 3MF d’origine")
     comparaison_3mf.add_argument("candidat", type=Path, help="Projet 3MF candidat à comparer")
+    comparaison_3mf.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    comparaison_3mf.add_argument("--resume", action="store_true", help="Affiche statuts et compteurs ; exige --sortie")
     entretien = controle.add_parser("entretien", help="Bilan conditionnel depuis un historique privé explicite")
     entretien.add_argument("--historique", type=Path, required=True, help="Historique JSON privé à relire")
     entretien.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; une sortie existante est refusée")
@@ -1086,12 +1088,20 @@ def main(argv=None):
     if arguments.commande == "controle" and arguments.controle == "comparer-projets-3mf":
         from zipfile import BadZipFile
 
-        from benchab.controles.comparer_projets_3mf import comparer
+        from benchab.controles.comparer_projets_3mf import comparer, resumer
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
         from benchab.qualite.statuts import code_statut as code_statut_comparaison
 
         try:
+            if arguments.resume and arguments.sortie is None:
+                raise ValueError("--resume exige --sortie pour conserver le rapport complet.")
             rapport = comparer(arguments.source, arguments.candidat)
-            print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+            sortie = None
+            if arguments.sortie is not None:
+                sortie = destination_neuve(arguments.sortie, prive=atelier_prive(arguments.prive), temporaire=False)
+                ecrire_json_neuf(sortie, rapport, entrees=[arguments.source, arguments.candidat])
+            affiche = resumer(rapport, sortie) if arguments.resume else rapport
+            print(json.dumps(affiche, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
             return code_statut_comparaison(rapport["statut"])
         except (OSError, ValueError, KeyError, RuntimeError, BadZipFile) as erreur:
             print(f"BENCHAB : comparaison 3MF refusée : {erreur}", file=sys.stderr)

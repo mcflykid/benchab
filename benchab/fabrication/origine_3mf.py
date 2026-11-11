@@ -15,6 +15,7 @@ from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
 from benchab import integrite_3mf, reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.machine.configuration import charger
 
 _NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
@@ -158,7 +159,10 @@ def _archive(chemin: Path):
     return archive
 
 
-def _lire_xml(archive: ZipFile, nom: str, maximum: int) -> ET.Element:
+def _lire_xml(archive: ZipFile | Archive3MF, nom: str, maximum: int) -> ET.Element:
+    """Lit un XML sous budget, depuis le lecteur courant sans changer les octets source."""
+    if isinstance(archive, Archive3MF):
+        return _lire_xml_borne(archive, nom, maximum)
     try:
         info = archive.getinfo(nom)
     except KeyError as exc:
@@ -168,6 +172,20 @@ def _lire_xml(archive: ZipFile, nom: str, maximum: int) -> ET.Element:
     try:
         return ET.fromstring(archive.read(nom))
     except (ET.ParseError, BadZipFile) as exc:
+        raise _NonQualifie(f"Membre XML illisible : {nom}") from exc
+
+
+def _lire_xml_borne(archive: Archive3MF, nom: str, maximum: int) -> ET.Element:
+    """Lit un XML depuis le contexte 3MF unique ; limite en octets et DTD/ENTITY refusés."""
+    try:
+        if archive.taille_membre(nom) > maximum:
+            raise _NonQualifie(f"Membre XML trop volumineux : {nom}")
+        return archive.xml(nom)
+    except KeyError as exc:
+        raise _NonQualifie(f"Membre requis absent : {nom}") from exc
+    except ValueError as exc:
+        raise _NonQualifie(str(exc)) from exc
+    except ET.ParseError as exc:
         raise _NonQualifie(f"Membre XML illisible : {nom}") from exc
 
 
@@ -188,7 +206,8 @@ def _configuration_binaire(binaire=None):
     }
 
 
-def _objets_composants(archive):
+def _objets_composants(archive: ZipFile | Archive3MF):
+    """Lit les objets du modèle principal depuis l’archive épinglée, sans écrire le 3MF."""
     racine = _lire_xml(archive, "3D/3dmodel.model", 64 * 1024 * 1024)
     modeles = {"3D/3dmodel.model": racine}
     objets = {}
@@ -200,7 +219,8 @@ def _objets_composants(archive):
     return modeles, objets
 
 
-def _lire_modeles_pieces(archive, modeles):
+def _lire_modeles_pieces(archive: ZipFile | Archive3MF, modeles):
+    """Lit les objets de pièces avec les budgets du même contexte ZIP."""
     nom = "3D/Objects/pieces.model"
     return _lire_objets_maillage(archive, "/" + nom, {})
 
@@ -220,7 +240,7 @@ def _membre_composant(chemin: str | None) -> str:
     return "/".join(pur.parts[1:])
 
 
-def _lire_objets_maillage(archive, chemin: str, cache: dict[str, dict]):
+def _lire_objets_maillage(archive: ZipFile | Archive3MF, chemin: str, cache: dict[str, dict]):
     """Charge une fois les objets d’un modèle 3MF référencé par composant."""
     membre = _membre_composant(chemin)
     if membre in cache:
@@ -310,18 +330,16 @@ def _chemin_composant(composant) -> str | None:
 
 
 def _plan_geometrie(chemin: Path):
-    archive = _archive(chemin)
-    try:
-        if "Metadata/model_settings.config" not in archive.namelist():
+    # Garder les budgets qualifiés tout en refusant DTD/ENTITY via le lecteur commun.
+    with Archive3MF(
+        chemin,
+        taille_max_membre=_MAX_ARCHIVE,
+        taille_max_totale=_MAX_ARCHIVE,
+        taille_max_xml=64 * 1024 * 1024,
+    ) as archive:
+        if "Metadata/model_settings.config" not in archive.noms():
             raise _NonQualifie("Configuration de modèle absente")
-        model_settings_info = archive.getinfo("Metadata/model_settings.config")
-        if model_settings_info.file_size > _MAX_SETTINGS:
-            raise _NonQualifie("Configuration de modèle trop volumineuse")
-        model_settings_brut = archive.read("Metadata/model_settings.config")
-        try:
-            model_settings = ET.fromstring(model_settings_brut)
-        except ET.ParseError as exc:
-            raise _NonQualifie("Configuration de modèle illisible") from exc
+        model_settings = _lire_xml(archive, "Metadata/model_settings.config", _MAX_SETTINGS)
         modeles, objets_3mf = _objets_composants(archive)
         composants_pieces = _lire_modeles_pieces(archive, modeles)
         plans, identities, multiplumes = [], set(), 0
@@ -418,9 +436,8 @@ def _plan_geometrie(chemin: Path):
                 )
         if multiplumes == 0 or not plans:
             raise _NonQualifie("Aucun objet multi-volume canonique à restaurer")
+        archive.verifier_source(chemin)
         return plans
-    finally:
-        archive.close()
 
 
 def planifier(entree, *, binaire=None) -> dict:
