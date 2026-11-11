@@ -406,6 +406,15 @@ def parser():
         "decoupe",
     ):
         conception.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
+    gyroide = conception.add_parser("gyroide-temoin", help="Construit un témoin numérique sans tranchage")
+    gyroide.add_argument("--dimensions-mm", type=float, nargs=3, required=True, help="Cotes XYZ de l’enveloppe")
+    gyroide.add_argument("--paroi-mm", type=float, required=True, help="Épaisseur de la peau")
+    gyroide.add_argument("--cellule-mm", type=float, required=True, help="Période du réseau")
+    gyroide.add_argument("--seuil", type=float, required=True, help="Demi-largeur du niveau implicite, sans unité")
+    gyroide.add_argument("--pas-mm", type=float, required=True, help="Pas nominal de maillage")
+    gyroide.add_argument("--protection-mm", type=float, nargs=6, action="append", default=[],
+                         help="Boîte préservée : Xmin Ymin Zmin Xmax Ymax Zmax ; répétable")
+    gyroide.add_argument("--sortie", type=Path, required=True, help="Dossier privé neuf")
     imports = commandes.add_parser("imports").add_subparsers(dest="action", required=True)
     for nom in ("importer", "geometrie", "reparer", "maillage-avance", "echange-blender", "placement"):
         imports.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
@@ -1044,7 +1053,7 @@ def main(argv=None):
         argv[i] == "visualisation" and argv[i + 1] == "retour-photo"
         for i in range(len(argv) - 1)
     ) or any(
-        argv[i] == "fabrication" and argv[i + 1] == "remplacer-maillage"
+        (argv[i], argv[i + 1]) in {("fabrication", "remplacer-maillage"), ("conception", "gyroide-temoin")}
         for i in range(len(argv) - 1)
     )
     commande, sensible = commande_sans_secrets(argv)
@@ -1326,6 +1335,21 @@ def main(argv=None):
             return rapport["code"]
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
             print(f"BENCHAB : {erreur}", file=sys.stderr)
+            return 2
+    if arguments.commande == "conception" and arguments.action == "gyroide-temoin":
+        from benchab.conception.gyroide_temoin import publier_coupon
+
+        # Étude indépendante de la base, du moteur de tranchage et de la machine (#87).
+        protections = [(zone[:3], zone[3:]) for zone in arguments.protection_mm]
+        try:
+            rapport = publier_coupon(
+                arguments.sortie, arguments.dimensions_mm, arguments.paroi_mm, arguments.cellule_mm,
+                arguments.seuil, arguments.pas_mm, protections=protections, prive=arguments.prive,
+            )
+            print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))
+            return 0
+        except (OSError, ValueError, RuntimeError) as erreur:
+            print(f"BENCHAB : témoin gyroïde refusé : {erreur}", file=sys.stderr)
             return 2
     if arguments.commande == "fabrication" and arguments.action == "remplacer-maillage":
         from types import SimpleNamespace
