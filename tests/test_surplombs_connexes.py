@@ -165,6 +165,180 @@ def test_adjacence_ne_fusionne_pas_les_coordonnees_proches():
     assert topologie["aretes_ouvertes"] == 6
 
 
+def test_visibilite_verticale_echantillonnee_sur_temoin_ferme():
+    """Le mode opt-in mesure une visée échantillonnée et n'élargit pas le résultat aux surfaces."""
+    maillage = trimesh.creation.box(extents=[2, 2, 2])
+    maillage.apply_translation([0, 0, 3])
+
+    rapport = sc.cartographier(maillage, source="cube.stl", unite="mm", plateau_z_mm=0.0)
+
+    groupe = rapport["groupes"][0]
+    visibilite = groupe["visibilite_verticale_plateau"]["visées_échantillonnées"]
+    assert visibilite["statut"] == "DÉGAGÉE"
+    assert visibilite["methode"] == "barycentres de faces surplombantes, visées verticales vers −Z"
+    assert visibilite["rayons_total"] == 2
+    assert visibilite["echantillons"][0]["point_xyz_mm"][2] == 2.0
+    assert all(item["statut"] == "DÉGAGÉE" for item in visibilite["echantillons"])
+    assert "face entière" in visibilite["portee"]
+    assert groupe["acces_plateau"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_visibilite_verticale_signale_un_obstacle_incline():
+    """Un triangle obstacle sous le point central interrompt seulement la visée échantillonnée."""
+    cible = trimesh.Trimesh(
+        vertices=[[0, 0, 2], [2, 0, 2], [0, 2, 2]], faces=[[0, 2, 1]], process=False
+    )
+    obstacle = trimesh.Trimesh(
+        vertices=[[0, 0, 0.5], [2, 0, 1.5], [0, 2, 1.5]], faces=[[0, 1, 2]], process=False
+    )
+    maillage = trimesh.util.concatenate([cible, obstacle])
+
+    rapport = sc.cartographier(maillage, source="obstacle.stl", unite="mm", plateau_z_mm=0.0)
+
+    visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
+    assert visibilite["statut"] == "OBSTRUÉE"
+    assert visibilite["echantillons"][0]["statut"] == "OBSTRUÉE"
+    assert visibilite["echantillons"][0]["obstacle_z_mm"] == pytest.approx(1.166667, abs=1e-6)
+
+
+def test_visibilite_verticale_surface_inclinee_hors_point_reste_locale():
+    """La méthode ponctuelle ne prétend rien sur une partie inclinée non échantillonnée."""
+    cible = trimesh.Trimesh(
+        vertices=[[0, 0, 2], [2, 0, 2], [0, 2, 2]], faces=[[0, 2, 1]], process=False
+    )
+    # L'obstacle projeté ne couvre qu'une portion de la face cible, hors de son barycentre.
+    obstacle = trimesh.Trimesh(
+        vertices=[[1.2, 0.1, 0.5], [1.8, 0.1, 1.2], [1.2, 0.7, 1.0]],
+        faces=[[0, 1, 2]], process=False,
+    )
+    maillage = trimesh.util.concatenate([cible, obstacle])
+
+    rapport = sc.cartographier(maillage, source="pente.stl", unite="mm", plateau_z_mm=0.0)
+
+    visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
+    assert visibilite["statut"] == "DÉGAGÉE"
+    assert visibilite["rayons_total"] == 1
+    assert "barycentre" in visibilite["portee"]
+
+
+@pytest.mark.parametrize("plateau", [float("nan"), float("inf"), 2.0, 3.0])
+def test_visibilite_verticale_plateau_invalide_est_ambigu(plateau):
+    """Un plan non fini ou qui touche/traverse le maillage ne produit jamais une visée dégagée."""
+    maillage = trimesh.creation.box(extents=[2, 2, 2])
+    maillage.apply_translation([0, 0, 3])
+
+    rapport = sc.cartographier(maillage, source="cube.stl", unite="mm", plateau_z_mm=plateau)
+
+    visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
+    assert visibilite["statut"] == "AMBIGUË"
+    assert visibilite["echantillons"] == []
+    assert visibilite["raison"] == "plan de plateau invalide ou en contact avec le maillage"
+
+
+def test_visibilite_verticale_contact_au_plan_est_ambigu():
+    """Un obstacle qui rejoint le plan explicite reste ambigu, car le trajet vers le plateau touche sa borne."""
+    cible = trimesh.Trimesh(
+        vertices=[[0, 0, 2], [2, 0, 2], [0, 2, 2]], faces=[[0, 2, 1]], process=False
+    )
+    contact = trimesh.Trimesh(
+        vertices=[[0, 0, -1], [2, 0, -1], [0, 2, -1]], faces=[[0, 1, 2]], process=False
+    )
+    borne_basse = trimesh.Trimesh(
+        vertices=[[-12, 0, -2], [-11, 0, -2], [-12, 1, -2]], faces=[[0, 1, 2]], process=False
+    )
+
+    rapport = sc.cartographier(
+        trimesh.util.concatenate([cible, contact, borne_basse]),
+        source="contact.stl", unite="mm", plateau_z_mm=-1.0,
+    )
+
+    visibilite = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
+    assert visibilite["echantillons"][0]["statut"] == "AMBIGUË"
+    assert visibilite["echantillons"][0]["raison"] == "contact avec le plan de plateau"
+
+
+def test_visibilite_verticale_projection_verticale_alignee_est_ambigue():
+    """Une face sans aire en projection XY alignée à la visée ne devient pas un obstacle affirmé."""
+    cible = trimesh.Trimesh(
+        vertices=[[0, 0, 2], [2, 0, 2], [0, 2, 2]], faces=[[0, 2, 1]], process=False
+    )
+    verticale = trimesh.Trimesh(
+        vertices=[[2 / 3, 0, -0.5], [2 / 3, 1, -0.5], [2 / 3, 0, 1.5]],
+        faces=[[0, 1, 2]], process=False,
+    )
+
+    rapport = sc.cartographier(
+        trimesh.util.concatenate([cible, verticale]), source="verticale.stl", unite="mm", plateau_z_mm=-1.0
+    )
+
+    echantillon = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]["echantillons"][0]
+    assert echantillon["statut"] == "AMBIGUË"
+    assert echantillon["raison"] == "projection XY dégénérée sur la visée"
+
+
+def test_visibilite_verticale_superposition_de_triangles_est_ambigue():
+    """Deux obstacles superposés à même Z ne sont pas arbitrés par leur ordre de triangles."""
+    cible = trimesh.Trimesh(
+        vertices=[[0, 0, 2], [2, 0, 2], [0, 2, 2]], faces=[[0, 2, 1]], process=False
+    )
+    obstacles = trimesh.Trimesh(
+        vertices=[
+            [0, 0, 1], [2, 0, 1], [0, 2, 1],
+            [0, 0, 1], [2, 0, 1], [0, 2, 1],
+        ], faces=[[0, 1, 2], [3, 4, 5]], process=False,
+    )
+
+    rapport = sc.cartographier(
+        trimesh.util.concatenate([cible, obstacles]), source="doublon.stl", unite="mm", plateau_z_mm=0.0
+    )
+
+    echantillon = rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]["echantillons"][0]
+    assert echantillon["statut"] == "AMBIGUË"
+    assert echantillon["raison"] == "superposition de triangles sur la visée"
+
+
+def test_visibilite_verticale_opt_in_seul_change_le_rapport():
+    """Sans plan déclaré, le JSON historique conserve exactement ses clés et ses valeurs."""
+    maillage = trimesh.creation.box(extents=[2, 2, 2])
+    maillage.apply_translation([0, 0, 3])
+    historique = sc.cartographier(maillage, source="cube.stl", unite="mm")
+
+    assert "visibilite_verticale_plateau" not in historique["groupes"][0]
+    assert historique["groupes"][0]["acces_plateau"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_cli_active_visibilite_uniquement_sur_demande_et_lie_le_sha(tmp_path):
+    """Le paramètre plateau est opt-in et sa mesure reste liée au STL décodé."""
+    source = tmp_path / "cube.stl"
+    maillage = trimesh.creation.box(extents=[2, 2, 2])
+    maillage.apply_translation([0, 0, 3])
+    maillage.export(source)
+    attendu = hashlib.sha256(source.read_bytes()).hexdigest()
+    sortie = tmp_path / "rapport.json"
+
+    assert sc.main([str(source), "--unite-mm", "--plateau-z-mm", "0", "--sortie", str(sortie)]) == 0
+
+    rapport = json.loads(sortie.read_bytes())
+    assert rapport["source_sha256"] == attendu
+    assert rapport["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]["statut"] == "DÉGAGÉE"
+    assert rapport["groupes"][0]["acces_plateau"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_visibilite_verticale_borne_et_annonce_les_rayons_omis(monkeypatch):
+    """Le budget global est strict et une omission empêche de qualifier la visée agrégée."""
+    monkeypatch.setattr(sc, "MAX_VISIBILITE_RAYONS", 1, raising=False)
+    sommets = [[0, 0, 2], [1, 0, 2], [1, 1, 2], [0, 1, 2]]
+    maillage = trimesh.Trimesh(vertices=sommets, faces=[[0, 2, 1], [0, 3, 2]], process=False)
+
+    visibilite = sc.cartographier(
+        maillage, source="deux-faces.stl", unite="mm", plateau_z_mm=0.0
+    )["groupes"][0]["visibilite_verticale_plateau"]["visées_échantillonnées"]
+
+    assert visibilite["rayons_total"] == 1
+    assert visibilite["rayons_omis"] == 1
+    assert visibilite["statut"] == "AMBIGUË"
+
+
 def test_cli_refuse_une_source_remplacee_pendant_la_lecture(tmp_path, monkeypatch, capsys):
     """La lecture refuse un changement d'identité du chemin observé depuis le descripteur."""
     source = tmp_path / "fixture.stl"

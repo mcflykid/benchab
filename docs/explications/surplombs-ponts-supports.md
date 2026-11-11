@@ -34,6 +34,22 @@ au décodeur, puis conservé dans le rapport.
 Pour borner l'usage mémoire, la commande refuse les sources de plus de 64 Mio
 et les STL de plus de 50 000 triangles avant de construire le graphe Python.
 
+L'option opt-in `--plateau-z-mm Z` ajoute, pour chaque groupe, des visées
+verticales depuis les barycentres de faces sélectionnées vers le plan horizontal
+`Z` déclaré en mm. Le rapport conserve l'identifiant de face et le point XYZ
+de chaque visée ; au plus 256 rayons sont calculés au total. Les triangles
+projetés, leurs intersections et les contacts sont évalués avec une tolérance
+de distance de `0,000001 mm` et de poids barycentrique `0,000000001`. Un plan
+non fini ou qui atteint une face candidate est AMBIGUË. Une projection XY
+dégénérée alignée au rayon, une intersection de frontière, un contact avec le
+plan ou des triangles superposés donnent aussi AMBIGUË. Une visée DÉGAGÉE ne
+signifie que l'absence d'intersection détectée sur ce segment échantillonné ;
+une visée OBSTRUÉE indique un triangle numérique rencontré entre ses deux
+extrémités. Si des faces sont omises par le budget, l'agrégat reste AMBIGUË.
+Ces rayons ne couvrent pas l'intérieur des faces ni le reste d'un groupe, et ne
+prouvent ni accessibilité d'un support, ni franchissabilité d'un pont, ni appui
+ou tenue physique. Le champ historique `acces_plateau` reste NON VÉRIFIÉ.
+
 ## Choisir le support dans Slicer Next 2.0.0.3
 
 | Famille | Usage envisagé | Point à contrôler après tranchage |

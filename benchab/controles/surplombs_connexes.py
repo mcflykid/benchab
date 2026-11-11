@@ -21,6 +21,9 @@ from benchab.qualite.ecritures import ecrire_json_neuf, sortie_privee
 
 MAX_SOURCE_OCTETS = 64 * 1024 * 1024
 MAX_FACES = 50_000
+MAX_VISIBILITE_RAYONS = 256
+TOLERANCE_VISIBILITE_MM = 1e-6
+TOLERANCE_POIDS_BARYCENTRIQUES = 1e-9
 
 
 def _compter_faces_stl(contenu):
@@ -143,13 +146,118 @@ def _composantes_faces(nombre_faces, adjacency):
     return numeros, voisins
 
 
-def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None):
+def _evaluer_rayon_vertical(triangles, face_source, point, plateau_z_mm):
+    """Classe une visée ponctuelle en mm ; contacts, projections dégénérées et doublons sont ambigus."""
+    x, y, z_depart = (float(valeur) for valeur in point)
+    tolerance = TOLERANCE_VISIBILITE_MM
+    xy = triangles[:, :, :2]
+    altitudes = triangles[:, :, 2]
+    indices = np.arange(len(triangles))
+    a, b, c = xy[:, 0], xy[:, 1], xy[:, 2]
+    determinant = (
+        (b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1])
+        - (b[:, 1] - a[:, 1]) * (c[:, 0] - a[:, 0])
+    )
+    longueurs = np.stack((
+        np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1), np.linalg.norm(a - c, axis=1),
+    ), axis=1)
+    degeneres = np.abs(determinant) <= tolerance * longueurs.max(axis=1)
+    potentiels_degeneres = degeneres & (indices != face_source)
+    point_xy = np.asarray([x, y])
+    for cote in range(3):
+        depart = xy[:, cote]
+        arrivee = xy[:, (cote + 1) % 3]
+        direction = arrivee - depart
+        longueur2 = np.einsum("ij,ij->i", direction, direction)
+        fractions = np.zeros(len(triangles), dtype=float)
+        assez_long = longueur2 > tolerance * tolerance
+        fractions[assez_long] = np.clip(
+            np.einsum("ij,ij->i", point_xy - depart[assez_long], direction[assez_long])
+            / longueur2[assez_long], 0.0, 1.0,
+        )
+        projection = depart + fractions[:, None] * direction
+        distance = np.linalg.norm(projection - point_xy, axis=1)
+        z_segment = altitudes[:, cote] + fractions * (altitudes[:, (cote + 1) % 3] - altitudes[:, cote])
+        if np.any(
+            potentiels_degeneres & (distance <= tolerance)
+            & (z_segment >= plateau_z_mm - tolerance) & (z_segment <= z_depart + tolerance)
+        ):
+            return {"statut": "AMBIGUË", "raison": "projection XY dégénérée sur la visée"}
+
+    bornes = (
+        (xy[:, :, 0].min(axis=1) - tolerance <= x) & (xy[:, :, 0].max(axis=1) + tolerance >= x)
+        & (xy[:, :, 1].min(axis=1) - tolerance <= y) & (xy[:, :, 1].max(axis=1) + tolerance >= y)
+    )
+    non_degeneres = (~degeneres) & (indices != face_source) & bornes
+    denominateur = np.where(degeneres, 1.0, determinant)
+    alpha = ((b[:, 0] - x) * (c[:, 1] - y) - (b[:, 1] - y) * (c[:, 0] - x)) / denominateur
+    beta = ((c[:, 0] - x) * (a[:, 1] - y) - (c[:, 1] - y) * (a[:, 0] - x)) / denominateur
+    gamma = 1.0 - alpha - beta
+    poids = np.column_stack((alpha, beta, gamma))
+    interieur_ferme = (
+        non_degeneres
+        & np.all(poids >= -TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
+        & np.all(poids <= 1 + TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
+    )
+    z_intersection = np.einsum("ij,ij->i", poids, altitudes)
+    avant_depart = z_intersection < z_depart - tolerance
+    touche_plan = interieur_ferme & avant_depart & (np.abs(z_intersection - plateau_z_mm) <= tolerance)
+    if np.any(touche_plan):
+        return {"statut": "AMBIGUË", "raison": "contact avec le plan de plateau"}
+    frontiere = np.any(np.abs(poids) <= TOLERANCE_POIDS_BARYCENTRIQUES, axis=1)
+    if np.any(interieur_ferme & avant_depart & frontiere):
+        return {"statut": "AMBIGUË", "raison": "intersection sur la frontière d'une projection"}
+    contacts = np.sort(z_intersection[interieur_ferme & avant_depart & (z_intersection > plateau_z_mm)])
+    if len(contacts) > 1 and np.any(np.diff(contacts) <= tolerance):
+        return {"statut": "AMBIGUË", "raison": "superposition de triangles sur la visée"}
+    if len(contacts):
+        return {"statut": "OBSTRUÉE", "obstacle_z_mm": round(float(contacts[0]), 6)}
+    return {"statut": "DÉGAGÉE", "raison": "aucun triangle détecté sur le segment ouvert"}
+
+
+def _visibilite_groupe(triangles, indices, plateau_z_mm, plan_valide, budget):
+    """Produit des visées ponctuelles bornées ; les faces non échantillonnées restent sans conclusion."""
+    if not plan_valide:
+        return {"visées_échantillonnées": {
+            "statut": "AMBIGUË", "raison": "plan de plateau invalide ou en contact avec le maillage",
+            "plateau_z_mm": plateau_z_mm if math.isfinite(plateau_z_mm) else None,
+            "methode": "barycentres de faces surplombantes, visées verticales vers −Z",
+            "portee": "visées échantillonnées ; ne décrit aucune face entière",
+            "faces_candidates": len(indices), "rayons_total": 0, "rayons_omis": len(indices),
+            "degages": 0, "obstrues": 0, "ambigus": 0, "echantillons": [],
+        }}
+    nombre = min(len(indices), budget)
+    positions = np.linspace(0, len(indices) - 1, num=nombre, dtype=int) if nombre else np.array([], dtype=int)
+    faces = [indices[int(position)] for position in positions]
+    echantillons = []
+    for face in faces:
+        point = np.asarray(triangles[face], dtype=float).mean(axis=0)
+        resultat = _evaluer_rayon_vertical(triangles, face, point, plateau_z_mm)
+        echantillons.append({
+            "face_id": int(face), "point_xyz_mm": [round(float(v), 6) for v in point], **resultat,
+        })
+    degages = sum(item["statut"] == "DÉGAGÉE" for item in echantillons)
+    obstrues = sum(item["statut"] == "OBSTRUÉE" for item in echantillons)
+    ambigus = len(echantillons) - degages - obstrues
+    omis = len(indices) - len(faces)
+    statut = "AMBIGUË" if ambigus or omis else "OBSTRUÉE" if obstrues else "DÉGAGÉE"
+    return {"visées_échantillonnées": {
+        "statut": statut, "plateau_z_mm": round(float(plateau_z_mm), 6),
+        "methode": "barycentres de faces surplombantes, visées verticales vers −Z",
+        "portee": "visées échantillonnées aux barycentres ; ne décrit aucune face entière ni le groupe complet",
+        "faces_candidates": len(indices), "rayons_total": len(echantillons), "rayons_omis": omis,
+        "degages": degages, "obstrues": obstrues, "ambigus": ambigus, "echantillons": echantillons,
+    }}
+
+
+def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None, plateau_z_mm=None):
     """Mesure les groupes de faces orientées vers le bas sans prédire les supports physiques.
 
     Entrées : maillage triangulé, provenance, unité explicite (« mm »), seuil en degrés et SHA-256 facultatif.
     Sortie : groupes connexes avec aires en mm², altitudes/hauteurs en mm et angles en degrés.
     La topologie est mesurée par égalité exacte des coordonnées ; aucun sommet n'est fusionné ni triangle réorienté.
-    Les accès au plateau et la possibilité de pont restent NON VÉRIFIÉS ; aucun réglage n'est modifié.
+    Les visées vers le plateau sont opt-in et bornées ; accès global et ponts restent NON VÉRIFIÉS.
+    Aucun réglage n'est modifié.
     """
     if unite != "mm":
         raise ValueError("L'unité métrique doit être explicitement établie comme mm.")
@@ -163,16 +271,25 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
         raise ValueError("Le maillage contient des coordonnées non finies.")
     normales = np.asarray(maillage.face_normals, dtype=float)
     aires = np.asarray(maillage.area_faces, dtype=float)
+    triangles = np.asarray(maillage.triangles, dtype=float)
     if not np.isfinite(aires).all() or np.any(aires <= 0):
         raise ValueError("Le maillage contient des faces d'aire nulle ou non finie.")
 
     # Le seuil décrit seulement une inclinaison géométrique ; il ne constitue pas une règle de support.
     angle_faces = np.degrees(np.arccos(np.clip(np.abs(normales[:, 2]), 0.0, 1.0)))
     selection = (normales[:, 2] < 0) & (angle_faces <= angle_max_deg)
-    adjacency, topologie = _adjacence_exacte(triangles := np.asarray(maillage.triangles, dtype=float))
+    selection_ids = np.flatnonzero(selection)
+    plateau_valide = (
+        plateau_z_mm is not None
+        and math.isfinite(plateau_z_mm)
+        and bool(len(selection_ids))
+        and plateau_z_mm < float(triangles[selection_ids, :, 2].min() - TOLERANCE_VISIBILITE_MM)
+    )
+    adjacency, topologie = _adjacence_exacte(triangles)
     composante, voisins = _composantes_faces(len(maillage.faces), adjacency)
     groupes = []
     visites = set()
+    budget_rayon = MAX_VISIBILITE_RAYONS
     for depart in np.flatnonzero(selection):
         depart = int(depart)
         if depart in visites:
@@ -190,7 +307,7 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
         ids = np.asarray(faces, dtype=int)
         sommets_z = triangles[ids, :, 2].reshape(-1)
         poids = aires[ids]
-        groupes.append({
+        groupe = {
             "id": f"surplomb-{len(groupes) + 1:03d}",
             "composante_maillage": int(composante[depart]) + 1,
             "nb_faces": int(len(ids)),
@@ -211,7 +328,13 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
             },
             "acces_plateau": {"statut": "NON VÉRIFIÉ", "raison": "aucun test de visibilité ni de tranchage"},
             "pont_possible": {"statut": "NON VÉRIFIÉ", "raison": "franchissabilité non mesurée"},
-        })
+        }
+        if plateau_z_mm is not None:
+            groupe["visibilite_verticale_plateau"] = _visibilite_groupe(
+                triangles, faces, float(plateau_z_mm), plateau_valide, budget_rayon
+            )
+            budget_rayon -= groupe["visibilite_verticale_plateau"]["visées_échantillonnées"]["rayons_total"]
+        groupes.append(groupe)
     return {
         "schema": "benchab-surplombs-connexes-v1",
         "statut": "RENSEIGNÉE",
@@ -259,8 +382,8 @@ def _resume(rapport, sortie):
 def main(argv=None, *, prive=None):
     """Produit un JSON privé neuf depuis un STL ; unités mm déclarées par option, code 0 si mesuré.
 
-    Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés et --sortie facultative.
-    Sortie : rapport JSON neuf, résumé ou détail sur demande explicite, ou JSON sur stdout ;
+    Entrées : chemin STL, --unite-mm obligatoire, seuil optionnel en degrés, plan --plateau-z-mm optionnel.
+    Sortie : rapport JSON neuf, visées opt-in par barycentres en mm, résumé ou détail sur demande, ou JSON stdout ;
     erreurs d'entrée et de sortie code 2.
     L'entrée est empreintée avant et après lecture ; une sortie reste dans l'atelier privé choisi et est neuve.
     Aucun appel de slicer, aucun réglage modifié, aucune validation physique.
@@ -271,6 +394,10 @@ def main(argv=None, *, prive=None):
     parser.add_argument(
         "--angle-max-deg", type=float, default=50.0,
         help="Seuil géométrique en degrés, sans verdict physique",
+    )
+    parser.add_argument(
+        "--plateau-z-mm", type=float,
+        help="Active des visées verticales ponctuelles vers un plan déclaré sous le maillage, en mm",
     )
     parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; sans option, écrit sur stdout")
     affichage = parser.add_mutually_exclusive_group()
@@ -295,6 +422,7 @@ def main(argv=None, *, prive=None):
             unite="mm",
             angle_max_deg=args.angle_max_deg,
             source_sha256=empreinte,
+            plateau_z_mm=args.plateau_z_mm,
         )
         if args.sortie:
             sortie = sortie_privee(args.sortie, prive=prive)
