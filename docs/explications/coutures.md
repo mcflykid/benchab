@@ -47,3 +47,30 @@ Slicer Next 2.0.0.3 : faits `savoir-asn-2003-couture-candidats` et
 `savoir-couture-essuyage-retour-autre-machine` dans
 [la référence publique](../../benchab/reference/connaissances.jsonl).
 Voir aussi [les retours d’expérience](retours-d-experience.md).
+
+## Contrôle sur des régions déclarées
+
+```sh
+benchab --prive /chemin/atelier controle coutures /chemin/tranche.3mf \
+  --declaration /chemin/atelier/regions-coutures.json \
+  --sortie /chemin/atelier/rapports/coutures-candidate
+```
+
+La déclaration relie le SHA-256 exact du 3MF tranché à une plaque et à
+l’identifiant de l’objet dans le G-code. Elle indique des polygones XY, leurs
+plages Z et leur visibilité déclarée. Toutes les coordonnées et tolérances
+sont en millimètres dans le repère spatial de l’interpréteur. Une région
+déclarée cachée ne constitue pas une mesure de visibilité réelle.
+
+Le contrôle compare les débuts des boucles de paroi extérieure fermées
+dans son périmètre. Des débuts alignés sur plusieurs couches dans une même
+région visible donnent WARN. Une attribution ambiguë ou une trajectoire
+hors contrat garde NON VÉRIFIÉ. Le rapport conserve les inconnues, y compris
+lorsqu’une autre région donne WARN. Le SVG montre les régions en XY et les
+points en XY et XZ ; aucun point n’est inventé pour une boucle sans position.
+
+La sortie est facultative et doit être neuve. Elle réunit le rapport
+et l’aperçu ; `--detail` affiche également le rapport intégral. Les
+propositions de placement ou d’essuyage restent des candidates à comparer.
+Aucun réglage n’est écrit, et aucun résultat esthétique ou physique n’est
+déduit de l’aperçu.

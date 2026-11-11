@@ -1,5 +1,6 @@
 """Aperçu schématique des points de couture contrôlés, sans nouvelle mesure."""
 
+import hashlib
 import json
 import math
 import re
@@ -7,6 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree as ET
 
+from benchab.chemins import atelier_prive, sans_lien
 from benchab.qualite.ecritures import destination_neuve, renommer_exclusif
 
 _SVG = "http://www.w3.org/2000/svg"
@@ -150,3 +152,51 @@ def publier(rapport, sortie, *, prive=None):
         renommer_exclusif(dossier, destination)
     return {"statut": rapport["statut"], "rapport": str(destination / "rapport.json"),
             "apercu": str(destination / "apercu.svg")}
+
+
+def _cles_uniques(paires):
+    resultat = {}
+    for cle, valeur in paires:
+        if cle in resultat:
+            raise ValueError("Clé dupliquée dans la déclaration de couture.")
+        resultat[cle] = valeur
+    return resultat
+
+
+def controler_declaration(source, declaration, *, prive=None):
+    """Contrôle un 3MF et une déclaration privée liés par SHA, sans écriture.
+
+    Les régions et les points sont en mm ; le rapport distingue PASS, WARN
+    et NON VÉRIFIÉ. Les pistes de réglage restent au statut CANDIDAT, sans
+    valeur imposée, modification de profil ou validation physique.
+    """
+    from benchab.controles.coutures import analyser
+    from benchab.qualite.plan_reparation import _empreinte_fichier
+
+    racine = atelier_prive(prive)
+    chemin = sans_lien(declaration, racine=racine, strict=True)
+    preuve = _empreinte_fichier(racine, chemin.relative_to(racine).as_posix(), lecture=True)
+    if preuve["statut"] != "PRESENT":
+        raise ValueError("Déclaration privée régulière et lisible dans le budget requis.")
+    donnees = preuve["contenu"]
+    sha = hashlib.sha256(donnees).hexdigest()
+    if sha != preuve["sha256"]:
+        raise ValueError("La déclaration a changé pendant la lecture.")
+    try:
+        valeurs = json.loads(donnees, object_pairs_hook=_cles_uniques)
+    except RecursionError as exc:
+        raise ValueError("Déclaration de couture trop imbriquée.") from exc
+    rapport = analyser(source, valeurs)
+    rapport["declaration_sha256"] = sha
+    rapport["propositions"] = []
+    if rapport["groupes_alignes"]:
+        if any(region["visibilite"] == "cachee" for region in rapport["regions"]):
+            rapport["propositions"].append({
+                "statut": "CANDIDAT", "reglage": "seam_position",
+                "raison": "Comparer un placement vers une région cachée déclarée ; aucun côté automatique.",
+            })
+        rapport["propositions"].append({
+            "statut": "CANDIDAT", "reglages": ["wipe_on_loops", "wipe_before_external_loop"],
+            "raison": "Comparer un essuyage au voisinage de la couture ; il ne déplace pas la couture.",
+        })
+    return rapport
