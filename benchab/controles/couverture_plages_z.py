@@ -14,7 +14,7 @@ import numpy as np
 from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import sans_lien
-from benchab.imports3d.lecture_3mf import NS
+from benchab.imports3d.lecture_3mf import NS, UNITES
 from benchab.imports3d.lecture_3mf import lire as lire_scene
 from benchab.qualite.empreintes import sha256_fichier
 from benchab.qualite.statuts import code_statut
@@ -94,23 +94,37 @@ def _nombre_type(texte, cle, portee, libelle):
     return _nombre_fini(texte, libelle)
 
 
-def _matrice_z_inchangee(item):
-    """Vérifie que le transform 3MF conserve exactement le repère Z local en mm."""
-    texte = item.get("transform")
-    if texte is None:
-        nombres = np.eye(4)
-    else:
-        try:
-            valeurs = np.asarray([float(partie) for partie in texte.split()], dtype=float)
-        except (TypeError, ValueError):
-            return False
-        if valeurs.shape != (12,) or not np.isfinite(valeurs).all():
-            return False
-        nombres = np.eye(4)
-        nombres[:3] = valeurs.reshape(4, 3).T
-    # Les couches suivent Z objet depuis zéro ; rotation/translation XY garde ce repère,
-    # alors qu’un Z déplacé, incliné ou mis à l’échelle n’est pas encore prouvé ici.
-    return bool(np.array_equal(nombres[2], [0.0, 0.0, 1.0, 0.0]))
+def _trace_transformation(element, unite):
+    """Décrit un transform 3MF ; translation en mm, coefficients sans unité, aucune correction."""
+    explicite = "transform" in element.attrib
+    try:
+        valeurs = [float(partie) for partie in element.attrib["transform"].split()] if explicite else (
+            np.eye(4)[:3].T.flatten().tolist()
+        )
+    except ValueError:
+        valeurs = []
+    facteur = UNITES.get(unite)
+    trace = {
+        "unite_source": unite,
+        "explicite": explicite,
+        "matrice_3mf": None,
+        "translation_mm": None,
+        "coefficients_z": None,
+        "z_inchange": None,
+    }
+    if len(valeurs) != 12 or not all(map(math.isfinite, valeurs)):
+        return trace
+    coefficients_z = valeurs[2:9:3]
+    trace.update(matrice_3mf=valeurs, coefficients_z=coefficients_z)
+    if facteur is None:
+        return trace
+    translation_mm = [v * facteur for v in valeurs[9:]]
+    if not all(map(math.isfinite, translation_mm)):
+        return trace
+    # Le rôle géométrique de Z ne se déduit pas de la seule matrice : le contrôle
+    # qualifie uniquement la conservation exacte du repère (docs/reference/plages-z.md).
+    trace.update(translation_mm=translation_mm, z_inchange=coefficients_z == [0.0, 0.0, 1.0] and valeurs[11] == 0.0)
+    return trace
 
 
 def _chemin_modele_principal(archive, noms):
@@ -152,6 +166,8 @@ def _lire_contexte(source, identifiant):
         if modele_principal is None:
             return None, None, None, "modèle principal absent ou ambigu"
         racine = archive.xml(modele_principal)
+        unite = racine.get("unit", "millimeter")
+        transformations = {}
         membre_plages = "Metadata/layer_config_ranges.xml"
         plages = archive.xml(membre_plages) if membre_plages in noms else None
         membre_reglages = "Metadata/project_settings.config"
@@ -161,50 +177,52 @@ def _lire_contexte(source, identifiant):
         for objet in ressources:
             identifiant_objet = objet.get("id")
             if identifiant_objet in objets_par_id:
-                return racine, plages, reglages, "identifiant d’objet répété dans le modèle principal"
+                return transformations, plages, reglages, "identifiant d’objet répété dans le modèle principal"
             objets_par_id[identifiant_objet] = objet
         items = racine.findall(NS + "build/" + NS + "item")
         if len(items) != 1:
-            return racine, plages, reglages, "plusieurs instances : liaison objet/plage NON VÉRIFIÉE"
+            return transformations, plages, reglages, "plusieurs instances : liaison objet/plage NON VÉRIFIÉE"
         instance = items[0]
         identifiant_racine = instance.get("objectid")
         if identifiant_racine != identifiant:
-            return racine, plages, reglages, "identifiant de plage et géométrie non reliés sans ambiguïté"
+            return transformations, plages, reglages, "identifiant de plage et géométrie non reliés sans ambiguïté"
+        transformations["instance"] = _trace_transformation(instance, unite)
         if instance.get("printable", "1") != "1":
-            return racine, plages, reglages, "instance explicitement non imprimable"
+            return transformations, plages, reglages, "instance explicitement non imprimable"
         if _est_path(instance):
-            return racine, plages, reglages, "instance liée à un autre modèle par p:path : NON VÉRIFIÉ"
+            return transformations, plages, reglages, "instance liée à un autre modèle par p:path : NON VÉRIFIÉ"
         if set(instance.attrib) - {"objectid", "transform", "printable"}:
-            return racine, plages, reglages, "attribut d’instance non qualifié"
-        if not _matrice_z_inchangee(instance):
-            return racine, plages, reglages, "transformation de l’objet modifie ou rend ambigu le repère Z"
+            return transformations, plages, reglages, "attribut d’instance non qualifié"
+        if transformations["instance"]["z_inchange"] is not True:
+            return transformations, plages, reglages, "transformation de l’objet modifie ou rend ambigu le repère Z"
         objet_racine = objets_par_id.get(identifiant_racine)
         if objet_racine is None:
-            return racine, plages, reglages, "objet d’instance absent du modèle principal"
+            return transformations, plages, reglages, "objet d’instance absent du modèle principal"
         composants = objet_racine.findall(NS + "components/" + NS + "component")
         if objet_racine.find(NS + "mesh") is not None and not composants:
             objets_mailles = [obj for obj in ressources if obj.find(NS + "mesh") is not None]
             if len(objets_mailles) != 1 or objets_mailles[0] is not objet_racine:
-                return racine, plages, reglages, "plusieurs corps : liaison objet/plage NON VÉRIFIÉE"
-            return racine, plages, reglages, None
+                return transformations, plages, reglages, "plusieurs corps : liaison objet/plage NON VÉRIFIÉE"
+            return transformations, plages, reglages, None
         # Le producteur BENCHAB met les maillages dans pieces.model et lie chaque
         # plaque par un seul component (docs/reference/integrite-3mf.md).
         if objet_racine.find(NS + "mesh") is not None or len(composants) != 1:
-            return racine, plages, reglages, "assemblage ou liaison objet/plage non qualifiée"
+            return transformations, plages, reglages, "assemblage ou liaison objet/plage non qualifiée"
         composant = composants[0]
+        transformations["composant"] = _trace_transformation(composant, unite)
         noms_path = {
             nom for nom in composant.attrib if nom.endswith("}path")
         }
         if len(noms_path) > 1 or set(composant.attrib) - {"objectid", "transform"} - noms_path:
-            return racine, plages, reglages, "attribut de composant non qualifié"
-        if not _matrice_z_inchangee(composant):
-            return racine, plages, reglages, "transformation de composant modifie ou rend ambigu le repère Z"
+            return transformations, plages, reglages, "attribut de composant non qualifié"
+        if transformations["composant"]["z_inchange"] is not True:
+            return transformations, plages, reglages, "transformation de composant modifie ou rend ambigu le repère Z"
         identifiant_composant = composant.get("objectid")
         if not identifiant_composant:
-            return racine, plages, reglages, "identifiant de composant absent"
+            return transformations, plages, reglages, "identifiant de composant absent"
         chemin_composant = _valeur_path(composant)
         if _est_path(composant) and chemin_composant is None:
-            return racine, plages, reglages, "chemin p:path ambigu"
+            return transformations, plages, reglages, "chemin p:path ambigu"
         if chemin_composant is None:
             modele_composant, objets_composants = racine, objets_par_id
         else:
@@ -213,23 +231,23 @@ def _lire_contexte(source, identifiant):
                 posixpath.join(posixpath.dirname(modele_principal), chemin)
             ))
             if chemin.startswith("../") or chemin not in noms:
-                return racine, plages, reglages, "chemin de composant absent ou hors archive"
+                return transformations, plages, reglages, "chemin de composant absent ou hors archive"
             modele_composant = archive.xml(chemin)
             if modele_composant.get("unit", "millimeter") != racine.get("unit", "millimeter"):
-                return racine, plages, reglages, "unités différentes entre modèles : NON VÉRIFIÉ"
+                return transformations, plages, reglages, "unités différentes entre modèles : NON VÉRIFIÉ"
             objets_composants = {}
             for objet in modele_composant.findall(NS + "resources/" + NS + "object"):
                 cle = objet.get("id")
                 if cle in objets_composants:
-                    return racine, plages, reglages, "identifiant d’objet composant répété"
+                    return transformations, plages, reglages, "identifiant d’objet composant répété"
                 objets_composants[cle] = objet
         cible = objets_composants.get(identifiant_composant)
         maillages = [obj for obj in objets_composants.values() if obj.find(NS + "mesh") is not None]
         if cible is None or cible.find(NS + "mesh") is None or len(maillages) != 1:
-            return racine, plages, reglages, "liaison du composant vers un maillage unique non vérifiée"
+            return transformations, plages, reglages, "liaison du composant vers un maillage unique non vérifiée"
         if cible.findall(NS + "components/" + NS + "component"):
-            return racine, plages, reglages, "composants imbriqués non qualifiés"
-        return racine, plages, reglages, None
+            return transformations, plages, reglages, "composants imbriqués non qualifiés"
+        return transformations, plages, reglages, None
 
 
 def _lire_geometrie(source):
@@ -367,6 +385,18 @@ def _evaluer_intention(item, geometrie, intervalles, tolerance):
     return resultat
 
 
+def _hauteur_base_projet(reglages):
+    """Retourne la hauteur projet en mm (PASS/NON VÉRIFIÉ), distincte des options de plages."""
+    try:
+        hauteur = reglages.get("layer_height") if reglages is not None else None
+        valeur = _nombre_type(str(hauteur), "layer_height", "reglage", "hauteur de base projet")
+        if valeur > 0:
+            return {"statut": "PASS", "valeur_mm": valeur}
+    except (TypeError, ValueError):
+        pass
+    return {"statut": "NON VÉRIFIÉ", "valeur_mm": None}
+
+
 def analyser(source, declaration, *, tolerance_mm=0.001):
     """Contrôle une intention Z en mm ; PASS/FAIL/NON VÉRIFIÉ, sans modifier l’archive."""
     source = sans_lien(Path(source), strict=True)
@@ -380,40 +410,23 @@ def analyser(source, declaration, *, tolerance_mm=0.001):
     empreinte_avant = sha256_fichier(source)
     objets = []
     for item in intentions:
+        commun = {"objet_id": item["objet_id"], "intention": item["type"]}
         try:
-            _, plages_xml, reglages_projet, erreur = _lire_contexte(source, item["objet_id"])
+            transformations, plages_xml, reglages_projet, erreur = _lire_contexte(source, item["objet_id"])
+            commun["transformations"] = transformations or {}
+            commun["hauteur_base_projet"] = _hauteur_base_projet(reglages_projet)
             if erreur:
-                objets.append({
-                    "objet_id": item["objet_id"], "intention": item["type"],
-                    "statut": "NON VÉRIFIÉ", "erreur": erreur,
-                })
+                objets.append({**commun, "statut": "NON VÉRIFIÉ", "erreur": erreur})
                 continue
             geometrie, erreur = _lire_geometrie(source)
             if erreur:
-                objets.append({
-                    "objet_id": item["objet_id"], "intention": item["type"],
-                    "statut": "NON VÉRIFIÉ", "erreur": erreur,
-                })
+                objets.append({**commun, "statut": "NON VÉRIFIÉ", "erreur": erreur})
                 continue
             intervalles = _lire_plages(plages_xml, item["objet_id"])
             resultat = _evaluer_intention(item, geometrie, intervalles, tolerance)
-            if reglages_projet is None:
-                resultat["hauteur_base_projet"] = {"statut": "NON VÉRIFIÉ", "valeur_mm": None}
-            else:
-                hauteur = reglages_projet.get("layer_height")
-                try:
-                    valeur = _nombre_type(str(hauteur), "layer_height", "reglage", "hauteur de base projet")
-                    if valeur <= 0:
-                        raise ValueError("Hauteur de base projet non positive.")
-                    resultat["hauteur_base_projet"] = {"statut": "PASS", "valeur_mm": valeur}
-                except (TypeError, ValueError):
-                    resultat["hauteur_base_projet"] = {"statut": "NON VÉRIFIÉ", "valeur_mm": None}
-            objets.append(resultat)
+            objets.append({**commun, **resultat})
         except (OSError, ValueError, KeyError, TypeError, ElementTree.ParseError, BadZipFile) as erreur:
-            objets.append({
-                "objet_id": item["objet_id"], "intention": item["type"],
-                "statut": "NON VÉRIFIÉ", "erreur": str(erreur),
-            })
+            objets.append({**commun, "statut": "NON VÉRIFIÉ", "erreur": str(erreur)})
     empreinte_apres = sha256_fichier(source)
     if empreinte_apres != empreinte_avant:
         raise ValueError("Archive source modifiée pendant le contrôle.")

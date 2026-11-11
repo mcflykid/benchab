@@ -13,6 +13,7 @@ def _cube_3mf(
     *,
     transform="1 0 0 0 1 0 0 0 1 20 30 0",
     ranges=None,
+    unite="millimeter",
     printable="1",
     project_layer_height=None,
     model_settings=None,
@@ -30,7 +31,7 @@ def _cube_3mf(
     sommets = "".join(f'<vertex x="{x}" y="{y}" z="{z}"/>' for x, y, z in vertices)
     faces = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in triangles)
     model = (
-        '<model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" unit="millimeter">'
+        f'<model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" unit="{unite}">'
         f'<resources><object id="1" type="model"><mesh><vertices>{sommets}</vertices>'
         f'<triangles>{faces}</triangles></mesh></object></resources>'
         f'<build><item objectid="1" printable="{printable}" transform="{transform}"/></build></model>'
@@ -115,7 +116,23 @@ def test_couverture_totale_accepte_une_translation_xy_objet_et_conserve_source(t
     rapport = analyser(source, {"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]})
     assert rapport["statut"] == "PASS"
     assert rapport["objets"][0]["geometrie_z_mm"] == [0.0, 10.0]
+    assert rapport["objets"][0]["transformations"]["instance"]["translation_mm"] == [20.0, 30.0, 0.0]
     assert source.read_bytes() == avant
+
+
+def test_translations_en_pouces_restituees_en_millimetres(tmp_path):
+    """La matrice brute garde ses pouces, le rapport convertit le décalage en mm."""
+    xml = ('<objects><object id="1"><range min_z="0" max_z="254">'
+           '<option opt_key="layer_height">0.2</option></range></object></objects>')
+    source = _cube_3mf(tmp_path / "pouces.3mf", ranges=xml, unite="inch")
+    rapport = analyser(source, {"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]})
+    assert rapport["statut"] == "PASS"
+    objet = rapport["objets"][0]
+    assert objet["geometrie_z_mm"] == [0.0, 254.0]
+    t = objet["transformations"]["instance"]
+    assert t["unite_source"] == "inch"
+    assert t["matrice_3mf"][9:] == [20.0, 30.0, 0.0]
+    assert t["translation_mm"] == [508.0, 762.0, 0.0]
 
 
 def test_plage_partielle_volontaire_est_acceptee_sur_intervalle_declare(tmp_path):
@@ -147,6 +164,9 @@ def test_zone_fine_sans_couverture_reste_fail_et_transformation_z_inconnue_nv(tm
     transformee_z = _cube_3mf(tmp_path / "z-inconnu.3mf", transform="1 0 0 0 1 0 0 0 1 0 0 2")
     rapport_z = analyser(transformee_z, {"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]})
     assert rapport_z["statut"] == "NON VÉRIFIÉ"
+    t = rapport_z["objets"][0]["transformations"]["instance"]
+    assert t["translation_mm"] == [0.0, 0.0, 2.0]
+    assert t["z_inchange"] is False
 
 
 def test_zone_fine_plus_courte_que_tolerance_exige_une_couverture_complete(tmp_path):
@@ -263,6 +283,10 @@ def test_composant_interne_unique_et_transform_z_identique_reste_qualifie(tmp_pa
     archive = _archive_composant_interne(source, tmp_path / "composant-interne.3mf")
     rapport = analyser(archive, {"schema": 1, "intentions": [{"objet_id": "2", "type": "totale"}]})
     assert rapport["statut"] == "PASS"
+    transformations = rapport["objets"][0]["transformations"]
+    assert transformations["instance"]["z_inchange"] is True
+    assert transformations["composant"]["translation_mm"] == [5.0, 6.0, 0.0]
+    assert transformations["composant"]["coefficients_z"] == [0.0, 0.0, 1.0]
 
 
 def test_transform_z_du_composant_interne_est_aussi_strict(tmp_path):
