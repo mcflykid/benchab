@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir
+## 1.10.0 — 2026-11-11
 
 - Diagnostic : signale les exports absents, liés, mal formés ou divergents
   sans arrêter les autres comparaisons et sans modifier l’atelier (#177).

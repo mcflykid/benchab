@@ -133,7 +133,22 @@ un JUnit sans certifier leur exécution (#119). Une fiche de cotes génère un
 plan et un script déterministes pour des blocs percés (#32). Les références
 de construction et les géométries obtenues restent des preuves numériques.
 
-## Prochaine version : 1.10.0
+## Version 1.10.0 — continuité, diagnostic et supports
+
+Le diagnostic distingue les exports absents, liés, illisibles et différents
+sans masquer les autres comparaisons ni réécrire l’atelier (#177). Les
+numéros de plaque ambigus restent NON VÉRIFIÉS en continuité (#178). Le
+contrôle de paroi extérieure calcule aussi le début exact du dépôt des arcs
+G17 à Z constant, sans utiliser leur corde (suite de #123).
+
+La normalisation des copies avant tranchage partage le lecteur borné et
+conserve les différences déclarées, l’ordre et les métadonnées ZIP (#122).
+Les valeurs d’interface de support `auto` et `concentric` ont produit des
+trajectoires différentes sur le coupon du binaire identifié (#80 et #89).
+Le résultat ne qualifie ni les autres valeurs, ni l’écart Z ou le retrait
+physique. Le fraisage nominal prolonge le catalogue de fixations (#27).
+
+## Prochaine version : 1.11.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -144,13 +159,14 @@ Traiter les prérequis avant les nouveaux réglages :
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
   La mesure dans une boîte, l’enveloppe du dépôt et la revue des ponts et
-  surplombs attribués peuvent utiliser la courbe ; la première couche, la
+  surplombs attribués peuvent utiliser la courbe. La continuité des parois
+  extérieures couvre G17 à Z constant. La première couche, les hélices en
   continuité et la cinématique restent à qualifier. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs et
-  écrivains spécialisés. Les transformations d’archives du slicer exigent
-  leurs propres preuves ; les remplacements Core de 1.8 restent distincts.
+  écrivains spécialisés. La normalisation est migrée ; les autres
+  transformations d’archives du slicer exigent leurs propres preuves ; les remplacements Core de 1.8 restent distincts.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
   tout en détectant les exports corrompus.
@@ -168,7 +184,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Concevoir et assembler | #32 : élargir les fiches au-delà des blocs percés ; #27 : filetages, fraisage et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
+| Concevoir et assembler | #32 : élargir les fiches au-delà des blocs percés ; #27 : filetages et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
 | Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
@@ -200,7 +216,8 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
   primitives communes de lecture, de copie et de publication.
 - #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
   de surplombs, de première couche et de débit.
-- #119 : qualifier les autres familles de reprise et la preuve d’exécution
+- #119 : préparer la copie prouvée d’un export manquant, qualifier les autres
+  familles de reprise et la preuve d’exécution
   au-delà du contenu déclaré d’un rapport JUnit. Une vue canonique peut être régénérée après
   contrôle du plan et copie vérifiée de l’ancienne vue. La cible d’un lien cassé
   peut être recréée par copie prouvée ; un original introuvable reste NON VÉRIFIÉ.
