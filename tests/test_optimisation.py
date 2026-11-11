@@ -399,6 +399,52 @@ class OptimisationTests(unittest.TestCase):
             optimisation.clone(self.source, self.projet / "interdite.3mf", proposition)
         self.assertFalse((self.projet / "interdite.3mf").exists())
 
+    def test_clone_refuse_source_remplacee_apres_analyse(self):
+        proposition = self.proposer()
+        copie = self.projet / "source-epinglee.3mf"
+        temporaire_original = optimisation.PublicationNeuve.temporaire
+
+        def remplacer_source(publication, cible):
+            temporaire = temporaire_original(publication, cible)
+            with zipfile.ZipFile(self.source) as entree:
+                membres = [(info, entree.read(info)) for info in entree.infolist()]
+                commentaire = entree.comment
+            remplacement = self.source.with_suffix(".remplacement")
+            with zipfile.ZipFile(remplacement, "w") as sortie:
+                sortie.comment = commentaire + b"source remplacee"
+                for info, contenu in membres:
+                    sortie.writestr(copy.copy(info), contenu)
+            remplacement.replace(self.source)
+            return temporaire
+
+        with patch.object(optimisation.PublicationNeuve, "temporaire", remplacer_source):
+            with self.assertRaisesRegex(ValueError, "Source différente"):
+                optimisation.clone(self.source, copie, proposition)
+        self.assertFalse(copie.exists())
+
+    def test_clone_conserve_commentaire_et_membres_zip(self):
+        source_initiale = self.source
+        avec_commentaire = self.projet / "source-commentee.3mf"
+        with zipfile.ZipFile(source_initiale) as entree, zipfile.ZipFile(avec_commentaire, "w") as sortie:
+            sortie.comment = b"fixture commentaire ZIP"
+            membres = [(copy.copy(info), entree.read(info)) for info in entree.infolist()]
+            for info, contenu in membres:
+                sortie.writestr(info, contenu)
+        self.source = avec_commentaire
+        copie = self.projet / "copie-commentee.3mf"
+        optimisation.clone(self.source, copie)
+        with zipfile.ZipFile(self.source) as avant, zipfile.ZipFile(copie) as apres:
+            self.assertEqual(apres.comment, avant.comment)
+            self.assertEqual(apres.namelist(), avant.namelist())
+            for nom in avant.namelist():
+                self.assertEqual(apres.read(nom), avant.read(nom))
+                info_avant, info_apres = avant.getinfo(nom), apres.getinfo(nom)
+                self.assertEqual(info_apres.compress_type, info_avant.compress_type)
+                self.assertEqual(info_apres.date_time, info_avant.date_time)
+                self.assertEqual(info_apres.external_attr, info_avant.external_attr)
+                self.assertEqual(info_apres.extra, info_avant.extra)
+                self.assertEqual(info_apres.comment, info_avant.comment)
+
     def test_clone_refuse_une_mutation_3mf_non_declaree(self):
         proposition = self.proposer()
         copie = self.projet / "mutation.3mf"

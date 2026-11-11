@@ -92,28 +92,41 @@ def _digest(valeur: dict) -> str:
     return hashlib.sha256(contenu).hexdigest()
 
 
-def lire_3mf(source: str | Path):
-    """Lit un 3MF et renvoie réglages typés, XML et empreintes (unités natives) ; lecture seule."""
-    with Archive3MF(source) as archive:
-        noms = archive.noms()
-        if any(re.fullmatch(r"Metadata/plate_\d+\.gcode", nom) for nom in noms):
-            raise ValueError("Une source non tranchée est requise.")
-        if CONFIGURATION not in noms or OBJETS not in noms:
-            raise ValueError("Réglages de projet ou objets absents dans le 3MF.")
-        reglages = archive.reglages(CONFIGURATION)
-        # Les identités et résidus restent qualifiés par le dictionnaire commun (#103).
-        reglages.contexte.update(reglages_types.contexte_filaments(reglages))
-        xml = archive.xml(OBJETS)
-        geometrie = {}
+def _lire_3mf_archive(archive: Archive3MF, *, calculer_geometrie=True, verifier_reste=True):
+    """Lit les réglages typés et l’objet XML d’un contexte déjà ouvert ; aucun réglage n’est modifié."""
+    noms = archive.noms()
+    if any(re.fullmatch(r"Metadata/plate_\d+\.gcode", nom) for nom in noms):
+        raise ValueError("Une source non tranchée est requise.")
+    if CONFIGURATION not in noms or OBJETS not in noms:
+        raise ValueError("Réglages de projet ou objets absents dans le 3MF.")
+    reglages = archive.reglages(CONFIGURATION)
+    # Les identités et résidus restent qualifiés par le dictionnaire commun (#103).
+    reglages.contexte.update(reglages_types.contexte_filaments(reglages))
+    xml = archive.xml(OBJETS)
+    geometrie = {}
+    if calculer_geometrie:
         for nom in noms:
             if nom.startswith("3D/") or nom in ("_rels/.rels", "[Content_Types].xml"):
                 with archive.ouvrir_flux(nom) as flux:
                     geometrie[nom] = hashlib.file_digest(flux, "sha256").hexdigest()
-        # Les lectures précédentes vérifient déjà leur CRC. Contrôler le reste une seule fois (#122).
-        archive.verifier(membres=(nom for nom in noms if nom not in geometrie and nom not in (CONFIGURATION, OBJETS)))
-    if not geometrie or not xml.findall("object"):
+    if verifier_reste:
+        # Les membres non interprétés doivent aussi atteindre EOF pour contrôler leur CRC (#122).
+        archive.verifier(
+            membres=(
+                nom for nom in noms
+                if nom not in geometrie and nom not in (CONFIGURATION, OBJETS)
+            )
+        )
+    if (calculer_geometrie and not geometrie) or not xml.findall("object"):
         raise ValueError("Réglages, objets ou géométrie absents.")
     return reglages, xml, geometrie
+
+
+def lire_3mf(source: str | Path):
+    """Lit un 3MF et renvoie réglages typés, XML et empreintes (unités natives) ; lecture seule."""
+    with Archive3MF(source) as archive:
+        resultat = _lire_3mf_archive(archive)
+    return resultat
 
 
 def charger_fabrication(projet: str | Path, objectif: str | None = None) -> dict:
@@ -398,9 +411,15 @@ def proposer(base: Base, projet: str | Path, source: str | Path, objectif: str |
 
 
 def clone(source: str | Path, cible: str | Path, proposition: dict | None = None) -> tuple[dict, dict]:
-    """Publie un clone contrôlé : SHA et statut PASS ; vitesses mm/s, accélérations mm/s², géométrie inchangée."""
+    """Publie un clone contrôlé : SHA et statut PASS ; vitesses mm/s, accélérations mm/s², géométrie inchangée.
+
+    L’entrée reste épinglée pendant ses lectures et les membres hors réglages sont copiés
+    en flux avec leurs CRC ; aucune modification de la source n’est permise.
+    """
     source, cible = Path(source), Path(cible)
-    reglages, xml, geometrie = lire_3mf(source)
+    with Archive3MF(source) as archive_initiale:
+        reglages, xml, geometrie = _lire_3mf_archive(archive_initiale)
+        sha_source_initial = archive_initiale.sha256()
     if proposition is not None:
         changements_globaux = proposition.get("reglages", {}).get("global", {})
         changements_objets = proposition.get("reglages", {}).get("objets", [])
@@ -439,24 +458,65 @@ def clone(source: str | Path, cible: str | Path, proposition: dict | None = None
         permis = []
     with PublicationNeuve([source], [cible]) as publication:
         temporaire = publication.temporaire(cible)
-        with zipfile.ZipFile(source) as entree, zipfile.ZipFile(temporaire, "w") as sortie:
-            sortie.comment = entree.comment
-            for info in entree.infolist():
-                if info.filename == CONFIGURATION:
-                    contenu = reglages_types.encoder(reglages, ensure_ascii=False, allow_nan=False).encode("utf-8")
-                elif info.filename == OBJETS:
-                    contenu = ET.tostring(xml, encoding="utf-8", xml_declaration=True)
-                else:
-                    contenu = entree.read(info)
-                sortie.writestr(copy.copy(info), contenu)
+        with Archive3MF(source) as archive:
+            # Analyse et copie restent liées au même descripteur ; le SHA inclut le commentaire ZIP.
+            reglages_source, xml_source, _ = _lire_3mf_archive(
+                archive, calculer_geometrie=False, verifier_reste=False
+            )
+            sha_source = archive.sha256()
+            if sha_source != sha_source_initial:
+                raise ValueError("Source différente depuis son analyse initiale.")
+            commentaire_source = archive.commentaire
+            if proposition is not None:
+                reglages_source.update(changements_globaux)
+                for objet in xml_source.findall("object"):
+                    for cle, valeur in index.get(objet.get("id"), {}).items():
+                        meta = next((item for item in objet.findall("metadata") if item.get("key") == cle), None)
+                        if meta is None:
+                            meta = ET.SubElement(objet, "metadata", key=cle)
+                        meta.set("value", str(valeur))
+            with zipfile.ZipFile(temporaire, "w") as sortie:
+                sortie.comment = commentaire_source
+                for nom in archive.noms():
+                    info = archive.information(nom)
+                    if nom == CONFIGURATION:
+                        contenu = reglages_types.encoder(
+                            reglages_source, ensure_ascii=False, allow_nan=False
+                        ).encode("utf-8")
+                        sortie.writestr(info, contenu)
+                    elif nom == OBJETS:
+                        contenu = ET.tostring(xml_source, encoding="utf-8", xml_declaration=True)
+                        sortie.writestr(info, contenu)
+                    else:
+                        with archive.ouvrir_flux(nom) as flux, sortie.open(info, "w") as destination:
+                            empreinte = hashlib.sha256() if nom.startswith("3D/") or nom in (
+                                "_rels/.rels", "[Content_Types].xml"
+                            ) else None
+                            while bloc := flux.read(64 * 1024):
+                                destination.write(bloc)
+                                if empreinte is not None:
+                                    empreinte.update(bloc)
+                            if empreinte is not None:
+                                geometrie[nom] = empreinte.hexdigest()
+            archive.verifier_source(source)
         _, _, apres = lire_3mf(temporaire)
         if geometrie != apres:
             raise ValueError("Géométrie modifiée : comparaison refusée.")
         integrite = integrite_3mf.verifier(source, temporaire, permis)
-        with zipfile.ZipFile(source) as entree, zipfile.ZipFile(temporaire) as sortie:
-            for nom in entree.namelist():
-                if nom not in (CONFIGURATION, OBJETS) and entree.read(nom) != sortie.read(nom):
-                    raise ValueError("Membre inattendu modifié : " + nom)
+        with Archive3MF(source) as entree, Archive3MF(temporaire) as sortie:
+            if entree.sha256() != sha_source or sortie.commentaire != commentaire_source:
+                raise ValueError("Source ou commentaire ZIP modifié pendant le clone.")
+            for nom in entree.noms():
+                if nom not in (CONFIGURATION, OBJETS):
+                    with entree.ouvrir_flux(nom) as flux_entree, sortie.ouvrir_flux(nom) as flux_sortie:
+                        while True:
+                            bloc_entree = flux_entree.read(64 * 1024)
+                            bloc_sortie = flux_sortie.read(64 * 1024)
+                            if bloc_entree != bloc_sortie:
+                                raise ValueError("Membre inattendu modifié : " + nom)
+                            if not bloc_entree:
+                                break
+            entree.verifier_source(source)
         publication.publier()
     return {"fichier": str(cible), "sha256": sha256_fichier(cible)}, {
         "conforme": True,
