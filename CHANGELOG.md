@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir — 1.8.0
+## 1.8.0 — 2026-11-11
 
 - 3MF : remplace une cible directe ou une feuille non partagée d’un assemblage
   Core en préservant les autres géométries, matrices et membres (#112).

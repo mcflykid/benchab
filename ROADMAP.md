@@ -103,7 +103,23 @@ Le résumé des surplombs (#35), les annotations communes (#127) et le découpag
 de l’audit ACE (#68) complètent le lot. Aucune de ces vérifications numériques
 ne valide une impression physique.
 
-## Prochaine version : 1.8.0
+## Version 1.8.0 — volumes 3MF, preuves et préparation
+
+Un remplacement ciblé peut produire une copie 3MF Core neuve à partir d’un
+objet direct ou d’une feuille unique d’un assemblage à un niveau. Les autres
+géométries, matrices, réglages et membres sont contrôlés avant publication
+(#112). Les extensions du slicer et l’usage physique restent hors de ce
+contrat. L’éprouvette interne lie ses métriques aux membres G-code exacts
+et refuse les métadonnées de plaque répétées (#169).
+
+Le bilan de filament lit le retour et l’envoi identifiés sans imputer de
+masse à une bobine (#77). Les logements d’insert, lamage et écrou décrivent
+des cotes et marges géométriques explicites, sans ajustement physique déduit
+(#27). Le résumé de première couche, les lectures de plaques mixtes et de
+l’éprouvette de jeux, et les annotations communes complètent le lot
+(#35, #122 et #127).
+
+## Prochaine version : 1.9.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -118,9 +134,9 @@ Traiter les prérequis avant les nouveaux réglages :
   continuité et la cinématique restent à qualifier. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
-- **Fichiers et archives** : #122 poursuit la migration après les références,
-  la qualité, les variantes et les études déjà couvertes. #112 étudie les
-  remplacements ciblés sans altérer le reste du 3MF.
+- **Fichiers et archives** : #122 poursuit la migration des lecteurs et
+  écrivains spécialisés. Les transformations d’archives du slicer exigent
+  leurs propres preuves ; les remplacements Core de 1.8 restent distincts.
 - **Données et reprise** : #119 poursuit la récupération fondée sur les
   empreintes. #19 cherche à éviter le parcours complet après chaque écriture,
   tout en détectant les exports corrompus.
@@ -138,8 +154,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Géométrie et 3MF | #112 : remplacement ciblé |
-| Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages/inserts ; #29 : clips ; #31 : placement dans la visionneuse |
+| Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages, fraisage et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
 | Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
 | Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
@@ -169,8 +184,8 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
   ne suffit pas à clore le chantier.
 - #127 : rattraper les annotations des contrôles et lanceurs après les
   primitives communes de lecture, de copie et de publication.
-- #35 : compléter les rapports courts après les parcours d’envoi, de plages Z
-  et de surplombs.
+- #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
+  de surplombs et de première couche.
 - #119 : relier la fiche d’incident à sa preuve de non-régression et qualifier
   les autres familles de reprise. Une vue canonique peut être régénérée après
   contrôle du plan et copie vérifiée de l’ancienne vue. La cible d’un lien cassé
