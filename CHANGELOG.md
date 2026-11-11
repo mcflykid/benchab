@@ -12,6 +12,9 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Visualisation : documente les contrats publics de l’atelier et des
   outils de consultation, sans changer leurs traitements (#127).
 
+- Documentation : refond le README autour du démarrage, des guides par
+  usage et de la sauvegarde de l’atelier privé (#230).
+
 ## 1.27.0 — 2026-11-11
 
 - 3MF : compare les matériaux et la peinture d’assemblages de plusieurs
