@@ -476,6 +476,22 @@ class OptimisationTests(unittest.TestCase):
         self.assertFalse(nouveau["cache_reutilise"])
         self.assertEqual(nouveau["decision"], "À revoir")
 
+    def test_changement_du_code_des_entrees_invalide_le_cache(self):
+        """Une évolution des entrées déplacées ne réutilise jamais un rapport déjà calculé."""
+        premier = optimisation.comparer(self.base, self.projet, self.source, maitre=profil(), trancher=False)
+        original = optimisation.sha256_fichier
+
+        def simuler_changement(chemin):
+            if Path(chemin).name == "optimisation_entrees.py":
+                return "d" * 64
+            return original(chemin)
+
+        with patch.object(optimisation, "sha256_fichier", side_effect=simuler_changement):
+            suivant = optimisation.comparer(self.base, self.projet, self.source, maitre=profil(), trancher=False)
+        self.assertFalse(suivant["cache_reutilise"])
+        self.assertNotEqual(premier["empreinte_cache"], suivant["empreinte_cache"])
+        self.assertTrue(Path(premier["rapport"]).is_file())
+
     def test_budget_et_sortie_dans_preparation_figee_refuses(self):
         with self.assertRaisesRegex(ValueError, "budget"):
             optimisation.comparer(

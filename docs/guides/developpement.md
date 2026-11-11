@@ -16,6 +16,12 @@ hors du lot, et les dépendances sans annotations ne sont pas assimilées à une
 preuve de typage. Le groupe `typage` est réservé à la vérification et n’est pas
 une dépendance d’exécution.
 
+Les rapports d’optimisation et les études de stratégie incluent les empreintes
+des modules de préparation de copies et d’entrées qu’ils utilisent. Déplacer
+une fonction vers un fichier neuf impose d’ajouter ce fichier à leur contexte.
+Une nouvelle empreinte peut nécessiter une nouvelle étude ; les anciens
+rapports et préparations restent consultables et ne sont pas écrasés.
+
 Les tests construisent leurs propres fixtures et isolent l’atelier privé.
 Ils bloquent aussi par défaut les résolutions DNS et connexions externes avant
 tout trafic ; les sockets UNIX et la boucle locale restent accessibles pour les

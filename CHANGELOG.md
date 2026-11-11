@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.6.0
 
+- Maintenance : sépare les entrées, copies et publications des quatre gros modules
+  en conservant les rapports des témoins et l’invalidation des études (#23).
 - Atelier : restaure une cible de lien privé absente par copie d’identité prouvée et conserve le lien et sa preuve (suite de #119).
 - Purge : compte les transitions explicites par plaque et sépare la matrice documentaire de toute mesure ou qualification du binaire (suite de #72).
 - Qualité : documente les gardes communes de chemins et verrous (suite de #127).

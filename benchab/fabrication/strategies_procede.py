@@ -13,6 +13,7 @@ from pathlib import Path
 from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.donnees.base import Base
+from benchab.fabrication import optimisation_entrees, tranchage_copies
 from benchab.fabrication.optimisation import _fichier_prive, _lire_maitre, _publier_json, lire_3mf, positif
 from benchab.machine import profil_maitre as maitre_api
 from benchab.qualite.empreintes import sha256_fichier
@@ -64,12 +65,15 @@ def _maitre(base: Base, configuration: dict, maitre=None):
 
 
 def contexte_etude(base: Base, maitre=None) -> dict:
+    """Empreintes SHA-256 du profil et des modules de l’étude ; aucune préparation modifiée."""
     profil, limites = _maitre(base, {}, maitre)
     modules = [
         Path(__file__),
         Path(maitre_api.__file__),
         Path(__import__("benchab.fabrication.comparer_remplissages", fromlist=["main"]).__file__),
         Path(__import__("benchab.fabrication.optimisation", fromlist=["proposer"]).__file__),
+        Path(optimisation_entrees.__file__),
+        Path(tranchage_copies.__file__),
         Path(__import__("benchab.fabrication.anycubic", fromlist=["trancher"]).__file__),
     ]
     return {
