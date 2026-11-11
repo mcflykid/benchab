@@ -199,6 +199,10 @@ def parser():
         "--candidat-lien", action="append", default=[], metavar="CHEMIN",
         help="Candidat privé relatif ; propose un lien uniquement si un SHA unique correspond au rendu SQLite",
     )
+    consommation_retour = controle.add_parser(
+        "consommation-retour", help="Lit un plan numérique de filament pour un retour identifié"
+    )
+    consommation_retour.add_argument("--retour", required=True, help="Identifiant du retour enregistré")
     entretien = controle.add_parser("entretien", help="Bilan conditionnel depuis un historique privé explicite")
     entretien.add_argument("--historique", type=Path, required=True, help="Historique JSON privé à relire")
     entretien.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf ; une sortie existante est refusée")
@@ -940,9 +944,11 @@ def _mesurer_refus(argv, commande, code):
 
 
 def main(argv=None):
-    """Analyse argv sans écriture, puis ouvre l'atelier choisi ; codes CLI et durées s, aucune autorisation machine.
+    """Distribue les commandes, codes CLI et durées s, sans autorisation machine implicite.
 
-    --help/--version restent sans effet ; seul init crée un atelier CLI absent (docs/reference/chemins-et-atelier.md).
+    Les plans `controle plan-reparation` et `controle consommation-retour` ne créent
+    ni atelier ni mesure. --help/--version restent sans effet ; seul init crée un
+    atelier CLI absent (docs/reference/chemins-et-atelier.md).
     """
     from benchab.chemins import atelier_prive
 
@@ -953,6 +959,7 @@ def main(argv=None):
             "plan-reparation",
             "appliquer-reparation-vue",
             "entretien",
+            "consommation-retour",
         }
         for i in range(len(argv) - 1)
     ) or any(
@@ -983,6 +990,13 @@ def main(argv=None):
         # Comme le diagnostic d'installation, ce plan reste hors Base() et hors mesure (#119).
         rapport = planifier(atelier_prive(arguments.prive), candidats=arguments.candidat_lien)
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
+        return rapport["code"]
+    if arguments.commande == "controle" and arguments.controle == "consommation-retour":
+        from benchab.projets.plan_consommation import planifier_lecture
+
+        # Le rapport reste NON VÉRIFIÉ et ne passe ni par Base() ni par Mesure (#77).
+        rapport = planifier_lecture(arguments.prive, arguments.retour)
+        print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
         return rapport["code"]
     if arguments.commande == "controle" and arguments.controle == "entretien":
         try:

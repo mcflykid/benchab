@@ -7,9 +7,11 @@ import os
 import re
 import sqlite3
 import stat
+from contextlib import closing
 from pathlib import Path
 
-from benchab.donnees.base import Base
+from benchab.chemins import atelier_prive, sans_lien
+from benchab.donnees.base import APPLICATION_ID, Base
 from benchab.fabrication import envois_slicer
 from benchab.qualite.ecritures import _sans_lien
 from benchab.qualite.empreintes import sha256_fichier
@@ -56,13 +58,20 @@ def _nv(retour_id: str, motif: str) -> dict:
     }
 
 
-def _chemin_prive(base: Base, relatif: str) -> Path:
+def _nv_cli(retour_id: str, motif: str) -> dict:
+    """Construit un rapport de commande au code 2 tant que la consommation reste NV."""
+    resultat = _nv(retour_id, motif)
+    resultat["code"] = 2
+    return resultat
+
+
+def _chemin_prive(prive: Path, relatif: str) -> Path:
     """Résout un fichier régulier dans l'atelier, sans traversée ni lien symbolique."""
     chemin_relatif = Path(relatif)
     if chemin_relatif.is_absolute() or ".." in chemin_relatif.parts or not chemin_relatif.parts:
         raise ValueError("chemin privé invalide")
-    chemin = _sans_lien(base.prive / chemin_relatif)
-    if not chemin.is_relative_to(base.prive.resolve()) or not chemin.is_file():
+    chemin = _sans_lien(prive / chemin_relatif)
+    if not chemin.is_relative_to(prive.resolve()) or not chemin.is_file():
         raise ValueError("fichier privé absent ou hors atelier")
     if not stat.S_ISREG(chemin.stat().st_mode):
         raise ValueError("fichier privé non régulier")
@@ -95,10 +104,10 @@ def _lire_fiche_bornee(chemin: Path) -> bytes:
         return contenu
 
 
-def _association(base: Base, projet_id: str, preparation_id: str, fiche_sha: str,
+def _association(connexion: sqlite3.Connection, projet_id: str, preparation_id: str, fiche_sha: str,
                  fichier: str, envoi_sha: str) -> dict | None:
     """Retrouve l'unique association technique qui relie préparation et archive par SHA."""
-    lignes = base.connexion.execute(
+    lignes = connexion.execute(
         "SELECT donnees_json FROM decisions WHERE projet_id=? "
         "AND json_extract(donnees_json,'$.type')=? "
         "AND json_extract(donnees_json,'$.preparation_id')=?",
@@ -118,9 +127,9 @@ def _association(base: Base, projet_id: str, preparation_id: str, fiche_sha: str
     return correspondances[0] if len(correspondances) == 1 else None
 
 
-def _lire_retour(base: Base, retour_id: str):
+def _lire_retour(connexion: sqlite3.Connection, retour_id: str):
     """Lit une chaîne relationnelle retour → impression → préparation, sans migration."""
-    lignes = base.connexion.execute(
+    lignes = connexion.execute(
         "SELECT r.id,r.impression_id,r.donnees_json AS retour_json,i.preparation_id,i.resultat,"
         "i.donnees_json AS impression_json,"
         "p.projet_id,p.nom,p.empreinte,p.donnees_json "
@@ -147,8 +156,28 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
     """
     if not isinstance(base, Base) or not isinstance(retour_id, str) or not retour_id.strip():
         raise ValueError("Atelier BENCHAB et identifiant de retour explicites requis.")
+    return _estimer_retour(base.prive, base.connexion, retour_id)
+
+
+def estimer_retour_ro(prive: Path | str, connexion: sqlite3.Connection, retour_id: str) -> dict:
+    """Produit le même plan depuis une connexion SQLite RO en transaction query_only.
+
+    Entrées : racine privée, connexion préalablement ouverte en mode ro et query_only,
+    snapshot transactionnel et identifiant de retour. Sortie en g, toujours NON VÉRIFIÉ.
+    Aucun dossier, fichier, réglage ou stock n'est créé ou modifié.
+    """
     try:
-        relation = _lire_retour(base, retour_id)
+        if not connexion.in_transaction or connexion.execute("PRAGMA query_only").fetchone()[0] != 1:
+            return _nv(retour_id, "snapshot SQLite en lecture seule requis")
+        return _estimer_retour(Path(prive), connexion, retour_id)
+    except (sqlite3.Error, OverflowError, OSError, ValueError, TypeError) as erreur:
+        return _nv(retour_id, f"source incomplète ou illisible : {type(erreur).__name__}")
+
+
+def _estimer_retour(prive: Path, connexion: sqlite3.Connection, retour_id: str) -> dict:
+    """Lit les preuves relationnelles et l'envoi ; n'ouvre pas l'atelier et n'écrit rien."""
+    try:
+        relation = _lire_retour(connexion, retour_id)
         if relation is None:
             return _nv(retour_id, "retour, impression ou préparation introuvable")
         ligne, retour, impression = relation
@@ -171,7 +200,7 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
         if chemin_projet.is_absolute() or ".." in chemin_projet.parts or not chemin_projet.parts:
             return _nv(retour_id, "identité de projet invalide")
         preparation = _chemin_prive(
-            base, str(Path(projet_id) / "preparations" / ligne["nom"] / "PREPARATION.json")
+            prive, str(Path(projet_id) / "preparations" / ligne["nom"] / "PREPARATION.json")
         )
         octets_fiche = _lire_fiche_bornee(preparation)
         if hashlib.sha256(octets_fiche).hexdigest() != fiche_sha:
@@ -189,10 +218,10 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
         chemin_envoi, envoi_sha = envoi.get("chemin"), envoi.get("sha256")
         if not isinstance(chemin_envoi, str) or not isinstance(envoi_sha, str) or _SHA256.fullmatch(envoi_sha) is None:
             return _nv(retour_id, "identité ou empreinte d’envoi invalide")
-        association = _association(base, projet_id, ligne["preparation_id"], fiche_sha, chemin_envoi, envoi_sha)
+        association = _association(connexion, projet_id, ligne["preparation_id"], fiche_sha, chemin_envoi, envoi_sha)
         if association is None:
             return _nv(retour_id, "association d’envoi absente ou ambiguë")
-        chemin = _chemin_prive(base, chemin_envoi)
+        chemin = _chemin_prive(prive, chemin_envoi)
         if sha256_fichier(chemin) != envoi_sha:
             return _nv(retour_id, "envoi absent, ambigu ou empreinte divergente")
         rapport = envois_slicer.lire(chemin)
@@ -260,3 +289,70 @@ def estimer_retour(base: Base, retour_id: str) -> dict:
         }
     except (OSError, ValueError, TypeError, KeyError, OverflowError, sqlite3.Error, json.JSONDecodeError) as erreur:
         return _nv(retour_id, f"source incomplète ou illisible : {erreur}")
+
+
+def _signature_base(chemin: Path):
+    """Retourne dev/inode et métadonnées de la base, sans suivre de lien."""
+    info = chemin.lstat()
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise ValueError("Base SQLite non régulière ou liée")
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def _entete_sqlite(chemin: Path) -> bytes:
+    """Lit 20 octets de l'entête SQLite sans suivre de lien ni ouvrir SQLite."""
+    fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as flux:
+        if not stat.S_ISREG(os.fstat(flux.fileno()).st_mode):
+            return b""
+        return flux.read(20)
+
+
+def _fichiers_auxiliaires_absents(chemin: Path) -> bool:
+    """Vérifie l'absence de journaux auxiliaires, même sous forme de lien pendant."""
+    for suffixe in ("-wal", "-shm", "-journal"):
+        try:
+            (Path(str(chemin) + suffixe)).lstat()
+        except FileNotFoundError:
+            continue
+        return False
+    return True
+
+
+def planifier_lecture(prive: Path | str | None, retour_id: str) -> dict:
+    """Construit le rapport CLI depuis SQLite canonical en RO/query_only et snapshot borné.
+
+    Entrées : racine privée éventuelle et identifiant de retour. Sortie JSON de code 2,
+    statut NON VÉRIFIÉ (aucune consommation physique n'est établie). Ouvre seulement
+    `benchab.sqlite` existant en mode ro, sans Base(), mesure, création ni écriture.
+    """
+    try:
+        racine = atelier_prive(prive).absolute()
+        chemin = sans_lien(racine / "benchab.sqlite", racine=racine, strict=True)
+        signature = _signature_base(chemin)
+        entete = _entete_sqlite(chemin)
+        if not entete.startswith(b"SQLite format 3\0") or len(entete) != 20:
+            return _nv_cli(retour_id, "base SQLite non reconnue")
+        if entete[18:20] != b"\x01\x01":
+            return _nv_cli(retour_id, "mode journal WAL ou non qualifié refusé avant ouverture")
+        if not _fichiers_auxiliaires_absents(chemin):
+            return _nv_cli(retour_id, "fichiers auxiliaires SQLite présents ; source non qualifiée")
+        with closing(sqlite3.connect(chemin.as_uri() + "?mode=ro", uri=True, timeout=1.0)) as connexion:
+            connexion.row_factory = sqlite3.Row
+            connexion.execute("PRAGMA query_only = ON")
+            connexion.execute("PRAGMA busy_timeout = 1000")
+            connexion.execute("BEGIN")
+            identite = connexion.execute("PRAGMA application_id").fetchone()[0]
+            version = connexion.execute("PRAGMA user_version").fetchone()[0]
+            mode = connexion.execute("PRAGMA journal_mode").fetchone()[0].lower()
+            if mode not in {"delete", "truncate", "persist"}:
+                return _nv_cli(retour_id, "mode journal SQLite hors rollback refusé")
+            if identite != APPLICATION_ID or version != 1:
+                return _nv_cli(retour_id, "identité ou schéma BENCHAB non établi")
+            rapport = estimer_retour_ro(racine, connexion, retour_id)
+            if _signature_base(chemin) != signature:
+                return _nv_cli(retour_id, "base modifiée pendant le snapshot")
+        rapport["code"] = 2
+        return rapport
+    except (OSError, ValueError, TypeError, OverflowError, sqlite3.Error) as erreur:
+        return _nv_cli(str(retour_id), f"source privée indisponible : {type(erreur).__name__}")
