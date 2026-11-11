@@ -2,12 +2,20 @@
 
 import hashlib
 import json
+import os
 import re
 import sqlite3
 from pathlib import Path
 
-from benchab.donnees.base import APPLICATION_ID, TABLES
+from benchab.donnees.base import (
+    APPLICATION_ID,
+    TABLES,
+    _ouvrir_export,
+    _signature_export,
+    _verifier_export_inchange,
+)
 from benchab.qualite.ecritures import _sans_lien
+from benchab.qualite.empreintes import sha256_fichier
 
 
 def _verifier_vues(root, connexion):
@@ -208,8 +216,95 @@ def _verifier_fiches_filaments(root, connexion):
     return erreurs
 
 
+def _cles_uniques(paires):
+    objet = {}
+    for cle, valeur in paires:
+        if cle in objet:
+            raise ValueError("Clé d’export dupliquée")
+        objet[cle] = valeur
+    return objet
+
+
+def _manifeste_export(dossier, erreurs):
+    fichier = dossier / "manifest.json"
+    try:
+        flux, signature = _ouvrir_export(fichier)
+        if flux is None:
+            erreurs.append("Manifeste d’export absent : export/manifest.json")
+            return None
+        with flux:
+            # Même borne que la reconstruction ; un manifeste n’est pas une table.
+            donnees = flux.read(100_001)
+            if _signature_export(os.fstat(flux.fileno())) != signature:
+                raise ValueError("Manifeste changé pendant la lecture")
+        _verifier_export_inchange(fichier, signature)
+    except (OSError, ValueError) as exc:
+        erreurs.append(f"Manifeste d’export illisible ou lié : {type(exc).__name__}")
+        return None
+    try:
+        if len(donnees) > 100_000:
+            raise ValueError("Budget manifeste dépassé")
+        manifeste = json.loads(donnees, object_pairs_hook=_cles_uniques)
+        if not isinstance(manifeste, dict):
+            raise ValueError("Objet JSON attendu")
+    except (ValueError, RecursionError):
+        erreurs.append("Manifeste d’export mal formé : export/manifest.json")
+        return None
+    return manifeste
+
+
+def _verifier_exports(root, connexion):
+    """Compare chaque export au registre, même si un autre export ne peut pas être lu."""
+    erreurs = []
+    try:
+        dossier = _sans_lien(root / "export")
+    except ValueError:
+        return ["Dossier d’export lié ou hors atelier : export/"]
+    manifeste = _manifeste_export(dossier, erreurs)
+    empreintes = None
+    if manifeste is not None:
+        if manifeste.get("tables") != list(TABLES):
+            erreurs.append("Liste des tables exportées divergente")
+        schema = manifeste.get("schema")
+        if type(schema) is not int or schema != connexion.execute("PRAGMA user_version").fetchone()[0]:
+            erreurs.append("Version du schéma exporté divergente")
+        empreintes = manifeste.get("sha256")
+        if (
+            not isinstance(empreintes, dict) or set(empreintes) != set(TABLES)
+            or any(not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{64}", sha) for sha in empreintes.values())
+        ):
+            erreurs.append("Empreintes du manifeste d’export mal formées")
+            empreintes = None
+    for table in TABLES:
+        fichier = dossier / (table + ".jsonl")
+        if fichier.is_symlink():
+            erreurs.append("Export lié refusé : " + table)
+            continue
+        try:
+            reel = sha256_fichier(fichier)
+        except FileNotFoundError:
+            erreurs.append("Export absent : " + table)
+            continue
+        except (OSError, ValueError) as exc:
+            erreurs.append(f"Export illisible : {table} ({type(exc).__name__})")
+            continue
+        attendu = hashlib.sha256()
+        for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
+            attendu.update(
+                (json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n").encode()
+            )
+        if attendu.hexdigest() != reel or (empreintes is not None and reel != empreintes[table]):
+            erreurs.append("Export non conforme au registre : " + table)
+    return erreurs
+
+
 def verifier(root):
-    """Contrôle le registre/export/vues, en lecture seule ; renvoie [] pour PASS ou des erreurs FAIL claires."""
+    """Contrôle le registre, ses exports et ses vues depuis le chemin privé donné.
+
+    Sortie sans unité : [] pour PASS ou une liste de diagnostics FAIL. Un
+    export absent, illisible ou divergent ne masque pas les autres écarts.
+    Aucune donnée n'est régénérée et aucun original n'est modifié.
+    """
     root = _sans_lien(Path(root).absolute())
     base = _sans_lien(root / "benchab.sqlite")
     if not base.is_file():
@@ -225,22 +320,7 @@ def verifier(root):
             erreurs.append("Intégrité SQLite en échec")
         if connexion.execute("PRAGMA foreign_key_check").fetchall():
             erreurs.append("Relations SQLite invalides")
-        manifeste = json.loads(_sans_lien(root / "export/manifest.json").read_text())
-        if manifeste.get("tables") != list(TABLES):
-            erreurs.append("Liste des tables exportées divergente")
-        if manifeste.get("schema") != connexion.execute("PRAGMA user_version").fetchone()[0]:
-            erreurs.append("Version du schéma exporté divergente")
-        for table in TABLES:
-            attendu = hashlib.sha256()
-            for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
-                attendu.update(
-                    (json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n").encode()
-                )
-            fichier = _sans_lien(root / "export" / (table + ".jsonl"))
-            with fichier.open("rb") as flux:
-                reel = hashlib.file_digest(flux, "sha256").hexdigest()
-            if attendu.hexdigest() != reel or reel != manifeste.get("sha256", {}).get(table):
-                erreurs.append("Export non conforme au registre : " + table)
+        erreurs.extend(_verifier_exports(root, connexion))
         erreurs.extend(_verifier_vues(root, connexion))
         # Un registre/export cohérent ne prouve pas la présence des fichiers
         # qu'il désigne (docs/reference/donnees.md).

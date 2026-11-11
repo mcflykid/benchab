@@ -1,5 +1,7 @@
 """Une exportation périmée bloque le diagnostic de l'atelier."""
 
+import pytest
+
 from benchab.donnees.base import Base
 from benchab.donnees.vues import generer
 from benchab.qualite.coherence import verifier
@@ -163,5 +165,59 @@ def test_regeneration_fiche_moderne_depuis_sqlite_sans_archive(tmp_path):
         assert "Retour synthétique modifié" in (base.prive / rel).read_text()
         assert archive.read_bytes() == b"archive immuable"
         assert not verifier(base.prive)
+    finally:
+        base.fermer()
+
+
+@pytest.mark.parametrize("contenu,diagnostic", [
+    (b"[]", "Manifeste d’export mal formé"),
+    (b'{"sha256":[]}', "Empreintes du manifeste d’export mal formées"),
+    (b'{"sha256":{},"sha256":{}}', "Manifeste d’export mal formé"),
+])
+def test_manifeste_mal_forme_signale_sans_arreter_les_vues(tmp_path, contenu, diagnostic):
+    """Une racine JSON valide mais du mauvais type ne masque pas une vue altérée."""
+    base = Base(tmp_path / "prive")
+    try:
+        generer(base)
+        index = base.prive / "vues/INDEX.md"
+        index.write_bytes(index.read_bytes() + b"\nVue alteree")
+        manifeste = base.prive / "export/manifest.json"
+        manifeste.write_bytes(contenu)
+        erreurs = verifier(base.prive)
+        assert any(diagnostic in e for e in erreurs), erreurs
+        assert any("Vue générée périmée ou altérée : vues/INDEX.md" in e for e in erreurs), erreurs
+        assert manifeste.read_bytes() == contenu
+        assert index.read_bytes().endswith(b"Vue alteree")
+    finally:
+        base.fermer()
+
+
+def test_exports_absents_lies_et_divergents_sont_signales_ensemble(tmp_path):
+    """Le diagnostic indique tous les écarts indépendants sans recréer un fichier."""
+    base = Base(tmp_path / "prive")
+    try:
+        dossier = base.prive / "export"
+        manifeste = dossier / "manifest.json"
+        manifeste.unlink()
+        absente = dossier / "projets.jsonl"
+        absente.unlink()
+        divergent = dossier / "retours.jsonl"
+        divergent.write_bytes(b"{}\n")
+        lien = dossier / "profils.jsonl"
+        lien.unlink()
+        cible = tmp_path / "hors-atelier.txt"
+        cible.write_bytes(b"A conserver")
+        lien.symlink_to(cible)
+        sqlite_avant = (base.prive / "benchab.sqlite").read_bytes()
+        erreurs = verifier(base.prive)
+        for attendu in (
+            "Manifeste d’export absent", "Export absent : projets", "Export lié refusé : profils",
+            "Export non conforme au registre : retours",
+        ):
+            assert any(attendu in e for e in erreurs), erreurs
+        assert not manifeste.exists() and not absente.exists()
+        assert lien.is_symlink() and cible.read_bytes() == b"A conserver"
+        assert divergent.read_bytes() == b"{}\n"
+        assert (base.prive / "benchab.sqlite").read_bytes() == sqlite_avant
     finally:
         base.fermer()
