@@ -21,7 +21,7 @@ from benchab.archives_3mf import Archive3MF
 from benchab.controles.capacites_entrees import _limites, _metadonnees_archive, _positif, _reglages_filaments, _sha
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode import debit, geometrie_arc
-from benchab.gcode.lecture import plaques_gcode_archive
+from benchab.gcode.lecture import lire_membre_3mf, plaques_gcode_archive
 
 RACINE = Path(__file__).resolve().parents[2]
 MAX_EXEMPLES = 20
@@ -127,6 +127,7 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
         rapport["entrees"]["settings_sha256"] = _sha(archive.lire("Metadata/project_settings.config"))
         filaments = _reglages_filaments(settings, machine, limites_filaments, rapport, note)
         painting, allowed_objects, plate_objects, slice_filaments = _metadonnees_archive(archive)
+        # Conserver le cache par SHA tout en reliant chaque membre au contexte ouvert (#174).
         members = plaques_gcode_archive(archive)
         root_v = dict.fromkeys("XYZE", 0.0)
         root_acc = {"axes": {}, "M204": {}, "M205": {}, "SET_VELOCITY_LIMIT": {}}
@@ -134,7 +135,7 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
         changes = 0
         all_groups = []
         for number, member in members:
-            raw = archive.lire(member)
+            raw = lire_membre_3mf(path, member, archive=archive)
             text = raw.decode("utf-8", errors="replace")
             rapport["entrees"]["membres"][member] = _sha(raw)
             implicit = (
@@ -725,6 +726,7 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
             support_volume += psupport
             purge_volume += ppurge
             changes += pchanges
+        archive.verifier_source(path)
         if not members:
             note("plaques tranchées", "NON VÉRIFIÉ", "aucun G-code de plaque")
         rapport["metriques"] = {

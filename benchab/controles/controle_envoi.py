@@ -177,6 +177,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         for p in ms.findall("plate")
     }
     ref = ressources.enter_context(Archive3MF(REFF)) if REFF else None
+    membres_reference = dict(plaques_gcode_archive(ref)) if ref else {}
     res = []
     indices_absents = set()
     bed = ps.get("curr_bed_type")
@@ -356,9 +357,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
                     statut, detail, source = mesures[cle]
                     ajouter_note(res, pl, f"{libelle} (filament {e})", statut, detail, source, obligatoire=False)
         if ref:
-            membres_reference = dict(plaques_gcode_archive(ref))
-            rp = sorted(membres_reference)
-            if pl not in rp:
+            if pl not in membres_reference:
                 ajouter_note(
                     res,
                     pl,
@@ -413,6 +412,9 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
         statut_global = "NON VÉRIFIÉ"
     else:
         statut_global = "WARN" if any(r["statut"] != "PASS" for r in res) else "PASS"
+    z.verifier_source(T3MF)
+    if ref:
+        ref.verifier_source(REFF)
     if RAPPORT:
         try:
             rapport.publier(
