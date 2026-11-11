@@ -842,6 +842,7 @@ def rotation(axe, deg, centre=(0.0, 0.0, 0.0)):
 
 
 def translation(x=0.0, y=0.0, z=0.0):
+    """Construit une translation 4×4 de x, y et z unités de scène sans modifier le maillage."""
     t = np.eye(4)
     t[:3, 3] = [x, y, z]
     return t
