@@ -7,7 +7,15 @@ from benchab.cli import main as main_benchab
 from benchab.controles.couverture_plages_z import analyser, main
 
 
-def _cube_3mf(path, *, transform="1 0 0 0 1 0 0 0 1 20 30 0", ranges=None):
+def _cube_3mf(
+    path,
+    *,
+    transform="1 0 0 0 1 0 0 0 1 20 30 0",
+    ranges=None,
+    printable="1",
+    project_layer_height=None,
+    model_settings=None,
+):
     """Construit un cube 10 mm et une plage simple, sans lancer de trancheuse."""
     vertices = [
         (0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0),
@@ -24,7 +32,7 @@ def _cube_3mf(path, *, transform="1 0 0 0 1 0 0 0 1 20 30 0", ranges=None):
         '<model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" unit="millimeter">'
         f'<resources><object id="1" type="model"><mesh><vertices>{sommets}</vertices>'
         f'<triangles>{faces}</triangles></mesh></object></resources>'
-        f'<build><item objectid="1" transform="{transform}"/></build></model>'
+        f'<build><item objectid="1" printable="{printable}" transform="{transform}"/></build></model>'
     )
     xml_ranges = ranges or (
         '<objects><object id="1"><range min_z="0" max_z="10">'
@@ -33,6 +41,10 @@ def _cube_3mf(path, *, transform="1 0 0 0 1 0 0 0 1 20 30 0", ranges=None):
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("3D/3dmodel.model", model)
         archive.writestr("Metadata/layer_config_ranges.xml", xml_ranges)
+        if project_layer_height is not None:
+            archive.writestr("Metadata/project_settings.config", json.dumps({"layer_height": project_layer_height}))
+        if model_settings is not None:
+            archive.writestr("Metadata/model_settings.config", model_settings)
     return path
 
 
@@ -74,6 +86,50 @@ def test_zone_fine_sans_couverture_reste_fail_et_transformation_z_inconnue_nv(tm
     transformee_z = _cube_3mf(tmp_path / "z-inconnu.3mf", transform="1 0 0 0 1 0 0 0 1 0 0 2")
     rapport_z = analyser(transformee_z, {"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]})
     assert rapport_z["statut"] == "NON VÉRIFIÉ"
+
+
+def test_une_inclinaison_z_tres_faible_reste_non_verifiee(tmp_path):
+    transform = "1 0 0.0000000005 0 1 0 0 0 1 0 0 0"
+    source = _cube_3mf(tmp_path / "inclinaison-epsilon.3mf", transform=transform)
+    rapport = analyser(source, {"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]})
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+
+
+def test_instance_non_imprimable_est_refusee_avant_lecture_geometrique(tmp_path):
+    source = _cube_3mf(tmp_path / "non-imprimable.3mf", printable="0")
+    rapport = analyser(source, {"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]})
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert "non imprimable" in rapport["objets"][0]["erreur"]
+
+
+def test_hauteur_de_base_lue_seulement_dans_reglages_projet(tmp_path):
+    settings = '<config><object id="1"><metadata key="layer_height" value="0.33"/></object></config>'
+    source = _cube_3mf(tmp_path / "base-projet.3mf", project_layer_height="0.2", model_settings=settings)
+    rapport = analyser(source, {"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]})
+    assert rapport["objets"][0]["hauteur_base_projet"] == {"statut": "PASS", "valeur_mm": 0.2}
+
+
+def test_declaration_json_liee_et_schema_booleen_sont_refuses(tmp_path, capsys):
+    source = _cube_3mf(tmp_path / "cube.3mf")
+    declaration = tmp_path / "intention.json"
+    declaration.write_text('{"schema": true, "intentions": [{"objet_id": "1", "type": "totale"}]}')
+    assert main([str(source), str(declaration)]) == 2
+    assert json.loads(capsys.readouterr().out)["statut"] == "NON VÉRIFIÉ"
+    declaration.unlink()
+    cible = tmp_path / "intention-cible.json"
+    cible.write_text('{"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]}')
+    declaration.symlink_to(cible)
+    assert main([str(source), str(declaration)]) == 2
+    assert json.loads(capsys.readouterr().out)["statut"] == "NON VÉRIFIÉ"
+
+
+def test_archive_zip_invalide_retourne_non_verifie_sans_traceback(tmp_path, capsys):
+    source = tmp_path / "zip-invalide.3mf"
+    source.write_bytes(b"pas un ZIP")
+    declaration = tmp_path / "intention.json"
+    declaration.write_text('{"schema": 1, "intentions": [{"objet_id": "1", "type": "totale"}]}')
+    assert main([str(source), str(declaration)]) == 2
+    assert json.loads(capsys.readouterr().out)["statut"] == "NON VÉRIFIÉ"
 
 
 def test_zone_fine_pass_quand_l_intervalle_est_couvert_sous_le_seuil(tmp_path):

@@ -15,6 +15,7 @@ from benchab.chemins import sans_lien
 from benchab.imports3d.lecture_3mf import NS
 from benchab.imports3d.lecture_3mf import lire as lire_scene
 from benchab.qualite.empreintes import sha256_fichier
+from benchab.qualite.statuts import code_statut
 
 _XML_MAX = 32 * 1024 * 1024
 _NOMS_INTENTION = {"totale", "partielle_volontaire", "zone_fine"}
@@ -33,7 +34,8 @@ def _json_sans_doublons(paires):
 def _intentions(source):
     """Charge une déclaration explicite ; renvoie les intentions et leurs identifiants uniques."""
     if isinstance(source, (str, Path)):
-        contenu = Path(source).read_text(encoding="utf-8")
+        chemin = sans_lien(Path(source), strict=True)
+        contenu = chemin.read_text(encoding="utf-8")
         declaration = json.loads(
             contenu,
             object_pairs_hook=_json_sans_doublons,
@@ -41,7 +43,8 @@ def _intentions(source):
         )
     else:
         declaration = source
-    if not isinstance(declaration, dict) or declaration.get("schema") != 1:
+    schema = declaration.get("schema") if isinstance(declaration, dict) else None
+    if not isinstance(declaration, dict) or type(schema) is not int or schema != 1:
         raise ValueError("Déclaration d’intention schema 1 requise.")
     items = declaration.get("intentions")
     if not isinstance(items, list) or len(items) != 1:
@@ -105,29 +108,40 @@ def _matrice_z_inchangee(item):
         nombres[:3] = valeurs.reshape(4, 3).T
     # Les couches suivent Z objet depuis zéro ; rotation/translation XY garde ce repère,
     # alors qu’un Z déplacé, incliné ou mis à l’échelle n’est pas encore prouvé ici.
-    return bool(np.allclose(nombres[2], [0.0, 0.0, 1.0, 0.0], atol=1e-9, rtol=0.0))
+    return bool(np.array_equal(nombres[2], [0.0, 0.0, 1.0, 0.0]))
 
 
-def _lire_geometrie(source, identifiant):
-    """Relie un seul objet 3MF directement imprimable à ses bornes Z en mm."""
+def _lire_contexte(source, identifiant):
+    """Lit une fois les déclarations XML et les réglages de projet typés, sans écrire."""
     with Archive3MF(source, taille_max_xml=_XML_MAX) as archive:
         noms = archive.noms()
         modeles = [nom for nom in noms if nom.lower() == "3d/3dmodel.model"]
         if len(modeles) != 1:
-            return None, "modèle principal absent ou ambigu"
+            return None, None, None, "modèle principal absent ou ambigu"
         racine = archive.xml(modeles[0])
-        ressources = racine.findall(NS + "resources/" + NS + "object")
-        objets_mailles = [obj for obj in ressources if obj.find(NS + "mesh") is not None]
-        items = racine.findall(NS + "build/" + NS + "item")
-        if len(objets_mailles) != 1 or len(items) != 1:
-            return None, "plusieurs corps ou instances : liaison objet/plage NON VÉRIFIÉE"
-        obj, instance = objets_mailles[0], items[0]
-        if obj.get("id") != identifiant or instance.get("objectid") != identifiant:
-            return None, "identifiant de plage et géométrie non reliés sans ambiguïté"
-        if obj.findall(NS + "components/" + NS + "component"):
-            return None, "objet composé : repère des sous-composants NON VÉRIFIÉ"
-        if not _matrice_z_inchangee(instance):
-            return None, "transformation de l’objet modifie ou rend ambigu le repère Z"
+        membre_plages = "Metadata/layer_config_ranges.xml"
+        plages = archive.xml(membre_plages) if membre_plages in noms else None
+        membre_reglages = "Metadata/project_settings.config"
+        reglages = archive.reglages(membre_reglages) if membre_reglages in noms else None
+    ressources = racine.findall(NS + "resources/" + NS + "object")
+    objets_mailles = [obj for obj in ressources if obj.find(NS + "mesh") is not None]
+    items = racine.findall(NS + "build/" + NS + "item")
+    if len(objets_mailles) != 1 or len(items) != 1:
+        return racine, plages, reglages, "plusieurs corps ou instances : liaison objet/plage NON VÉRIFIÉE"
+    obj, instance = objets_mailles[0], items[0]
+    if obj.get("id") != identifiant or instance.get("objectid") != identifiant:
+        return racine, plages, reglages, "identifiant de plage et géométrie non reliés sans ambiguïté"
+    if instance.get("printable", "1") != "1":
+        return racine, plages, reglages, "instance explicitement non imprimable"
+    if obj.findall(NS + "components/" + NS + "component"):
+        return racine, plages, reglages, "objet composé : repère des sous-composants NON VÉRIFIÉ"
+    if not _matrice_z_inchangee(instance):
+        return racine, plages, reglages, "transformation de l’objet modifie ou rend ambigu le repère Z"
+    return racine, plages, reglages, None
+
+
+def _lire_geometrie(source, racine):
+    """Lit les bornes Z (mm) d’une archive déjà reliée à son instance imprimable."""
 
     # Le lecteur partagé valide les unités 3MF et applique les transforms d’instance.
     # Dans cette étape, le contrôle ci-dessus garantit que la coordonnée résultante Z
@@ -142,14 +156,10 @@ def _lire_geometrie(source, identifiant):
     return [float(bornes[0, 2]), float(bornes[1, 2])], None
 
 
-def _lire_plages(source, identifiant):
+def _lire_plages(racine, identifiant):
     """Lit les intervalles layer_height en mm et refuse les rangées XML mal formées."""
-    with Archive3MF(source, taille_max_xml=_XML_MAX) as archive:
-        noms = archive.noms()
-        membre = "Metadata/layer_config_ranges.xml"
-        if membre not in noms:
-            return []
-        racine = archive.xml(membre)
+    if racine is None:
+        return []
     if racine.tag != "objects":
         raise ValueError("Racine de plages Z inconnue.")
     objets = list(racine)
@@ -273,21 +283,40 @@ def analyser(source, declaration, *, tolerance_mm=0.001):
         raise ValueError("tolérance_mm doit être comprise entre 0 et 0,1 mm.")
     intentions = _intentions(declaration)
     # Vérifier l’index et le budget avant le SHA, pour ne jamais lire sans borne une archive refusée.
-    with Archive3MF(source) as archive:
+    with Archive3MF(source, taille_max_xml=_XML_MAX) as archive:
         archive.noms()
     empreinte_avant = sha256_fichier(source)
     objets = []
     for item in intentions:
         try:
-            geometrie, erreur = _lire_geometrie(source, item["objet_id"])
+            racine, plages_xml, reglages_projet, erreur = _lire_contexte(source, item["objet_id"])
             if erreur:
                 objets.append({
                     "objet_id": item["objet_id"], "intention": item["type"],
                     "statut": "NON VÉRIFIÉ", "erreur": erreur,
                 })
                 continue
-            intervalles = _lire_plages(source, item["objet_id"])
-            objets.append(_evaluer_intention(item, geometrie, intervalles, tolerance))
+            geometrie, erreur = _lire_geometrie(source, racine)
+            if erreur:
+                objets.append({
+                    "objet_id": item["objet_id"], "intention": item["type"],
+                    "statut": "NON VÉRIFIÉ", "erreur": erreur,
+                })
+                continue
+            intervalles = _lire_plages(plages_xml, item["objet_id"])
+            resultat = _evaluer_intention(item, geometrie, intervalles, tolerance)
+            if reglages_projet is None:
+                resultat["hauteur_base_projet"] = {"statut": "NON VÉRIFIÉ", "valeur_mm": None}
+            else:
+                hauteur = reglages_projet.get("layer_height")
+                try:
+                    valeur = _nombre_type(str(hauteur), "layer_height", "reglage", "hauteur de base projet")
+                    if valeur <= 0:
+                        raise ValueError("Hauteur de base projet non positive.")
+                    resultat["hauteur_base_projet"] = {"statut": "PASS", "valeur_mm": valeur}
+                except (TypeError, ValueError):
+                    resultat["hauteur_base_projet"] = {"statut": "NON VÉRIFIÉ", "valeur_mm": None}
+            objets.append(resultat)
         except (OSError, ValueError, KeyError, TypeError, ElementTree.ParseError, BadZipFile) as erreur:
             objets.append({
                 "objet_id": item["objet_id"], "intention": item["type"],
@@ -298,7 +327,7 @@ def analyser(source, declaration, *, tolerance_mm=0.001):
         raise ValueError("Archive source modifiée pendant le contrôle.")
     statuts = {item["statut"] for item in objets}
     statut = "FAIL" if "FAIL" in statuts else "NON VÉRIFIÉ" if "NON VÉRIFIÉ" in statuts else "PASS"
-    return {
+    rapport = {
         "schema": 1,
         "statut": statut,
         "source_sha256": empreinte_avant,
@@ -313,6 +342,8 @@ def analyser(source, declaration, *, tolerance_mm=0.001):
             "Contrôle de couverture des plages explicitement enregistrées, pas de hauteur réelle de chaque couche.",
         ],
     }
+    rapport["code"] = code_statut(statut)
+    return rapport
 
 
 def main(argv=None):
@@ -324,13 +355,14 @@ def main(argv=None):
     arguments = parser.parse_args(argv)
     try:
         rapport = analyser(arguments.source, arguments.intention, tolerance_mm=arguments.tolerance_mm)
-    except (OSError, ValueError, KeyError, TypeError) as erreur:
+    except (OSError, ValueError, KeyError, TypeError, BadZipFile, ElementTree.ParseError) as erreur:
         rapport = {
             "schema": 1, "statut": "NON VÉRIFIÉ", "unite": "mm",
             "erreur": str(erreur), "validation_physique": False,
+            "code": code_statut("NON VÉRIFIÉ"),
         }
     print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
-    return 0 if rapport["statut"] == "PASS" else 1 if rapport["statut"] == "FAIL" else 2
+    return code_statut(rapport["statut"])
 
 
 if __name__ == "__main__":

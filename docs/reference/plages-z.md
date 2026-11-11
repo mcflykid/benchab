@@ -25,7 +25,8 @@ relancer avec une déclaration différente pour une autre intention.
 
 Le contrôle qualifie seulement les 3MF à un objet, un corps et une instance
 imprimable, dont l’identifiant de plage correspond à l’objet géométrique.
-L’instance peut être transformée en X/Y si sa coordonnée Z est inchangée. Une
+L’instance peut être transformée en X/Y si les coefficients de sa coordonnée Z
+sont exactement `0, 0, 1, 0` ; même une inclinaison minime est NON VÉRIFIÉE. Une
 échelle, translation ou inclinaison en Z, plusieurs objets/instances, un
 assemblage ou une liaison ambiguë donnent **NON VÉRIFIÉ**. Une intention absente,
 un format de plage inconnu ou une géométrie illisible ne vaut pas PASS.
@@ -34,5 +35,11 @@ Les intervalles sont les plages variables explicitement stockées dans le 3MF.
 Le contrôle ne reconstitue pas la hauteur de chaque couche après traitement par
 le slicer, ni le résultat du G-code. La tolérance de comparaison vaut 0,001 mm
 par défaut et peut être réglée jusqu’à 0,1 mm avec `--tolerance-mm`. Le code de
-sortie est 0 pour PASS, 1 pour FAIL et 2 pour NON VÉRIFIÉ. Voir
+sortie est 0 pour PASS, 2 pour FAIL et NON VÉRIFIÉ. Voir
 [l’issue #110](https://github.com/mcflykid/benchab/issues/110).
+
+Quand `Metadata/project_settings.config` contient `layer_height`, le rapport
+restitue cette hauteur de base issue des réglages projet via le dictionnaire
+typé. Elle est informative et distincte des plages variables ; une valeur
+manquante ou inconnue reste NON VÉRIFIÉE. Les métadonnées propres à un objet ne
+remplacent pas ce réglage projet.
