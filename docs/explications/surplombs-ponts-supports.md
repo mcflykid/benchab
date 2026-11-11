@@ -129,3 +129,23 @@ Cette mesure ne tient pas compte de la largeur du cordon et ne prouve ni
 un appui, ni un pont imprimable, ni un retrait. Elle illustre une comparaison
 après tranchage pour un coupon et deux réglages d’interface, sans changer la
 classification des cartes avant tranchage (#93).
+
+### Comparer un îlot à une plaque choisie
+
+`benchab controle ponts-surplombs STL TRANCHE.3mf --unite-mm --ilot surplomb-002 --plaque 1
+--translation-mm X Y Z --sha-stl SHA_STL --sha-3mf SHA_3MF` relit la carte avec
+le même seuil d’angle et sélectionne l’îlot demandé. Il compare les SHA aux
+deux fichiers relus avant de mesurer. Les trois composantes de translation
+en mm sont une déclaration : le contrôle ne reconstitue pas une rotation,
+une échelle ou une correspondance entre objets. `--sortie RAPPORT_NEUF`
+conserve le détail en privé et affiche un résumé.
+
+Le sous-cas couvre un îlot horizontal et des axes de dépôt linéaires
+des rôles `Bridge` et `Internal Bridge`. Le rapport distingue les longueurs
+dans la projection XY et celles dont le dessous nominal `Z − HEIGHT`
+coïncide aussi avec le niveau de l’îlot. Une hauteur ne se propage pas à
+une nouvelle couche ou à un autre niveau sans déclaration. Les arcs,
+les lignes trop longues et les diagnostics du lecteur laissent la
+comparaison NON VÉRIFIÉE. PASS signifie que la comparaison nominale est
+couverte, même quand aucun axe ne correspond. Il ne valide ni un appui,
+ni la largeur d’un cordon, ni l’impression.

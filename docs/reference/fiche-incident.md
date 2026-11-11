@@ -5,6 +5,25 @@ relie une déclaration privée à un commit local exact et aux octets de fichier
 de test réguliers de son arbre. La déclaration et la sortie sont privées ;
 le chemin de sortie est neuf. Sans sortie, la commande affiche la fiche.
 
+Une observation CI GitHub est facultative et ne démarre aucun accès réseau sans
+option explicite : `--ci-github ID/TENTATIVE`. Le dépôt est dérivé de l’`origin`
+du checkout fourni avec `--depot` ; seuls les formats HTTPS et SSH de GitHub
+sans identifiants sont acceptés. La commande fait des GET publics sans jeton,
+sans redirection, avec un délai de 5 secondes et une limite de 256 Kio par
+réponse, sans conserver les corps bruts. Les seuls chemins API sont
+`/repos/{OWNER}/{REPO}/actions/runs/{ID}/attempts/{TENTATIVE}` et son suffixe
+`/jobs?per_page=20`.
+La vérification demande un dépôt source identique à l’origin, la même empreinte
+de tête que `revision`, un événement `push` sur `main`, le workflow
+`.github/workflows/tests.yml`, un run et une tentative concordants, un unique
+job `tests` réussi et son étape `Run uv run pytest -q` réussie.
+
+Le rapport conserve uniquement les champs normalisés sous `ci_github`, avec le
+statut `OBSERVATION CI PUBLIQUEMENT VÉRIFIÉE` ou `NON VÉRIFIÉ`. Une réponse
+indisponible ou une divergence reste `NON VÉRIFIÉ`. Cette observation ne
+modifie jamais `execution.statut`, n’authentifie ni le cas JUnit ni l’identité
+de l’exécuteur, et ne prouve pas l’exécution locale de la fiche.
+
 La déclaration JSON de schéma 1 contient :
 
 - `issue` : numéro positif de l’issue BENCHAB ;

@@ -2,6 +2,18 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.19.0 — 2026-11-11
+
+- Fiches d’incident : vérifie sur demande une tentative CI publique du
+  commit exact. L’observation du workflow reste distincte du rapport
+  JUnit et ne certifie pas un cas individuel (suite de #119).
+- Surplombs : compare les axes déposés des ponts à un îlot horizontal,
+  avec SHA, plaque et translation déclarés (suite de #93).
+- Trancheur : qualifie `crosszag` sur le binaire observé et refuse le
+  repli silencieux de `2dlattice` vers `crosshatch` (suites de #80 et #81).
+- CAO : ajoute le fraisage conique à diamètre et angle déclarés, avec
+  vérification numérique des STEP (suites de #27 et #32).
+
 ## 1.18.0 — 2026-11-11
 
 - Lecture 3MF : termine la migration des lecteurs métier et documente
