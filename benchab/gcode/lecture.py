@@ -13,7 +13,8 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
-from zipfile import ZipFile
+
+from benchab.archives_3mf import Archive3MF
 
 _CACHE_MAX_OCTETS = 96 * 1024 * 1024
 _CACHE_MAX_ENTREES = 128
@@ -101,8 +102,8 @@ def lire_membre_3mf(chemin: str | Path, membre: str) -> bytes:
             raise ValueError("3MF modifié pendant la lecture du membre")
         return valeur
 
-    with ZipFile(chemin) as archive:
-        valeur = archive.read(membre)
+    with Archive3MF(chemin) as archive:
+        valeur = archive.lire(membre)
     if empreinte_3mf(chemin) != cle[0]:
         raise ValueError("3MF modifié pendant la lecture du membre")
 
@@ -112,8 +113,8 @@ def lire_membre_3mf(chemin: str | Path, membre: str) -> bytes:
 
 def membres_gcode_3mf(chemin: str | Path) -> tuple[str, ...]:
     """Liste les membres G-code de plaque dans un ordre stable."""
-    with ZipFile(chemin) as archive:
-        membres = archive.namelist()
+    with Archive3MF(chemin) as archive:
+        membres = archive.noms()
     return tuple(sorted(nom for nom in membres if re.fullmatch(r"Metadata/plate_\d+\.gcode", nom)))
 
 
@@ -147,8 +148,8 @@ def ouvrir_membre_3mf(chemin: str | Path, membre: str):
                 raise ValueError("3MF modifié pendant la lecture du membre")
         return
     try:
-        with ZipFile(chemin) as archive:
-            with archive.open(membre) as flux:
+        with Archive3MF(chemin) as archive:
+            with archive.ouvrir_flux(membre) as flux:
                 yield flux
     finally:
         if empreinte_3mf(chemin) != empreinte_initiale:
