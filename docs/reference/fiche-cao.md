@@ -1,8 +1,9 @@
 # Préparer une pièce CAO depuis une fiche JSON
 
 Ce gabarit couvre un bloc rectangulaire et jusqu’à huit perçages cylindriques
-traversants, avec un lamage supérieur facultatif par perçage. Les trois
-dimensions sont en millimètres. L’origine est au centre en XY et le dessous
+traversants, avec un lamage supérieur facultatif par perçage. Jusqu’à
+quatre poches rectangulaires peuvent aussi être déclarées au-dessus.
+Les cotes sont en millimètres. L’origine est au centre en XY et le dessous
 est à Z = 0 mm.
 
 ```json
@@ -14,6 +15,10 @@ est à Z = 0 mm.
     {"x_mm": -10, "y_mm": 0, "diametre_mm": 4},
     {"x_mm": 10, "y_mm": 0, "diametre_mm": 4,
      "lamage": {"diametre_mm": 7, "profondeur_mm": 1.5, "source_cotes": "plan nominal de la pièce"}}
+  ],
+  "poches_rectangulaires": [
+    {"x_mm": 0, "y_mm": 0, "largeur_x_mm": 6, "largeur_y_mm": 4,
+     "profondeur_mm": 1, "source_cotes": "plan nominal de la pièce"}
   ],
   "hors_perimetre": ["Tenue sous charge"]
 }
@@ -32,6 +37,14 @@ sa profondeur laisse un fond autour du passage et les contrôles de collision
 utilisent son diamètre d’entrée. La fiche doit citer la source des cotes ;
 elle ne déduit aucune cote de visserie. Le volume analytique retire le
 passage traversant, puis seulement l’anneau du lamage (#27, #32).
+
+Une poche commence sur la face supérieure, a un fond plat et reste alignée
+sur les axes XY. Les deux largeurs définissent le rectangle centré en
+`x_mm`/`y_mm`. Le gabarit refuse les fonds débouchants et les poches
+tangentes ou recouvrantes, entre elles ou avec le diamètre d’entrée d’un
+perçage. Le volume retiré vaut largeur X × largeur Y × profondeur. Les
+rayons d’angle, orientations, chanfreins et parois physiques ne sont pas
+déduits (#32).
 
 ```sh
 benchab conception fiche-cao -- prive/fiche.json --sortie prive/plan-neuf
@@ -62,3 +75,11 @@ avec le calcul nominal. Plans et scripts sont identiques à chaque rejeu.
 Sur cette exécution locale, la préparation a pris 2,7 ms en médiane et la
 construction 26 ms (premier démarrage : 2,14 s). Les chemins normalisés
 pour la mesure, le résumé occupe 74 octets et le détail 848 à 1 427 octets.
+
+La recette des poches couvre cinq autres fiches, de la poche seule à quatre
+poches et deux lamages, en passant par le coin dégagé près d’un perçage.
+Les dix constructions ont donné un seul solide valide par STEP, aux
+dimensions et volumes attendus. Plans et scripts concordent exactement
+entre les deux répétitions. La préparation a pris 3,0 ms en médiane et la
+construction 33 ms sur cette exécution (premier démarrage : 1,59 s). Le
+résumé normalisé occupe 74 octets et le détail 824 à 1 908 octets.

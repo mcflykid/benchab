@@ -62,6 +62,67 @@ def test_lamage_superieur_ajoute_seulement_le_volume_annulaire_et_reste_determin
     assert b"cotes d" not in script
 
 
+def _poche(x, y, *, lx=6, ly=4, z=2):
+    return {"x_mm": x, "y_mm": y, "largeur_x_mm": lx, "largeur_y_mm": ly,
+            "profondeur_mm": z, "source_cotes": "plan coté"}
+
+
+def test_poche_superieure_et_lamage_rejouables_dans_la_meme_fiche(tmp_path):
+    """Les volumes disjoints sont retirés et seuls les nombres entrent dans le script."""
+    from math import pi
+
+    from benchab.conception.fiche_cao import generer
+
+    fiche = _fiche()
+    fiche["percages"][0]["lamage"] = {"diametre_mm": 9, "profondeur_mm": 2, "source_cotes": "plan coté"}
+    fiche["poches_rectangulaires"] = [_poche(-8, 2)]
+    source = tmp_path / "fiche.json"
+    for i in (0, 1):
+        source.write_text(json.dumps(fiche, indent=i, sort_keys=bool(i)), encoding="utf-8")
+        generer(source, tmp_path / f"p{i}")
+    plan = json.loads((tmp_path / "p0/plan.json").read_bytes())
+    assert plan["poches_rectangulaires"] == [_poche(-8, 2)]
+    assert plan["attendu"]["volume_mm3"] == pytest.approx(
+        2400 - pi * 2.5**2 * 4 - pi * (4.5**2 - 2.5**2) * 2 - 6 * 4 * 2
+    )
+    for fichier in ("plan.json", "modele.py"):
+        assert (tmp_path / "p0" / fichier).read_bytes() == (tmp_path / "p1" / fichier).read_bytes()
+    assert b"plan cot" not in (tmp_path / "p0/modele.py").read_bytes()
+
+
+@pytest.mark.parametrize(
+    "poches,trou,message",
+    [
+        ([_poche(12, 0)], None, "marge"),
+        ([_poche(0, 0, z=4)], None, "profondeur"),
+        ([_poche(0, 0), _poche(6, 0)], None, "chevauchement"),
+        ([_poche(5, 0)], {"x_mm": 0, "y_mm": 0, "diametre_mm": 4}, "chevauchement"),
+    ],
+)
+def test_poche_refuse_bord_fond_et_interference(tmp_path, poches, trou, message):
+    """Une poche tangente au bord ou à un outil voisin ne publie aucun plan."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {**_fiche(), "poches_rectangulaires": poches, "percages": [trou] if trou else []}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche), encoding="utf-8")
+    cible = tmp_path / "sortie"
+    with pytest.raises(ValueError, match=message):
+        generer(source, cible)
+    assert not cible.exists()
+
+
+def test_poche_distincte_dun_passage_ne_confond_pas_coin_et_boite_englobante(tmp_path):
+    """Le coin du rectangle laisse un jeu réel, même si les boîtes XY se recouvrent."""
+    from benchab.conception.fiche_cao import generer
+
+    fiche = {**_fiche(), "poches_rectangulaires": [_poche(3.8, 3.8, lx=4, ly=4)],
+             "percages": [{"x_mm": 0, "y_mm": 0, "diametre_mm": 4}]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche), encoding="utf-8")
+    assert generer(source, tmp_path / "sortie")["statut"] == "NON VÉRIFIÉ"  # Tenue hors périmètre.
+
+
 @pytest.mark.parametrize(
     "x,diametre,profondeur,autre,source_cotes,message",
     [

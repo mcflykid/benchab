@@ -40,6 +40,18 @@ class _Percage:
     lamage: _Lamage | None
 
 
+@dataclass(frozen=True, slots=True)
+class _Poche:
+    """Décrit une poche supérieure alignée sur les axes, en mm."""
+
+    x: float
+    y: float
+    largeur_x: float
+    largeur_y: float
+    profondeur: float
+    source_cotes: str
+
+
 def _rayon_entree(trou):
     """Renvoie le rayon XY maximal au bord supérieur, en mm."""
     return trou.lamage.rayon if trou.lamage else trou.rayon
@@ -87,15 +99,20 @@ def _cote(valeur, nom, *, longueur):
     return float(valeur) if valeur else 0.0
 
 
+def _source_cotes(source, etiquette):
+    """Conserve une source courte dans le plan, sans l’injecter dans le script."""
+    if not isinstance(source, str) or not source.strip() or len(source) > 240 or not source.isprintable():
+        raise ValueError(f"{etiquette} : source des cotes sur une ligne de 240 caractères au plus.")
+    return source
+
+
 def _normaliser_lamage(lamage, numero, rayon_passage, epaisseur):
     """Valide un épaulement annulaire avec fond restant, à cotes et source déclarées."""
     if not isinstance(lamage, dict) or set(lamage) != {"diametre_mm", "profondeur_mm", "source_cotes"}:
         raise ValueError(f"Lamage {numero} : diamètre, profondeur et source des cotes requis.")
     rayon = _cote(lamage["diametre_mm"], f"lamage {numero} diamètre", longueur=True) / 2
     profondeur = _cote(lamage["profondeur_mm"], f"lamage {numero} profondeur", longueur=True)
-    source = lamage["source_cotes"]
-    if not isinstance(source, str) or not source.strip() or len(source) > 240 or not source.isprintable():
-        raise ValueError(f"Lamage {numero} : source des cotes sur une ligne de 240 caractères au plus.")
+    source = _source_cotes(lamage["source_cotes"], f"Lamage {numero}")
     if rayon - rayon_passage <= _MARGE_MM:
         raise ValueError(f"Lamage {numero} : diamètre supérieur à celui du passage requis.")
     if epaisseur - profondeur <= _MARGE_MM:
@@ -103,14 +120,52 @@ def _normaliser_lamage(lamage, numero, rayon_passage, epaisseur):
     return _Lamage(rayon, profondeur, source)
 
 
+def _normaliser_poches(valeurs, bloc, percages):
+    """Valide le fond, la marge XY et les intersections au dessus du bloc."""
+    if not isinstance(valeurs, list) or len(valeurs) > 4:
+        raise ValueError("De zéro à quatre poches rectangulaires sont acceptées.")
+    cles = {"x_mm", "y_mm", "largeur_x_mm", "largeur_y_mm", "profondeur_mm", "source_cotes"}
+    dx, dy, dz = bloc
+    poches = []
+    for numero, data in enumerate(valeurs, 1):
+        etiquette = f"Poche {numero}"
+        if not isinstance(data, dict) or set(data) != cles:
+            raise ValueError(f"{etiquette} : centre XY, deux largeurs, profondeur et source des cotes requis.")
+        x = _cote(data["x_mm"], f"{etiquette} x", longueur=False)
+        y = _cote(data["y_mm"], f"{etiquette} y", longueur=False)
+        lx = _cote(data["largeur_x_mm"], f"{etiquette} largeur x", longueur=True)
+        ly = _cote(data["largeur_y_mm"], f"{etiquette} largeur y", longueur=True)
+        profondeur = _cote(data["profondeur_mm"], f"{etiquette} profondeur", longueur=True)
+        source = _source_cotes(data["source_cotes"], etiquette)
+        if min((dx - lx) / 2 - abs(x), (dy - ly) / 2 - abs(y)) <= _MARGE_MM:
+            raise ValueError(f"{etiquette} : marge insuffisante au bord du bloc.")
+        if dz - profondeur <= _MARGE_MM:
+            raise ValueError(f"{etiquette} : profondeur inférieure à l’épaisseur du bloc requise.")
+        for trou in percages:
+            # Le point le plus proche sur le rectangle distingue un coin
+            # dégagé d'une vraie intersection avec le cercle du passage.
+            hx = max(0.0, abs(x - trou.x) - lx / 2)
+            hy = max(0.0, abs(y - trou.y) - ly / 2)
+            if math.hypot(hx, hy) - _rayon_entree(trou) <= _MARGE_MM:
+                raise ValueError(f"{etiquette} : chevauchement ou tangence avec un perçage ou son lamage.")
+        for voisine in poches:
+            if (
+                abs(x - voisine.x) - (lx + voisine.largeur_x) / 2 <= _MARGE_MM
+                and abs(y - voisine.y) - (ly + voisine.largeur_y) / 2 <= _MARGE_MM
+            ):
+                raise ValueError(f"{etiquette} : chevauchement ou tangence entre deux poches.")
+        poches.append(_Poche(x, y, lx, ly, profondeur, source))
+    return poches
+
+
 def _normaliser(data):
     requis = {"schema", "id", "bloc_mm", "percages"}
     if (
         not isinstance(data, dict)
-        or not requis <= data.keys() <= requis | {"hors_perimetre"}
+        or not requis <= data.keys() <= requis | {"hors_perimetre", "poches_rectangulaires"}
         or type(data["schema"]) is not int or data["schema"] != 1
     ):
-        raise ValueError("Fiche schema 1 : id, bloc_mm et percages requis ; hors_perimetre facultatif.")
+        raise ValueError("Fiche schema 1 : id, bloc_mm et percages requis ; poches et exclusions facultatives.")
     identifiant = data["id"]
     if not isinstance(identifiant, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", identifiant):
         raise ValueError("Identifiant simple de 1 à 48 caractères requis.")
@@ -143,10 +198,11 @@ def _normaliser(data):
         or not exigence.isprintable() for exigence in exclus
     ):
         raise ValueError("Au plus huit exigences hors périmètre, une ligne de 240 caractères chacune.")
-    return identifiant, bloc, percages, exclus
+    poches = _normaliser_poches(data.get("poches_rectangulaires", []), bloc, percages)
+    return identifiant, bloc, percages, poches, exclus
 
 
-def _script(bloc, trous):
+def _script(bloc, trous, poches):
     # Gabarit fermé : seules les cotes normalisées deviennent des littéraux Python.
     lignes = [
         '"""Bloc CAO en mm issu d’une fiche BENCHAB ; aucune validation physique."""',
@@ -177,22 +233,34 @@ def _script(bloc, trous):
                 f"        {lamage.rayon!r}, {lamage.profondeur + 1!r}, align=(Align.CENTER, Align.CENTER, Align.MIN)",
                 "    )",
             ])
+    for poche in poches:
+        # L'outil dépasse le dessus comme le cylindre du lamage ; le fond
+        # reste à l'altitude explicite plutôt qu'au milieu du bloc.
+        lignes.extend([
+            f"    solide -= Pos({poche.x!r}, {poche.y!r}, {bloc[2] - poche.profondeur!r}) * Box(",
+            f"        {poche.largeur_x!r}, {poche.largeur_y!r}, {poche.profondeur + 1!r},",
+            "        align=(Align.CENTER, Align.CENTER, Align.MIN)",
+            "    )",
+        ])
     return "\n".join([*lignes, "    return solide", ""])
 
 
 def _generer(source, sortie, *, prive):
-    identifiant, bloc, trous, exclus = _normaliser(_lire(source))
+    identifiant, bloc, trous, poches, exclus = _normaliser(_lire(source))
     destination = destination_neuve(sortie, prive=prive)
-    script = _script(bloc, trous)
+    script = _script(bloc, trous, poches)
     dx, dy, dz = bloc
     volume_lamages = math.fsum(
         math.pi * (trou.lamage.rayon**2 - trou.rayon**2) * trou.lamage.profondeur
         for trou in trous if trou.lamage
     )
+    volume_poches = math.fsum(poche.largeur_x * poche.largeur_y * poche.profondeur for poche in poches)
     attendu = {
         "dimensions_mm": bloc,
         "solides": 1,
-        "volume_mm3": (dx * dy - math.fsum(math.pi * trou.rayon**2 for trou in trous)) * dz - volume_lamages,
+        "volume_mm3": (
+            (dx * dy - math.fsum(math.pi * trou.rayon**2 for trou in trous)) * dz - volume_lamages - volume_poches
+        ),
     }
     statut = "NON VÉRIFIÉ" if exclus else "PASS"
     plan = {
@@ -208,6 +276,11 @@ def _generer(source, sortie, *, prive):
             }} if trou.lamage else {})
             for trou in trous
         ],
+        **({"poches_rectangulaires": [
+            {"x_mm": p.x, "y_mm": p.y, "largeur_x_mm": p.largeur_x, "largeur_y_mm": p.largeur_y,
+             "profondeur_mm": p.profondeur, "source_cotes": p.source_cotes}
+            for p in poches
+        ]} if poches else {}),
         "attendu": attendu, "exigences_non_verifiees": exclus,
         "script_sha256": hashlib.sha256(script.encode("utf-8")).hexdigest(),
     }

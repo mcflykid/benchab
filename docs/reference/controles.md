@@ -112,6 +112,18 @@ signale les omissions et donne le chemin du rapport neuf. Un diagnostic long
 est tronqué à l’écran ; son texte intégral et sa plaque restent dans le JSON.
 Avec `--detail`, l’affichage reproduit le rapport complet. Sans ces options,
 l’affichage historique est conservé (suite de #35).
+Les arcs G-code restent NON VÉRIFIÉS par défaut. L’option explicite
+`--arcs-planaires` qualifie uniquement les arcs G17 déposés à Z physique
+constant dans les deux premières couches : la couverture est calculée par
+distance analytique au cercle et à son intervalle angulaire déposé, sur la
+même grille numérique que les lignes, avec une limite cumulée de deux millions
+de cellules candidates et de 8 192 arcs retenus ; le parseur limite ses
+diagnostics à 128. Le Z physique doit correspondre au marqueur de couche à
+0,0005 mm près. Les extrémités doivent préserver le rayon à une tolérance
+absolue de 0,000000001 mm, sans tolérance relative. Les arcs sans échantillon
+couvert, les hélices, autres plans ou contextes non pris en charge restent
+NON VÉRIFIÉS. Cette mesure numérique ne prouve ni l’adhérence ni la tenue
+physique de la pièce.
 
 ## Contrôles privés d’un projet L
 

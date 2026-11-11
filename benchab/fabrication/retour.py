@@ -14,6 +14,12 @@ from benchab.projets.envois import lire_fiche
 
 
 def enregistres(fiche):
+    """Rassemble les SHA-256 des envois déjà déclarés dans une fiche.
+
+    Entrée : fiche de préparation chargée en mémoire.
+    Sortie : ensemble de chaînes SHA-256, sans vérification du contenu des archives.
+    Ne modifie ni la fiche ni l'atelier.
+    """
     return {e["sha256"] for e in [fiche.get("envoi") or {}] + fiche.get("envois_supplementaires", []) if e}
 
 
@@ -41,6 +47,12 @@ def correspondants(fiche, archive):
 
 
 def enregistrer(base, projet, ident, fichiers):
+    """Associe des archives locales à une préparation et conserve les résultats de comparaison.
+
+    Entrées : base privée, chemin de projet, identifiant de préparation et chemins d'archives 3MF.
+    Sortie : liste de (nom, association réussie, comparaison ou motif de refus) pour chaque fichier.
+    Écrit les associations dans la base privée ; ne déclare aucun démarrage ni résultat physique.
+    """
     faits = []
     for fichier in fichiers:
         fiche = lire_fiche(base, projet, ident)
@@ -53,6 +65,12 @@ def enregistrer(base, projet, ident, fichiers):
 
 
 def reglages(fichier):
+    """Résume les réglages embarqués d'une archive 3MF sans produire de verdict.
+
+    Entrée : chemin d'archive 3MF.
+    Sortie : texte avec température en °C, filament en g, hauteur de couche en mm et valeurs typées déclarées.
+    En cas de lecture impossible, rend un motif d'illisibilité ; ne modifie aucun réglage.
+    """
     try:
         export = ES.lire(Path(fichier))
     except (ValueError, OSError) as erreur:
@@ -73,6 +91,12 @@ def reglages(fichier):
 
 
 def journal(projet, ident, fiche, *, prive):
+    """Crée un journal privé de retour à compléter, sans écraser un document existant.
+
+    Entrées : projet, identifiant de préparation, fiche et racine privée.
+    Sortie : (chemin Markdown, créé), où créé indique une nouvelle écriture.
+    Les observations restent à compléter ; les fichiers ne prouvent ni démarrage ni réussite physique.
+    """
     racine = Path(prive)
     dossier = racine / "suivi/journal" / time.strftime("%Y-%m")
     chemin = dossier / f"{time.strftime('%Y-%m-%d')}-impression-{projet.name}-{ident.lower()}.md"

@@ -19,6 +19,12 @@ def sha(f):
 
 
 def chemin(base, relatif):
+    """Résout un chemin sous une base après refus des chemins absolus et remontées.
+
+    Entrées : base (répertoire) et relatif (chemin relatif).
+    Sortie : chemin résolu ; ValueError si la résolution sort de la base.
+    Ne lit et n'écrit aucun contenu de fichier.
+    """
     if not isinstance(relatif, str) or not relatif or Path(relatif).is_absolute() or ".." in Path(relatif).parts:
         raise ValueError("chemin relatif sans remontée requis")
     p = (base / relatif).resolve()

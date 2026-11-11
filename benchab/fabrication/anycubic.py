@@ -47,6 +47,12 @@ PROD = "http://schemas.microsoft.com/3dmanufacturing/production/2015/06"
 
 
 def colonnes(n):
+    """Renvoie le nombre de colonnes pour n plaques.
+
+    Entrée : n, nombre de plaques entier sans unité (n ≥ 0).
+    Sortie : nombre de colonnes entier sans unité, égal à ceil(sqrt(n)).
+    Ne range aucune pièce et ne modifie aucune géométrie.
+    """
     r = math.sqrt(n)
     return int(round(r)) + (1 if r > round(r) else 0)
 

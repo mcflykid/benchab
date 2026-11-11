@@ -2,6 +2,19 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## À venir
+
+- Première couche : ajoute une mesure optionnelle des arcs G17 planaires,
+  sans approximation par la corde (suite de #123).
+- CAO : ajoute les poches rectangulaires aux fiches déterministes et
+  vérifie dix constructions répétées sur cinq nouvelles fiches (#32).
+- Supports : compare l’écart Z nominal sur les dépôts de la recette
+  d’interface, sans conclure au retrait physique (suite de #89).
+- Reprise : applique sur demande une seule table d’export absente après
+  contrôle de la preuve, du manifeste et de la base en lecture seule (suite de #119).
+- Annotations : termine le rattrapage des docstrings manquantes en
+  fabrication, sans changement de comportement (suite de #127).
+
 ## 1.12.0 — 2026-11-11
 
 - Remplissage : un dépôt sans rôle ou l’absence de dépôt clairsemé attribué
