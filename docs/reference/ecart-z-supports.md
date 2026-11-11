@@ -60,6 +60,30 @@ Les sources et les 646 profils relus restent intacts. Ce test mesure un
 effet sur les trajets de ce coupon ; il ne mesure ni la distance XY
 physique, ni le contact, ni le retrait (#89).
 
+### Espacements de l’interface et de la base
+
+Deux sondes sur le même coupon concentrique et le même binaire ont
+changé une seule clé à la fois. La valeur demandée reste embarquée dans
+chaque archive. Les deux répétitions de chaque variante donnent le
+même G-code hors date de génération.
+
+| Mesure du coupon | Témoin | Interface de 0,5 à 0,8 mm | Base de 2,5 à 3,5 mm |
+| --- | ---: | ---: | ---: |
+| Segments `Support` | 20 019 | 18 919 | 20 019 |
+| Segments `Support interface` | 64 | 48 | 64 |
+| Longueur `Support interface` | 523,232 mm | 404,616 mm | 523,232 mm |
+| Écart Z médian estimé | 0,2 mm | 0,2 mm | 0,2 mm |
+| Projection discrète | 177,5 mm² | 152,5 mm² | 177,5 mm² |
+| Estimations de matière et de durée | 3,28 g et 990 s | 3,22 g et 980 s | 3,28 g et 990 s |
+
+`support_interface_spacing` a un effet numérique reproductible sur ce
+coupon. Avec `support_base_pattern_spacing`, les coordonnées des trajets
+des rôles de support mesurés gardent la même empreinte que le témoin.
+Cette absence d’effet observé reste limitée à la géométrie et au type de
+support essayés. Les sources et les 646 profils relus sont intacts. Les
+avertissements du trancheur restent identiques et la recette du retrait
+physique reste à faire (#89).
+
 ## Variabilité observée du style arborescent fort
 
 Sur le même coupon synthétique, le style `tree_strong` est conservé
