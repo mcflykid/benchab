@@ -1,12 +1,8 @@
-"""
-
-SHA-256 en flux, sans cache, refusant une entrée instable ou un lien final.
+"""Calcule les empreintes SHA-256 en flux, sans cache ni suivi du lien final.
 
 La comparaison inode/taille/mtime/ctime détecte les modifications ordinaires,
 y compris à taille identique et mtime restauré. Ce n'est pas un instantané
 contre un acteur privilégié capable de modifier les métadonnées du système.
-
-
 """
 
 import hashlib
@@ -16,10 +12,15 @@ from pathlib import Path
 
 
 def sha256_fichier(path, taille_bloc=1048576):
-    """Calcule le SHA-256 hexadécimal stable d'un fichier régulier, par blocs en octets.
+    """Calculez le SHA-256 hexadécimal d’un fichier régulier lu par blocs.
 
-    Un lien final, un fichier spécial ou une mutation donne un refus (ValueError
-    ou OSError). La source et ses métadonnées ne sont jamais écrites.
+    Entrées : ``path`` est le chemin source ; ``taille_bloc`` est un nombre d’octets
+    strictement positif (1 048 576 par défaut). Sortie : 64 caractères hexadécimaux.
+    Un lien final, un fichier spécial ou une mutation est refusé avec ``ValueError`` ;
+    une source absente ou inaccessible conserve l’exception système ``OSError``.
+
+    La source et ses métadonnées ne sont jamais écrites ; l’empreinte n’est pas une
+    garantie contre un acteur privilégié capable de modifier les métadonnées du système.
     """
     if type(taille_bloc) is not int or taille_bloc <= 0:
         raise ValueError("taille de bloc strictement positive requise")
