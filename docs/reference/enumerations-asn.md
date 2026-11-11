@@ -178,3 +178,15 @@ profils relus sont inchangés. Les avertissements ASN sur la température de
 plateau et la dureté de buse restent présents dans les trois sorties.
 Le résultat est limité au binaire ASN 2.0.0.3 déjà identifié et à ce coupon.
 Il ne valide ni résistance, ni profil à adopter, ni impression (#80, #81).
+
+### Vérifier une observation contextuelle
+
+`benchab controle enumerations-asn TRANCHE.3mf --contextuelles` inclut
+les valeurs observées sous conditions. Pour `support_style`, les valeurs
+`grid` et `snug` renvoient à la [recette des supports normaux](ecart-z-supports.md#styles-de-support-normal-grille-et-ajusté).
+Le rapport exige dans le même 3MF le support déclaré actif, le type
+`normal(auto)`, l’interface `concentric` et l’écart Z déclaré `0.18`
+mm. Toute condition absente ou différente reste NON VÉRIFIÉE. Le verdict
+décrit la déclaration et l’observation sur le coupon ; il ne prédit pas
+les trajectoires d’une autre géométrie et ne valide pas le retrait.
+Sans l’option, l’ensemble historique des contrôles reste inchangé (#80, #89).

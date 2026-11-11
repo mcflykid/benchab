@@ -20,9 +20,12 @@ def _enumerations_asn():
     return json.loads(files("benchab").joinpath("reference/enumerations-asn.json").read_text())
 
 
-def _enumeration_asn(cle, valeur, identite):
+def _enumeration_asn(cle, valeur, identite, donnees, *, inclure_contextuelles):
+    """Relie une déclaration littérale à une observation ASN et à sa portée."""
     catalogue = _enumerations_asn()
-    if cle not in catalogue["cles"]:
+    if cle not in catalogue["cles"] and (
+        not inclure_contextuelles or cle not in catalogue.get("cles_contextuelles", [])
+    ):
         return None
     if not isinstance(valeur, str):
         return {"statut": "FAIL", "valeur_embarquee": None, "detail": "La valeur doit être une chaîne."}
@@ -35,9 +38,19 @@ def _enumeration_asn(cle, valeur, identite):
     observation = binaire["cas"].get(cle, {}).get(valeur)
     if observation is None:
         return {**inconnu, "preuve": binaire["preuve"], "detail": "Valeur non qualifiée pour ce binaire."}
+    conditions = observation.get("conditions")
+    if conditions and any(donnees.get(nom, _ABSENT) != attendu for nom, attendu in conditions.items()):
+        # Les réglages lus dans le 3MF priment sur un contexte externe
+        # utilisé pour les cardinalités (docs/reference/enumerations-asn.md).
+        return {
+            **inconnu, "preuve": binaire["preuve"], "conditions": copy.deepcopy(conditions),
+            "detail": "Conditions de l’observation absentes ou différentes dans le 3MF.",
+        }
     detail = ("Valeur conservée et effet observé." if observation["statut"] == "PASS"
               else "Valeur remplacée par le slicer ; le repli ne vaut pas acceptation.")
-    return {**observation, "preuve": binaire["preuve"], "detail": detail}
+    if conditions and observation["statut"] == "PASS":
+        detail = "Valeur conservée et effet observé sur le témoin de preuve ; aucune généralisation."
+    return {**copy.deepcopy(observation), "preuve": binaire["preuve"], "detail": detail}
 
 
 def definition(cle, *, valeur=_ABSENT, portee="reglage"):
@@ -164,7 +177,7 @@ def longueur_attendue(cle, contexte):
     return None
 
 
-def verifier(donnees, contexte=None, *, identite_slicer=None):
+def verifier(donnees, contexte=None, *, identite_slicer=None, inclure_contextuelles=False):
     """Contrôle en lecture les types et cardinalités ; renvoie PASS/WARN/FAIL/NON VÉRIFIÉ sans réécrire.
 
     Pour un vecteur machine court non vide, expose les valeurs effectives par indice selon Orca
@@ -172,6 +185,8 @@ def verifier(donnees, contexte=None, *, identite_slicer=None):
     Anycubic ni la version du binaire (docs/reference/reglages-et-integrite.md).
     Si identite_slicer fournit version et SHA-256, ajoute les verdicts observés
     pour les clés énumérées, sans normaliser les chaînes ni changer les archives.
+    Les observations contextuelles restent facultatives et exigent leurs
+    réglages compagnons dans la source lue, sans compléter depuis le contexte.
     """
     ctx = {**donnees, **getattr(donnees, "contexte", {}), **(contexte or {})}
     resultat = []
@@ -236,7 +251,9 @@ def verifier(donnees, contexte=None, *, identite_slicer=None):
             if len(valeur) > attendu:
                 ligne["elements_supplementaires"] = valeur[attendu:]
         if identite_slicer is not None:
-            enumeration = _enumeration_asn(cle, valeur, identite_slicer)
+            enumeration = _enumeration_asn(
+                cle, valeur, identite_slicer, donnees, inclure_contextuelles=inclure_contextuelles,
+            )
             if enumeration is not None:
                 ligne["enumeration"] = enumeration
                 # Une qualification d'énumération ne peut assouplir le type déclaré.

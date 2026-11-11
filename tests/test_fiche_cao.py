@@ -380,3 +380,45 @@ def test_poches_arrondies_intersection_selon_leurs_deux_contours(tmp_path, decal
     else:
         with pytest.raises(ValueError, match="chevauchement"):
             generer(source, tmp_path / "p")
+
+
+@pytest.mark.parametrize("rayon", [None, 1])
+def test_ouverture_rectangulaire_traversante_explicite(tmp_path, rayon):
+    """Une ouverture enlève la section sur toute l’épaisseur, sans modifier la base."""
+    from math import pi
+
+    from benchab.conception.fiche_cao import generer
+
+    ouverture = _poche(-8, 2)
+    ouverture.pop("profondeur_mm")
+    ouverture["traversante"] = True
+    if rayon is not None:
+        ouverture["rayon_angle_mm"] = rayon
+    fiche = {**_fiche(), "percages": [], "poches_rectangulaires": [ouverture]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche), encoding="utf-8")
+    generer(source, tmp_path / "sortie")
+    plan = json.loads((tmp_path / "sortie/plan.json").read_bytes())
+    assert plan["poches_rectangulaires"] == [{**ouverture, "profondeur_mm": 4.0}]
+    assert plan["attendu"]["volume_mm3"] == pytest.approx(2400 - (24 - (4 - pi) * (rayon or 0)**2) * 4)
+    script = (tmp_path / "sortie/modele.py").read_text()
+    assert "Pos(-8.0, 2.0, -1.0)" in script
+    assert "6.0" in script
+
+
+@pytest.mark.parametrize(
+    "option",
+    [{"traversante": True, "profondeur_mm": 2}, {"traversante": False}, {"traversante": 1}],
+)
+def test_ouverture_traversante_refuse_declaration_ambigue(tmp_path, option):
+    """Un entier, un faux drapeau ou deux profondeurs ne produisent pas de plan."""
+    from benchab.conception.fiche_cao import generer
+
+    ouverture = _poche(-8, 2)
+    ouverture.pop("profondeur_mm")
+    fiche = {**_fiche(), "percages": [], "poches_rectangulaires": [{**ouverture, **option}]}
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(fiche), encoding="utf-8")
+    with pytest.raises(ValueError, match="profondeur|traversante"):
+        generer(source, tmp_path / "sortie")
+    assert not (tmp_path / "sortie").exists()

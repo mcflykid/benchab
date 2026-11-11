@@ -90,3 +90,62 @@ def test_commande_compare_archive_au_binaire_sans_modifier(tmp_path, monkeypatch
     assert rapport["binaire_cible"] == ASN
     assert rapport["controles"][0]["enumeration"]["valeur_embarquee"] == "zigzag"
     assert source.read_bytes() == avant
+
+
+def test_style_conditionnel_exige_les_reglages_embarques_sans_repli():
+    """Le style snug est qualifié seulement pour le contexte exact lu dans la source."""
+    conditions = {
+        "enable_support": "1", "support_type": "normal(auto)",
+        "support_interface_pattern": "concentric", "support_top_z_distance": "0.18",
+    }
+    donnees = {"support_style": "snug", **conditions}
+
+    def style(lignes):
+        """Sélectionne le contrôle du style, sans dépendre de l’ordre du rapport."""
+        ligne, = (item for item in lignes if item["cle"] == "support_style")
+        return ligne
+
+    historique = style(reglages.verifier(donnees, identite_slicer=ASN))
+    assert "enumeration" not in historique
+    qualifie = style(reglages.verifier(donnees, identite_slicer=ASN, inclure_contextuelles=True))
+    assert qualifie["statut"] == "PASS"
+    assert qualifie["enumeration"]["conditions"] == conditions
+    qualifie["enumeration"]["conditions"]["support_type"] = "déclaration modifiée"
+    for variante in (
+        {"support_style": "snug"},
+        {**donnees, "support_type": "tree(auto)"},
+        {**donnees, "support_top_z_distance": "0.38"},
+        {**donnees, "support_style": "default"},
+    ):
+        diagnostic = style(reglages.verifier(
+            variante, contexte=conditions, identite_slicer=ASN, inclure_contextuelles=True,
+        ))
+        assert diagnostic["statut"] == "NON VÉRIFIÉ"
+        assert diagnostic["enumeration"]["valeur_embarquee"] is None
+    apres = style(reglages.verifier(donnees, identite_slicer=ASN, inclure_contextuelles=True))
+    assert apres["enumeration"]["conditions"] == conditions
+
+
+def test_commande_style_contextuel_est_facultative(tmp_path, monkeypatch, capsys):
+    """Sans option le nouveau champ ne change pas le rapport historique."""
+    import json
+    from zipfile import ZipFile
+
+    from benchab.controles import enumerations_asn
+    from benchab.fabrication import slicer_runtime
+
+    source = tmp_path / "variante.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", json.dumps({
+            "enable_support": "1", "support_style": "grid", "support_type": "normal(auto)",
+            "support_interface_pattern": "concentric", "support_top_z_distance": "0.18",
+        }))
+    avant = source.read_bytes()
+    monkeypatch.setattr(slicer_runtime, "informations", lambda *, empreinte: ASN if empreinte else {})
+    assert enumerations_asn.main([str(source)]) == 0
+    ancien = json.loads(capsys.readouterr().out)
+    assert not any(item["cle"] == "support_style" for item in ancien["controles"])
+    assert enumerations_asn.main([str(source), "--contextuelles"]) == 0
+    nouveau = json.loads(capsys.readouterr().out)
+    assert any(item["cle"] == "support_style" and item["statut"] == "PASS" for item in nouveau["controles"])
+    assert source.read_bytes() == avant

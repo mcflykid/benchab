@@ -53,7 +53,7 @@ class _Percage:
 
 @dataclass(frozen=True, slots=True)
 class _Poche:
-    """Décrit une poche supérieure alignée sur les axes, en mm."""
+    """Décrit un retrait rectangulaire borgne ou traversant, en mm."""
 
     x: float
     y: float
@@ -62,6 +62,7 @@ class _Poche:
     profondeur: float
     source_cotes: str
     rayon_angle: float
+    traversante: bool
 
 
 def _rayon_entree(trou):
@@ -161,21 +162,25 @@ def _ecart_poche(x, y, demi_x, demi_y, rayon):
     return math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - rayon
 
 def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
-    """Valide le fond, la marge XY et les intersections au dessus du bloc."""
+    """Valide la profondeur ou la traversée, la marge XY et les intersections."""
     if not isinstance(valeurs, list) or len(valeurs) > 4:
         raise ValueError("De zéro à quatre poches rectangulaires sont acceptées.")
-    cles = {"x_mm", "y_mm", "largeur_x_mm", "largeur_y_mm", "profondeur_mm", "source_cotes"}
+    cles = {"x_mm", "y_mm", "largeur_x_mm", "largeur_y_mm", "source_cotes"}
+    modes = {"profondeur_mm", "traversante"}
     dx, dy, dz = bloc
     poches = []
     for numero, data in enumerate(valeurs, 1):
         etiquette = f"Poche {numero}"
-        if not isinstance(data, dict) or not cles <= set(data) <= cles | {"rayon_angle_mm"}:
-            raise ValueError(f"{etiquette} : centre XY, deux largeurs, profondeur et source des cotes requis.")
+        if not isinstance(data, dict) or not cles <= data.keys() <= cles | modes | {"rayon_angle_mm"}:
+            raise ValueError(f"{etiquette} : centre XY, deux largeurs, profondeur ou traversée et source requis.")
+        if len(data.keys() & modes) != 1 or ("traversante" in data and data["traversante"] is not True):
+            raise ValueError(f"{etiquette} : déclarer une profondeur ou traversante: true, sans les combiner.")
+        traversante = "traversante" in data
         x = _cote(data["x_mm"], f"{etiquette} x", longueur=False)
         y = _cote(data["y_mm"], f"{etiquette} y", longueur=False)
         lx = _cote(data["largeur_x_mm"], f"{etiquette} largeur x", longueur=True)
         ly = _cote(data["largeur_y_mm"], f"{etiquette} largeur y", longueur=True)
-        profondeur = _cote(data["profondeur_mm"], f"{etiquette} profondeur", longueur=True)
+        profondeur = dz if traversante else _cote(data["profondeur_mm"], f"{etiquette} profondeur", longueur=True)
         source = _source_cotes(data["source_cotes"], etiquette)
         rayon = 0.0
         if "rayon_angle_mm" in data:
@@ -190,7 +195,7 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
             marge = rayon_base - (math.hypot(abs(x) + lx / 2 - rayon, abs(y) + ly / 2 - rayon) + rayon)
         if marge <= _MARGE_MM:
             raise ValueError(f"{etiquette} : marge insuffisante au bord de la base.")
-        if dz - profondeur <= _MARGE_MM:
+        if not traversante and dz - profondeur <= _MARGE_MM:
             raise ValueError(f"{etiquette} : profondeur inférieure à l’épaisseur du bloc requise.")
         for trou in percages:
             if _ecart_poche(x - trou.x, y - trou.y, lx / 2, ly / 2, rayon) - _rayon_entree(trou) <= _MARGE_MM:
@@ -207,7 +212,7 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
                 touche = abs(x - voisine.x) - demi_x <= _MARGE_MM and abs(y - voisine.y) - demi_y <= _MARGE_MM
             if touche:
                 raise ValueError(f"{etiquette} : chevauchement ou tangence entre deux poches.")
-        poches.append(_Poche(x, y, lx, ly, profondeur, source, rayon))
+        poches.append(_Poche(x, y, lx, ly, profondeur, source, rayon, traversante))
     return poches
 
 
@@ -326,19 +331,21 @@ def _script(bloc, trous, poches, rayon_base=None):
                 "    )",
             ])
     for poche in poches:
-        # L'outil dépasse le dessus comme le cylindre du lamage ; le fond
-        # reste à l'altitude explicite plutôt qu'au milieu du bloc.
+        # Le dépassement évite les faces coplanaires de l’outil de coupe.
+        # Une poche borgne garde le fond coté, une ouverture dépasse les deux faces.
+        z_outil = -1.0 if poche.traversante else bloc[2] - poche.profondeur
+        hauteur_outil = poche.profondeur + (2 if poche.traversante else 1)
         if poche.rayon_angle:
             lignes.extend([
-                f"    solide -= Pos({poche.x!r}, {poche.y!r}, {bloc[2] - poche.profondeur!r}) * extrude(",
+                f"    solide -= Pos({poche.x!r}, {poche.y!r}, {z_outil!r}) * extrude(",
                 f"        RectangleRounded({poche.largeur_x!r}, {poche.largeur_y!r}, {poche.rayon_angle!r}),",
-                f"        amount={poche.profondeur + 1!r},",
+                f"        amount={hauteur_outil!r},",
                 "    )",
             ])
         else:
             lignes.extend([
-                f"    solide -= Pos({poche.x!r}, {poche.y!r}, {bloc[2] - poche.profondeur!r}) * Box(",
-                f"        {poche.largeur_x!r}, {poche.largeur_y!r}, {poche.profondeur + 1!r},",
+                f"    solide -= Pos({poche.x!r}, {poche.y!r}, {z_outil!r}) * Box(",
+                f"        {poche.largeur_x!r}, {poche.largeur_y!r}, {hauteur_outil!r},",
                 "        align=(Align.CENTER, Align.CENTER, Align.MIN)",
                 "    )",
             ])
@@ -397,6 +404,7 @@ def _generer(source, sortie, *, prive):
             {"x_mm": p.x, "y_mm": p.y, "largeur_x_mm": p.largeur_x, "largeur_y_mm": p.largeur_y,
              "profondeur_mm": p.profondeur, "source_cotes": p.source_cotes}
             | ({"rayon_angle_mm": p.rayon_angle} if p.rayon_angle else {})
+            | ({"traversante": True} if p.traversante else {})
             for p in poches
         ]} if poches else {}),
         "attendu": attendu, "exigences_non_verifiees": exclus,

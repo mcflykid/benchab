@@ -11,6 +11,7 @@
     "locked_skin_infill_pattern",
     "support_interface_pattern"
   ],
+  "cles_contextuelles": ["support_style"],
   "binaires": {
     "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d": {
       "version": "2.0.0.3",
@@ -52,6 +53,26 @@
         "support_interface_pattern": {
           "auto": {"statut": "PASS", "valeur_embarquee": "auto"},
           "concentric": {"statut": "PASS", "valeur_embarquee": "concentric"}
+        },
+        "support_style": {
+          "grid": {
+            "statut": "PASS", "valeur_embarquee": "grid",
+            "conditions": {
+              "enable_support": "1",
+              "support_type": "normal(auto)",
+              "support_interface_pattern": "concentric",
+              "support_top_z_distance": "0.18"
+            }
+          },
+          "snug": {
+            "statut": "PASS", "valeur_embarquee": "snug",
+            "conditions": {
+              "enable_support": "1",
+              "support_type": "normal(auto)",
+              "support_interface_pattern": "concentric",
+              "support_top_z_distance": "0.18"
+            }
+          }
         }
       }
     }
