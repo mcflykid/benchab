@@ -63,3 +63,22 @@ de cette opération.
 Le plan exige l’identité et le schéma BENCHAB, ainsi que le format de journal
 SQLite ordinaire. Un journal WAL reste NON VÉRIFIÉ sans ouverture par SQLite.
 Chaque action décrit aussi l’état et le SHA actuels de la cible, quand connus.
+
+Pour une proposition de lien cassé, une étape distincte et explicite peut copier
+la candidate sélectionnée vers la cible relative absente du lien :
+
+```sh
+benchab --prive /chemin/atelier controle appliquer-reparation-vue \
+  --plan /tmp/plan-vues.json --cible vues/INDEX.md --candidat vues-deplacees/INDEX.md
+```
+
+Cette voie recalcule le plan et le rendu SQLite sous le verrou, relit le lien et
+la candidate privée, puis conserve une preuve neuve relue sous
+`sauvegardes/vues/` avant la copie. Seules les cibles feuille absentes dont les
+parents existent sans lien, à l'intérieur de `vues/`, sont admissibles ; une vue
+canonique ou le manifeste est refusé. La publication exclusive refuse toute
+cible apparue entre-temps. Le lien et la candidate sont conservés, et le contrôle
+final vérifie leurs empreintes. `PASS` signifie que les octets copiés égalent le
+rendu actuel de SQLite ; l'origine historique et la pertinence de la candidate
+restent **NON VÉRIFIÉES**. Un échec après la preuve garde celle-ci comme trace et
+ne revendique pas une réparation.

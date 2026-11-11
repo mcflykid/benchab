@@ -197,11 +197,15 @@ def _lien_cible_absente(racine: Path, relatif: str) -> bool:
     try:
         if not stat.S_ISLNK(lien.lstat().st_mode):
             return False
-        cible = Path(os.readlink(lien))
+        texte_cible = os.readlink(lien)
+        cible = Path(texte_cible)
     except OSError:
         return False
     # Ce lot ne traite qu'un lien déplacé simple dans le privé ; les autres formes restent à vérifier.
-    if cible.is_absolute() or not cible.parts or any(part in {"", ".", ".."} for part in cible.parts):
+    if (
+        cible.is_absolute() or not cible.parts
+        or any(part in {"", ".", ".."} for part in texte_cible.split("/"))
+    ):
         return False
     # readlink renvoie un chemin interprété depuis le parent du lien, pas depuis l'atelier.
     courant = parent
@@ -278,15 +282,27 @@ def planifier(prive: Path | str | None = None, *, candidats: list[str] | None = 
         elif statut == "LIEN_A_VERIFIER" and _lien_cible_absente(racine, relatif):
             correspondants = index_candidats.get(attendu, [])
             if len(correspondants) == 1:
-                propositions_liens.append({
-                    "action": "PROPOSER_LIEN_CANDIDAT_SHA_EXACT",
-                    "cible": relatif,
-                    "candidat": correspondants[0],
-                    "sha256": attendu,
-                    "source_sha256_rendu": sha_source,
-                    "application_effectuee": False,
-                    "limite": "Identité des octets prouvée ; origine et pertinence historique non établies.",
-                })
+                try:
+                    _, texte_lien, _, destination_rel, identite_lien = _instantane_lien(racine, relatif)
+                except (OSError, ValueError):
+                    incertitudes = True
+                else:
+                    if destination_rel in attendus or destination_rel == MANIFESTE:
+                        incertitudes = True
+                    else:
+                        # Les empreintes lient le choix au lien observé sans publier sa cible privée en clair.
+                        propositions_liens.append({
+                            "action": "PROPOSER_LIEN_CANDIDAT_SHA_EXACT",
+                            "cible": relatif,
+                            "candidat": correspondants[0],
+                            "sha256": attendu,
+                            "source_sha256_rendu": sha_source,
+                            "lien_sha256": hashlib.sha256(os.fsencode(texte_lien)).hexdigest(),
+                            "lien_identite_sha256": _sha_identite(identite_lien),
+                            "destination_sha256": hashlib.sha256(destination_rel.encode("utf-8")).hexdigest(),
+                            "application_effectuee": False,
+                            "limite": "Identité des octets prouvée ; origine et pertinence historique non établies.",
+                        })
             else:
                 incertitudes = True
         elif statut not in {"PRESENTE_IDENTIQUE"}:
@@ -581,6 +597,218 @@ def appliquer_vue(prive: Path | str, rapport: dict[str, Any], cible: str) -> dic
         "sha256": action["sha256_attendu"],
         "sauvegarde": sauvegarde_rel,
         "sha256_sauvegarde": sauvegarde_sha,
+    }
+
+
+def _instantane_lien(racine: Path, relatif: str, *, cible_absente=True):
+    """Relit un lien feuille et sa cible relative, sans suivre le lien ni un parent lié."""
+    chemin = PurePosixPath(relatif)
+    parent = racine
+    for composant in chemin.parts[:-1]:
+        parent = parent / composant
+        if parent.is_symlink() or not parent.is_dir():
+            raise ValueError("Parent de lien absent ou symbolique.")
+    lien = parent / chemin.parts[-1]
+    info = lien.lstat()
+    if not stat.S_ISLNK(info.st_mode):
+        raise ValueError("Le lien de vue a changé depuis le plan.")
+    texte = os.readlink(lien)
+    apres_lecture = lien.lstat()
+    identite = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    identite_apres = (
+        apres_lecture.st_dev, apres_lecture.st_ino, apres_lecture.st_size,
+        apres_lecture.st_mtime_ns, apres_lecture.st_ctime_ns,
+    )
+    if identite != identite_apres:
+        raise ValueError("Le lien a changé pendant sa lecture.")
+    cible_brute = PurePosixPath(texte)
+    if (
+        cible_brute.is_absolute() or not cible_brute.parts
+        or any(part in {"", ".", ".."} for part in texte.split("/"))
+    ):
+        raise ValueError("Cible de lien absolue, sortante ou ambiguë.")
+    destination_rel = (chemin.parent / cible_brute).as_posix()
+    destination = racine / destination_rel
+    if not destination_rel.startswith("vues/") or destination_rel == MANIFESTE:
+        raise ValueError("La cible du lien sort des vues ou désigne le manifeste.")
+    courant = racine
+    for composant in PurePosixPath(destination_rel).parts[:-1]:
+        courant = courant / composant
+        if courant.is_symlink() or not courant.is_dir():
+            raise ValueError("Parent de destination absent ou symbolique.")
+    try:
+        info_destination = destination.lstat()
+    except FileNotFoundError:
+        if not cible_absente:
+            raise ValueError("La copie publiée est absente.")
+    else:
+        if cible_absente or not stat.S_ISREG(info_destination.st_mode):
+            raise ValueError("La cible du lien n'est pas dans l'état attendu.")
+    return lien, texte, destination, destination_rel, identite
+
+
+def appliquer_candidat_lien(
+    prive: Path | str, rapport: dict[str, Any], cible: str, candidat: str
+) -> dict[str, Any]:
+    """Copie une candidate privée exacte vers la cible absente d'un lien de vue cassé.
+
+    Entrées : atelier privé, plan explicite, chemins relatifs de vue et de candidate.
+    Sortie : PASS et preuve privée relue, ou refus sans annoncer de réparation.
+    Invariants : conserve le lien et la candidate, refuse cible canonique/manifeste,
+    revalide SQLite sous le verrou, prouve l'état antérieur et publie la copie exclusivement.
+    """
+    if type(rapport) is not dict or type(candidat) is not str:
+        raise ValueError("Plan ou candidat invalide.")
+    if (
+        rapport.get("schema") != 1 or type(rapport.get("schema")) is not int
+        or rapport.get("statut") != "WARN" or rapport.get("application_effectuee") is not False
+    ):
+        raise ValueError("Plan de réparation non applicable.")
+    if not isinstance(cible, str) or not (
+        cible == "vues/INDEX.md" or re.fullmatch(r"vues/etats/[0-9a-f]{24}\.md", cible)
+    ):
+        raise ValueError("Seules les vues canoniques privées peuvent porter un lien à réparer.")
+    source_plan = rapport.get("source")
+    if type(source_plan) is not dict or set(source_plan) != {
+        "cible", "sha256_rendu_attendu", "application_id", "user_version"
+    } or (
+        source_plan["cible"] != "benchab.sqlite#vues"
+        or not _sha256_valide(source_plan["sha256_rendu_attendu"])
+        or source_plan["application_id"] != APPLICATION_ID or source_plan["user_version"] != 1
+    ):
+        raise ValueError("Source du plan invalide.")
+    propositions = rapport.get("propositions_liens")
+    correspondantes = [
+        item for item in propositions if type(item) is dict
+        and item.get("cible") == cible and item.get("candidat") == candidat
+    ] if isinstance(propositions, list) else []
+    if len(correspondantes) != 1:
+        raise ValueError("Le plan ne contient pas une proposition unique pour ce candidat.")
+    proposition = correspondantes[0]
+    if (
+        set(proposition) != {
+            "action", "cible", "candidat", "sha256", "source_sha256_rendu",
+            "lien_sha256", "lien_identite_sha256", "destination_sha256",
+            "application_effectuee", "limite",
+        }
+        or proposition["action"] != "PROPOSER_LIEN_CANDIDAT_SHA_EXACT"
+        or proposition["application_effectuee"] is not False
+        or not _sha256_valide(proposition["sha256"])
+        or proposition["source_sha256_rendu"] != source_plan["sha256_rendu_attendu"]
+        or proposition["limite"] != "Identité des octets prouvée ; origine et pertinence historique non établies."
+    ):
+        raise ValueError("Proposition de lien invalide ou avec champ inattendu.")
+    chemin_candidat = PurePosixPath(candidat)
+    if chemin_candidat.is_absolute() or not chemin_candidat.parts or any(
+        part in {"", ".", ".."} for part in chemin_candidat.parts
+    ):
+        raise ValueError("Le candidat doit être un chemin privé relatif sans remontée.")
+
+    racine = atelier_prive(prive).absolute()
+    base = sans_lien(racine / "benchab.sqlite", racine=racine, strict=True)
+    entete = _entete_sqlite(base)
+    if not entete.startswith(b"SQLite format 3\0") or len(entete) != 20 or entete[18:20] != b"\x01\x01":
+        raise ValueError("Format de journal SQLite non pris en charge pour la reprise.")
+
+    # Le verrou commun maintient le rendu, la preuve et la publication cohérents avec le générateur.
+    with verrou_publication(racine / "cache", "vues.lock"):
+        lien, texte_lien, destination, destination_rel, identite_lien = _instantane_lien(racine, cible)
+        if (
+            proposition["lien_sha256"] != hashlib.sha256(os.fsencode(texte_lien)).hexdigest()
+            or proposition["lien_identite_sha256"] != _sha_identite(identite_lien)
+            or proposition["destination_sha256"] != hashlib.sha256(destination_rel.encode("utf-8")).hexdigest()
+        ):
+            raise ValueError("Lien modifié depuis le plan.")
+        actuel = _empreinte_fichier(racine, candidat, lecture=True)
+        if actuel["statut"] != "PRESENT" or actuel.get("sha256") != proposition["sha256"]:
+            raise ValueError("Candidate absente, liée ou modifiée depuis le plan.")
+        with closing(sqlite3.connect(base.as_uri() + "?mode=ro", uri=True, timeout=1)) as connexion:
+            connexion.row_factory = sqlite3.Row
+            connexion.execute("PRAGMA query_only = ON")
+            connexion.execute("BEGIN")
+            application_id = connexion.execute("PRAGMA application_id").fetchone()[0]
+            version = connexion.execute("PRAGMA user_version").fetchone()[0]
+            identite_source = {"application_id": application_id, "user_version": version}
+            if identite_source != {
+                "application_id": source_plan["application_id"], "user_version": source_plan["user_version"],
+            }:
+                raise ValueError("Identité SQLite modifiée depuis le plan.")
+            rendu = vues._rendre(connexion)
+            fiches = vues._fiches_filaments(connexion)
+            attendus, empreintes_attendues, sha_source = _source_logique(rendu, fiches)
+        if sha_source != source_plan["sha256_rendu_attendu"]:
+            raise ValueError("Rendu SQLite modifié depuis le plan.")
+        if cible not in attendus or empreintes_attendues[cible] != proposition["sha256"]:
+            raise ValueError("La candidate ne correspond pas au rendu canonique actuel.")
+        if destination_rel in attendus or destination_rel == MANIFESTE:
+            raise ValueError("La cible désigne une vue canonique ou le manifeste.")
+
+        # Le plan complet est relu sous verrou : il confirme lien cassé, candidat unique et source identique.
+        replan = planifier(racine, candidats=[candidat])
+        nouvelles = [
+            item for item in replan["propositions_liens"]
+            if item.get("cible") == cible and item.get("candidat") == candidat
+        ]
+        if replan["statut"] != "WARN" or len(nouvelles) != 1 or nouvelles[0] != proposition:
+            raise ValueError("La proposition ne correspond plus au lien, au candidat ou au rendu.")
+        _, texte_relu, destination_relue, chemin_relu, identite_relue = _instantane_lien(racine, cible)
+        relu = _empreinte_fichier(racine, candidat, lecture=True)
+        if (
+            texte_relu != texte_lien or destination_relue != destination or chemin_relu != destination_rel
+            or identite_relue != identite_lien or relu["statut"] != "PRESENT"
+            or relu.get("sha256") != proposition["sha256"] or relu.get("identite") != actuel.get("identite")
+        ):
+            raise ValueError("Lien ou candidate modifié pendant la relecture ; reprise refusée.")
+
+        donnees_preuve = {
+            "schema": 1, "action": "COPIER_CANDIDAT_VERS_CIBLE_DE_LIEN_ABSENTE",
+            "cible_vue": cible, "lien_relatif": texte_lien, "destination_relative": destination_rel,
+            "cible_avant": "ABSENTE", "identite_lien_sha256": _sha_identite(identite_lien),
+            "candidat": candidat, "candidat_sha256": proposition["sha256"],
+            "source_sha256_rendu": sha_source,
+            "origine_historique_et_pertinence": "NON VÉRIFIÉES",
+        }
+        texte_preuve = json.dumps(donnees_preuve, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        preuve = racine / "sauvegardes/vues" / (
+            f"reprise-lien-{uuid.uuid4().hex}-{proposition['sha256'][:24]}.json"
+        )
+        with PublicationNeuve([], [preuve]) as publication:
+            publication.temporaire(preuve).write_text(texte_preuve, encoding="utf-8")
+            publication.publier()
+        preuve_rel = preuve.relative_to(racine).as_posix()
+        sauvegarde = _empreinte_fichier(racine, preuve_rel, lecture=True)
+        if sauvegarde["statut"] != "PRESENT" or sauvegarde.get("contenu") != texte_preuve.encode("utf-8"):
+            raise ValueError("La preuve privée antérieure n'a pas été relue à l'identique.")
+
+        # Une cible apparue depuis le plan est refusée par la publication exclusive.
+        relu = _empreinte_fichier(racine, candidat, lecture=True)
+        _, texte_final, destination_finale, chemin_final, identite_finale = _instantane_lien(racine, cible)
+        if (
+            texte_final != texte_lien or destination_finale != destination or chemin_final != destination_rel
+            or identite_finale != identite_lien or relu["statut"] != "PRESENT"
+            or relu.get("sha256") != proposition["sha256"] or relu.get("identite") != actuel.get("identite")
+        ):
+            raise ValueError("Préconditions changées après preuve ; la copie n'est pas publiée.")
+        with PublicationNeuve([actuel["chemin"]], [destination]) as publication:
+            publication.temporaire(destination).write_bytes(relu["contenu"])
+            publication.publier()
+        apres = _empreinte_fichier(racine, destination_rel, lecture=True)
+        _, texte_apres, destination_apres, chemin_apres, identite_apres = _instantane_lien(
+            racine, cible, cible_absente=False
+        )
+        if (
+            apres["statut"] != "PRESENT" or apres.get("sha256") != proposition["sha256"]
+            or apres.get("contenu") != relu["contenu"] or texte_apres != texte_lien
+            or destination_apres != destination or chemin_apres != destination_rel
+            or identite_apres != identite_lien
+        ):
+            raise RuntimeError("Contrôle après reprise échoué ; NON VÉRIFIÉ, preuve conservée.")
+
+    return {
+        "statut": "PASS", "application_effectuee": True, "cible_vue": cible,
+        "destination": destination_rel, "sha256": proposition["sha256"], "lien_conserve": True,
+        "preuve": preuve_rel, "sha256_preuve": sauvegarde["sha256"],
+        "origine_historique_et_pertinence": "NON VÉRIFIÉES",
     }
 
 

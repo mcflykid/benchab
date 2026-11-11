@@ -200,6 +200,9 @@ def parser():
     )
     appliquer_vue.add_argument("--plan", type=Path, required=True, help="Fichier JSON produit par plan-reparation")
     appliquer_vue.add_argument("--cible", required=True, help="Vue relative canonique à réparer")
+    appliquer_vue.add_argument(
+        "--candidat", help="Candidat privé du plan ; copie ses octets vers la cible absente du lien cassé"
+    )
     complet = controle.add_parser("complet", help="Vérifie le dépôt et, sur demande explicite, les témoins S/M/L")
     complet.add_argument("--racine", type=Path, default=Path.cwd())
     complet.add_argument("--temoins", action="store_true")
@@ -992,10 +995,17 @@ def main(argv=None):
                 object_pairs_hook=sans_doublons,
                 parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Constante JSON interdite.")),
             )
-            from benchab.qualite.plan_reparation import appliquer_vue as reparer_vue
+            from benchab.qualite import plan_reparation
 
             # La réparation vérifie sa source SQLite en RO et n'enregistre donc ni mesure ni état (#119).
-            resultat = reparer_vue(atelier_prive(arguments.prive), rapport, arguments.cible)
+            if arguments.candidat:
+                resultat = plan_reparation.appliquer_candidat_lien(
+                    atelier_prive(arguments.prive), rapport, arguments.cible, arguments.candidat
+                )
+            else:
+                resultat = plan_reparation.appliquer_vue(
+                    atelier_prive(arguments.prive), rapport, arguments.cible
+                )
             print(json.dumps(resultat, ensure_ascii=False, separators=(",", ":")))
             return 0
         except (OSError, ValueError, RuntimeError, sqlite3.Error, json.JSONDecodeError) as erreur:
