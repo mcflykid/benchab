@@ -11,6 +11,17 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Incidents : compare une liste explicite de cas à un rapport JUnit borné ;
   l’exécution des tests reste non attestée (suite de #119).
 
+- Visualisation : valide les numéros de plaque et les CRC avant l’ouverture
+  du slicer (#173).
+- U25 : relie les trois parcours au membre G-code exact, sans changer le
+  plafond ni le verdict des archives univoques (#174).
+- Rapports : affiche jusqu’à trois plaques en écart pour le débit et conserve
+  le rapport complet (suite de #35).
+- Archives : lit réglages, CRC et empreinte dans un seul contexte pour les
+  affectations ACE (suite de #122).
+- Conception : génère un plan déterministe et un script CAO depuis des cotes de
+  bloc et de perçages explicites (suite de #32).
+
 ## 1.8.0 — 2026-11-11
 
 - 3MF : remplace une cible directe ou une feuille non partagée d’un assemblage
