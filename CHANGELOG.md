@@ -14,6 +14,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
   maillage direct ; la conversion reste NON VÉRIFIÉE (suite de #43).
 - Remplissage : prépare des paliers radiaux disjoints et mesure sur un
   coupon l’effet numérique d’un changement de densité (suite de #83).
+- Supports : reproduit l’effet d’une consigne XY sur les trajets d’un
+  coupon, sans conclure au retrait (suite de #89).
 
 ## 1.17.0 — 2026-11-11
 

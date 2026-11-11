@@ -53,7 +53,7 @@ diffère dans les archives est `support_object_xy_distance`, de 0,35 à
 la projection discrète passe de 177,5 à 178,0 mm². L’estimation passe de
 3,28 à 3,29 g et de 990 à 991 s.
 
-Les deux sorties à 0,7 mm sont identiques hors commentaire de date. Une
+Les deux G-code à 0,7 mm sont identiques hors commentaire de date. Une
 première copie demandant la chaîne `0.70` a été refusée : le moteur a
 embarqué `0.7`, que le contrôle exact ne substitue pas silencieusement.
 Les sources et les 646 profils relus restent intacts. Ce test mesure un
