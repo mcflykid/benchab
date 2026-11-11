@@ -58,9 +58,12 @@ def test_parcours_revue_archive_reutilise_controles_et_preserve_source(tmp_path,
     revue_octets = revue_source.read_bytes()
     sortie = tmp_path / "final.json"
     appels = []
+    controle_initial = True
 
     def controler(*args, **kwargs):
-        if kwargs.get("revue_locale") is None:
+        nonlocal controle_initial
+        if controle_initial:
+            controle_initial = False
             appels.append(("initial", args, kwargs))
             return _rapport_initial(archive)
         appels.append(("final", args, kwargs))
@@ -183,10 +186,13 @@ def test_collision_apparue_apres_validation_refuse_le_parcours_sans_ecraser(tmp_
     sortie = tmp_path / "final.json"
     collision = tmp_path / "final-faits.json"
     collision_octets = b"preuve concurrente conservee"
+    controle_initial = True
 
     def controler(*args, **kwargs):
+        nonlocal controle_initial
         rapport = _rapport_initial(archive)
-        if kwargs.get("revue_locale") is None:
+        if controle_initial:
+            controle_initial = False
             collision.write_bytes(collision_octets)
             return rapport
         return {"statut": "NON VÉRIFIÉ", "code": 2, "resultats": []}
@@ -243,12 +249,21 @@ def test_sans_revue_source_le_parcours_donne_un_etat_neutre_explicite(tmp_path, 
     archive.write_bytes(b"archive temoin")
     declaration = tmp_path / "declaration.json"
     declaration.write_text("{}", encoding="utf-8")
+    revue_par_defaut = tmp_path / "REVUE-ZONES-LOCALES.json"
+    revue_par_defaut.write_text('{"zones":{"decision-voisine":{"decision":"justifie"}}}', encoding="utf-8")
     sortie = tmp_path / "final.json"
     voisine = tmp_path / "final-revue.json"
     octets_voisins = b'{"zones":{"zone-voisine":{"decision":"justifie"}}}'
+    controle_initial = True
 
     def controler(*args, **kwargs):
-        if kwargs.get("revue_locale") is None:
+        nonlocal controle_initial
+        if controle_initial:
+            controle_initial = False
+            neutre = kwargs.get("revue_locale")
+            assert neutre is not None
+            assert Path(neutre) != revue_par_defaut
+            assert not Path(neutre).exists()
             voisine.write_bytes(octets_voisins)
             return _rapport_initial(archive)
         return {"statut": "NON VÉRIFIÉ", "code": 2, "resultats": []}

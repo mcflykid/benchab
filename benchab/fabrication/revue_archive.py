@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import tempfile
 from pathlib import Path
 
 from benchab.chemins import sans_lien
@@ -44,9 +45,17 @@ def executer(archive, declaration, *, sortie, prive, revue_source=None, geometri
         entrees.extend(_verifier_preuves_revue(source, revue_source, prive))
     valider_chemins(entrees, [initial, revue, faits, sortie])
     empreintes = {str(chemin): sha256_fichier(chemin) for chemin in entrees}
-    initial_resultat = envoi.controler(
-        archive, declaration, reference=reference, geometrie=geometrie
-    )
+    # Une revue explicitement absente dans un répertoire temporaire privé empêche
+    # le contrôle historique de reprendre le fichier voisin par défaut.
+    with tempfile.TemporaryDirectory(prefix="benchab-revue-neutre-") as temporaire_prive:
+        revue_neutre = Path(temporaire_prive) / "REVUE-ZONES-LOCALES.json"
+        initial_resultat = envoi.controler(
+            archive,
+            declaration,
+            reference=reference,
+            geometrie=geometrie,
+            revue_locale=revue_neutre,
+        )
     env = initial_resultat.get("zones_locales")
     if not isinstance(env, dict) or not isinstance(env.get("tranche_sha256"), str):
         raise ValueError("Le contrôle initial ne fournit pas l’empreinte de l’archive tranchée.")
