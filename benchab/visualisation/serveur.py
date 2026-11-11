@@ -41,6 +41,11 @@ RACINE = racine_privee()
 
 
 def fichier_commentaires(page, racine=None):
+    """Résout le fichier de commentaires d’une page HTML privée existante.
+
+    Renvoie un chemin sous l’atelier. Une page hors des dossiers de
+    visualisation ou un chemin à lien est refusé. Aucune écriture.
+    """
     racine = atelier_prive(racine or RACINE)
     rel = Path(urllib.parse.unquote(page).lstrip("/"))
     parts = rel.parts
@@ -76,13 +81,16 @@ def fusionner(anciens, nouveaux, supprimes=()):
 class Gestion(http.server.SimpleHTTPRequestHandler):
     """Traite les requêtes locales et statuts HTTP ; ne publie pas les secrets et ne commande jamais l’imprimante."""
     def __init__(self, *a, **k):
+        """Fixe le répertoire de service à la racine privée du serveur HTTP."""
         self.racine = atelier_prive(getattr(a[2], "racine", RACINE))
         super().__init__(*a, directory=str(self.racine), **k)
 
     def log_message(self, *a):
+        """Écarte la journalisation HTTP par défaut des requêtes privées."""
         pass
 
     def repondre(self, code, obj):
+        """Émet une réponse JSON UTF-8 avec le code HTTP fourni et sans mise en cache."""
         b = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -251,6 +259,7 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
         return f
 
     def do_HEAD(self):
+        """Reprend le routage GET en conservant les en-têtes et le statut HTTP."""
         self.do_GET()
 
     def do_GET(self):
@@ -288,6 +297,7 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(body)
 
     def consulter(self):
+        """Sert les vues, ressources ou commentaires autorisés après contrôle de l’hôte."""
         if not self.hote_valide():
             return self.repondre(403, {"erreur": "hôte interdit"})
         u = urllib.parse.urlparse(self.path)
@@ -373,11 +383,13 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             self.repondre(400, {"erreur": str(e)})
 
     def accueil(self):
+        """Émet le catalogue HTML des projets de l’atelier courant."""
         from benchab.visualisation.catalogue_visuel import accueil
 
         self.html(accueil(self.racine))
 
     def html(self, body):
+        """Émet HTTP 200 avec la longueur du HTML fourni en octets, sans corps pour HEAD."""
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -530,10 +542,14 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
 
 
 class Serveur(http.server.ThreadingHTTPServer):
-    """Serveur local de pages privées ; statuts HTTP, aucune exposition réseau ni commande machine implicite."""
+    """Sert les pages privées à l’adresse fournie par l’appelant.
+
+    Le lanceur CLI utilise 127.0.0.1. Le serveur ne commande pas la machine.
+    """
     request_queue_size = 32
 
     def __init__(self, address, handler=Gestion, racine=None):
+        """Ouvre l’adresse HTTP fournie et associe la racine privée et le verrou de découpe."""
         self.racine = atelier_prive(racine or RACINE)
         self.verrou_decoupe = threading.Lock()
         super().__init__(address, handler)

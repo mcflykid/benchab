@@ -87,12 +87,14 @@ def agregation_statut(q):
 
 
 def mauvais(q, autorises=("PASS",)):
+    """Indique si un rapport manque de statuts ou contient un verdict autre que ceux admis."""
     allowed = {"WARNING" if str(s).upper() == "WARN" else str(s).upper() for s in autorises}
     values = statuts(q)
     return not values or any(v not in allowed or v not in ("PASS", "WARNING") for v in values)
 
 
 def verifier(base, cfg=None, humain=True):
+    """Vérifie les preuves du projet. Chaque contrôle renvoie PASS, FAIL, WARNING ou NON VÉRIFIÉ."""
     base = Path(base).resolve()
     cfg = cfg or json.loads((base / "qualite.json").read_text())
     out = []
@@ -207,6 +209,7 @@ def verifier(base, cfg=None, humain=True):
 
 
 def exiger(base, humain=True):
+    """Renvoie les contrôles si tous sont PASS ou WARNING, sinon lève un refus de validation."""
     items = verifier(base, humain=humain)
     bad = [q for q in items if q["statut"] not in ("PASS", "WARNING")]
     if bad:

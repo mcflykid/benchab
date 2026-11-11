@@ -30,6 +30,7 @@ OK, KO, AV, NV = "PASS", "FAIL", "WARNING", "NON VÉRIFIÉ"
 
 
 def executer_borne(commande, delai=600):
+    """Exécute la commande avec un délai en secondes. Renvoie le résultat, code 124 en cas de délai dépassé."""
     if not math.isfinite(delai) or delai <= 0:
         raise ValueError("délai fini positif requis")
     try:
@@ -48,6 +49,7 @@ def executer_borne(commande, delai=600):
 
 
 def sha(p):
+    """Retourne le SHA-256 hexadécimal des octets du fichier."""
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 
@@ -109,6 +111,7 @@ class Rapport:
                 self.entrees.append(Path(chemin).absolute())
 
     def add(self, controle, statut, detail="", **extra):
+        """Ajoute une ligne de contrôle et renvoie son statut fourni, sans l’interpréter."""
         self.items.append({"controle": controle, "statut": statut, "detail": detail, **extra})
         return statut
 
@@ -171,6 +174,7 @@ class Rapport:
 
 
 def charger(cfg_path):
+    """Charge le JSON et renvoie la configuration, son dossier et la résolution des chemins déclarés."""
     cfg = json.loads(Path(cfg_path).read_text())
     base = Path(cfg_path).resolve().parent
 
@@ -552,6 +556,7 @@ def niveau3(cfg_path):
 
 
 def incrementiel(cfg_path, ancien):
+    """Compare les empreintes STL de deux manifestes et renvoie les modèles changés et contrôles à relancer."""
     cfg, base, P = charger(cfg_path)
     a = json.loads(Path(ancien).read_text())["models"]
     b = json.loads(P("manifeste").read_text())["models"]
@@ -575,6 +580,7 @@ def incrementiel(cfg_path, ancien):
 
 
 def resume(cfg_path):
+    """Affiche les titres des rapports de qualité présents sous le dossier de configuration."""
     cfg, base, P = charger(cfg_path)
     for f in sorted((base / "preuves/qualite").glob("*.md")):
         print(f.read_text().splitlines()[0])

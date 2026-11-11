@@ -2,6 +2,20 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.29.0 — 2026-11-11
+
+- Diagnostic d’atelier. La relance du contrôle des références utilise le
+  module installé et vise le même atelier, même si son chemin contient
+  des espaces (#231).
+- Entretien. Chaque compteur indique la période couverte et les données
+  manquantes dans les retours. Les compteurs restent non vérifiés lorsque
+  leur historique est insuffisant (#73).
+- Annotations. Les fonctions et classes publiques du paquet ont passé la
+  vérification de présence des docstrings Ruff D10. La CI applique ce
+  contrôle à tout le paquet en plus de la garde des portées modifiées (#127).
+- Documentation. Le guide des rapports recense les options déjà disponibles
+  (#35), et la référence des commandes signale le profil ISO nominal (#27).
+
 ## 1.28.0 — 2026-11-11
 
 - Fixations : génère le profil métrique ISO nominal à partir du diamètre

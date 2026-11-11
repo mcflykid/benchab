@@ -13,6 +13,13 @@ VERSION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def enrichir(mesh, diagnostic, maximum=24, faces_max=200000):
+    """Complète un diagnostic depuis le maillage source en mm.
+
+    Renvoie les mesures en mm, mm² et mm³ ainsi que les alertes localisées.
+    `maximum` borne séparément les bords ouverts, arêtes multiples et
+    triangles dégénérés. `faces_max` borne la topologie et la base.
+    Une topologie hors budget reste non vérifiée. Le maillage reste intact.
+    """
     if type(maximum) is not int or maximum < 1 or type(faces_max) is not int or (faces_max < 1):
         raise ValueError("limites entières positives requises")
     if not len(mesh.faces) or not np.isfinite(mesh.vertices).all():

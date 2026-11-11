@@ -16,10 +16,12 @@ INTEGRATIONS = {"DECLARE", "DISPONIBLE", "ESSAYE", "INTEGRE", "REFUSE", "REPORTE
 
 
 def etudes(donnees):
+    """Retourne les entrées du registre déclarées comme études techniques."""
     return [c for c in donnees.get("connaissances", []) if c.get("type") == "ETUDE_TECHNIQUE"]
 
 
 def verifier(donnees):
+    """Vérifie la cohérence des déclarations d’étude et renvoie leurs erreurs."""
     erreurs = []
     identites = set()
     for item in etudes(donnees):

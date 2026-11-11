@@ -18,10 +18,12 @@ from scipy import ndimage
 
 
 def sha256(path):
+    """Retourne le SHA-256 hexadécimal du fichier."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def positif(value, nom):
+    """Refuse une valeur non numérique, non finie ou non strictement positive."""
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
         raise ValueError(nom + " doit être un nombre fini strictement positif.")
 
@@ -91,6 +93,7 @@ def frontieres(mask):
 
 
 def extruder(mask, largeur_mm, epaisseur_mm, max_faces=500000):
+    """Extrude le masque avec largeur et épaisseur en mm. Renvoie maillage, arêtes et pas en mm par pixel."""
     positif(largeur_mm, "largeur_mm")
     positif(epaisseur_mm, "epaisseur_mm")
     if type(max_faces) is not int or max_faces <= 0:
@@ -122,6 +125,7 @@ def extruder(mask, largeur_mm, epaisseur_mm, max_faces=500000):
 
 
 def mesures(mesh):
+    """Retourne dimensions et bornes en mm, volume en mm³ et compteurs de topologie."""
     return {
         "dimensions_mm": mesh.extents.tolist(),
         "bornes_mm": mesh.bounds.tolist(),
@@ -135,6 +139,7 @@ def mesures(mesh):
 
 
 def creer(source, sortie, rapport, mode, seuil, largeur_mm, epaisseur_mm, max_pixels=50000, max_faces=500000):
+    """Extrude la silhouette en mm, relit le STL et publie deux fichiers neufs avec la preuve numérique."""
     source, sortie, rapport = Path(source).resolve(), Path(sortie).resolve(), Path(rapport).resolve()
     if len({source, sortie, rapport}) != 3 or sortie.exists() or rapport.exists():
         raise ValueError("Source, STL et rapport distincts ; aucun écrasement autorisé.")
@@ -210,6 +215,7 @@ def creer(source, sortie, rapport, mode, seuil, largeur_mm, epaisseur_mm, max_pi
 
 
 def main(argv=None):
+    """Produit le STL et le rapport demandés. Renvoie 0 en cas de succès ou 2 en cas de refus."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--mode", choices=["clair", "sombre", "alpha"], required=True)

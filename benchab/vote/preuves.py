@@ -10,10 +10,12 @@ from benchab.qualite import validation as _validation
 
 
 def texte(v):
+    """Indique si la valeur est une chaîne contenant du texte après retrait des espaces."""
     return isinstance(v, str) and bool(v.strip())
 
 
 def textes(v):
+    """Indique si la valeur est une liste composée uniquement de textes non vides."""
     return isinstance(v, list) and all((texte(x) for x in v))
 
 
@@ -252,6 +254,7 @@ def verifier(racine, data, categorie, niveaux, administrateurs, *, empreintes=No
 
 
 def rendre(rec):
+    """Retourne les lignes Markdown du dossier de preuves ou une liste vide s’il manque."""
     q = rec.get("qualite_decision")
     if not q:
         return []

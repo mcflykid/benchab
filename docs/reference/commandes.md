@@ -16,7 +16,7 @@ options de résumé et de détail déjà couvertes.
 | `conception variantes` | Compare les pièces nommées ; JSON et Markdown publiés dans un dossier neuf de l’atelier privé |
 | `conception fiche-cao` | [Plan et script CAO depuis des cotes JSON](fiche-cao.md) |
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
-| `conception filetage-nominal -- OPTIONS` | STL et rapport privé à partir de cotes déclarées en mm : filet triangulaire extérieur ou outil de soustraction avec jeu radial explicite ; hors norme ISO et sans preuve d’ajustement |
+| `conception filetage-nominal -- OPTIONS` | STL et rapport privé en mm, profil sur mesure ou [profil métrique ISO nominal](fixations-nominales.md#profil-métrique-iso-nominal), avec jeu radial déclaré pour l’outil intérieur |
 | `conception gyroide-temoin` | [STL et rapport d’un coupon gyroïde numérique](gyroide-temoin.md) |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |

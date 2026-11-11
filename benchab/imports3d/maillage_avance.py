@@ -253,6 +253,7 @@ def transformer(
 
 
 def main(argv=None, *, prive=None):
+    """Diagnostique ou lance le traitement de maillage. Renvoie 0 si conforme, 1 à revoir ou 2 sur refus."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("commande", choices=["diagnostic", "alpha-wrap", "simplifier"])
     p.add_argument("source", type=Path, nargs="?")

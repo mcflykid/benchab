@@ -147,6 +147,7 @@ def _write(path, value, replace=True):
 
 
 def configurer(email, password, path=None):
+    """Crée la configuration privée du compte sur un nouveau chemin après validation des champs."""
     if (
         not isinstance(email, str)
         or not 3 <= len(email) <= 320
@@ -160,6 +161,7 @@ def configurer(email, password, path=None):
 
 
 def claims(token):
+    """Décode les champs attendus du jeton sans vérifier sa signature. Retourne un dictionnaire vide en cas de refus."""
     try:
         if not isinstance(token, str) or not 1 <= len(token) <= 16384 or len(token.split(".")) != 3:
             return {}
@@ -197,7 +199,9 @@ def etat():
 
 
 class SessionCompte:
+    """Gère l’authentification Anycubic et le cache privé utilisé pour la lecture Cloud."""
     def __init__(self, compte=None, session=None, *, opener=None, clock=None):
+        """Résout deux chemins privés distincts et prépare le transport et l’horloge de session."""
         defaults = chemins()
         self._compte = _location(compte or defaults[0])
         self._session = _location(session or defaults[1])
@@ -216,9 +220,11 @@ class SessionCompte:
         )
 
     def __repr__(self):
+        """Identifie la session en masquant ses secrets."""
         return "<SessionCompte Anycubic, secrets masques>"
 
     def __reduce__(self):
+        """Refuse la sérialisation de la session qui peut contenir des secrets."""
         raise TypeError("Session non serialisable")
 
     def _post(self, route, value, *, query=None, form=False):
@@ -381,6 +387,7 @@ class SessionCompte:
 
 
 def main(argv=None):
+    """Affiche l’état du compte ou crée sa configuration privée sur demande interactive. Renvoie 0 ou 2."""
     import argparse
     import getpass
     import sys

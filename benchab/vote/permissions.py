@@ -9,6 +9,7 @@ G = json.loads(files("benchab").joinpath("reference/organisation/grille.json").r
 
 
 def norm(s):
+    """Retourne le texte en minuscules sans marques diacritiques pour la recherche par mot."""
     return "".join((c for c in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(c) != "Mn"))
 
 
@@ -18,6 +19,11 @@ def contient(t, mot):
 
 
 def classer(texte, mode=None, cfg=None):
+    """Classe le texte en catégorie A, B ou C selon la grille et le mode déclarés.
+
+    Renvoie le niveau, les spécialistes et les indices retenus. Ne donne
+    aucune autorisation et n’exécute aucune action.
+    """
     t = norm(texte)
     C = G["classification"]
     mode = mode or (cfg or {}).get("mode") or G["mode_par_defaut"]

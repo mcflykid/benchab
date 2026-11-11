@@ -105,6 +105,7 @@ def _color(value: Any) -> str | None:
 
 
 def project_statistics(detail: Any) -> dict:
+    """Projette les statistiques déclarées en nombre d’impressions, secondes et kg."""
     base = _dict(_dict(detail).get("base"))
     minutes = _duration_minutes(base.get("print_totaltime"))
     count = _integer(base.get("print_count"))
@@ -125,6 +126,7 @@ def project_statistics(detail: Any) -> dict:
 
 
 def project_job(raw: Any, *, source: str = "cloud_project") -> dict:
+    """Projette la tâche Cloud en secondes, pourcentage et couches selon le schéma qualifié."""
     record = _dict(raw)
     message = _json_dict(record.get("device_message"))
     settings = _json_dict(record.get("settings"))
@@ -168,6 +170,7 @@ def project_job(raw: Any, *, source: str = "cloud_project") -> dict:
 
 
 def project_ace(raw_boxes: Any) -> list[dict]:
+    """Projette les déclarations ACE par logement, dont le filament restant en pourcentage lorsqu’il est fourni."""
     boxes = raw_boxes if isinstance(raw_boxes, list) else [raw_boxes] if isinstance(raw_boxes, dict) else []
     counts = {}
     for box in boxes[:16]:
@@ -264,6 +267,7 @@ def project_ace(raw_boxes: Any) -> list[dict]:
 
 
 def project_records(response: Any, printer_id: Any) -> dict:
+    """Retourne un historique borné à l’identifiant demandé et indique la qualité et la troncature."""
     wanted = _positive_id(printer_id)
     data = _dict(response).get("data")
     if wanted is None:
@@ -546,6 +550,7 @@ def project_telemetry(
     observed_at: Any = None,
     now: datetime | None = None,
 ) -> dict:
+    """Assemble la télémétrie Cloud d’une imprimante et conserve la provenance des observations."""
     record = _dict(detail)
     scoped_job = _dict(job)
     wanted = _positive_id(printer_id)

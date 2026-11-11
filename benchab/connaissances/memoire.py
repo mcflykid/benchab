@@ -24,10 +24,12 @@ DELAI_BLOB_GIT_SECONDES = 10
 
 
 def normaliser(s):
+    """Convertit en texte sans casse ni marques combinatoires pour la recherche."""
     return "".join(c for c in unicodedata.normalize("NFKD", str(s).casefold()) if not unicodedata.combining(c))
 
 
 def sha(p):
+    """Calcule le SHA-256 hexadécimal des octets du fichier par blocs."""
     h = hashlib.sha256()
     with Path(p).open("rb") as f:
         for block in iter(lambda: f.read(1048576), b""):
@@ -36,6 +38,11 @@ def sha(p):
 
 
 def charger(root):
+    """Charge le registre privé SQLite ou l’ancien JSON selon l’atelier.
+
+    Si l’index manque, la voie native peut importer le registre d’origine
+    dans SQLite. Le fichier d’origine reste conservé.
+    """
     from benchab.connaissances import sqlite
 
     if sqlite.native(root):
@@ -44,6 +51,7 @@ def charger(root):
 
 
 def sauver(root, data):
+    """Enregistre l’index des journaux en refusant un changement concurrent des connaissances."""
     from benchab.connaissances import sqlite
 
     if sqlite.native(root):
@@ -68,6 +76,7 @@ def sauver(root, data):
 
 
 def chercher(root, texte="", filtres=None, donnees=None):
+    """Retourne les connaissances correspondant aux mots et filtres du registre fourni ou chargé."""
     filtres = filtres or {}
     result = []
     for item in (donnees if donnees is not None else charger(root))["connaissances"]:
@@ -87,6 +96,7 @@ def chercher(root, texte="", filtres=None, donnees=None):
 
 
 def creer_journal(root, type_, sujet, projet="", date=None):
+    """Crée une note privée à compléter pour une date ISO et renvoie son chemin neuf."""
     root = Path(root).resolve()
     date = date or datetime.date.today().isoformat()
     datetime.date.fromisoformat(date)
@@ -118,6 +128,7 @@ def creer_journal(root, type_, sujet, projet="", date=None):
 
 
 def analyser_journaux(root):
+    """Renvoie l’index des journaux et les rapprochements proposés avec le registre privé."""
     root = Path(root)
     data = charger(root)
     previous = data.get("journaux", {})

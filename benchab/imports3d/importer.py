@@ -42,6 +42,7 @@ def charger_objet(source):
 
 
 def charger(source, unites):
+    """Charge un maillage depuis la source et convertit ses coordonnées des unités déclarées vers les mm."""
     source = Path(source)
     if unites not in UNITES:
         raise ValueError("Unités explicites mm/cm/m requises.")
@@ -74,6 +75,7 @@ def charger(source, unites):
 def mesurer(mesh):
     # STL stocke souvent trois sommets par triangle. Une copie soudée sert
     # uniquement à lire la topologie ; le maillage exportable reste intact.
+    """Mesure les dimensions en mm, les volumes en mm³ et les compteurs topologiques sans modifier le maillage."""
     topo = mesh.copy()
     topo.merge_vertices()
     faces_valides = mesh.nondegenerate_faces()
@@ -91,6 +93,7 @@ def mesurer(mesh):
 
 
 def alertes(mesure):
+    """Retourne les messages d’alerte applicables aux mesures de géométrie et de topologie."""
     problemes = []
     if not mesure["ferme_topologiquement"]:
         problemes.append("Maillage ouvert ou non manifold.")
@@ -210,6 +213,7 @@ def preparer(
 
 
 def verifier_export(attendu, relu):
+    """Refuse un export relu dont la géométrie en mm ou la topologie divergent des mesures attendues."""
     if not np.isfinite(relu.vertices).all() or not np.allclose(relu.bounds, attendu.bounds, atol=1e-4, rtol=1e-6):
         raise ValueError("Bornes exportées divergentes.")
     av, ap = mesurer(attendu), mesurer(relu)

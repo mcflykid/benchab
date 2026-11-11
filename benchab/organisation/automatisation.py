@@ -11,6 +11,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -34,6 +35,7 @@ ICI = Path(__file__).resolve().parent
 
 
 def lire_json(path, limite=2000000, sha_attendu=None):
+    """Relit un JSON régulier et stable dans la limite d’octets, avec SHA attendu facultatif."""
     path = _sans_lien(Path(path).absolute())
     from benchab.visualisation.stockage_commentaires import ouvrir_dossier
 
@@ -63,6 +65,7 @@ def lire_json(path, limite=2000000, sha_attendu=None):
 
 
 def lire_etat(path, nom):
+    """Charge l’état de reprise du projet ou renvoie un état vide si le fichier manque."""
     _sans_lien(path)
     if not path.exists():
         return {"schema": 1, "projet": nom, "etapes": {}}
@@ -104,6 +107,7 @@ def source(root, p, rel):
 
 
 def preparation(root, nom, ident=None):
+    """Résout la préparation Pnn demandée ou courante et renvoie projet, suivi, chemin et manifeste."""
     p, q = projet(root, nom)
     ident = ident or q["suivi"].get("preparation_courante")
     if not isinstance(ident, str) or not re.fullmatch("P[0-9]+", ident):
@@ -221,6 +225,7 @@ def environnement(root):
 
 
 def cache_projet(root, nom):
+    """Consulte les entrées du cache géométrique et les motifs de réutilisation, sans écrire."""
     p, q = projet(root, nom)
     from benchab.controles.cache_geometrie import Projet, cache_lire
 
@@ -359,6 +364,7 @@ def creer_preparation(root, nom, sortie, executer_creation=False):
 
 
 def planifier(root, nom, ident=None):
+    """Décrit les étapes et prérequis du projet. Renvoie PLANIFIE ou BLOQUE sans exécuter le plan."""
     p, q = projet(root, nom)
     ident = ident or q["suivi"].get("preparation_courante")
     blocages = []
@@ -403,6 +409,7 @@ def planifier(root, nom, ident=None):
 
 
 def diagnostiquer(root, nom, ident=None):
+    """Rassemble le plan, l’environnement, la cohérence et les références. Renvoie PASS ou BLOQUE."""
     plan = planifier(root, nom, ident)
     globales = []
     if (Path(root) / "BASE.json").is_file() or (Path(root) / "benchab.sqlite").is_file():
@@ -415,14 +422,13 @@ def diagnostiquer(root, nom, ident=None):
     from benchab.qualite.references import verify
 
     references = verify(root, historical=False, anchors=True, cache=True)
+    # Relancer le même contrôle sur l’atelier affiché, avec le Python du dépôt (#231).
+    commande_references = shlex.join([
+        "uv", "run", "python", "-m", "benchab.qualite.references",
+        "--root", str(Path(root).resolve()), "--sans-historique", "--ancres", "--sans-cache",
+    ])
     erreurs_references = [
-        {
-            "cause": e,
-            "action": (
-                "python3 outils/maintenance/verifier_reference.py --sans-historique -"
-                "-ancres ; corriger la source indiquée"
-            ),
-        }
+        {"cause": e, "action": commande_references}
         for e in references["errors"]
     ]
     return {
@@ -542,6 +548,7 @@ def dossier_sortie(root, path):
 
 @contextmanager
 def verrou_execution(sortie):
+    """Réserve le verrou exclusif de l’exécution. Un verrou occupé provoque un refus immédiat."""
     from benchab.visualisation.stockage_commentaires import ouvrir_dossier
 
     directory = ouvrir_dossier(sortie)
@@ -558,6 +565,7 @@ def verrou_execution(sortie):
 
 
 def sauver(path, data):
+    """Remplace atomiquement le JSON d’état et synchronise le fichier puis son dossier."""
     path = _sans_lien(Path(path).absolute())
     from benchab.visualisation.stockage_commentaires import ouvrir_dossier
 
@@ -581,6 +589,7 @@ def sauver(path, data):
 
 
 def raison_cache(entry, signature, sortie):
+    """Retourne les motifs empêchant la réutilisation du résultat pour les entrées et SHA fournis."""
     raisons = []
     if entry.get("statut") != "PASS":
         raisons.append("étape absente, interrompue ou en échec")
@@ -597,6 +606,7 @@ def raison_cache(entry, signature, sortie):
 
 
 def reprise(root, nom, sortie, ident=None):
+    """Retourne le plan et l’état REUTILISABLE ou A_REFAIRE par étape à partir des preuves locales."""
     plan = planifier(root, nom, ident)
     path = _sans_lien(Path(sortie).absolute()) / "execution.json"
     old = lire_etat(path, nom)
@@ -618,6 +628,7 @@ def reprise(root, nom, sortie, ident=None):
 
 
 def executer(root, nom, sortie, ident=None):
+    """Exécute les étapes d’atelier sous verrou et publie leur état, sans lancement d’impression."""
     from benchab.organisation.synthese_atelier import bilan, connaissances, generer_vues
 
     plan = planifier(root, nom, ident)
@@ -732,6 +743,7 @@ def ouvrir_slicer(root, nom, sortie, ident=None, ouvrir=False):
 
 
 def tests_impact(root, changements, executer_tests=False):
+    """Planifie les tests d’impact ou les exécute sur demande, avec leur résultat de contrôle."""
     from benchab.qualite.impact import executer, planifier
 
     plan = planifier(root, changements)

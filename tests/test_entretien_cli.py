@@ -231,3 +231,54 @@ def test_resume_entretien_garde_le_warn_et_le_rapport_complet(tmp_path, capsys):
     assert resume["statut"] == "WARN" and resume["rapport"] == str(sortie)
     assert json.loads(ancien) == json.loads(sortie.read_text())
     assert len(court) < len(ancien) and "u-1" not in court
+
+
+def _couverture_extrudeur():
+    """Déclare une période fictive sourcée pour le seul compteur de masse."""
+    return {
+        "organe": "extrudeur", "compteur": "filament", "statut": "COMPLETE",
+        "debut": "2026-01-01T00:00:00+00:00", "fin": "2026-01-03T00:00:00+00:00",
+        "source": "Relevé fictif de masse sur cette période",
+    }
+
+
+def test_couverture_par_compteur_ne_complete_pas_les_heures(tmp_path, capsys):
+    """Une attestation de masse permet WARN sans qualifier les heures."""
+    donnees = _historique()
+    donnees["couverture"] = "INCONNUE"
+    couverture = _couverture_extrudeur()
+    donnees["couvertures"] = [couverture]
+    donnees["seuils"].append({**donnees["seuils"][0], "compteur": "temps", "unite": "h"})
+    historique = _ecrire_historique(tmp_path, donnees)
+    assert cli.main(["--prive", str(tmp_path), "controle", "entretien", "--historique", str(historique)]) == 1
+    rapport = json.loads(capsys.readouterr().out)
+    masse, heures = rapport["compteurs"]
+    assert (masse["statut"], masse["valeur"], masse["couverture"]) == ("WARN", 12, "COMPLETE")
+    assert masse["preuve_couverture"] == couverture
+    assert (heures["statut"], heures["valeur"], heures["couverture"]) == ("NON VÉRIFIÉ", None, "INCONNUE")
+
+
+@pytest.mark.parametrize(
+    "variation", ["hors-periode", "apres-entretien", "contradictoire", "sans-source", "incomplete"],
+)
+def test_couverture_locale_non_etablie_prime_sur_le_statut_global(variation):
+    """Une période locale ambiguë ou lacunaire interdit de reprendre COMPLETE global."""
+    from benchab.entretien.bilan import calculer
+
+    donnees = _historique()
+    couverture = _couverture_extrudeur()
+    donnees["couvertures"] = [couverture]
+    if variation == "hors-periode":
+        couverture["fin"] = "2026-01-02T08:59:59+00:00"
+    elif variation == "apres-entretien":
+        couverture["debut"] = "2026-01-01T10:00:00+00:00"
+    elif variation == "contradictoire":
+        donnees["couvertures"].append({**couverture, "statut": "INCOMPLETE"})
+    elif variation == "sans-source":
+        couverture["source"] = ""
+    else:
+        couverture["statut"] = "INCOMPLETE"
+    rapport = calculer(donnees)
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["compteurs"][0]["valeur"] is None
+    assert rapport["compteurs"][0]["motif_couverture"]

@@ -546,8 +546,8 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
 - #19 : coût des transactions. Un prototype de réemploi des JSONL préserve les
   octets, mais la validation des références parcourt encore la base. Le prototype
   ne suffit pas à clore le chantier.
-- #127 : rattraper les annotations des contrôles et lanceurs après les
-  primitives communes de lecture, de copie et de publication.
+- #127 : maintenir la vérification Ruff D10 sur tout le paquet et terminer
+  la qualification du contenu des docstrings antérieures.
 - #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
   de surplombs, de première couche, de débit, d’appuis et de continuité.
 - #119 : qualifier d’autres familles de reprise et la preuve d’exécution
@@ -569,3 +569,37 @@ ni une machine configurée ni une intégration déjà validée.
 
 Les projets, photos et preuves personnelles restent dans `prive/`.
 La lecture Cloud reste privilégiée ; aucun parcours LAN n’est prévu.
+
+## Version 1.29.0 — diagnostic et contrats publics
+
+Le [CHANGELOG](CHANGELOG.md#1290--2026-11-11) décrit le correctif de relance
+des références (#231), la couverture par compteur d’entretien (#73) et
+le contrôle Ruff D10 généralisé à tout le paquet (#127).
+
+## Objectif 1.30.0 — clôturer les issues ouvertes
+
+La 1.30.0 vise la clôture vérifiée des 32 issues ouvertes en dehors de
+la refonte du README (#230), suivie dans la 1.28.0.
+La 1.29.0 peut livrer des prérequis déjà vérifiés. Les preuves attendues
+restent celles des issues, même si un premier sous-cas a déjà été publié.
+
+| Travail restant | Preuve attendue avant clôture |
+| --- | --- |
+| #19, #119 | Mesures des transactions à plusieurs tailles, cohérence des exports et récupération rejouée sur copie, avec provenance des régressions. |
+| #35, #127 | Inventaire des commandes à résumer, détail conservé et mesures de volume, puis qualification des docstrings antérieures et des règles de forme Ruff. |
+| #49, #134 | Provenance du binaire et qualification des cas d’arrondi et de lecture qui restent hors contrat. Conserver les verdicts stricts tant que la preuve manque. |
+| #80, #81, #82 | Valeurs consommées par une version identifiée du slicer, comparaisons à réglage isolé et effet mesuré dans le G-code. |
+| #89, #93 | Comparaison des supports et de leur écart Z, puis localisation des zones de surplomb avec limites documentées. |
+| #27, #29, #32 | Modèles, cotes et réassemblages rejoués. Les jeux, l’insertion et la tenue exigent des observations dans les conditions d’usage. |
+| #83, #87 | Témoins distincts de génération, maillage et tranchage. Toute tenue annoncée exige une mesure. |
+| #43, #45 | Réouverture des échanges avec palette, facettes et réglages vérifiés. L’export manuel exige une décision puis une recette d’import. |
+| #72, #73, #77 | Relevés de purge et d’usage traçables, identité des bobines et outils, preuves de masse et de durée pour les compteurs qui en dépendent. |
+| #50, #51, #52 | Recette Safari et gestes réels, validation physique des témoins et lecture Cloud avec un compte autorisé. |
+| #84, #85, #86, #90, #91, #92 | Mesures reproductibles de rigidité, d’orientation sous effort, de durée, de retrait, d’interface et d’ailettes. |
+| #24, #44 | Décisions sur les plateformes et équipements à qualifier. Recette de l’état et de la caméra en lecture seule avec expiration et reconnexion. |
+
+Avant de publier la 1.30.0, vérifier la liste initiale et les nouvelles
+issues ouvertes pendant le chantier. Une simulation ne remplace pas une
+mesure physique, une connexion autorisée ou une décision requise. Tant
+qu’une preuve manque, l’issue reste ouverte avec son état et le prochain
+essai à effectuer.

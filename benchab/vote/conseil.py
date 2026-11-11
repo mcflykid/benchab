@@ -51,6 +51,7 @@ def _lire(base, relatif):
 
 
 def charger_conseil():
+    """Lit la grille embarquée du conseil et vérifie ses sept membres et leurs questions."""
     conseil = json.loads(files("benchab").joinpath("reference/organisation/conseil.json").read_text())
     membres = conseil["administrateurs"]
     if sorted(m["id"] for m in membres) != sorted((*AUTOMATIQUES, *AVIS_IA)):
@@ -466,6 +467,7 @@ def historique(base):
 
 
 def etat(base):
+    """Retourne les derniers votes par projet et objet, avec les décisions non approuvées."""
     derniers = {}
     for vote in historique(base):
         derniers[vote["projet_id"], vote["objet"]] = vote
@@ -476,6 +478,7 @@ def etat(base):
 
 
 def rendre(vote):
+    """Rend en Markdown le statut, les voix sur sept, le pourcentage et les preuves du vote."""
     from benchab.vote.preuves import rendre as rendre_preuves
 
     lignes = [

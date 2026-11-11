@@ -57,6 +57,7 @@ def bords_ouverts(m):
 
 
 def remplir_compatibles(m, maximum):
+    """Comble en place les bords simples de trois ou quatre sommets qui respectent le maximum demandé."""
     admissibles = [sommets for sommets, n, simple in composantes_bord(m) if simple and 3 <= n <= min(4, maximum)]
     if not admissibles:
         return
@@ -69,6 +70,7 @@ def remplir_compatibles(m, maximum):
 
 
 def valide_manifold(m):
+    """Retourne le statut Manifold, le verdict de solidité et le volume en mm³ si le moteur répond."""
     try:
         import manifold3d
 
@@ -91,6 +93,7 @@ def valide_manifold(m):
 
 
 def reparer(m, trous_max=30):
+    """Répare une copie du maillage dans la limite de taille de trous demandée et retourne le journal."""
     if isinstance(trous_max, bool) or not isinstance(trous_max, int) or trous_max < 0:
         raise ValueError("trous-max doit être un entier positif ou nul.")
     m = m.copy()
@@ -153,6 +156,7 @@ def reparer(m, trous_max=30):
 
 
 def main(argv=None):
+    """Répare le maillage et écrit les sorties. Renvoie 0 si valide, 1 à revoir ou 2 sur refus."""
     a = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     a.add_argument("source")
     a.add_argument("sortie")

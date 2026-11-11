@@ -320,6 +320,7 @@ def _archives(root, projet, fiche):
 
 
 def connaissances(root, nom):
+    """Retourne les connaissances rattachées au projet et leurs réserves, en lecture seule."""
     root = Path(root).resolve()
     projet, q = _projet(root, nom)
     if (root / "benchab.sqlite").is_file():
@@ -408,6 +409,7 @@ def connaissances(root, nom):
 
 
 def bilan(root, nom, preparation=None):
+    """Rassemble réglages déclarés, estimations du slicer et preuves de la préparation choisie."""
     root = Path(root).resolve()
     projet, q = _projet(root, nom)
     suivi = q.get("suivi", {})
@@ -483,6 +485,7 @@ def _differences(a, b, prefix=""):
 
 
 def comparer_preparations(root, nom, a, b):
+    """Compare les réglages, estimations et supports de deux préparations et renvoie les écarts."""
     pa = bilan(root, nom, a)
     pb = bilan(root, nom, b)
     return {

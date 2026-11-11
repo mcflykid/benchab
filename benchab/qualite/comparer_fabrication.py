@@ -38,10 +38,12 @@ DATE = re.compile(
 
 
 def h(b):
+    """Calcule le SHA-256 hexadécimal des octets comparés."""
     return hashlib.sha256(b).hexdigest()
 
 
 def categorie(rel):
+    """Classe un chemin en géométrie, fabrication ou documentation d’après son nom et son suffixe."""
     p = Path(rel)
     if p.suffix.lower() in GEO or p.name in GEO_NOMS:
         return "geometrie"
@@ -51,6 +53,7 @@ def categorie(rel):
 
 
 def commandes(b):
+    """Extrait les lignes de G-code non vides et non commentées sans interpréter leurs commandes."""
     return [
         ligne
         for ligne in b.decode("utf8", "ignore").splitlines()
@@ -178,6 +181,7 @@ def comparer_3mf(a, b):
 
 
 def normaliser(t):
+    """Masque les dates reconnues dans un texte de comparaison, sans modifier le fichier."""
     return DATE.sub("<N>", t)
 
 

@@ -15,6 +15,7 @@ FACTORS = {"mm": 1.0, "cm": 10.0, "m": 1000.0}
 
 
 def sha256(path):
+    """Calcule le SHA-256 hexadécimal du fichier par blocs."""
     h = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -23,6 +24,7 @@ def sha256(path):
 
 
 def vector(value, name):
+    """Valide une liste de trois coordonnées numériques finies et la renvoie intacte."""
     if not isinstance(value, list) or len(value) != 3:
         raise ValueError(name + " : trois coordonnées attendues")
     if any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) for x in value):
@@ -181,6 +183,7 @@ def render(spec_path):
 
 
 def main(argv=None):
+    """Lance le rendu Blender. Sort au code 1 si l’usage est invalide ou 2 si le rendu échoue."""
     args = (
         list(argv) if argv is not None else (sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:])
     )

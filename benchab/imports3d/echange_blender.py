@@ -179,6 +179,7 @@ def _verifier(manifeste):
 
 
 def controler_retour(manifeste, candidat, unites_candidat):
+    """Compare le retour à la copie de travail en mm et rapporte les écarts sous le statut A_CONFIRMER."""
     if unites_candidat not in UNITES:
         raise ValueError("Unités explicites mm/cm/m requises pour le retour.")
     data = _verifier(manifeste)

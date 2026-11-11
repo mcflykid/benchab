@@ -2,6 +2,7 @@
 
 Copyright (c) 2026 Mohsen Esmaeili. Licence : modeling-LICENSE.txt.
 Fonctions originales sélectionnées ; provenance et SHA dans modeling-sources.json.
+BENCHAB documente ci-dessous les contrats de certaines fonctions en français.
 """
 
 import itertools
@@ -59,6 +60,11 @@ def bbox_gap(a, b):
 
 
 def audit(parts, clearance, allow, label=""):
+    """Compare les paires de maillages à la marge en mm et aux exceptions déclarées.
+
+    Renvoie les listes d’interférences en mm³ et d’avertissements,
+    dont les distances faibles en mm et les intersections non calculables.
+    """
     failures, warnings = [], []
     names = sorted(parts)
     for na, nb in itertools.combinations(names, 2):
@@ -124,6 +130,11 @@ def sweep(parts, name, axis, start_deg, end_deg, steps, clearance, allow=(), piv
 
 
 def self_thickness(shell, min_wall, n=1500, seed=0):
+    """Échantillonne la coque et renvoie son premier percentile et minimum en mm.
+
+    Le seuil hérité `min_wall` n’est pas utilisé dans ce calcul. Sans rayon
+    d’épaisseur exploitable, la fonction interrompt l’appel.
+    """
     pts, fid = trimesh.sample.sample_surface(shell, n, seed=seed)
     th = trimesh.proximity.thickness(shell, pts, method="ray")
     th = th[np.isfinite(th) & (th > 1e-3)]
@@ -133,6 +144,11 @@ def self_thickness(shell, min_wall, n=1500, seed=0):
 
 
 def breach_check(shell, parts, names, min_wall, pitch, seed=0):
+    """Estime la profondeur minimale de chaque pièce dans une coque voxelisée.
+
+    Le pas est en mm. Renvoie nom, profondeur en mm et point échantillonné.
+    Le seuil hérité `min_wall` ne produit aucun verdict.
+    """
     from scipy import ndimage
 
     vg = shell.voxelized(pitch).fill()  # solid outer form, cavities filled
@@ -235,12 +251,14 @@ def fit_map(meshes, near=2.5, patch_band=0.6, samples=2600, far=2.0, seed=0, max
 
 
 def check(name, ok, detail=""):
+    """Enregistre et affiche un invariant déclaré, puis renvoie sa valeur booléenne."""
     _results.append((name, bool(ok), detail))
     print(f"  {'ok ' if ok else 'X  '}{name}" + (f"  ({detail})" if detail else ""))
     return bool(ok)
 
 
 def finish():
+    """Affiche le bilan des invariants et termine au code 1 si l’un a échoué."""
     fails = [n for n, ok, _ in _results if not ok]
     print(f"\n{len(_results) - len(fails)}/{len(_results)} invariants hold")
     if fails:

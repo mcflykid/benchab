@@ -15,6 +15,7 @@ AXES = {"face": ("X", "Z"), "profil": ("Y", "Z"), "dessus": ("X", "Y"), "dos": (
 
 
 def nombre(value, name, positif=False):
+    """Valide un nombre fini positif ou nul, ou strictement positif sur demande."""
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
@@ -46,6 +47,7 @@ def composantes(mask):
 
 
 def ecart_relatif(a, b):
+    """Calcule un écart relatif sans unité. Au moins une valeur doit être non nulle."""
     return abs(a - b) / max(abs(a), abs(b))
 
 
@@ -86,6 +88,7 @@ def diagnostic_rendu(reference, rendu, tolerance):
 
 
 def analyser(specification, sortie=None):
+    """Compare les vues en pixels et les cotes calibrées en mm. Retourne PASS, FAIL ou NON VÉRIFIÉ."""
     specification = Path(specification).resolve()
     spec = json.loads(specification.read_text(encoding="utf-8"))
     tolerance = nombre(spec.get("tolerance_relative"), "tolerance_relative")
@@ -253,6 +256,7 @@ def analyser(specification, sortie=None):
 
 
 def main(argv=None):
+    """Lit la spécification, écrit le rapport neuf et renvoie les codes 0, 1 ou 2 selon le verdict."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("specification")
     parser.add_argument("--sortie", required=True)

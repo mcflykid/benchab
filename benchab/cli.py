@@ -133,6 +133,7 @@ def _deleguer_namespace(arguments, base):
 
 
 def duree_finie(texte):
+    """Convertit une durée en secondes, finie et positive ou nulle, pour le parseur."""
     try:
         valeur = float(texte)
     except ValueError as erreur:
@@ -143,6 +144,11 @@ def duree_finie(texte):
 
 
 def commande_sans_secrets(argv):
+    """Prépare la trace CLI avec les options sensibles déclarées masquées.
+
+    Retire aussi le chemin d’atelier fourni par `--prive`. Renvoie le texte
+    et un booléen indiquant la présence d’une option sensible déclarée.
+    """
     resultat = []
     sensible = False
     index = 0

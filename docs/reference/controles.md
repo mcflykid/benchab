@@ -144,6 +144,11 @@ Un code de découverte pytest 5 reste FAIL. La RSS par étape est une somme de R
 du groupe échantillonnée, pas un pic d'allocation exact ; les maxima du processus
 appelant et de ses enfants cumulés sont présentés séparément.
 
+La CI exécute `ruff check --select D10 benchab` sur tout le paquet pour
+vérifier la présence des docstrings publiques. La garde des portées
+modifiées contrôle aussi les annotations des fonctions et classes touchées.
+La relecture vérifie les unités, statuts et invariants annoncés par le texte.
+
 `benchab qualite syntaxe-privee PROJET` vérifie les scripts Python actifs de
 `prive/projets/PROJET` hors dépendances et archives de projet, sans les exécuter ni créer de `.pyc`. Un script illisible
 ou invalide donne FAIL ; l'absence de script reste NON VÉRIFIÉE. Le projet doit

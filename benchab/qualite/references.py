@@ -23,6 +23,7 @@ from benchab.donnees.base import Base
 
 
 def projet_local(root, path):
+    """Indique si le chemin est lexicalement sous prive dans la racine donnée."""
     try:
         rel = Path(path).absolute().relative_to(Path(root).absolute())
     except ValueError:
@@ -48,6 +49,7 @@ MAX_TOTAL_SCRIPT_OCTETS = 64 * 1024 * 1024
 
 
 def digest(path):
+    """Calcule le SHA-256 d’un fichier par blocs de 4 Mio."""
     h = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(4 * 1024 * 1024), b""):
@@ -206,6 +208,7 @@ def valider_json(path):
 
 
 def ancres_markdown(text):
+    """Recense les ancres HTML et les titres Markdown, en suffixant les titres répétés."""
     counts = {}
     ids = set(re.findall(r"<a\s+(?:id|name)=[\"\']([^\"\']+)", text, re.I))
     text = re.sub(r"^(`{3,}|~{3,}).*?^\1[^\n]*$", "", text, flags=re.M | re.S)
@@ -236,6 +239,7 @@ def _cache_references(root):
 
 
 def valider_json_memo(path, root, memo):
+    """Valide un JSON stable ou réemploie son résultat au même SHA. Renvoie vrai si réemployé."""
     def signature():
         s = path.stat()
         return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
@@ -543,6 +547,7 @@ def verifier_scripts_projet(base: Base, projet: str) -> dict:
 
 
 def main(argv=None):
+    """Affiche le contrôle des références en JSON. Code 0 si conforme, 1 sinon."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=P)
     parser.add_argument("--ancres", action="store_true")

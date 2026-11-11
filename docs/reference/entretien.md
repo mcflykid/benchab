@@ -16,6 +16,29 @@ seuils doivent être positifs, sourcés et employer la même unité que les
 crée aucun et ne déduit pas des heures ou des grammes d'un temps estimé du
 trancheur, d'un résultat d'impression ou d'un G-code.
 
+Lorsque les données n’ont pas la même couverture pour tous les compteurs,
+ajouter une liste facultative `couvertures` :
+
+```json
+[
+  {
+    "organe": "coupe-fil",
+    "compteur": "bobines",
+    "statut": "COMPLETE",
+    "debut": "2026-10-01T08:00:00+02:00",
+    "fin": "2026-10-31T18:00:00+01:00",
+    "source": "Relevé fictif des bobines sur cette période"
+  }
+]
+```
+
+Une seule déclaration est admise par paire organe/compteur. Elle remplace la
+couverture globale pour cette paire, même si elle est incomplète ou invalide.
+Une période complète doit inclure le dernier entretien et tous les usages
+retenus ensuite, bornes incluses. Le rapport conserve la période et sa source
+et indique le motif si la couverture reste à établir. Les compteurs sans
+déclaration locale conservent la couverture globale du fichier.
+
 Les lignes identiques partageant un identifiant sont comptées une fois. Un
 même identifiant avec un contenu différent rend le bilan NON VÉRIFIÉ. La
 couverture incomplète/inconnue, les seuils absents ou ambigus, les unités
