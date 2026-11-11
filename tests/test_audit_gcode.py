@@ -171,6 +171,7 @@ class Audit(unittest.TestCase):
         r = self.runcli("verifier_reglages.py", self.archive(prefix), place, out)
         self.assertTrue(json.loads(out.read_text())["tout_conforme"])
         self.assertEqual(r.returncode, 0, r.stderr)
+        out = self.d / "r-inconnu.json"
         r = self.runcli(
             "verifier_reglages.py", self.archive(prefix + "EXCLUDE_OBJECT_START NAME=Inconnu\nG1 X20 E1\n"), place, out
         )
@@ -442,7 +443,8 @@ class Couverture(unittest.TestCase):
         self.assertFalse(d["conforme"])
 
     def test_brim_jupe_et_suffixe_objet_exact(self):
-        for kind, expected in [("Skirt", False), ("Brim", True), ("Skirt\nG1 X20 E1\n;TYPE:Brim", True)]:
+        cas = [("Skirt", False), ("Brim", True), ("Skirt\nG1 X20 E1\n;TYPE:Brim", True)]
+        for indice, (kind, expected) in enumerate(cas):
             with self.subTest(kind=kind):
                 p = self.archive(
                     "M83\nEXCLUDE_OBJECT_START NAME=Piece_id_0_copy_0\n;TYPE:" + kind + "\nG1 X10 E1 F600\n"
@@ -464,16 +466,16 @@ class Couverture(unittest.TestCase):
                         }
                     )
                 )
-                out = self.d / "r.json"
+                out = self.d / f"r-{indice}.json"
                 r = self.runcli("verifier_reglages.py", p, place, out)
                 self.assertEqual(json.loads(out.read_text())["tout_conforme"], expected, r.stderr)
 
     def test_vitesse_couture_absentes_et_homonyme_refuses(self):
-        for obj, settings in [
+        for indice, (obj, settings) in enumerate([
             ("Piece", {"outer_wall_speed": "30"}),
             ("Piece", {"seam_position": "back"}),
             ("PieceLongue", {"brim_type": "outer_only"}),
-        ]:
+        ]):
             p = self.archive("M83\nEXCLUDE_OBJECT_START NAME=" + obj + "\n;TYPE:Brim\nG1 X10 E1 F600\n")
             place = self.d / "p.json"
             place.write_text(
@@ -486,7 +488,7 @@ class Couverture(unittest.TestCase):
                     }
                 )
             )
-            out = self.d / "r.json"
+            out = self.d / f"r-{indice}.json"
             r = self.runcli("verifier_reglages.py", p, place, out)
             self.assertFalse(json.loads(out.read_text())["tout_conforme"])
             self.assertEqual(r.returncode, 1)

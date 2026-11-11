@@ -16,19 +16,26 @@ from pathlib import Path
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 
 def main(argv):
     """Exécute main avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en unités
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
 
-    Entrées : archive, placement et rapport ; retour 0 conforme, 1 non conforme ou 2 usage invalide.
+    Entrées : archive, placement et rapport neuf ; retour 0 conforme, 1 non conforme ou 2 refus.
     Les consignes thermiques sont informatives et ne changent pas le verdict global.
     """
     if len(argv) != 3:
         print(__doc__)
         return 2
-    TMF, PLACE, OUT = Path(argv[0]), json.loads(Path(argv[1]).read_text()), Path(argv[2])
+    TMF, chemin_placement = Path(argv[0]), Path(argv[1])
+    try:
+        OUT = destination_neuve(Path(argv[2]))
+    except (OSError, ValueError) as erreur:
+        print(f"Rapport refusé : {erreur}", file=sys.stderr)
+        return 2
+    PLACE = json.loads(chemin_placement.read_text())
     with Archive3MF(TMF) as archive:
         premiere = float(archive.reglages().get("initial_layer_print_height", "0.2"))
     voulu = {o["name"]: o.get("reglages", {}) for o in PLACE["objects"]}
@@ -198,8 +205,11 @@ def main(argv):
         and all(p["objets"] and not p["erreurs"] for p in res["plaques"])
         and all(o["conforme"] for p in res["plaques"] for o in p["objets"])
     )
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+    try:
+        ecrire_json_neuf(OUT, res, entrees=[TMF, chemin_placement])
+    except (OSError, ValueError) as erreur:
+        print(f"Rapport refusé : {erreur}", file=sys.stderr)
+        return 2
     print("tout conforme", res["tout_conforme"])
 
     return 0 if res["tout_conforme"] else 1
