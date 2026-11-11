@@ -15,6 +15,7 @@ from pathlib import Path
 from zipfile import BadZipFile
 
 from benchab.controles.gcode_interpreter import Interpreter, axes_homing
+from benchab.gcode.geometrie_arc import point_debut_deposee_xyz
 from benchab.gcode.lecture import analyser_membre_gcode_3mf, membres_gcode_3mf
 
 SEUILS_DEFAUT = {
@@ -95,10 +96,26 @@ class _Etat:
             self.derniere_fin = None
         if mouvement is None:
             return
+        debut_depot = mouvement["deposition_start"]
         if mouvement["op"] in {"G2", "G3"}:
-            self.incomplet = True
-            self.derniere_fin = None
-            return
+            # Seul G17 à Z strictement constant et marqué par le slicer comme
+            # paroi extérieure entre dans le calcul de continuité (#123).
+            if (
+                self.role not in {"outer wall", "outerwall", "external perimeter"}
+                or mouvement["start"][2] != mouvement["end"][2]
+            ):
+                self.incomplet = True
+                self.derniere_fin = None
+                return
+            if mouvement["deposited_length"] <= 0:
+                self.derniere_fin = None
+                return
+            try:
+                debut_depot = point_debut_deposee_xyz(mouvement)
+            except ValueError:
+                self.incomplet = True
+                self.derniere_fin = None
+                return
         # Un changement F seul n’interrompt pas le dépôt précédent ; les modes,
         # rétractions et trajectoires sont déjà résolus par le lecteur commun.
         if not set(evenement.get("parameters", {})) & {"X", "Y", "Z", "E"}:
@@ -116,7 +133,7 @@ class _Etat:
             self.derniere_fin = None
             return
         stats = self._couche_stats(round(z, 3))
-        contigu = self.derniere_fin is not None and math.dist(self.derniere_fin, mouvement["deposition_start"]) <= 0.02
+        contigu = self.derniere_fin is not None and math.dist(self.derniere_fin, debut_depot) <= 0.02
         if not contigu:
             stats["morceaux"] += 1
         stats["segments"] += 1

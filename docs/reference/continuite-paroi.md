@@ -3,10 +3,9 @@
 Le plan modal G17/G18/G19 est conservé entre les lignes. Seuls les arcs en
 G17 XY sont mesurés ; un arc dans un autre plan est refusé sans modifier la
 position, l’avance ou la dette de rétraction. Un retour explicite à G17 est
-reconnu. Le champ `deposition_start` vaut `None` pour un arc : sa position
-géométrique de début de dépôt n’est pas encore exposée, même si sa longueur
-déposée et son débit sont calculés. Les consommateurs linéaires le refusent
-avant de lire ce champ (suite #123).
+reconnu. Le champ `deposition_start` vaut `None` pour un arc. La géométrie
+commune calcule le premier point réellement déposé sur le cercle exact, après
+la dette de rétraction, sans remplacer l’arc par une corde (suite #123).
 
 La commande accepte `--sortie prive/rapports/continuite.json` pour un export
 JSON neuf, identique au rapport affiché, avec chemin source, plaque et SHA-256.
@@ -40,9 +39,15 @@ garde les coordonnées commandées et `spatial_xyz` garde la trajectoire continu
 dette ne sont pas remis à zéro par G92 XYZ. Un G92 E ne change que le repère de l’extrudeur. Un format invalide
 reste `NON VÉRIFIÉ`.
 
-Les mesures analytiques d’arc servent aux calculs de longueur et de débit. La continuité de paroi et le contrôle de
-première couche exigent une représentation de trajectoire qui sache suivre une courbe ; tant qu’ils ne consomment
-pas ce modèle, tout arc valide y rend le verdict `NON VÉRIFIÉ`. Aucun arc n’est remplacé par sa corde dans ces contrôles.
+La continuité de paroi compte les arcs G17 à Z strictement constant uniquement
+quand le slicer les marque comme paroi extérieure. Elle utilise la longueur
+analytique et le premier point déposé calculé après la dette de rétraction ; le
+seuil historique de raccord de 0,02 mm reste inchangé. Les hélices, autres
+plans, rôles d’arc non reconnus et géométries incohérentes rendent la couverture
+NON VÉRIFIÉE. Les arcs n’établissent qu’une continuité numérique des trajectoires
+déclarées ; cela ne valide ni l’interpolation du firmware, ni l’adhésion ou la
+tenue physique. Le contrôle de première couche conserve ses limites et laisse
+les arcs NON VÉRIFIÉS. Aucun arc n’y est remplacé par sa corde.
 
 Le contrôle des capacités-machine calcule aussi l’enveloppe XYZ analytique de la portion déposée d’un arc G17 pour
 le verdict local `volume XYZ déposé`. Il inclut les extrema angulaires réellement parcourus et les deux extrémités Z
@@ -56,8 +61,7 @@ La revue des zones locales utilise l’enveloppe du dépôt G17 pour les ponts e
 parois en surplomb explicitement déclarés, en repère physique après G92. Elle
 ne mesure ni la portée libre ni le contact. Les arcs sans couche ou attribution
 d’objet vérifiée restent bloquants, comme les arcs d’autres rôles pour ce
-contrôle. Une mesure locale de cordons qui ne traite que G0/G1 ne valide pas
-ces arcs (suite de #123).
+contrôle (suite de #123).
 
 Le rapport distingue l’accélération extérieure configurée de l’accélération `M204` observée pendant les dépôts.
 Une commande de mouvement non prise en charge rend la couverture incomplète : le résultat devient `NON VÉRIFIÉ`.

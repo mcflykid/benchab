@@ -212,15 +212,118 @@ def test_g92_xyz_preserve_la_continuite_du_repere_spatial(tmp_path):
     assert resultat["couches"][0]["segments"] == 1
 
 
-def test_arc_exact_du_lecteur_reste_non_verifie_pour_continuite(tmp_path):
-    """La continuité refuse les arcs tant que son calcul de topologie est linéaire."""
+def test_arc_g17_constant_z_est_raccorde_avec_son_point_de_depot_exact(tmp_path):
+    """La continuité compte l’arc analytique sans l’approcher par sa corde."""
     gcode = ecrire_gcode(
         tmp_path / "arc.gcode",
-        "G90\nM83\nG1 X1 Y0 Z2 F600\n;TYPE:Outer wall\nG3 X0 Y1 I-1 J0 E1\n",
+        "G90\nM83\nG0 X0 Y0 Z0.2 F600\n;Z:0.2\n;TYPE:Outer wall\n"
+        "G1 X1 Y0 E1\nG3 X0 Y1 I-1 J0 E1\nG1 X-1 Y1 E1\n",
     )
     resultat = controler(gcode)
-    assert resultat["statut"] == "NON VÉRIFIÉ"
-    assert resultat["couverture_complete"] is False
+    assert resultat["statut"] == "PASS"
+    assert resultat["couverture_complete"] is True
+    assert resultat["couches"][0]["segments"] == 3
+    assert resultat["couches"][0]["morceaux"] == 1
+
+
+@pytest.mark.parametrize(
+    "commande",
+    [
+        "G3 X0 Y1 R1 E1",  # quart de tour CCW mineur
+        "G2 X0 Y1 R1 E1",  # quart de tour CW mineur
+        "G2 X0 Y1 R-1 E1",  # trois quarts CW majeur
+        "G3 X0 Y1 R-1 E1",  # trois quarts CCW majeur
+        "G3 I-1 J0 E1",  # cercle complet
+    ],
+)
+def test_g2_g3_majeur_mineur_et_cercle_complet_sont_comptes(tmp_path, commande):
+    gcode = ecrire_gcode(
+        tmp_path / "formes.gcode",
+        "G90\nM83\nG0 X1 Y0 Z0.2 F600\n;Z:0.2\n;TYPE:Outer wall\n" + commande + "\n",
+    )
+    resultat = controler(gcode)
+    assert resultat["statut"] == "PASS"
+    assert resultat["couverture_complete"] is True
+    assert resultat["couches"][0]["segments"] == 1
+    assert resultat["couches"][0]["morceaux"] == 1
+
+
+def test_helix_g17_et_autre_plan_reste_non_verifie(tmp_path):
+    for nom, mouvement in (
+        ("helix", "G3 X0 Y1 Z0.3 I-1 J0 E1"),
+        ("autre-plan", "G18\nG2 X1 Z0.2 I0 K-1 E1"),
+    ):
+        gcode = ecrire_gcode(
+            tmp_path / f"{nom}.gcode",
+            "G90\nM83\nG0 X1 Y0 Z0.2 F600\n;Z:0.2\n;TYPE:Outer wall\n" + mouvement + "\n",
+        )
+        resultat = controler(gcode)
+        assert resultat["statut"] == "NON VÉRIFIÉ"
+        assert resultat["couverture_complete"] is False
+
+
+def test_g92_xyz_conserve_arc_raccorde_dans_le_repere_spatial(tmp_path):
+    gcode = ecrire_gcode(
+        tmp_path / "arc-g92.gcode",
+        "G90\nM83\nG0 X1 Y0 Z0.2 F600\nG92 X0 Y0\n;Z:0.2\n;TYPE:Outer wall\n"
+        "G3 X-1 Y1 I-1 J0 E1\n",
+    )
+    resultat = controler(gcode)
+    assert resultat["statut"] == "PASS"
+    assert resultat["couverture_complete"] is True
+    assert resultat["couches"][0]["segments"] == 1
+
+
+def test_retraction_partielle_depose_exactement_la_fin_de_l_arc(tmp_path):
+    gcode = ecrire_gcode(
+        tmp_path / "arc-retract.gcode",
+        "G90\nM83\nG0 X1 Y0 Z0.2 F600\n;Z:0.2\n;TYPE:Outer wall\n"
+        "G1 E-0.5\nG3 X0 Y1 I-1 J0 E1\n",
+    )
+    resultat = controler(gcode)
+    assert resultat["statut"] == "PASS"
+    assert resultat["couverture_complete"] is True
+    assert resultat["couches"][0]["segments"] == 1
+    assert resultat["couches"][0]["morceaux"] == 1
+
+
+@pytest.mark.parametrize(("ecart_mm", "morceaux_attendus"), [(0.019, 1), (0.021, 2)])
+def test_arc_garde_le_seuil_de_raccord_de_002_mm(ecart_mm, morceaux_attendus, monkeypatch):
+    """Le départ exact de l'arc utilise le seuil historique de raccord en mm."""
+    from benchab.gcode.continuite import _Etat
+
+    etat = _Etat(None, 0.3)
+    etat.role = "outer wall"
+    etat.z_meta = 0.2
+    etat.derniere_fin = (0.0, 0.0, 0.2)
+    etat.stats[0.2] = {
+        "morceaux": 1,
+        "segments": 1,
+        "microsegments": 0,
+        "accelerations": {},
+    }
+    mouvement = {
+        "op": "G3",
+        "start": (ecart_mm, 0.0, 0.2),
+        "end": (ecart_mm - 1.0, 1.0, 0.2),
+        "spatial_end": (ecart_mm - 1.0, 1.0, 0.2),
+        "deposition_start": None,
+        "length": 1.5707963267948966,
+        "deposited_length": 1.5707963267948966,
+        "arc_g17": {
+            "centre_xy_mm": (ecart_mm - 1.0, 0.0),
+            "rayon_mm": 1.0,
+            "angle_debut_rad": 0.0,
+            "balayage_signe_rad": 1.5707963267948966,
+            "debut_depot_fraction": 0.0,
+        },
+    }
+    monkeypatch.setattr(etat.lecteur, "feed_line", lambda ligne: mouvement)
+    monkeypatch.setattr(etat.lecteur, "last_event", {"parameters": {"X": 1.0, "Y": 1.0, "E": 1.0}})
+
+    etat.ligne("G3")
+
+    assert etat.stats[0.2]["morceaux"] == morceaux_attendus
 
 
 def test_envoi_preserve_statut_global_non_verifie_et_fail_dominant(tmp_path):
