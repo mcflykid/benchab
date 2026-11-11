@@ -22,7 +22,6 @@ trou. Les observations U32 gardent leur matériau, leur orientation et leurs
 conditions ; elles ne sont pas transférées à une fixation différente. Le
 maillage renvoyé représente le vide à soustraire, pas une pièce à imprimer.
 La tenue, le frottement et l’ajustement restent NON VÉRIFIÉS.
-Les filetages ISO restent à traiter (#27).
 
 Le fraisage traverse le bloc par un passage cylindrique. Le diamètre
 d’entrée et le diamètre du passage sont reliés par un tronc de cône sur
@@ -89,3 +88,26 @@ pour les tolérances couvrent des propriétés différentes. Ce profil à
 cotes déclarées ne reproduit ni un fond arrondi normatif ni une classe
 de tolérance ; aucun ajustement avec une vis ou un écrou réel n’est
 certifié (#27).
+
+### Profil métrique ISO nominal
+
+```sh
+benchab conception filetage-nominal -- --profil-metrique-iso \
+  --diametre-mm 6 --pas-mm 1 --longueur-mm 4 \
+  --source-cotes "plan nominal M6 × 1" --sortie prive/filetage-m6
+```
+
+Le diamètre et le pas sont fournis ensemble. Les dimensions nominales
+suivent les profils à 60° d’ISO 68-1:2023 et les diamètres d’ISO 724:2023.
+La vis a un fond circulaire tangent aux flancs. L’outil à soustraire
+(`--role outil-interieur`) emploie le profil intérieur à plateaux et
+demande un `--jeu-radial-mm` explicite, appliqué aux rayons du profil.
+La source des cotes couvre les valeurs déclarées, y compris le jeu.
+Le rapport sépare les rayons et diamètres nominaux des rayons de l’outil
+après ajout du jeu. L’ajustement réel reste NON VÉRIFIÉ.
+
+Les options de profondeur et de méplats du profil sur mesure sont
+incompatibles avec ce mode. Le rapport donne les diamètres mineur et sur
+flancs avant jeu. Le modèle maillé garde des bouts plats. Le choix de la
+série de pas, la classe de tolérance, les entrées de filet et les jeux
+validés par matière restent à établir pour la pièce (#27).

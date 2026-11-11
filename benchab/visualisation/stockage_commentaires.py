@@ -39,6 +39,7 @@ def ouvrir_dossier(path):
 
 @contextlib.contextmanager
 def transaction(path):
+    """Fournit le chemin normalisé sous verrou exclusif (attente maximale en s), sans remplacer les données."""
     p = sans_liens(path)
     directory = ouvrir_dossier(p.parent)
     try:
@@ -75,6 +76,7 @@ def transaction(path):
 
 
 def lire(path):
+    """Lit un fichier JSON régulier et stable, borné en octets ; renvoie un objet vide si la cible manque."""
     p = sans_liens(path)
     active = getattr(_active, "target", None)
     own = not active or active[0] != str(p)
@@ -110,6 +112,7 @@ MAX_OCTETS = 1000000
 
 
 def serialiser(data):
+    """Valide le document puis renvoie le JSON UTF-8 dans la limite d’octets de stockage."""
     valider(data)
     body = json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8")
     if len(body) > MAX_OCTETS:
@@ -118,6 +121,7 @@ def serialiser(data):
 
 
 def atomique(path, data):
+    """Publie le JSON validé sous verrou, par remplacement atomique dans le même dossier ; ne renvoie rien."""
     p = sans_liens(path)
     active = getattr(_active, "target", None)
     if not active or active[0] != str(p):
@@ -142,6 +146,7 @@ def atomique(path, data):
 
 
 def valider(d):
+    """Renvoie le document intact ou lève ValueError si le schéma, les identifiants ou les vecteurs sont invalides."""
     if not isinstance(d, dict) or not isinstance(d.get("page"), str) or (not isinstance(d.get("commentaires"), list)):
         raise ValueError("objet page/commentaires attendu")
     cs = d["commentaires"]

@@ -11,6 +11,7 @@ from benchab.visualisation.hors_ligne import VENDOR
 
 
 def securiser_couches(html):
+    """Renvoie le HTML des couches avec une politique hors ligne ; refuse un document sans en-tête."""
     csp = (
         '<meta http-equiv="Content-Security-Policy" content="default-src &'
         "#39;none&#39;; script-src &#39;unsafe-inline&#39; &#39;self&#39; "
@@ -24,6 +25,7 @@ def securiser_couches(html):
 
 
 def paquet(racine, nom):
+    """Renvoie le ZIP de consultation en octets avec manifeste SHA ; ne lance ni tranchage ni impression."""
     projet_courant(racine, nom)
     html = scene(racine, nom).decode()
     match = re.search('(<script[^>]*id="donnees"[^>]*>)(.*?)(</script>)', html, re.S)

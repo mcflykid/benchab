@@ -13,6 +13,7 @@ from benchab.visualisation.visionneuse import Visionneuse, translation
 
 
 def suivi(nom, titre, historique=False):
+    """Construit un suivi synthétique actif ou historique à partir d’un nom et d’un titre, sans preuve physique."""
     return {
         "schema": 1,
         "nom": nom,

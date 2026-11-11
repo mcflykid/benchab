@@ -15,6 +15,10 @@ VERSION_OUTIL = hashlib.sha256(
 
 
 def diagnostiquer(mesh, piece, source, sha256, maximum=24):
+    """Rapporte PASS ou WARNING pour les surplombs du maillage (mm).
+
+    Inclut la source et son SHA. Aucun choix de fabrication n’est déduit.
+    """
     if (
         not isinstance(maximum, int)
         or isinstance(maximum, bool)
@@ -86,6 +90,7 @@ def diagnostiquer(mesh, piece, source, sha256, maximum=24):
 
 
 def charger_diagnostic(path, piece, source=None):
+    """Renvoie le maillage source (mm) et son diagnostic localisé ; refuse un changement détecté pendant la lecture."""
     path = Path(path)
     before = path.stat()
 
