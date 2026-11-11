@@ -190,15 +190,30 @@ La recette d’interface ajoute une projection nominale de l’écart Z
 sur les dépôts du coupon, sans conclusion physique (#89). Les portées
 publiques de fabrication sont documentées sous Ruff D10x (#127).
 
-## Prochaine version : 1.14.0
+## Version 1.14.0 — preuves d’atelier et placements
+
+Les retours photo confirmés utilisent un contrat commun avec les images déjà
+disponibles, sans accès caméra (#28). Le placement des clips propose ligne,
+grille et coordonnées manuelles avec réouverture et export vérifié (#31).
+Les deux formes de clip restent nominales ; leur tenue et les jeux réellement
+mesurés par matière restent à établir (#29).
+
+La lecture des hauteurs refuse les plaques ambiguës (#191) et les plages de
+couches utilisent le lecteur commun (#122). Le contrôle des supports rapporte
+des écarts Z estimés par plaque (#89), et la sonde de modificateur compare le
+dépôt clairsemé des variantes 20 % et 60 % (#82). Ni retrait ni rigidité ne
+sont validés par ces résultats. Les portées données, mesure et projets
+rejoignent le rattrapage D10x (#127).
+
+## Prochaine version : 1.15.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
 Traiter les prérequis avant les nouveaux réglages :
 
 - **Annotations** : #127 suit le rattrapage des portées anciennes sous le
-  contrôle Ruff D10x introduit par #37. Après fabrication, poursuivre les
-  autres domaines par lots.
+  contrôle Ruff D10x introduit par #37. Poursuivre les domaines historiques
+  restants, dont contrôles, conception et visualisation.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
   La mesure dans une boîte, l’enveloppe du dépôt et la revue des ponts et
@@ -229,10 +244,10 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Concevoir et assembler | #32 : couvrir d’autres opérations cotées ; #27 : filetages et intégration des logements ; #29 : clips ; #31 : placement dans la visionneuse |
-| Examiner les défauts | #28 : comparaison de retours aux sources établies ; #93 : hypothèses de pont et comparaison aux trajectoires |
+| Concevoir et assembler | #32 : couvrir d’autres opérations cotées ; #27 : filetages et intégration des logements ; #29 : jeux et insertion des clips à mesurer |
+| Examiner les défauts | #93 : hypothèses de pont et comparaison aux trajectoires |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
-| Échanger | #43 : conversion entre slicers ; #45 : export manuel de profils, décision d’usage encore requise |
+| Échanger | #43 : conservation des couleurs, palettes et réglages avant conversion ; #45 : export manuel de profils, décision d’usage encore requise |
 
 ### 4. Conserver les expériences à leur bon niveau de preuve
 
