@@ -236,6 +236,33 @@ def test_subtype_non_officiel_parameter_modifier_est_non_qualifie():
         _avec_binaire(configuration, exercice)
 
 
+def test_plan_refuse_un_xml_3mf_avec_declaration_doctype():
+    """Le parcours de plan refuse une déclaration XML interdite sans modifier l’archive."""
+    with tempfile.TemporaryDirectory(dir="/private/tmp") as dossier:
+        racine = Path(dossier)
+        binaire, configuration = _binaire(racine)
+        source = _source(racine)
+        declaration = (
+            b'<?xml version="1.0"?><!DOCTYPE config [<!ENTITY benign "texte">]>'
+            b'<config>&benign;</config>'
+        )
+        invalide = _reecrire(
+            source,
+            racine / "doctype.3mf",
+            {"Metadata/model_settings.config": declaration},
+        )
+        avant = invalide.read_bytes()
+
+        def exercice():
+            plan = origine_3mf.planifier(invalide, binaire=binaire)
+            assert plan["statut"] == "NON VÉRIFIÉ"
+            assert plan["permis"] == []
+            assert any("DOCTYPE et ENTITY sont interdits" in raison for raison in plan["raisons"])
+            assert invalide.read_bytes() == avant
+
+        _avec_binaire(configuration, exercice)
+
+
 def test_matrice_identite_garde_liaison_sans_permission_inutile():
     """Conserve les deux liaisons ; seul le volume dont V @ M change reçoit une permission exacte."""
     with tempfile.TemporaryDirectory(dir="/private/tmp") as dossier:
