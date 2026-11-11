@@ -77,7 +77,7 @@ def _lire_plaque(archive, membre):
 def _verifier_reste(archive, deja_lus):
     """Contrôle le CRC de chaque autre membre sans le charger en mémoire."""
     for membre in archive.noms():
-        if membre in deja_lus or membre.endswith("/"):
+        if membre in deja_lus:
             continue
         with archive.ouvrir_flux(membre) as flux:
             while flux.read(64 * 1024):

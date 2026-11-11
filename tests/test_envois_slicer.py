@@ -282,15 +282,17 @@ class AuditMultiPlaques(unittest.TestCase):
 
     def test_archive_complete_crc_requis_meme_pour_un_membre_non_analyse(self):
         """Un aperçu endommagé ne peut pas être archivé comme une source contrôlée."""
-        p = envoi(self.src, "crc.gcode.3mf")
-        contenu = b"archive_apercu_jetable"
-        with zipfile.ZipFile(p, "a") as z:
-            z.writestr("Metadata/apercu.txt", contenu, compress_type=zipfile.ZIP_STORED)
-        data = p.read_bytes()
-        assert data.count(contenu) == 1
-        p.write_bytes(data.replace(contenu, b"x" + contenu[1:]))
-        with self.assertRaises(ValueError):
-            E.lire(p)
+        for index, membre in enumerate(("Metadata/apercu.txt", "Metadata/annexe/")):
+            with self.subTest(membre=membre):
+                p = envoi(self.src, f"crc-{index}.gcode.3mf")
+                contenu = b"archive_apercu_jetable"
+                with zipfile.ZipFile(p, "a") as z:
+                    z.writestr(membre, contenu, compress_type=zipfile.ZIP_STORED)
+                data = p.read_bytes()
+                assert data.count(contenu) == 1
+                p.write_bytes(data.replace(contenu, b"x" + contenu[1:]))
+                with self.assertRaises(ValueError):
+                    E.lire(p)
 
     def test_masses_et_outils_lus_en_flux_avec_decodage_historique(self):
         """Les octets ignorés et la première mesure restent traités comme avant."""
