@@ -35,6 +35,7 @@ CONTROLES_DIRECTS = {
     "revue-locale": "revue_locale",
     "livrables": "livrables",
     "ponts-internes": "ponts_internes",
+    "ponts-surplombs": "ponts_surplombs",
     "disposition-reelle": "disposition_reelle",
     "colonnes-isolees": "colonnes_isolees",
     "couches-courtes": "couches_courtes",
@@ -49,7 +50,7 @@ CONTROLES_DIRECTS = {
     "plages-z": "couverture_plages_z",
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
-    "appuis-gcode", "ecarts-profils-3mf", "plages-z", "surplombs-connexes",
+    "appuis-gcode", "ecarts-profils-3mf", "plages-z", "surplombs-connexes", "ponts-surplombs",
 })
 
 # Les espaces homogènes gardent leur préfixe, leurs alias et leurs options en un seul endroit.

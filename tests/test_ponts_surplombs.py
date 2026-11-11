@@ -62,3 +62,34 @@ def test_niveau_different_sans_nouvelle_hauteur_reste_non_verifie():
     assert r["statut"] == "NON VÉRIFIÉ"
     assert r["exclusions"]["hauteur_non_verifiee"] == 1
     assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 0
+
+
+def test_cli_rattache_un_ilot_a_une_plaque_et_aux_deux_empreintes(tmp_path, capsys):
+    """Les empreintes exactes et le numéro déclaré empêchent de lire une archive différente."""
+    import hashlib
+    import json
+    from zipfile import ZipFile
+
+    import trimesh
+
+    from benchab.controles.ponts_surplombs import main
+
+    source, tranche = tmp_path / "modele.stl", tmp_path / "tranche.3mf"
+    piece = trimesh.creation.box((8, 4, 1))
+    piece.apply_translation((4, 2, 4.5))
+    source.write_bytes(piece.export(file_type="stl"))
+    with ZipFile(tranche, "w") as archive:
+        archive.writestr("Metadata/plate_2.gcode", "G90\nM83\nG1 X0 Y2 Z4.2\n;HEIGHT:0.2\n;TYPE:Bridge\nG1 X8 E1\n")
+    sha_stl, sha_tranche = [hashlib.sha256(p.read_bytes()).hexdigest() for p in (source, tranche)]
+    commande = [
+        str(source), str(tranche), "--unite-mm", "--ilot", "surplomb-001", "--plaque", "2",
+        "--translation-mm", "0", "0", "0", "--sha-stl", sha_stl,
+    ]
+    assert main([*commande, "--sha-3mf", sha_tranche]) == 0
+    r = json.loads(capsys.readouterr().out)
+    assert r["source_sha256"] == sha_stl and r["archive_sha256"] == sha_tranche
+    assert r["plaque"] == 2 and r["ilot"] == "surplomb-001"
+    assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 8
+    assert main([*commande, "--sha-3mf", "0" * 64]) == 2
+    sortie = capsys.readouterr()
+    assert "empreinte" in sortie.err.lower() and not sortie.out

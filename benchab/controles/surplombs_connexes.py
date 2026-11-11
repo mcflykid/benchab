@@ -280,13 +280,16 @@ def _visibilite_groupe(triangles, indices, plateau_z_mm, plan_valide, budget):
     }}
 
 
-def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None, plateau_z_mm=None):
+def cartographier(
+    maillage, *, source, unite, angle_max_deg=50.0, source_sha256=None, plateau_z_mm=None, groupe_indices=None,
+):
     """Mesure les groupes de faces orientées vers le bas sans prédire les supports physiques.
 
     Entrées : maillage triangulé, provenance, unité (« mm »), seuil en degrés et SHA-256 facultatif.
     Sortie : groupes connexes avec aires en mm², altitudes/hauteurs en mm et angles en degrés.
     La topologie est mesurée par égalité exacte des coordonnées ; aucun sommet n'est fusionné ni triangle réorienté.
     Les visées opt-in exigent un SHA-256 du STL exact et sont bornées ; accès global et ponts restent NON VÉRIFIÉS.
+    Le groupe nommé par ``groupe_indices`` inclut ses indices de triangles, sans unité.
     Aucun réglage n'est modifié.
     """
     if unite != "mm":
@@ -356,6 +359,8 @@ def cartographier(maillage, *, source, unite, angle_max_deg=50.0, source_sha256=
             "acces_plateau": {"statut": "NON VÉRIFIÉ", "raison": "aucun test de visibilité ni de tranchage"},
             "pont_possible": {"statut": "NON VÉRIFIÉ", "raison": "franchissabilité non mesurée"},
         }
+        if groupe_indices == groupe["id"]:
+            groupe["indices_faces"] = sorted(faces)
         if plateau_z_mm is not None:
             # Un groupe au niveau du plateau ne prive pas un îlot distinct
             # de visées au-dessus de ce même plan.
