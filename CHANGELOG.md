@@ -6,6 +6,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 - Visionneuse : l’index et les flux G-code des supports partagent le contexte 3MF et conservent le cache par empreinte (suite de #122).
 - Atelier : propose un candidat privé de SHA exact pour un lien de vue cassé, avec ambiguïtés explicites et sans réparation automatique (suite de #119).
+- Fabrication : compare les plages Z à une intention déclarée pour un objet et une instance dont le repère est qualifié (suite de #110).
 
 ## 1.4.0 — 2026-11-11
 
