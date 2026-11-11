@@ -494,14 +494,15 @@ class Couverture(unittest.TestCase):
             self.assertEqual(r.returncode, 1)
 
     def test_premiere_couche_normale_defaut_arc_et_3mf_nontranche(self):
-        for g, status, code in [
+        cas = [
             ("M83\n;Z:.2\n;TYPE:Outer wall\nG1 X30 E1 F600", "PASS", 0),
             ("M83\n;Z:.2\n;TYPE:Outer wall\nG1 X1 E.1 F600", "WARN", 1),
             ("M83\n;Z:.2\n;TYPE:Outer wall\nG2 X30 E1 I15 F600", "NON VÉRIFIÉ", 2),
-        ]:
+        ]
+        for indice, (g, status, code) in enumerate(cas):
             p = self.d / "a.gcode"
             p.write_text(g)
-            out = self.d / "r.json"
+            out = self.d / f"r-{indice}.json"
             r = self.runcli("premiere_couche.py", p, "--json", out)
             self.assertEqual(r.returncode, code, r.stderr)
             self.assertEqual(json.loads(out.read_text())["plaques"]["plaque 1"]["statut"], status)
