@@ -16,6 +16,7 @@ ASN = {
         ("sparse_infill_pattern", "zigzag"),
         ("sparse_infill_pattern", "crosshatch"),
         ("sparse_infill_pattern", "supportcubic"),
+        ("sparse_infill_pattern", "crosszag"),
         ("internal_solid_infill_pattern", "monotonic"),
         ("top_surface_pattern", "monotonicline"),
         ("bottom_surface_pattern", "rectilinear"),
@@ -33,7 +34,9 @@ def test_valeur_qualifiee_ne_change_pas_les_reglages(cle, valeur):
     assert donnees == {cle: valeur}
 
 
-@pytest.mark.parametrize("demande,repli", [("zig-zag", "zigzag"), ("benchab_fixture_inconnue", "crosshatch")])
+@pytest.mark.parametrize("demande,repli", [
+    ("zig-zag", "zigzag"), ("benchab_fixture_inconnue", "crosshatch"), ("2dlattice", "crosshatch"),
+])
 def test_repli_refuse_meme_si_le_slicer_sort_un_fichier(demande, repli):
     """Un changement natif confirmé n'est pas une validation de la variante."""
     ligne, = reglages.verifier({"sparse_infill_pattern": demande}, identite_slicer=ASN)

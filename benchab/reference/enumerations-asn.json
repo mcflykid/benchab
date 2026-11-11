@@ -22,6 +22,8 @@
           "zigzag": {"statut": "PASS", "valeur_embarquee": "zigzag"},
           "crosshatch": {"statut": "PASS", "valeur_embarquee": "crosshatch"},
           "supportcubic": {"statut": "PASS", "valeur_embarquee": "supportcubic"},
+          "crosszag": {"statut": "PASS", "valeur_embarquee": "crosszag"},
+          "2dlattice": {"statut": "FAIL", "valeur_embarquee": "crosshatch"},
           "zig-zag": {"statut": "FAIL", "valeur_embarquee": "zigzag"},
           "benchab_fixture_inconnue": {"statut": "FAIL", "valeur_embarquee": "crosshatch"}
         },

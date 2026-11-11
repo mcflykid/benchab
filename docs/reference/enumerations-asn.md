@@ -127,3 +127,21 @@ Le résultat qualifie cette valeur pour le binaire et le témoin S, sans
 conclure à la stabilité du moteur, à une économie sur un autre modèle ou à
 une résistance physique. Aucun motif n'est appliqué automatiquement
 (#80, #81).
+
+## Crosszag et repli de 2dlattice
+
+Deux copies du témoin S avec `sparse_infill_pattern=crosszag` conservent ce
+motif sur le même binaire ASN 2.0.0.3. Seule cette clé diffère du témoin
+`gyroid` dans les réglages relus. Les 456 segments clairsemés mesurent
+4 405,063 mm, contre 5 500 segments et 3 941,970 mm dans le témoin. Le
+trancheur estime 305 s et 2,41 g, contre 313 s et 2,37 g. La répétition
+donne la même empreinte de trajets, sans diagnostic du lecteur G-code.
+
+La demande `2dlattice` donne un code moteur nul, mais embarque
+`crosshatch` avec 1 602 segments clairsemés. L’intégrité de la copie
+refuse ce remplacement. Le catalogue signale FAIL pour cette chaîne et
+ce binaire ; aucune valeur équivalente ou autre version n’est supposée.
+
+Les sources et les 646 profils relus sont intacts. L’angle, le décalage
+et les champs de peau et squelette ne sont pas qualifiés par ces essais
+(#80, #81). La durée et la masse sont des estimations du fichier.
