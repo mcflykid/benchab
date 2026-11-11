@@ -22,7 +22,7 @@ trou. Les observations U32 gardent leur matériau, leur orientation et leurs
 conditions ; elles ne sont pas transférées à une fixation différente. Le
 maillage renvoyé représente le vide à soustraire, pas une pièce à imprimer.
 La tenue, le frottement et l’ajustement restent NON VÉRIFIÉS.
-Les filetages ISO et sur mesure restent à traiter (#27).
+Les filetages ISO restent à traiter (#27).
 
 Le fraisage traverse le bloc par un passage cylindrique. Le diamètre
 d’entrée et le diamètre du passage sont reliés par un tronc de cône sur
@@ -47,3 +47,27 @@ deux logements et la paroi qui les sépare du joint. Il rapporte la distance
 des faces, sans en déduire une longueur de vis ni certifier l’accès d’un
 outil ou la tenue de l’assemblage. Les deux pièces sont exportées ; la vis et
 l’écrou sont à fournir séparément. Aucune cote ISO n’est choisie automatiquement.
+
+## Filetage triangulaire à cotes déclarées
+
+La commande suivante prépare un maillage fermé et son rapport, dans un
+dossier privé neuf. Toutes les valeurs de cet exemple sont fictives.
+
+```sh
+benchab conception filetage-nominal -- --diametre-mm 8 --longueur-mm 9 \
+  --pas-mm 1.5 --profondeur-radiale-mm 0.65 --source-cotes "exemple fictif" \
+  --sortie prive/filetage-exemple
+```
+
+Le diamètre indiqué est celui de la crête, la profondeur est radiale et
+le pas est l’avance en Z par tour. `--sens gauche` produit le miroir du
+filetage droit. Le rôle `--role outil-interieur` demande aussi
+`--jeu-radial-mm` : les rayons nominaux sont augmentés de la valeur
+déclarée pour former un volume à soustraire. L’outil n’est pas une pièce
+à imprimer et le jeu réel reste NON VÉRIFIÉ.
+
+La surface triangulaire est échantillonnée à 64 secteurs et au moins
+16 intervalles axiaux par pas, pour un à 64 tours. Les bouts sont plats ;
+aucune entrée de filet, troncature ISO, tolérance de fabrication ou
+compensation n’est déduite. Le STL est rouvert pour contrôler son volume
+et son empreinte ; il ne constitue pas une validation de montage.

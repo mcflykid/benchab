@@ -369,6 +369,7 @@ def parser():
         "vissage",
         "cad-engine",
         "fiche-cao",
+        "filetage-nominal",
         "decoupe",
     ):
         conception.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
