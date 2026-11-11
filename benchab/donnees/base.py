@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import stat
 import tempfile
 from contextlib import contextmanager
 from importlib.resources import files
@@ -16,6 +17,69 @@ TABLES = (
 )
 DOSSIERS = ("export", "projets", "config", "mesures", "rapports", "instantanes", "cache", "chantier")
 APPLICATION_ID = 0x42454E43
+
+
+def _signature_export(info):
+    """Capture l'identité d'un export régulier pour détecter un remplacement concurrent."""
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _ouvrir_export(path):
+    """Ouvre un export existant sans suivre de lien ; absent → None, type spécial → FAIL."""
+    try:
+        avant = path.lstat()
+    except FileNotFoundError:
+        return None, None
+    if stat.S_ISLNK(avant.st_mode):
+        raise ValueError("Export lié refusé")
+    if not stat.S_ISREG(avant.st_mode):
+        raise ValueError("Export spécial refusé")
+    signature = _signature_export(avant)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    flux = os.fdopen(fd, "rb")
+    if _signature_export(os.fstat(fd)) != signature:
+        flux.close()
+        raise ValueError("Export remplacé pendant l'ouverture")
+    return flux, signature
+
+
+def _verifier_export_inchange(path, signature):
+    """Refuse publication si la destination a changé depuis sa comparaison canonique."""
+    try:
+        courant = _signature_export(path.lstat())
+    except FileNotFoundError:
+        courant = None
+    if courant != signature:
+        raise ValueError("Export remplacé pendant sa vérification")
+
+
+def _export_identique(path, attendu):
+    """Compare les octets et SHA réels d'un petit manifeste, sans suivre de lien."""
+    flux, signature = _ouvrir_export(path)
+    if flux is None:
+        return False, None
+    try:
+        sha = hashlib.sha256()
+        identique = True
+        position = 0
+        while position < len(attendu):
+            bloc = flux.read(min(1024 * 1024, len(attendu) - position))
+            if not bloc:
+                identique = False
+                break
+            sha.update(bloc)
+            fin = position + len(bloc)
+            identique &= bloc == attendu[position:fin]
+            position = fin
+        reste = flux.read(1)
+        sha.update(reste)
+        identique &= not reste and position == len(attendu)
+        if _signature_export(os.fstat(flux.fileno())) != signature:
+            raise ValueError("Export modifié pendant sa vérification")
+        _verifier_export_inchange(path, signature)
+        return identique and sha.digest() == hashlib.sha256(attendu).digest(), signature
+    finally:
+        flux.close()
 
 
 class Base:
@@ -117,45 +181,115 @@ class Base:
 
     def exporter(self):
         """Un export cohérent, sérialisé et vérifiable après chaque transaction réussie."""
+        from benchab.chemins import sans_lien
+        from benchab.qualite.ecritures import ouvrir_verrou
+
         if self.connexion.in_transaction:
             raise ValueError("Terminer la transaction avant l'export")
-        with (self.prive / "cache/export.lock").open("a") as verrou:
-            fcntl.flock(verrou, fcntl.LOCK_EX)
-            self.connexion.execute("BEGIN")
+        cache = sans_lien(self.prive / "cache", racine=self.prive)
+        dossier = os.open(cache, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            # Le chemin peut changer après la garde : ouvrir le verrou sans suivre de lien (#138).
+            verrou = ouvrir_verrou("export.lock", dossier)
             try:
-                self._exporter_tables()
+                fcntl.flock(verrou, fcntl.LOCK_EX)
+                if not os.path.samestat(os.fstat(dossier), cache.lstat()) or not os.path.samestat(
+                    os.fstat(verrou), os.stat("export.lock", dir_fd=dossier, follow_symlinks=False)
+                ):
+                    raise ValueError("Verrou d'export remplacé pendant son ouverture")
+                self.connexion.execute("BEGIN")
+                try:
+                    self._exporter_tables()
+                finally:
+                    self.connexion.rollback()
             finally:
-                self.connexion.rollback()
+                os.close(verrou)
+        finally:
+            os.close(dossier)
+
+    def _lignes_canoniques(self, table):
+        """Rend les lignes JSONL dans les mêmes octets pour comparaison et publication."""
+        for ligne in self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
+            texte = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
+            yield texte.encode("utf-8")
+
+    def _ecrire_table_temporaire(self, table, dossier):
+        """Sérialise une table SQLite en UTF-8 JSONL temporaire ; renvoie son SHA-256 hexadécimal."""
+        fd, nom = tempfile.mkstemp(prefix=f".{table}-", dir=dossier)
+        try:
+            empreinte = hashlib.sha256()
+            with os.fdopen(fd, "wb") as flux:
+                for octets in self._lignes_canoniques(table):
+                    flux.write(octets)
+                    empreinte.update(octets)
+            return Path(nom), empreinte.hexdigest()
+        except BaseException:
+            Path(nom).unlink(missing_ok=True)
+            raise
 
     def _exporter_tables(self):
-        dossier = self.prive / "export"
+        from benchab.chemins import sans_lien
+
+        # Base peut être ouverte depuis longtemps : ne pas reprendre un dossier lié (#138).
+        dossier = sans_lien(self.prive / "export", racine=self.prive, strict=True)
         empreintes = {}
         for table in TABLES:
-            if (dossier / f"{table}.jsonl").is_symlink():
-                raise ValueError("Export lié refusé")
-            fd, nom = tempfile.mkstemp(prefix=f".{table}-", dir=dossier)
+            cible = dossier / f"{table}.jsonl"
+            ancien, signature = _ouvrir_export(cible)
+            if ancien is None:
+                temporaire, empreintes[table] = self._ecrire_table_temporaire(table, dossier)
+                try:
+                    _verifier_export_inchange(cible, None)
+                    temporaire.replace(cible)
+                finally:
+                    temporaire.unlink(missing_ok=True)
+                continue
+
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as flux:
-                    lignes = self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id')
-                    empreinte = hashlib.sha256()
-                    for ligne in lignes:
-                        contenu = json.dumps(dict(ligne), ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n"
-                        flux.write(contenu)
-                        empreinte.update(contenu.encode())
-                    empreintes[table] = empreinte.hexdigest()
-                Path(nom).replace(dossier / f"{table}.jsonl")
+                canonique = hashlib.sha256()
+                empreinte_existante = hashlib.sha256()
+                identique = True
+                for octets in self._lignes_canoniques(table):
+                    canonique.update(octets)
+                    existants = ancien.read(len(octets))
+                    empreinte_existante.update(existants)
+                    identique &= existants == octets
+                reste = ancien.read(1)
+                empreinte_existante.update(reste)
+                identique &= not reste
+                if _signature_export(os.fstat(ancien.fileno())) != signature:
+                    raise ValueError("Export modifié pendant sa vérification")
+                _verifier_export_inchange(cible, signature)
             finally:
-                Path(nom).unlink(missing_ok=True)
+                ancien.close()
+
+            empreintes[table] = canonique.hexdigest()
+            if identique and empreinte_existante.hexdigest() == empreintes[table]:
+                continue
+            # Une table divergente seule est rescannée pour produire son temporaire canonique.
+            temporaire, empreinte_temporaire = self._ecrire_table_temporaire(table, dossier)
+            try:
+                if empreinte_temporaire != empreintes[table]:
+                    raise ValueError("Table SQLite modifiée pendant l’export")
+                _verifier_export_inchange(cible, signature)
+                temporaire.replace(cible)
+            finally:
+                temporaire.unlink(missing_ok=True)
         manifeste = {
             "schema": self.connexion.execute("PRAGMA user_version").fetchone()[0],
             "tables": list(TABLES),
             "sha256": empreintes,
         }
+        manifeste_octets = (json.dumps(manifeste, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+        fichier_manifeste = dossier / "manifest.json"
+        manifeste_identique, signature_manifeste = _export_identique(fichier_manifeste, manifeste_octets)
+        if manifeste_identique:
+            return
         fd, nom = tempfile.mkstemp(prefix=".manifest-", dir=dossier)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as flux:
-                json.dump(manifeste, flux, ensure_ascii=False, sort_keys=True)
-                flux.write("\n")
-            Path(nom).replace(dossier / "manifest.json")
+            with os.fdopen(fd, "wb") as flux:
+                flux.write(manifeste_octets)
+            _verifier_export_inchange(fichier_manifeste, signature_manifeste)
+            Path(nom).replace(fichier_manifeste)
         finally:
             Path(nom).unlink(missing_ok=True)

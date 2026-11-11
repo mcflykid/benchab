@@ -33,6 +33,11 @@ def impact(root, source):
     La couverture reste partielle ; une absence de lien ne constitue jamais PASS sur l'indépendance.
     """
     root = Path(root).resolve()
+    return _rapport_impact(source, _graphe(root, fichiers(root)))
+
+
+def _graphe(root, fichiers_python):
+    """Relève les relations Python et documentaires pour toutes les sources du lot."""
     edges, dynamiques, preuves = {}, set(), {}
 
     def ajouter(cible, dependant, nature):
@@ -51,7 +56,7 @@ def impact(root, source):
         edges.setdefault(a, set()).add(b)
         preuves.setdefault((a, b), set()).add(nature)
 
-    for p in fichiers(root):
+    for p in fichiers_python:
         rel = p.relative_to(root).as_posix()
         try:
             tree = ast.parse(p.read_text())
@@ -81,6 +86,11 @@ def impact(root, source):
     # La reprise conserve aussi les relations non Python de l'ancien atelier.
     # Le repli complet reste obligatoire (docs/guides/developpement.md).
     _relations_non_python(root, ajouter, dynamiques)
+    return edges, dynamiques, preuves
+
+
+def _rapport_impact(source, graphe):
+    edges, dynamiques, preuves = graphe
     vus, pile = {source}, [source]
     while pile:
         for nom in edges.get(pile.pop(), set()):
@@ -148,15 +158,24 @@ def _relations_non_python(root, ajouter, dynamiques):
 
 
 def planifier(root, changements):
+    """Prépare les tests et impacts d’un lot, sans exécuter ni modifier les sources.
+
+    Les changements de code gardent le mode COMPLET ; un lot de tests seuls
+    peut être CIBLE. Un graphe partiel ne prouve jamais l'indépendance.
+    """
     root = Path(root).resolve()
     chemins = [relatif(root, p).relative_to(root).as_posix() for p in changements]
-    tests = sorted(p.relative_to(root).as_posix() for p in fichiers(root) if p.name.startswith("test_"))
+    python = list(fichiers(root))
+    tests = sorted(p.relative_to(root).as_posix() for p in python if p.name.startswith("test_"))
     direct = bool(chemins) and all(p in tests for p in chemins)
+    sources = [p for p in chemins if p not in tests and (root / p).is_file()]
+    # Une analyse commune explique le lot sans rescanner ni réduire la suite (#34, U64).
+    graphe = _graphe(root, python) if sources else None
     return {
         "mode": "CIBLE" if direct else "COMPLET",
         "raison": "tests modifiés explicitement connus" if direct else "couverture partielle : repli conservateur",
         "tests": sorted(set(chemins)) if direct else tests,
-        "impacts": [impact(root, p) for p in chemins if p not in tests and (root / p).is_file()],
+        "impacts": [_rapport_impact(p, graphe) for p in sources],
     }
 
 

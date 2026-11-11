@@ -43,3 +43,29 @@ def test_planifier_reconnait_les_acceptations_nommees_par_domaine(tmp_path):
     plan = planifier(tmp_path, [chemin])
     assert plan["mode"] == "CIBLE"
     assert plan["tests"] == [chemin]
+
+
+def test_lot_de_sources_nanalyse_le_graphe_quune_fois(tmp_path, monkeypatch):
+    """Deux changements partagent les lectures et gardent les dépendants transitifs."""
+    from collections import Counter
+    from pathlib import Path
+
+    (tmp_path / "source.py").write_text("valeur = 1\n")
+    (tmp_path / "relais.py").write_text("import source\n")
+    (tmp_path / "test_relais.py").write_text("import relais\n")
+    lectures = Counter()
+    lire = Path.read_text
+
+    def compter(chemin, *args, **kwargs):
+        if chemin.is_relative_to(tmp_path):
+            lectures[chemin.name] += 1
+        return lire(chemin, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", compter)
+    plan = planifier(tmp_path, ["source.py", "relais.py"])
+    assert plan["mode"] == "COMPLET"
+    assert plan["tests"] == ["test_relais.py"]
+    assert [x["dependants"] for x in plan["impacts"]] == [
+        ["relais.py", "test_relais.py"], ["test_relais.py"],
+    ]
+    assert dict(lectures) == {"source.py": 1, "relais.py": 1, "test_relais.py": 1}
