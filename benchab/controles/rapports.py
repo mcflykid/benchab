@@ -76,7 +76,9 @@ def _reconnu(data, outil, source, path):
 
 
 class RapportCourant:
+    """Publie le rapport courant d’un outil et d’une source identifiés ; protège les preuves figées."""
     def __init__(self, path, entrees, outil):
+        """Épingle les empreintes des entrées et vérifie la destination existante ; refuse les collisions."""
         self.path = _sans_lien(path)
         self.entrees = [_sans_lien(p) for p in entrees]
         self.outil = outil
@@ -93,6 +95,7 @@ class RapportCourant:
         self.empreintes = {p: sha(p) if p.is_file() else None for p in self.entrees}
 
     def publier(self, data):
+        """Publie le rapport et sa provenance sans changer les entrées ; lève si une empreinte diverge."""
         if any((sha(p) if p.is_file() else None) != h for p, h in self.empreintes.items()):
             raise ValueError("Entrée modifiée pendant le contrôle")
         _protege(self.path)
