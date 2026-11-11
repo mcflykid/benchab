@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir
+## 1.9.0 — 2026-11-11
 
 - Tranchage : refuse deux membres G-code pour un même numéro de plaque et
   contrôle l’archive de sortie dans un même contexte (#171).
