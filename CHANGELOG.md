@@ -4,6 +4,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.7.0
 
+- CI : stabilise le test du délai sans imposer un temps de démarrage à Python (#161).
 - Apprentissage : relie une fiche privée d’incident à un commit et à ses
   fichiers de test exacts ; l’exécution reste déclarative (suite de #119).
 - Archives : bornes et CRC communs pour les références fixes et la comparaison
