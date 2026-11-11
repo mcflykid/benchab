@@ -175,20 +175,36 @@ Le motif `supportcubic` est qualifié pour le binaire et le témoin
 observés (#80, #81). Le lamage supérieur étend les fiches cotées
 avec contrôle d’interférence et volume vérifié (#27, #32).
 
-## Prochaine version : 1.13.0
+## Version 1.13.0 — reprise, arcs et fiches cotées
+
+Une table d’export absente peut être restaurée sur demande explicite.
+La commande relit la preuve, le manifeste et la table SQLite en lecture
+seule, publie exclusivement et refuse toute cible déjà présente (#119).
+
+La première couche peut utiliser la distance exacte aux arcs G17 déposés
+à Z constant dans sa grille. Les arcs hélicoïdaux ou non qualifiés restent
+NON VÉRIFIÉS (#123). Les fiches cotées acceptent les poches rectangulaires
+et signalent leurs interférences (#32).
+
+La recette d’interface ajoute une projection nominale de l’écart Z
+sur les dépôts du coupon, sans conclusion physique (#89). Les portées
+publiques de fabrication sont documentées sous Ruff D10x (#127).
+
+## Prochaine version : 1.14.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
 Traiter les prérequis avant les nouveaux réglages :
 
 - **Annotations** : #127 suit le rattrapage des portées anciennes sous le
-  contrôle Ruff D10x introduit par #37.
+  contrôle Ruff D10x introduit par #37. Après fabrication, poursuivre les
+  autres domaines par lots.
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
   La mesure dans une boîte, l’enveloppe du dépôt et la revue des ponts et
   surplombs attribués peuvent utiliser la courbe. La continuité des parois
-  extérieures couvre G17 à Z constant. La première couche, les hélices en
-  continuité et la cinématique restent à qualifier. #133 a conservé
+  extérieures et la première couche sur demande couvrent G17 à Z constant.
+  Les hélices en continuité et la cinématique restent à qualifier. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des lecteurs et
@@ -245,8 +261,7 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
   primitives communes de lecture, de copie et de publication.
 - #35 : compléter les rapports courts après les parcours d’envoi, de plages Z,
   de surplombs, de première couche et de débit.
-- #119 : qualifier l’application d’une reprise après vérification de sa preuve,
-  les autres familles de reprise et la preuve d’exécution
+- #119 : qualifier d’autres familles de reprise et la preuve d’exécution
   au-delà du contenu déclaré d’un rapport JUnit. Une vue canonique peut être régénérée après
   contrôle du plan et copie vérifiée de l’ancienne vue. La cible d’un lien cassé
   peut être recréée par copie prouvée ; un original introuvable reste NON VÉRIFIÉ.
