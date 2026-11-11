@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## À venir
+## 1.11.0 — 2026-11-11
 
 - Coutures : relie les débuts de boucles extérieures à des régions déclarées,
   signale les alignements visibles et fournit un aperçu lié au SHA (#26).
