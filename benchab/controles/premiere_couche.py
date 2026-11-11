@@ -1,6 +1,7 @@
 """Contrôle numérique des deux premières couches.
 
 Usage : benchab controle premiere-couche <tranche.3mf|fichier.gcode> [options]
+Avec --json RAPPORT, --resume borne l’affichage et --detail affiche le rapport complet.
 
 Méthode : les trajets extrudés des deux premières couches (types de la pièce seulement : parois, surfaces,
 remplissages ; ni purge, ni
@@ -16,6 +17,7 @@ réelle.
 
 """
 
+import json
 import math
 import sys
 from pathlib import Path
@@ -215,6 +217,30 @@ def _controler(g, ilot_max, creux_max, pas):
     }
 
 
+def _resume(plaques, statut, sortie):
+    """Rend cinq plaques prioritaires et cinq défauts au plus par plaque, avec le rapport complet."""
+    ordre = {"NON VÉRIFIÉ": 0, "WARN": 1, "PASS": 2}
+    choix = sorted(plaques.items(), key=lambda item: ordre[item[1]["statut"]])[:5]
+    details = {}
+    for nom, preuve in choix:
+        defauts = preuve.get("defauts", [])
+        details[nom] = {
+            "statut": preuve["statut"],
+            "nombre_defauts": len(defauts),
+            "defauts": defauts[:5],
+            "defauts_omis": max(0, len(defauts) - 5),
+        }
+        if "detail" in preuve:
+            texte = preuve["detail"]
+            details[nom]["detail"] = texte[:512]
+            if len(texte) > 512:
+                details[nom]["detail_tronque"] = True
+    return {
+        "statut": statut, "rapport": str(sortie), "nombre_plaques": len(plaques),
+        "plaques_omises": len(plaques) - len(details), "plaques": details,
+    }
+
+
 def main(argv=None):
     """Contrôle les défauts de première couche en mm² et rend le code du contrôle."""
     a = list(sys.argv[1:] if argv is None else argv)
@@ -223,8 +249,17 @@ def main(argv=None):
         return 2
 
     def opt(n, d):
-        return float(a[a.index(n) + 1]) if n in a else d
+        if n not in a:
+            return d
+        position = a.index(n) + 1
+        if position == len(a):
+            raise ValueError(f"Valeur requise après {n}")
+        return float(a[position])
 
+    resume, detail = "--resume" in a, "--detail" in a
+    if (resume and detail) or ((resume or detail) and "--json" not in a):
+        print("Utiliser --resume ou --detail avec --json RAPPORT.", file=sys.stderr)
+        return 2
     sortie = None
     if "--json" in a:
         try:
@@ -238,34 +273,38 @@ def main(argv=None):
             return 2
 
     try:
-        res = {
-            f"plaque {k}": controler(g, opt("--ilot-max", 3.0), opt("--creux-max", 150.0), opt("--pas", 0.1))
-            for k, g in gcodes(a[0])
-        }
+        options = (opt("--ilot-max", 3.0), opt("--creux-max", 150.0), opt("--pas", 0.1))
+        res = {f"plaque {k}": controler(g, *options) for k, g in gcodes(a[0])}
     except (OSError, ValueError, BadZipFile) as erreur:
         print(f"NON VÉRIFIÉ {a[0]} : {erreur}", file=sys.stderr)
         return 2
-    for k, r in res.items():
-        print(
-            f"{r['statut']:5s} {k} : {len(r.get('defauts', []))} défaut(s) de 1re couche"
-            + "".join(
-                f"\n      - {d['type']} : {d['aire_mm2']} mm² vers X {d['xy'][0]} Y {d['xy'][1]}"
-                for d in r.get("defauts", [])[:12]
+    statut = (
+        "NON VÉRIFIÉ"
+        if not res or any(r["statut"] == "NON VÉRIFIÉ" for r in res.values())
+        else "WARN" if any(r["statut"] == "WARN" for r in res.values()) else "PASS"
+    )
+    rapport = {"fichier": a[0], "plaques": res}
+    if not (resume or detail):
+        for k, r in res.items():
+            print(
+                f"{r['statut']:5s} {k} : {len(r.get('defauts', []))} défaut(s) de 1re couche"
+                + "".join(
+                    f"\n      - {d['type']} : {d['aire_mm2']} mm² vers X {d['xy'][0]} Y {d['xy'][1]}"
+                    for d in r.get("defauts", [])[:12]
+                )
             )
-        )
     if sortie is not None:
         try:
-            ecrire_json_neuf(sortie, {"fichier": a[0], "plaques": res}, entrees=[Path(a[0])])
+            ecrire_json_neuf(sortie, rapport, entrees=[Path(a[0])])
         except (OSError, ValueError) as erreur:
             print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
             return 2
-    return (
-        2
-        if not res or any(r["statut"] == "NON VÉRIFIÉ" for r in res.values())
-        else 1
-        if any(r["statut"] == "WARN" for r in res.values())
-        else 0
-    )
+        # L’adresse n’est annoncée que si le rapport complet existe (#35).
+        if resume:
+            print(json.dumps(_resume(res, statut, sortie), ensure_ascii=False, allow_nan=False))
+        elif detail:
+            print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
+    return {"PASS": 0, "WARN": 1, "NON VÉRIFIÉ": 2}[statut]
 
 
 if __name__ == "__main__":
