@@ -23,3 +23,6 @@ source du modèle : ne pas en déduire une équivalence géométrique.
 Les filetages sur mesure et leurs contrôles sont accessibles par
 `uv run benchab conception vissage -- --help`. Les éprouvettes de trous servent à
 mesurer l’ajustement, pas à déclarer un jeu réussi avant impression.
+
+Pour une bobine neuve, le [parcours des premiers essais](premiers-essais.md)
+explique comment relier témoin, températures, jeux et retour.

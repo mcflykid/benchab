@@ -12,18 +12,19 @@ import re
 import shutil
 import stat
 import tempfile
-import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
 import trimesh
 
+from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, est_temporaire, sans_lien
 from benchab.conception import optimisation_interne as OI
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.fabrication import remplissage_localise as RL
 from benchab.fabrication.anycubic import empreinte_geometrie
-from benchab.gcode.lecture import iter_lignes_gcode_3mf
+from benchab.gcode.lecture import iter_lignes_gcode_3mf, plaques_gcode_archive
 from benchab.machine.configuration import charger as configuration_machine
 from benchab.qualite.ecritures import PublicationNeuve
 from benchab.qualite.empreintes import sha256_fichier
@@ -34,6 +35,7 @@ RACINE = atelier_prive()
 # L'atelier peut ouvrir localement la page autonome; ce module ne démarre aucun serveur.
 MAX_SUPPORT_CELLS = 50000
 MAX_SUPPORT_SAMPLES = 500000
+MAX_SUPPORT_GCODE_OCTETS = 128 * 1024 * 1024
 
 PORT_SERVEUR = int(configuration_machine()["visionneuse"]["port"])
 LIMITE_OCTETS = 40_000_000
@@ -311,9 +313,14 @@ class Visionneuse:
         return out
 
     def vue_impression(
-        self, placement, candidats, tranche=None, tranchage=None, plateau=(250.0, 250.0), allegement=0.3
+        self, placement, candidats, tranche=None, tranchage=None, plateau=(250.0, 250.0), allegement=0.3, *,
+        archive_tranche=None,
     ):
-        """Affiche les plaques, pièces posées, surplombs et aperçu des supports G-code."""
+        """Ajoute les plaques et pièces en mm ainsi que l'aperçu échantillonné des supports.
+
+        Un contexte 3MF fourni doit rester ouvert et correspondre exactement à `tranche`.
+        Les budgets sont conservés ; aucune modification de source ni validation physique.
+        """
 
         pl = placement if isinstance(placement, dict) else json.loads(Path(placement).read_text())
         C = Path(candidats)
@@ -389,18 +396,21 @@ class Visionneuse:
             )
             noms_plaque[o["plate"]].append(nom)
         if tranche and Path(tranche).exists():
-            with zipfile.ZipFile(tranche) as z:
+            contexte = Archive3MF(tranche) if archive_tranche is None else nullcontext(archive_tranche)
+            with contexte as archive:
+                # L'index et les lectures de plaques partagent le même contexte borné (#122).
+                archive.verifier_source(tranche)
+                membres = dict(plaques_gcode_archive(archive))
                 for k in plaques:
-                    nom_g = f"Metadata/plate_{k}.gcode"
-                    if nom_g not in z.namelist():
+                    nom_g = membres.get(k)
+                    if nom_g is None:
                         continue
                     parser = Interpreter()
                     cel, boites = set(), []
                     samples = 0
                     segments = 0
                     budget = False
-                    info = z.getinfo(nom_g)
-                    if info.file_size > 128 * 1024 * 1024:
+                    if archive.taille_membre(nom_g) > MAX_SUPPORT_GCODE_OCTETS:
                         self.source[f"supports_plaque_{k}"] = {
                             "statut": "INDISPONIBLE_BUDGET_GCODE",
                             "limite": "Pièce et plateau conservés ; aucune lecture des supports.",
@@ -409,7 +419,7 @@ class Visionneuse:
                             "INDISPONIBLE : G-code >128MiB ; pièce et plateau conservés."
                         )
                         continue
-                    for line in iter_lignes_gcode_3mf(tranche, nom_g):
+                    for line in iter_lignes_gcode_3mf(tranche, nom_g, archive=archive):
                         event = parser.feed_line(line)
                         if event and event["trajectory"] == "arc_g17_xy":
                             parser.error("aperçu des supports : arc analytique non échantillonné comme corde")

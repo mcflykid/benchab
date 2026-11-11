@@ -44,6 +44,7 @@ CONTROLES_DIRECTS = {
     "appuis-gcode": "appuis_gcode",
     "assemblage": "assemblage",
     "ecarts-profils-3mf": "ecarts_profils_3mf",
+    "plages-z": "couverture_plages_z",
 }
 
 
@@ -120,7 +121,13 @@ def parser():
     installation.add_argument("--profil", type=Path, action="append", default=[])
     installation.add_argument("--espace-minimum-mio", type=int, default=1024)
     installation.add_argument("--detail", action="store_true", help="Inclut les preuves et chemins privés dans stdout")
-    controle.add_parser("plan-reparation", help="Compare les vues privées et prépare un plan sans écriture")
+    plan_reparation = controle.add_parser(
+        "plan-reparation", help="Compare les vues privées et prépare un plan sans écriture"
+    )
+    plan_reparation.add_argument(
+        "--candidat-lien", action="append", default=[], metavar="CHEMIN",
+        help="Candidat privé relatif ; propose un lien uniquement si un SHA unique correspond au rendu SQLite",
+    )
     appliquer_vue = controle.add_parser(
         "appliquer-reparation-vue", help="Applique une seule vue privée depuis un plan explicite"
     )
@@ -963,7 +970,7 @@ def main(argv=None):
         from benchab.qualite.plan_reparation import planifier
 
         # Comme le diagnostic d'installation, ce plan reste hors Base() et hors mesure (#119).
-        rapport = planifier(atelier_prive(arguments.prive))
+        rapport = planifier(atelier_prive(arguments.prive), candidats=arguments.candidat_lien)
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
         return rapport["code"]
     if arguments.commande == "controle" and arguments.controle == "appliquer-reparation-vue":

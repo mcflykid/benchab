@@ -11,7 +11,7 @@ import json
 import re
 import stat
 from collections import OrderedDict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from threading import RLock
 
@@ -150,12 +150,23 @@ def lire_texte_gcode_3mf(
 
 
 @contextmanager
-def ouvrir_membre_3mf(chemin: str | Path, membre: str):
+def ouvrir_membre_3mf(chemin: str | Path, membre: str, *, archive: Archive3MF | None = None):
     """
     Ouvre un membre en flux, sans charger les gros G-code en mémoire ; cache concurrent protégé.
     Flux d’octets en sortie ; source inchangée, FAIL sur mutation pendant la lecture.
+    Un contexte fourni reste ouvert par l'appelant et doit correspondre à la source exacte.
     """
+    if archive is not None:
+        archive.verifier_source(chemin)
     empreinte_initiale = empreinte_3mf(chemin)
+
+    def verifier():
+        """Revalide la source avant de rendre les résultats, y compris sur un accès au cache."""
+        if archive is not None:
+            archive.verifier_source(chemin)
+        if empreinte_3mf(chemin) != empreinte_initiale:
+            raise ValueError("3MF modifié pendant la lecture du membre")
+
     donnees = _recuperer(_CACHE, (empreinte_initiale, membre))
     if donnees is not None:
         flux = io.BytesIO(donnees)
@@ -163,23 +174,24 @@ def ouvrir_membre_3mf(chemin: str | Path, membre: str):
             yield flux
         finally:
             flux.close()
-            if empreinte_3mf(chemin) != empreinte_initiale:
-                raise ValueError("3MF modifié pendant la lecture du membre")
+            verifier()
         return
     try:
-        with Archive3MF(chemin) as archive:
-            with archive.ouvrir_flux(membre) as flux:
+        with (Archive3MF(chemin) if archive is None else nullcontext(archive)) as contexte:
+            with contexte.ouvrir_flux(membre) as flux:
                 yield flux
     finally:
-        if empreinte_3mf(chemin) != empreinte_initiale:
-            raise ValueError("3MF modifié pendant la lecture du membre")
+        verifier()
 
 
-def iter_lignes_gcode_3mf(chemin: str | Path, membre: str, encodage: str = "utf-8"):
+def iter_lignes_gcode_3mf(
+    chemin: str | Path, membre: str, encodage: str = "utf-8", *, archive: Archive3MF | None = None,
+):
     """
-    Itère sur les lignes G-code, en conservant le mode flux pour les gros membres.
+    Itère sur les lignes G-code, en flux, avec le contexte existant si fourni.
+    Le cache par empreinte est conservé et aucun fichier n'est modifié.
     """
-    with ouvrir_membre_3mf(chemin, membre) as flux:
+    with ouvrir_membre_3mf(chemin, membre, archive=archive) as flux:
         with io.TextIOWrapper(flux, encoding=encodage, errors="replace") as texte:
             yield from texte
 

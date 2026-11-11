@@ -372,17 +372,17 @@ def _scene(racine, nom, ressources_partagees=False, tranche=None, placement=None
                         dest.write(chunk)
                 if digest.hexdigest() != tranche["sha256"]:
                     raise ValueError("Tranchage modifié")
+                from benchab.visualisation.visionneuse import MAX_SUPPORT_GCODE_OCTETS
+
                 with Archive3MF(copie, taille_max_totale=256 * 1024 * 1024) as archive:
-                    for membre in archive.noms():
-                        if (
-                            re.fullmatch(r"Metadata/plate_\d+\.gcode", membre)
-                            and archive.taille_membre(membre) > 128 * 1024 * 1024
-                        ):
+                    for _, membre in plaques_gcode_archive(archive):
+                        if archive.taille_membre(membre) > MAX_SUPPORT_GCODE_OCTETS:
                             raise ValueError("G-code volumineux")
-                source["tranche_sha256"] = tranche["sha256"]
-                v.vue_impression(
-                    placement, interne(p, "candidats"), copie, interne(p, "preuves/tranchage.json"), allegement=0.2
-                )
+                    source["tranche_sha256"] = tranche["sha256"]
+                    v.vue_impression(
+                        placement, interne(p, "candidats"), copie, interne(p, "preuves/tranchage.json"),
+                        allegement=0.2, archive_tranche=archive,
+                    )
         else:
             v.vue_impression(
                 placement, interne(p, "candidats"), None, interne(p, "preuves/tranchage.json"), allegement=0.2

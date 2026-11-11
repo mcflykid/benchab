@@ -10,6 +10,7 @@ Chaque méthode a une page de référence. Les guides renvoient aux règles comm
 | Examiner le modèle et le G-code | [Visionneuse](guides/visionneuse.md) |
 | Choisir une matière et apprendre d’un retour | [Matières et retours](guides/matieres-et-retours.md) |
 | Adapter une machine | [Autre imprimante](guides/autre-imprimante.md) |
+| Faire les premiers essais d’une machine ou d’une bobine | [Parcours d’essai](guides/premiers-essais.md) |
 | Trouver une commande | [Commandes](reference/commandes.md) |
 | Trancher sans modifier les réglages | [Fabrication](reference/fabrication.md) |
 | Comprendre les contrôles | [Contrôles](reference/controles.md) |

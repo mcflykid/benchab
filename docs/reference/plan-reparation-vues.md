@@ -20,7 +20,22 @@ rendu et les préconditions d'application. Un lien ou une structure ambiguë res
 indécidable renvoie `NON VÉRIFIÉ` et aucune action correspondante. Les fichiers
 sans source canonique ne sont pas proposés à la réparation.
 
+Pour un lien symbolique relatif cassé présent à la place d'une vue canonique,
+l'opérateur peut fournir un ou plusieurs chemins candidats explicitement relatifs à l'atelier
+privé avec `--candidat-lien`. Le plan lit seulement les fichiers réguliers sans
+lien, de 2 Mio au plus, et compare leur SHA au rendu SQLite. Un unique SHA exact
+produit `propositions_liens` avec `PROPOSER_LIEN_CANDIDAT_SHA_EXACT` ; aucune
+copie ou modification du lien n'est effectuée. Plusieurs candidats identiques,
+un candidat absent, lié, externe, trop grand ou divergent laissent le lien
+`LIEN_A_VERIFIER` et le plan `NON VÉRIFIÉ`. La preuve établit seulement
+l'identité des octets avec le rendu actuel : elle ne prouve pas l'historique,
+l'origine du fichier ni sa pertinence comme sauvegarde. Les fichiers manquants
+sans candidat exact, les liens encore fonctionnels, absolus, sortant du privé,
+avec parents liés ou d'autres formes restent NON VÉRIFIÉS.
+
 Exemple : `benchab controle plan-reparation --prive /chemin/atelier`.
+Un candidat d'identité vérifiable se déclare explicitement :
+`benchab controle plan-reparation --prive /chemin/atelier --candidat-lien vues-deplacees/INDEX.md`.
 Une seule vue canonique peut ensuite être appliquée explicitement depuis ce
 plan :
 

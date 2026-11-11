@@ -36,6 +36,7 @@ def test_cache_membre_concurrent_ne_compte_qu_une_fois_les_octets(tmp_path, monk
 def test_cache_analyse_concurrent_ne_compte_qu_une_fois_le_resultat(tmp_path):
     """Deux analyses simultanées rendent le même résultat avec une seule réservation en octets."""
     lecture.vider_cache_lecture()
+
     archive = tmp_path / "source.3mf"
     membre = "Metadata/plate_1.gcode"
     with ZipFile(archive, "w") as z:
@@ -53,6 +54,34 @@ def test_cache_analyse_concurrent_ne_compte_qu_une_fois_le_resultat(tmp_path):
         ))
     assert resultats == [{"lignes": 2}, {"lignes": 2}]
     assert lecture._ANALYSE_OCTETS == len(b'{"lignes":2}')
+    lecture.vider_cache_lecture()
+
+
+def test_flux_reutilise_le_contexte_3mf_sans_confondre_la_source(tmp_path, monkeypatch):
+    """Deux plaques partagent l'archive ouverte, y compris avec une entrée de cache disponible."""
+    import pytest
+
+    from benchab.archives_3mf import Archive3MF
+
+    f = tmp_path / "tranche.3mf"
+    autre = tmp_path / "autre.3mf"
+    p1, p2 = "Metadata/plate_1.gcode", "Metadata/plate_2.gcode"
+    for chemin in (f, autre):
+        with ZipFile(chemin, "w") as z:
+            z.writestr(p1, "G90\n")
+            z.writestr(p2, "M83\n")
+    lecture.vider_cache_lecture()
+    assert lecture.lire_membre_3mf(f, p1) == b"G90\n"
+
+    def reouverture_interdite(*args, **kwargs):
+        pytest.fail("le contexte 3MF ouvert doit être réutilisé")
+
+    with Archive3MF(f) as archive:
+        monkeypatch.setattr(lecture, "Archive3MF", reouverture_interdite)
+        assert list(lecture.iter_lignes_gcode_3mf(f, p1, archive=archive)) == ["G90\n"]
+        assert list(lecture.iter_lignes_gcode_3mf(f, p2, archive=archive)) == ["M83\n"]
+        with pytest.raises(ValueError, match="contexte 3MF"):
+            list(lecture.iter_lignes_gcode_3mf(autre, p1, archive=archive))
     lecture.vider_cache_lecture()
 
 
