@@ -165,3 +165,30 @@ def test_temoins_binaires_petit_et_multicolore_reouverts(tmp_path):
         racine = E.fromstring(archive.read("Metadata/model_settings.config"))
         outils = [m.get("value") for m in racine.findall("object/metadata[@key='extruder']")]
         assert outils == ["1", "2"]
+
+
+@pytest.mark.parametrize("membre", ["3D/3dmodel.model", "3D/Objects/pieces.model"])
+def test_ecrire_3mf_refuse_geometrie_modifiee_meme_avec_un_crc_valide(tmp_path, monkeypatch, membre):
+    """Une unité ou un sommet réécrit ne remplace pas la sortie précédente."""
+    import re
+
+    destination = tmp_path / "existant.3mf"
+    contenu = b"ancienne sortie conservee"
+    destination.write_bytes(contenu)
+
+    class ZipGeometrieModifiee(ZipFile):
+        def writestr(self, nom, donnees, *args, **kwargs):
+            if nom == membre:
+                if nom == "3D/3dmodel.model":
+                    altere = donnees.replace(b'unit="millimeter"', b'unit="inch"', 1)
+                else:
+                    altere = re.sub(rb'(<vertex x=")[^"]+', rb'\g<1>999', donnees, count=1)
+                assert altere != donnees
+                donnees = altere
+            return super().writestr(nom, donnees, *args, **kwargs)
+
+    monkeypatch.setattr(anycubic, "ZipFile", ZipGeometrieModifiee)
+    with pytest.raises(ValueError, match="Géométrie 3MF modifiée"):
+        anycubic.ecrire_3mf(_plaques(), {}, destination)
+    assert destination.read_bytes() == contenu
+    assert not list(tmp_path.glob(".existant.3mf.*.tmp"))

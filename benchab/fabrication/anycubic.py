@@ -26,7 +26,7 @@ import re
 import tempfile
 from pathlib import Path
 from xml.etree import ElementTree as E
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from benchab import integrite_3mf
 from benchab import reglages as schema_reglages
@@ -174,8 +174,9 @@ def ecrire_3mf(plaques, settings, out, cli=False, *, nommer_source=False, canoni
     """Écrit un 3MF multi-plaques et renvoie ``out`` ; coordonnées mm, réglages en unités natives.
 
     Lève ``ValueError``/``OSError`` au contrôle FAIL. Le remplacement est atomique ; les valeurs inconnues restent
-    intactes, les différences historiques de réglages sont déclarées dans les métadonnées, et aucun profil installé
-    ni géométrie d'entrée n'est modifié. ``cli=True`` sélectionne le pas de 300 mm.
+    intactes et les différences historiques de réglages sont déclarées dans les métadonnées. Les deux membres
+    géométriques sont relus contre leurs octets prévus. Aucun profil installé ni maillage d’entrée n’est modifié.
+    ``cli=True`` sélectionne le pas de 300 mm.
     ``canonique=True`` déclare la provenance du nouveau fichier nommé ``nom_source``
     et ses métadonnées de plaque. Si source_3mf est fournie, chaque différence exacte
     est planifiée avant sérialisation et vérifiée avant livraison ; rapport_integrite reçoit le détail.
@@ -383,6 +384,10 @@ def ecrire_3mf(plaques, settings, out, cli=False, *, nommer_source=False, canoni
     attendus_model = E.tostring(config, encoding="utf-8", xml_declaration=True)
     modele_3mf = E.tostring(root, encoding="utf-8", xml_declaration=True)
     geometrie_3mf = E.tostring(extroot, encoding="utf-8", xml_declaration=True)
+    attendus_geometrie = {
+        "3D/3dmodel.model": hashlib.sha256(modele_3mf).digest(),
+        "3D/Objects/pieces.model": hashlib.sha256(geometrie_3mf).digest(),
+    }
     contexte_validation = copy.deepcopy(contexte)
     sortie = Path(out)
     permis_source = None
@@ -444,15 +449,26 @@ def ecrire_3mf(plaques, settings, out, cli=False, *, nommer_source=False, canoni
                     'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
                     "</Relationships>",
                 )
-        with ZipFile(temporaire) as archive:
-            if archive.testzip() is not None:
-                raise ValueError("Archive 3MF temporaire corrompue.")
-            projet_relu = schema_reglages.decoder(
-                archive.read("Metadata/project_settings.config"), contexte=contexte_validation
-            )
-            modele_relu = archive.read("Metadata/model_settings.config")
-            if dict(projet_relu) != attendus_reglages or modele_relu != attendus_model:
-                raise ValueError("Réglages 3MF modifiés pendant la sérialisation ; publication refusée.")
+        projet_config, modele_config = "Metadata/project_settings.config", "Metadata/model_settings.config"
+        try:
+            with Archive3MF(temporaire, taille_max_xml=8 * 1024 * 1024) as archive:
+                projet_relu = schema_reglages.decoder(
+                    archive.lire(projet_config, limite_octets=archive.taille_max_xml),
+                    contexte=contexte_validation,
+                )
+                modele_relu = archive.lire(modele_config, limite_octets=archive.taille_max_xml)
+                if dict(projet_relu) != attendus_reglages or modele_relu != attendus_model:
+                    raise ValueError("Réglages 3MF modifiés pendant la sérialisation ; publication refusée.")
+                # Un CRC valide ne prouve pas que le maillage relu est le maillage déclaré (#200).
+                for membre, empreinte in attendus_geometrie.items():
+                    with archive.ouvrir_flux(membre) as flux:
+                        if hashlib.file_digest(flux, "sha256").digest() != empreinte:
+                            raise ValueError(f"Géométrie 3MF modifiée pendant la sérialisation : {membre}")
+                relus = {projet_config, modele_config, *attendus_geometrie}
+                archive.verifier(membres=[membre for membre in archive.noms() if membre not in relus])
+                archive.verifier_source(temporaire)
+        except BadZipFile as erreur:
+            raise ValueError(f"Archive 3MF temporaire corrompue : {erreur}") from erreur
         # Le différentiel vérifie l'absence de clés ambiguës dans projet, objets, parties et plaques.
         instantane = integrite_3mf.instantane(temporaire)
         if not instantane:
