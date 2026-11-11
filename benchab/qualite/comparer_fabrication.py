@@ -22,11 +22,14 @@ import zipfile
 from pathlib import Path
 
 from benchab import reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.qualite.ecritures import PublicationNeuve, sortie_privee, valider_chemins
+from benchab.qualite.empreintes import sha256_fichier
 
 GEO = {".stl", ".step", ".stp", ".glb", ".obj"}
 GEO_NOMS = {"assemblage.json", "cao-nominale.json"}
 FAB_NOMS = {"placement.json", "plaques-noms.json"}
+MAX_DETAILS_MEMBRE_OCTETS = 64 * 1024 * 1024
 DATE = re.compile(
     r"\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?"
     r"|\d{2}/\d{2}/\d{4}( \d{2}:\d{2})?"
@@ -65,16 +68,56 @@ def cles(b, *, reglages_slicer=False):
         return None
 
 
+def _empreinte_membre(archive, nom):
+    """Calcule le SHA d’un membre lu en flux jusqu’au CRC, sans le charger en mémoire."""
+    with archive.ouvrir_flux(nom) as flux:
+        return hashlib.file_digest(flux, "sha256").hexdigest()
+
+
+def _verifier_archive(path):
+    """Relit une archive non comparée par paire : index, CRC et source stable."""
+    with Archive3MF(path) as archive:
+        if not archive.noms():
+            raise ValueError("3MF vide : " + str(path))
+        archive.verifier()
+        archive.verifier_source(path)
+
+
 def comparer_3mf(a, b):
-    """Compare deux ZIP 3MF sans unité ; renvoie écarts/doc, sans transformer les réglages ni valider l'impression."""
-    with zipfile.ZipFile(a) as za, zipfile.ZipFile(b) as zb:
-        na, nb = set(za.namelist()), set(zb.namelist())
+    """Compare deux 3MF : écarts de fabrication/documentaires, budgets en octets et CRC complets.
+
+    Au-delà du budget de détail, des empreintes différentes restent un écart
+    même si le contenu n’est pas interprété. Aucune archive ni aucun réglage
+    n’est modifié ; la comparaison n’est pas une validation d’impression.
+    """
+    with Archive3MF(a) as za, Archive3MF(b) as zb:
+        na, nb = set(za.noms()), set(zb.noms())
+        if not na or not nb:
+            raise ValueError("3MF vide : aucune comparaison de fabrication.")
+        # Les membres présents d’un seul côté restent soumis au CRC.
+        za.verifier(membres=sorted(na - nb))
+        zb.verifier(membres=sorted(nb - na))
         ecarts = [{"membre": m, "ecart": "absent de la reconstruction"} for m in sorted(na - nb)] + [
             {"membre": m, "ecart": "en trop dans la reconstruction"} for m in sorted(nb - na)
         ]
         doc = []
         for m in sorted(na & nb):
-            x, y = za.read(m), zb.read(m)
+            tailles = [za.taille_membre(m), zb.taille_membre(m)]
+            if max(tailles) > MAX_DETAILS_MEMBRE_OCTETS:
+                sha_a, sha_b = _empreinte_membre(za, m), _empreinte_membre(zb, m)
+                if sha_a == sha_b:
+                    continue
+                if m.lower().endswith(".png"):
+                    doc.append({"membre": m, "ecart": "vignette différente"})
+                else:
+                    ecarts.append({
+                        "membre": m, "ecart": "contenu différent (à expliquer)", "detail": "NON VÉRIFIÉ",
+                        "tailles": tailles, "sha256_attendu": sha_a, "sha256_obtenu": sha_b,
+                    })
+                continue
+            x, y = za.lire(m, limite_octets=MAX_DETAILS_MEMBRE_OCTETS), zb.lire(
+                m, limite_octets=MAX_DETAILS_MEMBRE_OCTETS
+            )
             if x == y:
                 continue
             if m.lower().endswith(".png"):
@@ -129,6 +172,8 @@ def comparer_3mf(a, b):
                         "tailles": [len(x), len(y)],
                     }
                 )
+        za.verifier_source(a)
+        zb.verifier_source(b)
     return ecarts, doc
 
 
@@ -137,6 +182,12 @@ def normaliser(t):
 
 
 def comparer(attendu, obtenu, sortie, *, prive=None):
+    """Compare deux dossiers et publie un rapport privé neuf sans modifier les entrées.
+
+    Les verdicts PASS/FAIL ou À ANALYSER distinguent géométrie, fabrication,
+    identité binaire et documentation. Les détails d’archives sont bornés en
+    octets ; aucune différence n’autorise de validation physique.
+    """
     attendu, obtenu, sortie = Path(attendu), Path(obtenu), Path(sortie)
     sortie = sortie_privee(sortie, prive=prive)
     valider_chemins([attendu, obtenu], [sortie])
@@ -156,13 +207,16 @@ def comparer(attendu, obtenu, sortie, *, prive=None):
     fo = {str(p.relative_to(obtenu)): p for p in obtenu.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
     if not fa or not fo:
         raise ValueError("Dossiers comparés vides : aucune preuve de reconstruction.")
-    initial = {p: h(p.read_bytes()) for p in [*fa.values(), *fo.values()]}
+    initial = {p: sha256_fichier(p) for p in [*fa.values(), *fo.values()]}
+    communs = set(fa) & set(fo)
+    paires_3mf = {
+        p for r in communs if fa[r].suffix.lower() == ".3mf" and initial[fa[r]] != initial[fo[r]]
+        for p in (fa[r], fo[r])
+    }
     for p in initial:
-        if p.suffix.lower() == ".3mf":
+        if p.suffix.lower() == ".3mf" and p not in paires_3mf:
             try:
-                with zipfile.ZipFile(p) as z:
-                    if not z.namelist() or len(set(z.namelist())) != len(z.namelist()) or z.testzip() is not None:
-                        raise ValueError("3MF vide, corrompu ou membres dupliqués : " + str(p))
+                _verifier_archive(p)
             except zipfile.BadZipFile as exc:
                 raise ValueError("3MF vide ou corrompu : " + str(p)) from exc
     res = {
@@ -174,16 +228,22 @@ def comparer(attendu, obtenu, sortie, *, prive=None):
         res[categorie(r)]["absents"].append(r)
     for r in sorted(set(fo) - set(fa)):
         res[categorie(r)]["en_trop"].append(r)
-    for r in sorted(set(fa) & set(fo)):
+    for r in sorted(communs):
         c = categorie(r)
-        x, y = fa[r].read_bytes(), fo[r].read_bytes()
-        if x == y:
+        suffixe = fa[r].suffix.lower()
+        sha_a, sha_b = initial[fa[r]], initial[fo[r]]
+        if sha_a == sha_b:
             res[c]["identiques"] += 1
             continue
+        if c != "geometrie" and suffixe != ".3mf":
+            x, y = fa[r].read_bytes(), fo[r].read_bytes()
         if c == "geometrie":
-            res[c]["ecarts"].append({"fichier": r, "attendu": h(x), "obtenu": h(y)})
-        elif r.endswith(".3mf"):
-            e, d = comparer_3mf(fa[r], fo[r])
+            res[c]["ecarts"].append({"fichier": r, "attendu": sha_a, "obtenu": sha_b})
+        elif suffixe == ".3mf":
+            try:
+                e, d = comparer_3mf(fa[r], fo[r])
+            except zipfile.BadZipFile as exc:
+                raise ValueError("3MF vide ou corrompu : " + r) from exc
             if e:
                 res["fabrication"]["ecarts"].append({"fichier": r, "membres": e})
             else:
@@ -191,14 +251,14 @@ def comparer(attendu, obtenu, sortie, *, prive=None):
                 res["identite_binaire"]["differents_contenu_identique"].append(
                     {
                         "fichier": r,
-                        "attendu": h(x),
-                        "obtenu": h(y),
+                        "attendu": sha_a,
+                        "obtenu": sha_b,
                         "nature": "membres identiques, conteneur ZIP différent",
                     }
                 )
             if d:
                 res["documentaire"]["ecarts"].append({"fichier": r, "membres": d, "nature": "vignettes du 3MF"})
-        elif r.endswith(".gcode"):
+        elif suffixe == ".gcode":
             ca, cb = commandes(x), commandes(y)
             if ca == cb:
                 res[c]["ecarts"].append(
@@ -275,7 +335,7 @@ def comparer(attendu, obtenu, sortie, *, prive=None):
         temp = publication.temporaire(sortie)
         temp.write_text(json.dumps(res, indent=1, ensure_ascii=False, allow_nan=False), encoding="utf-8")
         json.loads(temp.read_text(encoding="utf-8"))
-        if any(h(p.read_bytes()) != empreinte for p, empreinte in initial.items()):
+        if any(sha256_fichier(p) != empreinte for p, empreinte in initial.items()):
             raise ValueError("Une entrée a changé pendant la comparaison.")
         publication.publier()
     print(

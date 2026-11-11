@@ -44,9 +44,10 @@ class Delais(unittest.TestCase):
         self.assertIn("erreur", r.stderr)
 
     def test_vrai_processus_borne(self):
-        r = Q.executer_borne([sys.executable, "-c", 'import time;print("trace",flush=True);time.sleep(5)'], delai=0.1)
+        """Vérifie l’arrêt du processus même si Python n’a pas fini de démarrer."""
+        r = Q.executer_borne([sys.executable, "-c", "import time; time.sleep(5)"], delai=0.1)
         self.assertEqual(r.returncode, 124)
-        self.assertIn("trace", r.stdout)
+        self.assertIn("Délai du contrôle dépassé", r.stderr)
 
     def test_delais_invalides(self):
         for value in (0, -1, float("nan"), float("inf")):
