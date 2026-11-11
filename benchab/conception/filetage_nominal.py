@@ -1,4 +1,4 @@
-"""Maillage d’un profil hélicoïdal nominal à cotes déclarées, hors norme ISO."""
+"""Maillage de filetages nominaux sur mesure ou à profil métrique ISO."""
 
 import argparse
 import hashlib
@@ -26,26 +26,41 @@ def _cote(valeur, nom, minimum, maximum):
     return float(valeur)
 
 
+def _recul_metrique_iso(distance_phase, pas, hauteur, rayon_fond):
+    """Calcule le recul radial (mm) du profil plat ou à fond circulaire."""
+    distance = pas * distance_phase
+    # ISO 68-1 : crête P/8 et flancs à 60°, voir la référence fixations.
+    recul = np.maximum(0.0, distance - pas / 16) * math.sqrt(3)
+    if rayon_fond is None:
+        return np.minimum(recul, hauteur)
+    # Le cercle rejoint le flanc à P/8 de l’axe du fond, avec la même tangente.
+    au_fond = np.minimum(pas / 2 - distance, pas / 8)
+    cercle = hauteur - rayon_fond + np.sqrt(rayon_fond**2 - au_fond**2)
+    return np.where(distance <= 3 * pas / 8, recul, cercle)
+
+
 def generer(
     *,
     diametre_mm,
     longueur_mm,
     pas_mm,
-    profondeur_radiale_mm,
     source_cotes,
+    profondeur_radiale_mm=None,
     sens="droite",
     role="exterieur",
     jeu_radial_mm=None,
     meplat_crete_mm=None,
     meplat_fond_mm=None,
+    profil_metrique_iso=False,
 ):
     """Génère un filetage nominal ou son outil intérieur à soustraire.
 
     Diamètre de crête, longueur, pas par tour, profondeur radiale et jeu
     sont en mm. Deux largeurs de méplats en coupe axiale peuvent être
-    déclarées ensemble ; sinon le profil reste triangulaire. L’angle de
-    flancs nominal est en degrés. La source des cotes est déclarée ;
-    aucun choix ni conformité ISO n’est déduit. Le maillage est fermé sur Z = 0 et Z = longueur. Pour l’outil
+    déclarées ensemble. Le profil métrique ISO dérive les cotes de forme
+    du diamètre et du pas déclarés, sans classe de tolérance. L’angle de
+    flancs nominal est en degrés. La source des cotes est déclarée.
+    Le maillage est fermé sur Z = 0 et Z = longueur. Pour l’outil
     intérieur, un jeu radial doit être donné et augmente tous les rayons
     nominaux de la même valeur. PASS signifie seulement volume numérique
     fermé ; l’ajustement et la tenue réels restent NON VÉRIFIÉS. Aucune écriture.
@@ -53,7 +68,23 @@ def generer(
     diametre = _cote(diametre_mm, "Diamètre de crête", 0.2, 250)
     longueur = _cote(longueur_mm, "Longueur", 0.1, 500)
     pas = _cote(pas_mm, "Pas", 0.1, 50)
-    profondeur = _cote(profondeur_radiale_mm, "profondeur radiale", 0.01, 125)
+    if type(profil_metrique_iso) is not bool:
+        raise ValueError("Le profil métrique ISO doit être explicitement activé ou désactivé")
+    if role not in ("exterieur", "outil-interieur"):
+        raise ValueError("Rôle exterieur ou outil-interieur requis")
+    rayon_fond = None
+    if profil_metrique_iso:
+        if any(cote is not None for cote in (profondeur_radiale_mm, meplat_crete_mm, meplat_fond_mm)):
+            raise ValueError("Le profil métrique ISO fixe la profondeur et les méplats")
+        # ISO 724 sépare le diamètre mineur D1 intérieur de d3 extérieur.
+        hauteur_triangle = math.sqrt(3) * pas / 2
+        if role == "exterieur":
+            profondeur = 17 * hauteur_triangle / 24
+            rayon_fond = hauteur_triangle / 6
+        else:
+            profondeur = 5 * hauteur_triangle / 8
+    else:
+        profondeur = _cote(profondeur_radiale_mm, "profondeur radiale", 0.01, 125)
     if diametre / 2 - profondeur < 0.05:
         raise ValueError("La profondeur radiale doit conserver un rayon de fond d’au moins 0,05 mm")
     if (
@@ -65,8 +96,6 @@ def generer(
         raise ValueError("Une source des cotes explicite sur une ligne de 240 caractères au plus est requise")
     if sens not in ("droite", "gauche"):
         raise ValueError("Sens droite ou gauche requis")
-    if role not in ("exterieur", "outil-interieur"):
-        raise ValueError("Rôle exterieur ou outil-interieur requis")
     if role == "outil-interieur":
         jeu = _cote(jeu_radial_mm, "Le jeu radial", 0, 2)
     else:
@@ -95,7 +124,9 @@ def generer(
     phase = np.mod(z[:, None] / pas - theta[None, :] / math.tau, 1.0)
     rayon_crete = diametre / 2 + jeu
     distance_phase = np.minimum(phase, 1.0 - phase)
-    if profil_tronque:
+    if profil_metrique_iso:
+        rayon = rayon_crete - _recul_metrique_iso(distance_phase, pas, profondeur, rayon_fond)
+    elif profil_tronque:
         recul = np.clip((pas * distance_phase - crete / 2) / flanc, 0.0, 1.0)
         rayon = rayon_crete - profondeur * recul
     else:
@@ -151,14 +182,28 @@ def generer(
             projection_axiale_flanc_mm=flanc,
             angle_flancs_deg=math.degrees(2 * math.atan2(flanc, profondeur)),
         )
+    if profil_metrique_iso:
+        rapport.update(
+            profil="métrique ISO nominal à fond extérieur circulaire" if rayon_fond is not None
+            else "métrique ISO nominal intérieur à plateaux",
+            references_profil=["ISO 68-1:2023", "ISO 724:2023"],
+            diametre_sur_flancs_nominal_mm=diametre - 3 * hauteur_triangle / 4,
+            diametre_mineur_nominal_mm=diametre - 2 * profondeur,
+            rayon_fond_exterieur_mm=rayon_fond,
+            angle_flancs_deg=60.0,
+            jeu_radial_statut="DÉCLARÉ" if role == "outil-interieur" else None,
+            limite="Surface échantillonnée à bouts plats, sans classe de tolérance ni ajustement mesuré.",
+        )
     return maillage, rapport
 
 
 def main(argv=None, *, prive=None):
     """Publie STL et rapport numérique dans un dossier neuf ; codes 0 ou 2, aucun tranchage."""
     parser = argparse.ArgumentParser(description="Génère un filetage nominal à cotes déclarées.")
-    for nom in ("diametre-mm", "longueur-mm", "pas-mm", "profondeur-radiale-mm"):
+    for nom in ("diametre-mm", "longueur-mm", "pas-mm"):
         parser.add_argument("--" + nom, type=float, required=True)
+    parser.add_argument("--profondeur-radiale-mm", type=float, help="Profondeur du profil sur mesure")
+    parser.add_argument("--profil-metrique-iso", action="store_true", help="Profil nominal ISO 68-1 et ISO 724")
     parser.add_argument("--source-cotes", required=True)
     parser.add_argument("--sens", choices=("droite", "gauche"), default="droite")
     parser.add_argument("--role", choices=("exterieur", "outil-interieur"), default="exterieur")
@@ -167,6 +212,8 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--meplat-fond-mm", type=float, help="Largeur axiale de fond, avec méplat de crête")
     parser.add_argument("--sortie", required=True, type=Path, help="Dossier privé neuf")
     args = vars(parser.parse_args(argv))
+    if args["profondeur_radiale_mm"] is None and not args["profil_metrique_iso"]:
+        parser.error("--profondeur-radiale-mm requise pour le profil sur mesure")
     try:
         cible = destination_neuve(args.pop("sortie"), prive=prive, temporaire=False)
         maillage, rapport = generer(**args)

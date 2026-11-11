@@ -166,3 +166,56 @@ def test_meplats_incomplets_ou_flanc_insuffisant_refuses(cotes):
 
     with pytest.raises(ValueError, match="méplat|flanc"):
         generer(**_cotes(**cotes))
+
+
+def test_profil_iso_m6_distingue_fond_arrondi_et_cretes_interieures():
+    """Vérifie les diamètres nominaux ISO 724:2023 et les coupes de l’outil."""
+    from benchab.conception.filetage_nominal import generer
+
+    cotes = dict(diametre_mm=6, longueur_mm=4, pas_mm=1,
+                 source_cotes="Témoin M6 × 1", profil_metrique_iso=True)
+    vis, rv = generer(**cotes)
+    outil, ro = generer(**cotes, role="outil-interieur", jeu_radial_mm=0.1)
+    assert vis.is_volume and outil.is_volume
+    assert rv["diametre_sur_flancs_nominal_mm"] == pytest.approx(5.350481, abs=1e-6)
+    assert rv["diametre_mineur_nominal_mm"] == pytest.approx(4.773131, abs=1e-6)
+    assert ro["diametre_mineur_nominal_mm"] == pytest.approx(4.917468, abs=1e-6)
+    assert ro["ajustement_reel"] == "NON VÉRIFIÉ"
+
+    # Coupe dans l’axe : le cercle de raccord est sous le plateau du profil intérieur.
+    def rayons(mesh):
+        sommets = mesh.vertices[:-2]
+        return {round(z, 6): x for x, _y, z in sommets if x > 0 and abs(_y) < 1e-9}
+
+    v, o = rayons(vis), rayons(outil)
+    assert v[0] == pytest.approx(3)
+    assert v[0.25] == pytest.approx(5.350481 / 2, abs=1e-6)
+    assert v[0.375] == pytest.approx(4.917468 / 2, abs=1e-6)
+    assert v[0.5] == pytest.approx(4.773131 / 2, abs=1e-6)
+    assert v[0.375] > v[0.4375] > v[0.5]
+    assert o[0.375] == pytest.approx(o[0.5])
+    assert o[0.5] == pytest.approx(4.917468 / 2 + 0.1, abs=1e-6)
+    bloc = trimesh.creation.box((12, 12, 4)).apply_translation((0, 0, 2))
+    piece = trimesh.boolean.difference([bloc, outil], engine="manifold")
+    assert piece.is_volume
+    assert trimesh.boolean.intersection([piece, vis], engine="manifold").is_empty
+
+
+def test_cli_filetage_iso_pas_fin_et_refus_de_cotes_concurrentes(tmp_path):
+    """Le chemin CLI distingue les cotes ISO d’une déclaration sur mesure."""
+    import json
+
+    from benchab.conception.filetage_nominal import main
+
+    options = ["--profil-metrique-iso", "--diametre-mm", "8", "--pas-mm", "1",
+               "--longueur-mm", "4", "--sens", "gauche", "--source-cotes", "Témoin M8 × 1"]
+    sortie = tmp_path / "iso"
+    assert main([*options, "--sortie", str(sortie)], prive=tmp_path) == 0
+    rapport = json.loads((sortie / "rapport.json").read_bytes())
+    assert rapport["sens"] == "gauche"
+    assert rapport["diametre_mineur_nominal_mm"] == pytest.approx(6.773131, abs=1e-6)
+    assert trimesh.load_mesh(sortie / "filetage.stl").is_volume
+    invalide = tmp_path / "invalide"
+    assert main([*options, "--profondeur-radiale-mm", "0.6",
+                 "--sortie", str(invalide)], prive=tmp_path) == 2
+    assert not invalide.exists()
