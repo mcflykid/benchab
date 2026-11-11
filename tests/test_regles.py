@@ -102,3 +102,29 @@ def test_main_refuse_un_rapport_etranger_avec_un_diagnostic(tmp_path, capsys):
     assert "Destination existante non reconnue" in sortie.err
     assert sortie.out == ""
     assert cible.read_bytes() == original
+
+
+def test_resume_public_conserve_erreurs_et_refuse_reutilisation(tmp_path, capsys, atelier_initialise):
+    """Le résumé U22 renvoie au diagnostic complet et conserve la première preuve."""
+    from benchab.cli import main as cli
+
+    source = _archive(tmp_path / "source.3mf", names=["Piece", "Piece"])
+    prive = atelier_initialise
+    cible = prive / "rapport neuf.json"
+    arguments = ["--prive", str(prive), "controle", "regles", str(source), "--resume"]
+    assert cli(arguments) == 2
+    assert "--resume exige --sortie" in capsys.readouterr().err
+    arguments += ["--sortie", str(cible)]
+    assert cli(arguments) == 2
+    resume = json.loads(capsys.readouterr().out)
+    octets = cible.read_bytes()
+    rapport = json.loads(octets)
+    assert resume["statut"] == rapport["statut"] == "FAIL"
+    assert resume["code"] == rapport["code"] == 2
+    assert resume["rapport"] == str(cible)
+    assert {"controle": "U22", "statut": "FAIL"} in resume["resultats"]
+    erreur = next(r for r in rapport["resultats"] if r["controle"] == "U22")["erreurs"]
+    assert any("dupliqué" in e for e in erreur)
+    assert cli(arguments) == 2
+    assert "Sortie existante" in capsys.readouterr().err
+    assert cible.read_bytes() == octets

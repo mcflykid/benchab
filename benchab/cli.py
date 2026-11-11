@@ -308,9 +308,11 @@ def parser():
     regles = controle.add_parser("regles")
     regles.add_argument("source", type=Path)
     regles.add_argument("--sortie", type=Path)
+    regles.add_argument("--resume", action="store_true", help="Affichage court ; exige un rapport neuf")
     opportunite = controle.add_parser("opportunite-decoupe")
     opportunite.add_argument("source", type=Path)
     opportunite.add_argument("--sortie", type=Path)
+    opportunite.add_argument("--resume", action="store_true", help="Affichage court ; exige un rapport neuf")
     envoi = controle.add_parser("envoi")
     envoi.add_argument("fichier", type=Path)
     envoi.add_argument("--declaration", type=Path)
@@ -558,6 +560,8 @@ def executer(arguments, base):
             directs = [str(source)]
             if arguments.sortie:
                 directs.extend(["--sortie", str(arguments.sortie)])
+            if arguments.resume:
+                directs.append("--resume")
             return module.main(directs, base=base)
         if arguments.controle in CONTROLES_DIRECTS:
             module = importlib.import_module("benchab.controles." + CONTROLES_DIRECTS[arguments.controle])

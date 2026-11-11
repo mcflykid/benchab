@@ -22,6 +22,12 @@ Le contrôle `benchab controle opportunite-decoupe` consomme un manifeste privé
 
 La grille complète U01–U68, son sort, sa destination et sa justification sont conservés dans le registre privé de reprise. Les règles et faits personnels sont gardés dans `prive/config/regles-personnelles.json`.
 
+Avec `--resume --sortie RAPPORT.json`, les deux commandes écrivent le
+rapport complet dans un JSON privé neuf avant d’afficher le verdict,
+le code et le chemin. Le résumé des règles liste les statuts par règle.
+Celui de l’opportunité de découpe compte les déclencheurs et les éléments
+manquants. Les diagnostics exacts et les références restent dans le JSON.
+
 U20 lit les éléments XML des modèles et les liaisons de plaque, quel que soit
 l’ordre des attributs. Un `transform` absent représente l’identité. Un XML
 illisible laisse U20 NON VÉRIFIÉ avec le motif de lecture.
