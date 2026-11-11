@@ -7,6 +7,10 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - G-code : mesure analytique des arcs G17 dans les régions de remplissage, avec reprise d’extrusion et repère G92 (suite de #123).
 - Densité : verdict numérique d’effet isolé par comparaison région/témoin hors zone (suite de #82).
 - Finition : le débit d’un arc peut donner FAIL même si sa couverture géométrique reste NON VÉRIFIÉE (#133).
+- Visionneuse locale : gabarit HTML et scripts Cloud/G-code extraits en ressources empaquetées, sans changer les actions ni le rendu autonome hors ligne (#67).
+- Visionneuse : lecture JSON commune et bornée sur les quatre routes POST locales (#66).
+- Aperçu G-code : le titre garde les marqueurs littéraux sans retraiter les données (#136).
+- Installation : voie OpenSkills facultative testée dans un projet jetable (#33).
 
 ## 1.3.0 — 2026-11-11
 

@@ -38,6 +38,33 @@ doit être retiré. Le plan vérifie les collisions et refuse toute modification
 destinations intervenue entre planification et application. Cette commande ne
 modifie pas l’installation Python : celle-ci reste `uv sync --locked`.
 
+## Installation facultative avec OpenSkills
+
+Le fichier `SKILL.md` à la racine suit le format Agent Skills (`name` et
+`description`). OpenSkills peut en installer une copie dans l’espace du projet
+de l’agent, à côté du lien existant. Depuis la racine du projet où le skill doit
+être découvert :
+
+```sh
+DEPOT_BENCHAB="$(git -C /chemin/vers/le/checkout-BENCHAB remote get-url origin)"
+npx --yes --package=openskills@1.5.0 openskills install "$DEPOT_BENCHAB" --universal -y
+npx --yes --package=openskills@1.5.0 openskills list
+npx --yes --package=openskills@1.5.0 openskills read benchab
+```
+
+Cette option requiert Node.js 20.6 ou ultérieur et un accès réseau au dépôt ;
+OpenSkills est lancé par `npx`, sans installation globale. La variable reprend
+l’URL `origin` du checkout ; elle ne transmet aucun chemin local `prive/` ni
+`BENCHAB_PRIVE`. `--universal` place la copie dans `.agent/skills/benchab`. Le
+lien BENCHAB géré par `benchab skill` reste indépendant et suit directement le
+checkout local. Pour actualiser une copie OpenSkills installée depuis GitHub,
+exécuter `npx --yes --package=openskills@1.5.0 openskills update benchab`.
+Cette voie ne remplace pas `uv sync --locked` et n’installe pas les dépendances
+Python.
+
+Voir le [format Agent Skills](https://agentskills.io/specification) et le
+[guide officiel OpenSkills](https://github.com/numman-ali/openskills).
+
 `init` crée `prive/` et la base sans remplacer un atelier existant. Pour un atelier
 séparé : `uv run benchab --prive /tmp/benchab-essai/prive init`.
 Le chemin se place avant la commande, ou dans `BENCHAB_PRIVE`.

@@ -10,10 +10,12 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from benchab.visualisation import apercu_gcode as A
+
 ICI = Path(__file__).resolve().parent
 VISU = ICI.parent / "benchab/visualisation"
 GABARIT = (VISU / "gabarit.html").read_text()
-APERCU = (VISU / "apercu_gcode.html").read_text()
+APERCU = A.GABARIT
 
 
 def fonction(src, nom):
@@ -218,7 +220,7 @@ class Gabarit(unittest.TestCase):
 
     def test_densite_de_pixels_plafonnee(self):
         self.assertIn("setPixelRatio(Math.min(devicePixelRatio, 2))", GABARIT)
-        self.assertIn("setPixelRatio(Math.min(devicePixelRatio,2))", APERCU)
+        self.assertRegex(APERCU, r"setPixelRatio\s*\(\s*Math\.min\s*\(\s*devicePixelRatio\s*,\s*2\s*\)\s*\)")
 
 
 if __name__ == "__main__":

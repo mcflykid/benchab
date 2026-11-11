@@ -1,0 +1,32 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aperçu G-code</title><style>
+:root{--fond:#14161c;--panneau:#1e2129;--texte:#e8e8ea;--doux:#9aa0aa;--accent:#ffb347;--bord:#2e323c}
+body{margin:0;background:var(--fond);color:var(--texte);font:14px/1.4 -apple-system,Segoe UI,sans-serif;display:flex;height:100vh;overflow:hidden}
+#vue{flex:1;position:relative}canvas{width:100%;height:100%;display:block;cursor:crosshair}
+#cote{width:290px;background:var(--panneau);border-left:1px solid var(--bord);padding:12px;overflow:auto;box-sizing:border-box}
+h1{font-size:15px;margin:0 0 4px}small,.doux{color:var(--doux)}label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.pastille{width:12px;height:12px;border-radius:3px;display:inline-block}input[type=range]{width:100%}
+button,select{background:#2a2e38;color:var(--texte);border:1px solid var(--bord);border-radius:6px;padding:4px 8px;cursor:pointer}
+#info{position:absolute;left:10px;top:10px;background:#000a;padding:6px 10px;border-radius:6px;pointer-events:none}
+#clic{margin-top:8px;padding:8px;background:#2a2e38;border-radius:6px;display:none}.def{color:#ff6b6b;cursor:pointer}
+#vue3d{flex:1;position:relative;display:none}#vue3d canvas{cursor:grab}.al{color:#ffb347;cursor:pointer}.onglets button.actif{background:var(--accent);color:#000}
+@media(max-width:700px){body{flex-direction:column}#cote{width:100%;height:45vh}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script></head><body><div id="vue"><canvas id="c"></canvas><div id="info"></div></div><div id="vue3d"><div id="info3d" style="position:absolute;left:10px;top:10px;background:#000a;padding:6px 10px;border-radius:6px;pointer-events:none"></div></div><div id="cote">
+<h1>__TITRE__</h1><small>Aperçu du fichier tranché, couche par couche. Temps par couche : estimation grossière (sans accélérations).</small>
+<p class="onglets"><button id="o2d" class="actif">Dessus (couche)</button> <button id="o3d">3D</button></p>
+<p><select id="plaque"></select> <button id="recadrer">Recadrer</button></p>
+<div id="ctl3d" style="display:none"><p class="doux">3D : couches affichées jusqu'à la couche courante (curseur ci-dessous) à partir de :</p>
+<input type="range" id="bas" min="0" value="0"><small id="basz"></small>
+<p><label><input type="checkbox" id="rubans" checked> rubans en volume (<input id="nrub" type="number" value="15" min="1" max="200" style="width:48px"> dernières couches)</label>
+<label><input type="checkbox" id="trajets" checked> déplacements à vide (rouge : ≥ 40 mm et relevés &lt; 1 mm)</label>
+<label><input type="checkbox" id="voiral" checked> alertes des contrôles</label>
+<label>couleur <select id="mode"><option value="type">par type</option><option value="vitesse">par vitesse</option></select></label></p>
+<div id="legv" class="doux"></div><div id="als"></div></div>
+<p>Couche <b id="num"></b> — Z <b id="z"></b> mm<br><input type="range" id="couche" min="0" value="0"><br>
+<button id="moins">◀</button> <button id="plus">▶</button> <small>(flèches du clavier)</small></p>
+<label><input type="checkbox" id="prec" checked> couche précédente en grisé</label>
+<p class="doux">Types (cliquer pour masquer)</p><div id="types"></div>
+<div id="defs"></div><div id="clic"></div></div>
+<script>__SCRIPT_2D__</script>
+<script type="module">__SCRIPT_3D__</script></body></html>

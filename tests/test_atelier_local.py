@@ -96,6 +96,40 @@ class Atelier(unittest.TestCase):
         self.assertNotIn("localStorage", body)
         self.assertNotIn("sessionStorage", body)
 
+    def test_cloud_statut_dynamique_reste_echappe_dans_le_gabarit(self):
+        """Le statut issu de l’état local ne peut injecter du HTML dans la ressource."""
+        from benchab.machine import cloud_lecture as C
+
+        with patch.object(C, "etat", return_value={"compte_autonome": {"statut": '<script>alert("x")</script>'}}):
+            body = page(self.root, {"vue": "cloud"}).decode()
+        self.assertIn("Première configuration du compte requise sur ce Mac.", body)
+        self.assertNotIn('<p id="cloud-account-status"><script>', body)
+
+    def test_gabarits_cloud_et_apercu_sont_des_ressources_statiques(self):
+        """Les pages gardent leurs actions en ressources de paquet, sans casser leurs identifiants."""
+        from importlib.resources import files
+
+        dossier = files("benchab.visualisation")
+        cloud_html = dossier.joinpath("ressources/cloud.html").read_text()
+        cloud_js = dossier.joinpath("ressources/cloud.js").read_text()
+        apercu_html = dossier.joinpath("ressources/apercu-gcode.html").read_text()
+        page_cloud = page(self.root, {"vue": "cloud"}).decode()
+        for action in (
+            'id="cloud-account-button"',
+            'id="cloud-session-button"',
+            'id="cloud-form"',
+            'id="cloud-token"',
+            'id="cloud-machine"',
+            'id="cloud-resultat"',
+        ):
+            self.assertIn(action, cloud_html)
+            self.assertIn(action, page_cloud)
+        for route in ('fetch("/__cloud_lecture"', 'demande.compte=true', 'demande.session_slicer=true'):
+            self.assertIn(route, cloud_js)
+        self.assertIn('fetch("/__cloud_lecture"', page_cloud)
+        self.assertIn("__SCRIPT_2D__", apercu_html)
+        self.assertIn("__SCRIPT_3D__", apercu_html)
+
     def test_cloud_compte_prioritaire_sans_motdepasse_compte_dans_page(self):
         """Montre la commande BENCHAB actuelle sans lire le compte ni contacter le Cloud ; aucun statut physique."""
         from benchab.machine import cloud_lecture as C

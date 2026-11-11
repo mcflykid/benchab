@@ -1,0 +1,31 @@
+<!-- Formulaire Cloud sans lecture au chargement ; voir docs/decisions/2026-11-06-cloud-lecture-seule.md. -->
+<p>
+  Lecture seule, sur demande. Ouvrir cette page ne contacte pas Anycubic et ne lit aucun mot de passe ni session du slicer.
+</p>
+<section class="carte">
+  <h2>Compte Anycubic autonome</h2>
+  <p id="cloud-account-status">__STATUT_COMPTE__</p>
+  <button id="cloud-account-button" type="button">Lire avec mon compte configuré</button>
+  <details>
+    <summary>Configurer mon compte une première fois</summary>
+    <p>Dans le terminal de ce Mac, depuis BENCHAB 3D :</p>
+    <pre>uv run benchab machine session-compte -- --configurer</pre>
+    <p>L’e-mail puis le mot de passe sont saisis dans le terminal, le mot de passe sans écho. Ils restent dans un fichier privé sur ce Mac. Ne les saisir ni dans cette page ni dans un chat. Les renouvellements sont ensuite gérés lors des lectures.</p>
+  </details>
+</section>
+<label for="cloud-machine">Imprimante à lire</label>
+<select id="cloud-machine"><option value="">Lister mes imprimantes</option></select>
+<details>
+  <summary>Autres modes de connexion existants</summary>
+  <form id="cloud-form">
+    <label for="cloud-token">Jeton Anycubic fourni manuellement</label>
+    <input id="cloud-token" type="password" autocomplete="off" maxlength="4096" required>
+    <button id="cloud-button">Lire avec mon jeton</button>
+    <button id="cloud-session-button" type="button">Lire ma session locale</button>
+  </form>
+  <p>La session locale est un autre mode, lié à la version du slicer et seulement lu à votre demande explicite.</p>
+</details>
+<pre id="cloud-resultat" role="status" aria-live="polite"></pre>
+<p>
+  Après la liste, choisir une imprimante puis utiliser le même bouton pour la lire. Le parcours compte ne transmet aucun mot de passe ni jeton au navigateur. Ses jetons sont conservés uniquement dans le cache privé du Mac. En cas de refus, attendre quelques secondes avant une nouvelle lecture. Les quantités ACE sont rapportées par le Cloud, sans pesée physique.
+</p>

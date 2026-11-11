@@ -19,6 +19,53 @@ G = (
 
 
 class Apercu(unittest.TestCase):
+    def test_titre_litteral_peut_contenir_le_marqueur_des_donnees(self):
+        """Le titre reste littéral et les données de la page autonome restent un JSON valide."""
+        import re
+
+        titre = "Témoin __DONNEES__"
+        with tempfile.TemporaryDirectory() as dossier:
+            root = Path(dossier)
+            source = root / "p.gcode"
+            source.write_text(G)
+            sortie = root / "page.html"
+            A.page(source, sortie, titre=titre)
+            html = sortie.read_text()
+
+        self.assertTrue("<h1>Témoin __DONNEES__</h1>" in html, "le titre contenant le marqueur reste littéral")
+        donnees = re.search(r"const D = (.*?);\nconst cv =", html, re.S).group(1)
+        self.assertEqual(json.loads(donnees)["titre"], titre)
+        self.assertIn("data:text/javascript;base64,", html)
+        self.assertNotIn('<script src=', html)
+
+    def test_scripts_lisibles_sont_inclus_sans_urls_externes(self):
+        """Le document autonome injecte ses scripts empaquetés et garde ses commandes DOM."""
+        from importlib.resources import files
+
+        ressources = files("benchab.visualisation").joinpath("ressources")
+        script_2d = ressources.joinpath("apercu-gcode-2d.js").read_text()
+        script_3d = ressources.joinpath("apercu-gcode-3d.js").read_text()
+        brut = ressources.joinpath("apercu-gcode.html").read_text()
+        self.assertIn("__SCRIPT_2D__", brut)
+        self.assertIn("__SCRIPT_3D__", brut)
+        self.assertGreater(len(script_2d.splitlines()), 20)
+        self.assertGreater(len(script_3d.splitlines()), 20)
+        self.assertLess(max(map(len, script_2d.splitlines())), 180)
+        self.assertLess(max(map(len, script_3d.splitlines())), 180)
+        with tempfile.TemporaryDirectory() as dossier:
+            source = Path(dossier) / "p.gcode"
+            source.write_text(G)
+            sortie = Path(dossier) / "page.html"
+            A.page(source, sortie, titre="Test")
+            final = sortie.read_text()
+        for code in ("window.apercu =", "window.plaque3d =", 'id="o2d"', 'id="o3d"'):
+            self.assertIn(code, final)
+        self.assertNotIn("__SCRIPT_", final)
+        self.assertNotIn('<script src=', final)
+        self.assertNotIn("cdn.jsdelivr.net", final)
+        self.assertIn("data:text/javascript;base64,", final)
+        self.assertIn('type="importmap"', final)
+
     def test_vitesses_et_deplacements(self):
         c = A.couches(G)[0]
         d = np.frombuffer(base64.b64decode(c["d"]), np.int16)
@@ -46,6 +93,7 @@ class Apercu(unittest.TestCase):
     def test_titre_et_rapport_ne_peuvent_injecter_html_ou_script(self):
         import re
         from html.parser import HTMLParser
+        from importlib.resources import files
 
         class Scripts(HTMLParser):
             def __init__(self):
@@ -67,16 +115,18 @@ class Apercu(unittest.TestCase):
             self.assertEqual(parser.count, 3)
             self.assertNotIn("<script>globalThis.INJECTE=1</script>", html)
             self.assertIn("&lt;img onerror=", html)
-            donnees = re.search("const D=(.*?);const cv=", html).group(1)
+            donnees = re.search(r"const D = (.*?);\nconst cv =", html, re.S).group(1)
             self.assertEqual(json.loads(donnees)["titre"], titre)
         import subprocess
 
-        script = re.search("const echapper=(.*?);\\nconst D=", A.GABARIT).group(1)
-        js = "const echapper=" + script + '; process.stdout.write(echapper("<img onerror=1>&"));'
+        source_js = files("benchab.visualisation").joinpath("ressources/apercu-gcode-2d.js").read_text()
+        script = re.search(r"const echapper = (.*?);\nconst D =", source_js, re.S).group(1)
+        js = "const echapper = " + script + '; process.stdout.write(echapper("<img onerror=1>&"));'
         resultat = subprocess.run(["node", "-e", js], capture_output=True, text=True, check=True)
         self.assertEqual(resultat.stdout, "&lt;img onerror=1&gt;&amp;")
-        self.assertIn("echapper(a.texte)", A.GABARIT)
-        self.assertIn("echapper(f.type+", A.GABARIT)
+        script_3d = files("benchab.visualisation").joinpath("ressources/apercu-gcode-3d.js").read_text()
+        self.assertIn("echapper(a.texte)", script_3d)
+        self.assertIn("echapper(", source_js)
 
     def test_alertes_et_page_autonome(self):
         with tempfile.TemporaryDirectory() as t:

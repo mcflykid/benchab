@@ -375,6 +375,8 @@ def page_automatisation(root, nom, params):
 
 def page_cloud(root):
     """Compose le HTML de lecture Cloud, sans unité ni statut matériel ; aucun accès compte, réseau ou mot de passe."""
+    from importlib.resources import files
+
     from benchab.machine.cloud_lecture import etat
 
     state = etat()
@@ -384,76 +386,11 @@ def page_cloud(root):
         if configured
         else "Première configuration du compte requise sur ce Mac."
     )
-    body = (
-        "<p>Lecture seule, sur demande. Ouvrir cette page ne contacte pas "
-        "Anycubic et ne lit aucun mot de passe ni session du slicer.</p>"
-    )
-    body += (
-        '<section class="carte"><h2>Compte Anycubic autonome</h2><p id="cloud-account-status">' + texte(status) + "</p>"
-    )
-    body += (
-        '<button id="cloud-account-button" type="button">Lire avec mon com'
-        "pte configuré</button><details><summary>Configurer mon compte une"
-        " première fois</summary><p>Dans le terminal de ce Mac, depuis BEN"
-        "CHAB 3D :</p><pre>uv run benchab machine session-compte -- --conf"
-        "igurer</pre><p>L’e-mail puis le mot de passe sont saisis dans le "
-        "terminal, le mot de passe sans écho. Ils restent dans un fichier "
-        "privé sur ce Mac. Ne les saisir ni dans cette page ni dans un cha"
-        "t. Les renouvellements sont ensuite gérés lors des lectures.</p><"
-        '/details></section><label for="cloud-machine">Imprimante à lire</'
-        'label><select id="cloud-machine"><option value="">Lister mes impr'
-        "imantes</option></select><details><summary>Autres modes de connex"
-        'ion existants</summary><form id="cloud-form"><label for="cloud-to'
-        'ken">Jeton Anycubic fourni manuellement</label><input id="cloud-t'
-        'oken" type="password" autocomplete="off" maxlength="4096" require'
-        'd><button id="cloud-button">Lire avec mon jeton</button> <button '
-        'id="cloud-session-button" type="button">Lire ma session locale</b'
-        "utton></form><p>La session locale est un autre mode, lié à la ver"
-        "sion du slicer et seulement lu à votre demande explicite.</p></de"
-        'tails><pre id="cloud-resultat" role="status" aria-live="polite"><'
-        "/pre><p>Après la liste, choisir une imprimante puis utiliser le m"
-        "ême bouton pour la lire. Le parcours compte ne transmet aucun mot"
-        " de passe ni jeton au navigateur. Ses jetons sont conservés uniqu"
-        "ement dans le cache privé du Mac. En cas de refus, attendre quelq"
-        "ues secondes avant une nouvelle lecture. Les quantités ACE sont r"
-        "apportées par le Cloud, sans pesée physique.</p>"
-    )
-    body += (
-        '<script>\nconst form=document.getElementById("cloud-form"),token=d'
-        'ocument.getElementById("cloud-token"),machine=document.getElement'
-        'ById("cloud-machine"),out=document.getElementById("cloud-resultat'
-        '"),direct=document.getElementById("cloud-button"),local=document.'
-        'getElementById("cloud-session-button"),account=document.getElemen'
-        'tById("cloud-account-button");\nasync function lireCloud(mode){\n  '
-        'const sessionLocale=mode==="session",compte=mode==="compte";\n  di'
-        "rect.disabled=true;local.disabled=true;account.disabled=true;out."
-        'textContent="Connexion en lecture seule…";let garder=false;\n  con'
-        "st demande={machine:machine.value||null};\n  if(compte){demande.co"
-        'mpte=true;token.value="";}else if(sessionLocale){demande.session_'
-        'slicer=true;token.value="";}else{demande.jeton=token.value;}\n  tr'
-        'y{\n    const response=await fetch("/__cloud_lecture",{method:"POS'
-        'T",headers:{"Content-Type":"application/json"},body:JSON.stringif'
-        "y(demande)});\n    const data=await response.json();out.textConten"
-        "t=JSON.stringify(data,null,2);\n    if(response.ok&&data.statut==="
-        '"CHOISIR_MACHINE"){\n      machine.replaceChildren();\n      const '
-        'choisir=document.createElement("option");choisir.value="";choisir'
-        '.textContent="Choisir une imprimante";machine.append(choisir);\n  '
-        "    for(const imprimante of data.machines){const option=document."
-        'createElement("option");option.value=String(imprimante.id);option'
-        '.textContent=(imprimante.modele||"Modèle non identifié")+" — "+St'
-        "ring(imprimante.id);machine.append(option);}\n      garder=!sessio"
-        'nLocale&&!compte;direct.textContent="Lire cette imprimante avec m'
-        'on jeton";local.textContent="Lire cette imprimante via ma session'
-        ' locale";account.textContent="Lire cette imprimante avec mon comp'
-        'te";machine.focus();\n    }\n  }catch(error){out.textContent="Cloud'
-        " indisponible : attendre quelques secondes avant une nouvelle lec"
-        'ture. Aucune commande machine envoyée.";}\n  finally{if(!garder)to'
-        'ken.value="";direct.disabled=false;local.disabled=false;account.d'
-        'isabled=false;}\n}\nform.addEventListener("submit",event=>{event.pr'
-        'eventDefault();lireCloud("jeton");});\nlocal.addEventListener("cli'
-        'ck",()=>lireCloud("session"));\naccount.addEventListener("click",('
-        ')=>lireCloud("compte"));\n</script>'
-    )
+    ressources = files("benchab.visualisation").joinpath("ressources")
+    # Garder le HTML et le JavaScript versionnés séparément évite de modifier les contrôleurs locaux.
+    corps = ressources.joinpath("cloud.html").read_text(encoding="utf-8")
+    script = ressources.joinpath("cloud.js").read_text(encoding="utf-8")
+    body = corps.replace("__STATUT_COMPTE__", texte(status)) + "<script>" + script + "</script>"
     return document("Cloud Anycubic — lecture seule", body)
 
 
