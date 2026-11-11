@@ -14,10 +14,11 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Données : conserve inode et octets des JSONL canoniques, répare les exports divergents depuis SQLite et publie le manifeste en dernier ; première étape de #19.
 - Qualité : un seul graphe de dépendances par lot, avec la suite complète conservée pour le code (#34).
 - Données : revalidation du répertoire d’export et du verrou avant publication, même si l’atelier est déjà ouvert (#138).
+- Contrôle : comparaison des réglages projet, objets, parties et plaques aux profils explicitement fournis ; écarts sensibles, provenance par clé et filiations de profils en lecture seule (#38).
+- Atelier : plan passif et réparation explicite d’une vue canonique, avec preuve de la source et sauvegarde relue (suite de #119).
 
 ## 1.3.0 — 2026-11-11
 
-- Contrôle : comparaison des réglages projet, objets, parties et plaques aux profils explicitement fournis ; écarts sensibles, provenance par clé et filiations de profils en lecture seule (#38).
 - Réglages : contexte commun des slots filament, identités et ordre conservés, variantes suffixées appariées séparément et résidus NON VÉRIFIÉS (#103).
 - Envoi : avertissements natifs par plaque, codes inconnus conservés et origine non établie signalée (#109).
 - Revue locale : mesures de recul et recouvrement recalculées depuis les lignes G-code liées ; contradiction bloquante et données manquantes explicites (#111).
@@ -30,7 +31,6 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Lecture 3MF : intégrité avant/après, noms et résultats de plaques et optimisation utilisent les limites et le décodage communs (suite de #122).
 - Qualification ASN : tranchage natif d’une sonde synthétique à deux volumes ; rôles, géométrie et réglages contrôlés, effet de la densité mesuré dans le G-code (#48).
 
-- Données privées : première étape #119, plan JSON passif pour vues absentes ou divergentes, sans réparation ni mesure.
 
 ## 1.2.0 — 2026-11-11
 
