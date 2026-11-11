@@ -7,11 +7,15 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Atelier : restaure une cible de lien privé absente par copie d’identité prouvée et conserve le lien et sa preuve (suite de #119).
 - Purge : compte les transitions explicites par plaque et sépare la matrice documentaire de toute mesure ou qualification du binaire (suite de #72).
 - Qualité : documente les gardes communes de chemins et verrous (suite de #127).
+- Capacités machine : vérifie l’enveloppe XYZ analytique des dépôts G17 sans corde ;
+  vitesse et accélération par axe restent NON VÉRIFIÉES (suite de #123).
+- Études : utilisent le lecteur 3MF borné pour les réglages de remplissage, de résistance
+  et de stratégies, avec CRC conservés pour le comparateur (suite de #122).
+- CI : vérifie les types des réglages, chemins, processus, interpréteur G-code
+  et base, sans dépendance de vérification pour l’installation utilisateur (#69).
 
 ## 1.5.0 — 2026-11-11
 
-- Capacités machine : vérifie l’enveloppe XYZ analytique des dépôts G17 sans corde ;
-  vitesse et accélération par axe restent NON VÉRIFIÉES (#123).
 - Preuves : les contrôles historiques publient des fichiers neufs et la routine préserve les résultats précédents à la reprise (#152).
 - Débit U25 : la sortie de rapport ne peut plus écraser un 3MF source ni une preuve existante (#151).
 - Imports : produit un placement traçable depuis un 3MF et une déclaration liée par SHA-256, sans déduire les plaques, le repère ou les réglages (#105).
