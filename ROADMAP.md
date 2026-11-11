@@ -94,7 +94,7 @@ réglages ambigus. Les essais natifs conservent leurs conditions d’application
 
 | Lot | Travaux restant ouverts |
 | --- | --- |
-| Géométrie et 3MF | #105 : placement traçable ; #112 : remplacement ciblé |
+| Géométrie et 3MF | #112 : remplacement ciblé |
 | Concevoir et assembler | #32 : fiches déterministes ; #27 : filetages/inserts ; #29 : clips ; #31 : placement dans la visionneuse |
 | Examiner les défauts | #26 : coutures ; #28 : observations photo ; #93 : îlots de surplomb ; #108 : qualification de leur appui et position |
 | Matière et usage | #72 : coût de purge ; #77 : matière par bobine/outil ; #73 : entretien |
