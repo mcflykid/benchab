@@ -18,6 +18,7 @@ from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.controles import zones_locales as ZL
 from benchab.controles.commandes_machine import SOURCE_FORMAT_S1, verifier_format_s1
+from benchab.controles.controle_buse import controler as controler_buse
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.controles.rapports import RapportCourant
 from benchab.gcode import debit
@@ -204,6 +205,7 @@ def _controler(ressources, fichier, declaration, *, reference, geometrie, revue_
             )
         exts = sorted({int(obj_ext.get(o, "1")) for o in plate_obj.get(pl, [])})
         attendus = [e - 1 for e in exts]
+        res.extend({**ligne, "plaque": pl} for ligne in controler_buse(ps, DEC, exts))
         # S1 natif mono-filament : G9111 prépare l'unique buse sans émettre T0.
         # Ne rien déduire d'une déclaration seule, d'un projet multi-filament ou d'un autre dialecte.
         mono_natif = (

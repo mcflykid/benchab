@@ -72,6 +72,33 @@ class ControleEnvoi(unittest.TestCase):
         self.assertEqual(premier, second)
         self.assertEqual(len(premier["resultats"]), len(second["resultats"]))
         self.assertNotIn("/Users/", json.dumps(premier))
+        self.assertFalse(any("buse" in ligne["controle"] for ligne in premier["resultats"]))
+
+    def test_buse_optionnelle_ajoute_les_controles_typages_au_rapport(self):
+        """Le contrat buse explicite compare diamètre et HRC sans changer les anciens appels."""
+        temporaire = self.dossier / "avec-buse.3mf"
+        with zipfile.ZipFile(self.tranche) as original, zipfile.ZipFile(temporaire, "w") as nouveau:
+            for membre in original.namelist():
+                contenu = original.read(membre)
+                if membre == "Metadata/project_settings.config":
+                    settings = json.loads(contenu)
+                    settings.update({
+                        "filament_settings_id": ["PLA-témoin"],
+                        "nozzle_diameter": ["0.4"],
+                        "nozzle_hrc": "45",
+                        "required_nozzle_HRC": ["30"],
+                    })
+                    contenu = json.dumps(settings)
+                nouveau.writestr(membre, contenu)
+        declaration = json.loads(self.declaration.read_text())
+        declaration["buse"] = {"diametre_mm": 0.4}
+        self.declaration.write_text(json.dumps(declaration))
+
+        rapport = CE.controler(temporaire, self.declaration, revue_locale=self.revue)
+
+        controles = {ligne["controle"]: ligne for ligne in rapport["resultats"]}
+        self.assertEqual(controles["diamètre de buse déclaré"]["statut"], "PASS")
+        self.assertEqual(controles["HRC buse déclarée vs exigence (filament 1)"]["statut"], "PASS")
 
 
 if __name__ == "__main__":

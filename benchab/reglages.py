@@ -2,6 +2,7 @@
 
 import copy
 import json
+import math
 from functools import lru_cache
 from importlib.resources import files
 
@@ -177,6 +178,20 @@ def verifier(donnees, contexte=None, *, identite_slicer=None):
         statut = "PASS"
         if d["type"] == "inconnu":
             statut = "NON VÉRIFIÉ"
+        elif d["type"] == "diametre_buse":
+            valeur_buse = valeur[0] if isinstance(valeur, list) and len(valeur) == 1 else valeur
+            if isinstance(valeur, list) and len(valeur) != 1:
+                statut = "NON VÉRIFIÉ"
+            elif not isinstance(valeur_buse, str):
+                statut = "NON VÉRIFIÉ"
+            else:
+                try:
+                    nombre_buse = float(valeur_buse)
+                except ValueError:
+                    statut = "NON VÉRIFIÉ"
+                else:
+                    if not math.isfinite(nombre_buse) or nombre_buse <= 0:
+                        statut = "NON VÉRIFIÉ"
         elif d["type"] == "chaine" and not isinstance(valeur, str):
             statut = "FAIL"
         elif d["type"] == "valeur_simple" and isinstance(valeur, (list, dict)):

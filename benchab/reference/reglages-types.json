@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "slicer": "Anycubic Slicer Next 2.0.0.3",
-  "date_releve": "2026-11-05",
+  "date_releve": "2026-11-11",
   "definitions": {
     "type": {
       "formes": [
@@ -928,7 +928,8 @@
         "filament"
       ],
       "type": "liste_filament",
-      "longueur": "correspondance_filaments_requise"
+      "longueur": "correspondance_filaments_requise",
+      "unite": "HRC"
     },
     "slow_down_for_layer_cooling": {
       "formes": [
@@ -1468,8 +1469,9 @@
       "familles": [
         "machine"
       ],
-      "type": "inconnu",
-      "longueur": null
+      "type": "diametre_buse",
+      "longueur": "buse_unique",
+      "unite": "mm"
     },
     "default_print_profile": {
       "formes": [
@@ -2150,7 +2152,8 @@
         "machine"
       ],
       "type": "chaine",
-      "longueur": null
+      "longueur": null,
+      "unite": "HRC"
     },
     "nozzle_type": {
       "formes": [

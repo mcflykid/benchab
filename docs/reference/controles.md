@@ -20,6 +20,16 @@ utilise un délai de 2 s et `GIT_OPTIONAL_LOCKS=0`, sans créer de fichier de di
 La routine vérifie le [contrat de placement](placement.md) avant le premier
 contrôle ; une déclaration invalide donne une erreur localisée sans créer ses rapports.
 
+Le contrôle d’envoi accepte en option le champ `buse.diametre_mm` (nombre en
+mm) dans la déclaration. Ce bloc active la comparaison avec le diamètre de
+buse typé du 3MF et, si les valeurs HRC sont présentes, la comparaison de
+`nozzle_hrc` à `required_nozzle_HRC` pour chaque filament utilisé. Un diamètre
+différent ou une dureté déclarée sous l’exigence donne `WARN` ; les données
+absentes ou ambiguës donnent `NON VÉRIFIÉ`. Sans ce bloc, les anciens rapports
+gardent leurs contrôles et leur forme. Ces comparaisons portent sur les valeurs
+des fichiers ; elles ne mesurent pas le matériel monté et n’établissent aucune
+compatibilité physique.
+
 Les familles couvrent : plaques CLI/interface, réglages, pièces, paquet 3MF,
 finition/parois, débit, appuis, première couche, décollement, ponts internes,
 colonnes isolées, couches courtes, supports requis, orientations, disposition,
