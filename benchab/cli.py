@@ -237,6 +237,8 @@ def parser():
         "consommation-retour", help="Lit un plan numérique de filament pour un retour identifié"
     )
     consommation_retour.add_argument("--retour", required=True, help="Identifiant du retour enregistré")
+    consommation_retour.add_argument("--preuve-pesee", type=Path, help="Déclaration privée facultative")
+    consommation_retour.add_argument("--sha256-preuve", help="SHA-256 exact de la déclaration privée")
     ecart_z = controle.add_parser(
         "ecart-z-supports", help="Estime les écarts Z depuis les dépôts horizontaux d’une plaque"
     )
@@ -1132,7 +1134,10 @@ def main(argv=None):
         from benchab.projets.plan_consommation import planifier_lecture
 
         # Le rapport reste NON VÉRIFIÉ et ne passe ni par Base() ni par Mesure (#77).
-        rapport = planifier_lecture(arguments.prive, arguments.retour)
+        rapport = planifier_lecture(
+            arguments.prive, arguments.retour,
+            preuve_pesee=arguments.preuve_pesee, sha256_preuve=arguments.sha256_preuve,
+        )
         print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
         return rapport["code"]
     if arguments.commande == "controle" and arguments.controle == "ecart-z-supports":
