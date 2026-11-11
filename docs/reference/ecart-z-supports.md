@@ -42,3 +42,20 @@ Les deux répétitions donnent les mêmes mesures ; leur G-code ne diffère
 que par la date de génération. Les 3MF bruts gardent leurs empreintes
 distinctes. La source et les profils restent intacts. Ce constat qualifie
 l’effet numérique sur ce coupon, sans conclusion sur le retrait (#89).
+
+### Effet d’une consigne XY sur le même coupon
+
+Avec le même binaire et le même coupon concentrique, le seul réglage qui
+diffère dans les archives est `support_object_xy_distance`, de 0,35 à
+0,7 mm. Le rôle `Support` passe de 20 019 à 20 431 segments et de 7 087,421
+à 7 177,518 mm d’axes de dépôt. Les 64 segments et les 523,232 mm du rôle
+`Support interface` restent identiques. L’écart Z médian reste à 0,2 mm ;
+la projection discrète passe de 177,5 à 178,0 mm². L’estimation passe de
+3,28 à 3,29 g et de 990 à 991 s.
+
+Les deux sorties à 0,7 mm sont identiques hors commentaire de date. Une
+première copie demandant la chaîne `0.70` a été refusée : le moteur a
+embarqué `0.7`, que le contrôle exact ne substitue pas silencieusement.
+Les sources et les 646 profils relus restent intacts. Ce test mesure un
+effet sur les trajets de ce coupon ; il ne mesure ni la distance XY
+physique, ni le contact, ni le retrait (#89).
