@@ -7,15 +7,19 @@ physique, ni comportement optique ou phosphorescent.
 import argparse
 import json
 import math
+import sys
 from datetime import date
 from pathlib import Path
+from xml.etree.ElementTree import ParseError
+from zipfile import BadZipFile
 
 import numpy as np
 import trimesh
 
-from benchab import reglages as schema_reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.fabrication import anycubic as A
 from benchab.fabrication import remplissage_localise as RL
+from benchab.gcode.lecture import plaques_gcode_archive
 
 R = Path(__file__).resolve().parents[2]
 
@@ -340,9 +344,9 @@ def eprouvette(sortie, tranches, base_3mf, densites=(15, 20, 25, 30, 35, 40)):
     for dossier in (out, tr):
         if dossier.exists() and (not dossier.is_dir() or any(dossier.iterdir())):
             raise FileExistsError(f"{dossier} existe et contient déjà des données : sortie neuve requise")
-    from zipfile import ZipFile
-
-    st = schema_reglages.decoder(ZipFile(base_3mf).read("Metadata/project_settings.config"))
+    with Archive3MF(base_3mf) as archive:
+        st = archive.reglages()
+        archive.verifier_source(base_3mf)
     bloc = trimesh.creation.box(extents=(80, 40, 24))
     bloc.apply_translation((40, 20, 12))
     trous = [trimesh.creation.cylinder(radius=2.2, height=26, sections=48) for _ in range(2)]
@@ -422,44 +426,50 @@ def eprouvette(sortie, tranches, base_3mf, densites=(15, 20, 25, 30, 35, 40)):
     # Le profil explicitement fourni est conservé comme provenance, sans réécriture de réglages.
     src = A.ecrire_3mf(plaques, st, source_3mf, cli=True, canonique=True, nom_source=source_3mf.name)
     t3, sec = A.trancher(src, tr, "eprouvette-tranche.3mf")
-    res = sorted(A.resultats(t3), key=lambda r: r["index"])
-    _verifier_resultats(res, len(variantes))
-    z = ZipFile(t3)
     lignes = []
-    for (nom, m, vols, rg), r, pl in zip(variantes, res, plaques):
-        it = pl["items"][0]
-        x0, y0 = it["x"], it["y"]
-        g = z.read(f"Metadata/plate_{r['index']}.gcode").decode(errors="replace")
-        a = RL.analyser_gcode(
-            g,
-            {
-                "emprise de la cavité": [x0 + 20, y0 + 3, x0 + 60, y0 + 37, 0, 30],
-                "bossages des vis": [x0 + 4, y0 + 14, x0 + 16, y0 + 26, 0, 30],
-            },
-            types=(
-                "Sparse infill",
-                "Internal solid infill",
-                "Inner wall",
-                "Outer wall",
-                "Top surface",
-                "Bottom surface",
-                "Bridge",
-                "Overhang wall",
-                "Support",
-            ),
-        )
-        lignes.append(
-            {
-                "variante": nom,
-                "remplissage": rg["sparse_infill_density"],
-                "volume_cao_mm3": round(_vol(m), 1),
-                "grammes": round(r["grammes"], 2),
-                "secondes": r["secondes"],
-                "supports_slicer": r["supports"],
-                "zones_remplissage": [v["name"] for v in vols],
-                "longueurs_mm": a,
-            }
-        )
+    with Archive3MF(t3) as archive:
+        # Lire ensemble les résultats et le membre de chaque plaque, sans reconstruire son nom (#169).
+        xml = archive.lire("Metadata/slice_info.config", limite_octets=Archive3MF.MAX_XML_OCTETS)
+        res = sorted(A.resultats_xml(xml), key=lambda r: r["index"])
+        _verifier_resultats(res, len(variantes))
+        membres = dict(plaques_gcode_archive(archive))
+        if set(membres) != {r["index"] for r in res}:
+            raise ValueError("Les numéros des G-code ne correspondent pas aux résultats de plaques")
+        for (nom, m, vols, rg), r, pl in zip(variantes, res, plaques):
+            it = pl["items"][0]
+            x0, y0 = it["x"], it["y"]
+            g = archive.lire(membres[r["index"]]).decode(errors="replace")
+            a = RL.analyser_gcode(
+                g,
+                {
+                    "emprise de la cavité": [x0 + 20, y0 + 3, x0 + 60, y0 + 37, 0, 30],
+                    "bossages des vis": [x0 + 4, y0 + 14, x0 + 16, y0 + 26, 0, 30],
+                },
+                types=(
+                    "Sparse infill",
+                    "Internal solid infill",
+                    "Inner wall",
+                    "Outer wall",
+                    "Top surface",
+                    "Bottom surface",
+                    "Bridge",
+                    "Overhang wall",
+                    "Support",
+                ),
+            )
+            lignes.append(
+                {
+                    "variante": nom,
+                    "remplissage": rg["sparse_infill_density"],
+                    "volume_cao_mm3": round(_vol(m), 1),
+                    "grammes": round(r["grammes"], 2),
+                    "secondes": r["secondes"],
+                    "supports_slicer": r["supports"],
+                    "zones_remplissage": [v["name"] for v in vols],
+                    "longueurs_mm": a,
+                }
+            )
+        archive.verifier_source(t3)
     for ligne in lignes:  # écarts par rapport à la référence de même densité
         ref_g, ref_s = next(
             (x["grammes"], x["secondes"])
@@ -507,8 +517,12 @@ def main(argv=None):
     )
     etude.add_argument("--densites", default="15,20,25,30,35,40")
     args = parser.parse_args(argv)
-    densites = tuple(int(valeur) for valeur in args.densites.split(","))
-    rapport = eprouvette(args.sortie, args.tranches, args.base, densites)
+    try:
+        densites = tuple(int(valeur) for valeur in args.densites.split(","))
+        rapport = eprouvette(args.sortie, args.tranches, args.base, densites)
+    except (OSError, ValueError, KeyError, BadZipFile, ParseError, RuntimeError) as erreur:
+        print(f"Éprouvette refusée : {erreur}", file=sys.stderr)
+        return 2
     resume = {
         "controles_B": rapport["controles_B"]["statut"],
         "controles_D": rapport["controles_D"]["statut"],

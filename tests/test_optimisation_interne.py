@@ -1,10 +1,12 @@
 """Tests géométriques synthétiques de l'optimisation interne."""
 
+import io
 import json
 import tempfile
 import types
 import unittest
 import zipfile
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -210,8 +212,14 @@ class Preservation(unittest.TestCase):
 
     def test_resultats_tronques_et_identites_refuses(self):
         """Refuse les résultats incomplets et vérifie le nom canonique depuis le profil fixture."""
-        for indices in [[], [1, 2], [1, 1, 2, 3], [1, 2, 3, 5]]:
-            with self.subTest(indices=indices), tempfile.TemporaryDirectory(dir="/private/tmp") as td:
+        cas = [
+            ([], ["1", "2", "3"], False), ([1, 2], ["1", "2", "3"], False),
+            ([1, 1, 2, 3], ["1", "2", "3"], False), ([1, 2, 3, 5], ["1", "2", "3", "5"], False),
+            ([1, 2, 3, 4], ["01", "2", "3", "4"], True),
+            ([1, 2, 3, 4], ["1", "01", "2", "3", "4"], False),
+        ]
+        for indices, membres, valide in cas:
+            with self.subTest(indices=indices, membres=membres), tempfile.TemporaryDirectory(dir="/private/tmp") as td:
                 root = Path(td)
                 base = root / "base.3mf"
                 tranche = root / "fake.3mf"
@@ -221,7 +229,12 @@ class Preservation(unittest.TestCase):
                         json.dumps({"filament_settings_id": ["PLA fixe"], "filament_colour": ["#FFFFFF"]}),
                     )
                 with zipfile.ZipFile(tranche, "w") as z:
-                    for k in range(1, 6):
+                    z.writestr("Metadata/slice_info.config", "<config>" + "".join(
+                        f'<plate><metadata key="index" value="{i}"/>'
+                        '<metadata key="prediction" value="60"/><metadata key="weight" value="1"/></plate>'
+                        for i in indices
+                    ) + "</config>")
+                    for k in membres:
                         z.writestr(f"Metadata/plate_{k}.gcode", "M83\n;TYPE:Sparse infill\nG1 X10 E1 F600")
 
                 def ranger(items, *a, **k):
@@ -238,20 +251,31 @@ class Preservation(unittest.TestCase):
                     ranger=ranger,
                     ecrire_3mf=ecrire,
                     trancher=lambda *a, **k: (tranche, 0),
-                    resultats=lambda *a: [
-                        {"index": i, "secondes": 60, "grammes": 1, "supports": False} for i in indices
-                    ],
                 )
                 with (
                     patch.object(O.A, "ranger", a.ranger),
                     patch.object(O.A, "ecrire_3mf", a.ecrire_3mf),
                     patch.object(O.A, "trancher", a.trancher),
-                    patch.object(O.A, "resultats", a.resultats),
                     patch.object(O, "appliquer", return_value=(BLOC, {"statut": "WARN"})),
                     patch.object(O.RL, "volumes", return_value=([], [])),
-                    self.assertRaises(ValueError),
                 ):
-                    O.eprouvette(root / "sortie", root / "tranches", base, densites=(15,))
+                    if valide:
+                        rapport = O.eprouvette(root / "sortie", root / "tranches", base, densites=(15,))
+                        self.assertEqual(len(rapport["variantes"]), 4)
+                        self.assertTrue(all(ligne["grammes"] == 1 for ligne in rapport["variantes"]))
+                    elif "01" in membres:
+                        stderr = io.StringIO()
+                        with redirect_stderr(stderr):
+                            code = O.main([
+                                "eprouvette", "--base", str(base), "--sortie", str(root / "sortie"),
+                                "--tranches", str(root / "tranches"), "--densites", "15",
+                            ])
+                        self.assertEqual(code, 2)
+                        self.assertIn("numéro de plaque dupliqué", stderr.getvalue())
+                        self.assertFalse((root / "sortie/eprouvette.json").exists())
+                    else:
+                        with self.assertRaises(ValueError):
+                            O.eprouvette(root / "sortie", root / "tranches", base, densites=(15,))
                 self.assertTrue(appels_ecriture[-1][1]["canonique"])
                 self.assertEqual(appels_ecriture[-1][1]["nom_source"], "eprouvette-plaques.3mf")
 
