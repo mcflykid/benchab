@@ -13,6 +13,7 @@ libres, `-- --help` transmet l’aide au module. Les sorties restent privées.
 | `conception cad-engine`, `assistant-projet`, `variantes`, `dfam` | CAO et variantes |
 | `conception fiche-cao` | [Plan et script CAO depuis des cotes JSON](fiche-cao.md) |
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
+| `conception filetage-nominal -- OPTIONS` | STL et rapport privé à partir de cotes déclarées en mm : filet triangulaire extérieur ou outil de soustraction avec jeu radial explicite ; hors norme ISO et sans preuve d’ajustement |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
 | `controle plages-z` | Compare les plages de couches d’un 3MF à une intention Z explicite, en mm ; `--sortie` donne un résumé borné et un rapport privé, `--detail` ajoute le JSON complet à stdout |
