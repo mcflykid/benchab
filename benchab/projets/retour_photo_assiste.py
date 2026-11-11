@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -18,7 +19,7 @@ from pathlib import Path
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.gcode.lecture import plaques_gcode_archive
-from benchab.qualite.ecritures import ecrire_json_neuf, renommer_exclusif, sortie_durable
+from benchab.qualite.ecritures import PublicationNeuve, renommer_exclusif, sortie_durable
 from benchab.qualite.empreintes import sha256_fichier
 
 _MAX_PHOTO_OCTETS = 50 * 1024 * 1024
@@ -52,19 +53,40 @@ def _apercu(photo, destination):
     try:
         try:
             image = Image.open(photo)
+        except Image.DecompressionBombError as erreur:
+            raise ValueError("photo refusée par la limite de décodage Pillow") from erreur
         except (OSError, ValueError):
             if photo.suffix.lower() != ".heic":
                 raise ValueError("image illisible par le décodeur local")
+            try:
+                dimensions = subprocess.run(
+                    ["/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", str(photo)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as erreur:
+                raise ValueError("inspection des dimensions HEIC expirée") from erreur
+            largeur = re.search(r"pixelWidth:\s*(\d+)", dimensions.stdout)
+            hauteur = re.search(r"pixelHeight:\s*(\d+)", dimensions.stdout)
+            if dimensions.returncode != 0 or largeur is None or hauteur is None:
+                raise ValueError("dimensions HEIC illisibles")
+            if int(largeur[1]) <= 0 or int(hauteur[1]) <= 0 or int(largeur[1]) * int(hauteur[1]) > _MAX_PIXELS:
+                raise ValueError("dimensions photo invalides ou supérieures à 40 mégapixels")
             fd, nom = tempfile.mkstemp(suffix=".jpg", prefix="benchab-heic-")
             os.close(fd)
             temporaire_heic = Path(nom)
-            resultat = subprocess.run(
-                ["/usr/bin/sips", "-s", "format", "jpeg", str(photo), "--out", str(temporaire_heic)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
+            try:
+                resultat = subprocess.run(
+                    ["/usr/bin/sips", "-s", "format", "jpeg", str(photo), "--out", str(temporaire_heic)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as erreur:
+                raise ValueError("conversion HEIC expirée") from erreur
             if resultat.returncode != 0 or not temporaire_heic.is_file():
                 raise ValueError("conversion HEIC locale indisponible")
             chemin_lecture = temporaire_heic
@@ -185,6 +207,7 @@ def creer_suggestion(
     source_sha = sha256_fichier(source)
     liaison = _lier_archive(archive_3mf, declaration, plaque, region_id)
     stage = Path(tempfile.mkdtemp(prefix=".retour-photo-", dir=cible.parent))
+    identite_stage = (stage.lstat().st_dev, stage.lstat().st_ino)
     try:
         extension = source.suffix.lower()
         copie = stage / f"photo-source{extension}"
@@ -192,7 +215,7 @@ def creer_suggestion(
         if sha256_fichier(source) != source_sha or sha256_fichier(copie) != source_sha:
             raise ValueError("photo modifiée pendant sa copie")
         apercu = stage / "apercu.jpg"
-        _apercu(source, apercu)
+        _apercu(copie, apercu)
         rapport = {
             "schema": 1,
             "suggestion": "CANDIDAT",
@@ -220,7 +243,7 @@ def creer_suggestion(
             raise ValueError("photo source modifiée pendant la préparation")
         renommer_exclusif(stage, cible)
     except BaseException:
-        if stage.exists():
+        if _stage_est_le_meme(stage, identite_stage):
             shutil.rmtree(stage)
         raise
     return {
@@ -244,7 +267,8 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         raise ValueError("une confirmation séparée au format JSON est requise")
     if not chemin.is_file() or not chemin.is_relative_to(racine) or chemin.name != "suggestion.json":
         raise ValueError("fiche suggestion privée requise")
-    if not isinstance(empreinte_suggestion, str) or sha256_fichier(chemin) != empreinte_suggestion:
+    brut, sha_fiche = _lire_fiche_epinglee(chemin)
+    if not isinstance(empreinte_suggestion, str) or sha_fiche != empreinte_suggestion:
         raise ValueError("empreinte de suggestion différente")
     if (
         not isinstance(observation_declaree, str)
@@ -252,17 +276,43 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         or len(observation_declaree) > 4000
     ):
         raise ValueError("observation déclarée non vide de 4 000 caractères maximum requise")
-    suggestion = json.loads(chemin.read_text(encoding="utf-8"))
-    if suggestion.get("schema") != 1 or suggestion.get("suggestion") != "CANDIDAT":
+    suggestion = json.loads(
+        brut.decode("utf-8"),
+        object_pairs_hook=_json_sans_doublons,
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError("constante JSON interdite")),
+    )
+    if (
+        not isinstance(suggestion, dict)
+        or suggestion.get("schema") != 1
+        or suggestion.get("suggestion") != "CANDIDAT"
+        or not isinstance(suggestion.get("photo"), dict)
+    ):
         raise ValueError("la fiche n’est pas une suggestion candidate")
+    noms_declares = [suggestion["photo"].get(cle) for cle in ("source_fichier", "apercu_fichier")]
+    if noms_declares[0] == noms_declares[1]:
+        raise ValueError("les fichiers source et aperçu doivent être distincts")
+    fichiers_references = []
+    identites_references = []
+    empreintes_references = {}
     for cle, sha_cle in (("source_fichier", "source_sha256"), ("apercu_fichier", "apercu_sha256")):
-        nom = suggestion.get("photo", {}).get(cle)
-        sha = suggestion.get("photo", {}).get(sha_cle)
-        if not isinstance(nom, str) or Path(nom).name != nom or not _sha_valide(sha):
+        nom = suggestion["photo"].get(cle)
+        sha = suggestion["photo"].get(sha_cle)
+        if (
+            not isinstance(nom, str)
+            or Path(nom).name != nom
+            or nom == "suggestion.json"
+            or not _sha_valide(sha)
+        ):
             raise ValueError("référence photo incomplète dans la suggestion")
         fichier = sans_lien(chemin.parent / nom, racine=racine, strict=True)
         if not fichier.is_file() or sha256_fichier(fichier) != sha:
             raise ValueError("fichier photo différent de la suggestion")
+        fichiers_references.append(fichier)
+        info = fichier.lstat()
+        identites_references.append((info.st_dev, info.st_ino))
+        empreintes_references[fichier] = sha
+    if fichiers_references[0] == fichiers_references[1] or identites_references[0] == identites_references[1]:
+        raise ValueError("les fichiers source et aperçu doivent être distincts")
     capture = {
         "schema": 1,
         "nature": "CONFIRMATION_HUMAINE_SEPAREE",
@@ -276,7 +326,19 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
             "impression ni cause physique."
         ),
     }
-    ecrire_json_neuf(destination, capture, entrees=[chemin])
+    with PublicationNeuve([chemin, *fichiers_references], [destination]) as publication:
+        if sha256_fichier(chemin) != sha_fiche or any(
+            sha256_fichier(fichier) != attendu for fichier, attendu in empreintes_references.items()
+        ):
+            raise ValueError("fiche ou fichiers référencés modifiés avant confirmation")
+        publication.temporaire(destination).write_text(
+            json.dumps(capture, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+        )
+        if sha256_fichier(chemin) != sha_fiche or any(
+            sha256_fichier(fichier) != attendu for fichier, attendu in empreintes_references.items()
+        ):
+            raise ValueError("fiche ou fichiers référencés modifiés pendant la confirmation")
+        publication.publier()
     return capture
 
 
@@ -288,6 +350,38 @@ def _json_sans_doublons(paires):
             raise ValueError("clé JSON dupliquée dans la déclaration")
         resultat[cle] = valeur
     return resultat
+
+
+def _lire_fiche_epinglee(chemin):
+    """Lit une fiche JSON privée bornée et calcule son SHA sur les mêmes octets épinglés."""
+    plafond = 2 * 1024 * 1024
+    fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode) or avant.st_size > plafond:
+            raise ValueError("fiche suggestion régulière de 2 Mio maximum requise")
+        brut = flux.read(plafond + 1)
+        apres = os.fstat(flux.fileno())
+    try:
+        courant = chemin.lstat()
+    except FileNotFoundError as erreur:
+        raise ValueError("fiche suggestion remplacée pendant la lecture") from erreur
+    if (
+        len(brut) > plafond
+        or _signature(avant) != _signature(apres)
+        or _signature(apres) != _signature(courant)
+    ):
+        raise ValueError("fiche suggestion trop grande ou modifiée pendant la lecture")
+    return brut, hashlib.sha256(brut).hexdigest()
+
+
+def _stage_est_le_meme(stage, identite):
+    """Nettoie seulement si le nom de stage désigne encore le dossier créé par cette opération."""
+    try:
+        info = stage.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISDIR(info.st_mode) and (info.st_dev, info.st_ino) == identite
 
 
 def _lire_declaration_privee(chemin, prive):

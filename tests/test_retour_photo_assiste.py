@@ -136,6 +136,195 @@ def test_route_cli_ne_cree_ni_base_sqlite_ni_mesure(tmp_path, capsys):
     assert not (prive / "benchab.sqlite").exists()
 
 
+def test_route_cli_transmet_le_prive_meme_si_la_variable_env_pointe_ailleurs(tmp_path, monkeypatch, capsys):
+    from benchab.cli import main
+
+    choisi = tmp_path / "atelier-choisi"
+    choisi.mkdir()
+    autre = tmp_path / "atelier-env"
+    autre.mkdir()
+    monkeypatch.setenv("BENCHAB_PRIVE", str(autre))
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    sortie = choisi / "retours-photo" / "choisi"
+    assert main([
+        "--prive", str(choisi), "visualisation", "retour-photo", "proposer",
+        str(photo), "--destination", str(sortie),
+    ]) == 0
+    capsys.readouterr()
+    assert (sortie / "suggestion.json").is_file()
+    assert not (autre / "retours-photo").exists()
+
+
+def test_refus_secret_du_retour_photo_ne_cree_pas_de_mesure(tmp_path, monkeypatch, capsys):
+    from benchab.cli import main
+    from benchab.donnees.base import Base
+
+    prive = tmp_path / "prive"
+    base = Base(prive)
+    try:
+        avant = base.connexion.execute("SELECT count(*) FROM mesures").fetchone()[0]
+        monkeypatch.setenv("BENCHAB_PRIVE", str(tmp_path / "ailleurs"))
+        code = main([
+            "--prive", str(prive), "visualisation", "retour-photo", "proposer",
+            "photo.png", "--password", "secret-fixture",
+        ])
+        assert code == 1
+        capsys.readouterr()
+        assert base.connexion.execute("SELECT count(*) FROM mesures").fetchone()[0] == avant
+    finally:
+        base.fermer()
+
+
+def test_apercu_est_decode_depuis_la_copie_privee(tmp_path, monkeypatch):
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    appels = []
+    apercu_reel = retour_photo._apercu
+
+    def verifier_copie(source, destination):
+        appels.append(source)
+        assert source.name == "photo-source.png"
+        assert source.read_bytes() == photo.read_bytes()
+        apercu_reel(source, destination)
+
+    monkeypatch.setattr(retour_photo, "_apercu", verifier_copie)
+    retour_photo.creer_suggestion(photo, prive / "candidate", prive=prive)
+    assert len(appels) == 1
+
+
+def test_confirmation_refuse_manifest_trop_grand(tmp_path):
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    fiche = prive / "suggestion.json"
+    fiche.write_bytes(b" " * (2 * 1024 * 1024 + 1))
+    sha = hashlib.sha256(fiche.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="taille|budget|Mio"):
+        retour_photo.confirmer_suggestion(fiche, sha, "observation", prive / "confirmation.json", prive=prive)
+
+
+def test_confirmation_parse_les_octets_meme_empreintes_sans_read_text(tmp_path, monkeypatch):
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    dossier = prive / "candidate"
+    retour_photo.creer_suggestion(photo, dossier, prive=prive)
+    fiche = dossier / "suggestion.json"
+    sha = hashlib.sha256(fiche.read_bytes()).hexdigest()
+    lecture = Path.read_text
+
+    def lecture_interdite(self, *args, **kwargs):
+        if self == fiche:
+            raise AssertionError("la fiche ne doit pas être rouverte après son SHA")
+        return lecture(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", lecture_interdite)
+    resultat = retour_photo.confirmer_suggestion(
+        fiche, sha, "observation explicite", prive / "confirmation.json", prive=prive
+    )
+    assert resultat["suggestion_sha256"] == sha
+
+
+def test_confirmation_exige_fichiers_references_distincts(tmp_path):
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    dossier = prive / "candidate"
+    retour_photo.creer_suggestion(photo, dossier, prive=prive)
+    fiche = dossier / "suggestion.json"
+    rapport = json.loads(fiche.read_text())
+    rapport["photo"]["apercu_fichier"] = "photo-source.png"
+    fiche.write_text(json.dumps(rapport))
+    sha = hashlib.sha256(fiche.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="distincts"):
+        retour_photo.confirmer_suggestion(fiche, sha, "observation", prive / "confirmation.json", prive=prive)
+
+
+def test_apercu_ninclut_pas_les_metadonnees_exif(tmp_path):
+    from PIL import Image
+
+    photo = tmp_path / "photo.jpg"
+    image = Image.new("RGB", (8, 8), "white")
+    exif = Image.Exif()
+    exif[270] = "métadonnée synthétique privée"
+    image.save(photo, exif=exif)
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    retour_photo.creer_suggestion(photo, prive / "candidate", prive=prive)
+    with Image.open(prive / "candidate" / "apercu.jpg") as apercu:
+        assert not apercu.getexif()
+
+
+def test_image_geante_est_refusee_sans_tenter_de_decodage_complet(tmp_path):
+    import struct
+    import zlib
+
+    photo = tmp_path / "geante.png"
+    Image.new("RGB", (1, 1), "white").save(photo)
+    brut = bytearray(photo.read_bytes())
+    brut[16:24] = struct.pack(">II", 50_000, 1_000)
+    brut[29:33] = struct.pack(">I", zlib.crc32(brut[12:29]) & 0xFFFFFFFF)
+    photo.write_bytes(brut)
+    with pytest.raises(ValueError, match="40 mégapixels"):
+        retour_photo._apercu(photo, tmp_path / "apercu.jpg")
+
+
+def test_heic_surdimensionne_est_refuse_avant_conversion(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    heic = tmp_path / "grand.heic"
+    heic.write_bytes(b"temoin")
+    appels = []
+
+    def sips(arguments, **kwargs):
+        appels.append(arguments)
+        return SimpleNamespace(returncode=0, stdout=f"{heic}:\n  pixelWidth: 10000\n  pixelHeight: 5000\n", stderr="")
+
+    monkeypatch.setattr(retour_photo.subprocess, "run", sips)
+    with pytest.raises(ValueError, match="40 mégapixels"):
+        retour_photo._apercu(heic, tmp_path / "apercu.jpg")
+    assert len(appels) == 1
+
+
+def test_timeout_heic_devient_refus_metier(tmp_path, monkeypatch):
+    import subprocess
+
+    heic = tmp_path / "photo.heic"
+    heic.write_bytes(b"temoin")
+    def expire(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], 10)
+    monkeypatch.setattr(retour_photo.subprocess, "run", expire)
+    with pytest.raises(ValueError, match="expirée"):
+        retour_photo._apercu(heic, tmp_path / "apercu.jpg")
+
+
+def test_echec_renommage_ne_supprime_pas_un_dossier_remplace(tmp_path, monkeypatch):
+    photo = tmp_path / "photo.png"
+    Image.new("RGB", (6, 6), "white").save(photo)
+    prive = tmp_path / "prive"
+    prive.mkdir()
+    victime = {}
+
+    def remplacer_stage(stage, destination):
+        archive = stage.with_name("stage-cree-par-nous")
+        stage.rename(archive)
+        stage.mkdir()
+        (stage / "tiers.txt").write_text("ne pas supprimer")
+        victime["archive"] = archive
+        victime["remplace"] = stage
+        raise FileExistsError("destination apparue")
+
+    monkeypatch.setattr(retour_photo, "renommer_exclusif", remplacer_stage)
+    with pytest.raises(FileExistsError):
+        retour_photo.creer_suggestion(photo, prive / "candidate", prive=prive)
+    assert (victime["remplace"] / "tiers.txt").read_text() == "ne pas supprimer"
+    assert (victime["archive"] / "suggestion.json").is_file()
+
+
 def test_heic_synthetic_converti_localement_si_sips_disponible(tmp_path):
     import subprocess
 

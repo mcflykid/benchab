@@ -75,7 +75,7 @@ ROUTES_NAMESPACE = {
         "alias": {"photo": "rendu_photo"},
         "modules_prives": frozenset({
             "maillage_avance", "rendu_photo", "inspection_scene", "assemblage_dossier",
-            "visionneuse", "serveur", "apercu_gcode", "commentaires", "retour_photo_assiste",
+            "visionneuse", "serveur", "apercu_gcode", "commentaires", "retour_photo",
         }),
     },
     "machine": {
@@ -975,8 +975,10 @@ def main(argv=None):
             "entretien",
             "consommation-retour",
             "coutures",
-            "retour-photo",
         }
+        for i in range(len(argv) - 1)
+    ) or any(
+        argv[i] == "visualisation" and argv[i + 1] == "retour-photo"
         for i in range(len(argv) - 1)
     ) or any(
         argv[i] == "fabrication" and argv[i + 1] == "remplacer-maillage"
