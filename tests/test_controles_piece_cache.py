@@ -130,12 +130,14 @@ class Cache(unittest.TestCase):
         ]
         a = subprocess.run(cmd, cwd=self.r, capture_output=True, text=True)
         rapport = (self.r / "rapport.json").read_bytes()
-        b = subprocess.run(cmd, cwd=self.r, capture_output=True, text=True)
+        commande_2 = [*cmd]
+        commande_2[-1] = str(self.r / "rapport-2.json")
+        b = subprocess.run(commande_2, cwd=self.r, capture_output=True, text=True)
         self.assertEqual(a.returncode, 1, a.stderr)
         self.assertEqual(b.returncode, 1, b.stderr)
         self.assertIn("WARN", b.stdout)
         self.assertEqual(a.stdout, b.stdout)
-        self.assertEqual(rapport, (self.r / "rapport.json").read_bytes())
+        self.assertEqual(rapport, (self.r / "rapport-2.json").read_bytes())
 
 
 class ControlesPieceRegressions(unittest.TestCase):

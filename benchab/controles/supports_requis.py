@@ -15,15 +15,15 @@ imprimable sans support. --manuel : supports seulement sur les forceurs ; --part
 réglages passés
 remplacent aussi ceux de chaque objet. Le 3MF d'origine n'est jamais modifié. Choix du type :
 docs/guides/methodes/supports-anycubic.md.
-Code de sortie 0 si chaque plaque reste sous le seuil, 1 sinon. Estimation du slicer, pas une observation
-d'impression.
+Code 0 si chaque plaque reste sous le seuil, 1 sinon, 2 si la preuve ne peut pas être publiée.
+Estimation du slicer, pas une observation d'impression.
 
 
 """
 
-import json
 import math
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -33,6 +33,7 @@ from benchab import reglages as schema_reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.fabrication import anycubic as A
 from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.qualite.ecritures import PublicationNeuve, destination_neuve, ecrire_json_neuf
 
 TYPES = {"arbre": "tree", "normal": "normal"}
 STYLES = {
@@ -119,6 +120,17 @@ def masse_support(g, aire, densite):
     return bandes, interface
 
 
+def _publier_gcodes(source, dossier, fichiers):
+    """Publie les G-code conservés en preuves neuves, sans écraser une plaque antérieure."""
+    cibles = [destination_neuve(Path(dossier) / fichier.name) for fichier in fichiers]
+    if not cibles:
+        return
+    with PublicationNeuve([source, *fichiers], cibles) as publication:
+        for fichier, cible in zip(fichiers, cibles, strict=True):
+            shutil.copyfile(fichier, publication.temporaire(cible))
+        publication.publier()
+
+
 def mesurer(src, regl=None, seuil=1.0, garder=None):
     """Tranche une copie de src avec regl (dict de clés) et renvoie le rapport (dict). src n'est jamais
     modifié. Réglages en unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage
@@ -157,13 +169,18 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
         f, _ = A.trancher(copie, d, "tranche-supports.3mf")
         res = A.resultats(f)
         plaques = []
+        gardes = []
+        dossier_gcodes = Path(d) / "gcode-a-conserver"
+        if garder:
+            dossier_gcodes.mkdir()
         for p in res:
             g = lire_texte_gcode_3mf(f, f"Metadata/plate_{p['index']}.gcode")
             bandes, interface = masse_support(g, aire, densite)
             tot = sum(bandes.values())
             if garder:
-                Path(garder).mkdir(parents=True, exist_ok=True)
-                (Path(garder) / f"plaque-{p['index']}.gcode").write_text(g, encoding="utf-8")
+                temporaire_gcode = dossier_gcodes / f"plaque-{p['index']}.gcode"
+                temporaire_gcode.write_text(g, encoding="utf-8")
+                gardes.append(temporaire_gcode)
             plaques.append(
                 {
                     "plaque": p["index"],
@@ -175,6 +192,8 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
                     "statut": "PASS" if tot < seuil else "WARN",
                 }
             )
+        if garder:
+            _publier_gcodes(src, garder, gardes)
     return {
         "source": str(src),
         "seuil_g": seuil,
@@ -186,7 +205,7 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
 
 
 def main(argv=None):
-    """Mesure les supports en g et rend le code de contrôle, sans commande imprimante."""
+    """Estime les supports en g, publie des preuves neuves et renvoie le code sans commande imprimante."""
     a = list(sys.argv[1:] if argv is None else argv)
     if len(a) < 2:
         print(__doc__)
@@ -197,6 +216,8 @@ def main(argv=None):
 
     autres = [x for i, x in enumerate(a) if i and a[i - 1] == "--reglage"]
     try:
+        source = Path(a[0])
+        sortie = destination_neuve(Path(a[1]))
         regl = reglages(
             opt("--type", "arbre"),
             opt("--style", "organique" if opt("--type", "arbre") == "arbre" else "defaut"),
@@ -207,13 +228,11 @@ def main(argv=None):
             opt("--interfaces"),
             autres,
         )
-    except ValueError as e:
+        r = mesurer(source, regl, float(opt("--seuil-g", 1.0)), opt("--garder"))
+        ecrire_json_neuf(sortie, r, entrees=[source])
+    except (OSError, ValueError, IndexError) as e:
         print(f"refusé : {e}", file=sys.stderr)
         return 2
-    r = mesurer(Path(a[0]), regl, float(opt("--seuil-g", 1.0)), opt("--garder"))
-    sortie = Path(a[1])
-    sortie.parent.mkdir(parents=True, exist_ok=True)
-    sortie.write_text(json.dumps(r, indent=1, ensure_ascii=False), encoding="utf-8")
     for p in r["plaques"]:
         print(f"{p['statut']:5s} plaque {p['plaque']} : {p['support_g']} g de supports demandés {p['par_5mm_g']}")
     return 0 if r["statut"] == "PASS" else 1

@@ -58,4 +58,4 @@ invalides sans corriger la géométrie.
 Pour les formats destinés au slicer, continuer par
 [fabrication](../reference/fabrication.md), contrôle d’envoi, relecture et vote. Les accessoires ne gonflent pas le nombre de
 pièces demandé. Les modèles sans géométrie dans leur 3MF ne sont pas reconstruits
-depuis le G-code. Aucun clip ni catalogue ISO de fixations n’est inclus dans la 1.0.
+depuis le G-code. Les clips et le catalogue de fixations restent suivis dans #29 et #27.

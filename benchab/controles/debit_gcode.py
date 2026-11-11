@@ -9,7 +9,6 @@ usage : debit_gcode.py <tranche.3mf> [--plafonds 1=32,2=16] [--sortie fichier.js
 
 import argparse
 import collections
-import json
 import re
 import sys
 import zipfile
@@ -21,6 +20,7 @@ from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode import debit
 from benchab.gcode.lecture import lire_texte_gcode_3mf
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 from benchab.qualite.statuts import code_statut
 
 
@@ -209,20 +209,22 @@ def analyser(path, overrides=None, attendus=None):
 
 
 def main(args):
-    """Contrôle U25 en mm³/s ; imprime le verdict et son code, sans modifier le 3MF."""
+    """Contrôle U25 en mm³/s ; le rapport neuf est exclusif, verdict et 3MF préservés."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--plafonds", help="Plafonds déclarés, sous la forme 1=32,2=16.")
-    parser.add_argument("--sortie", type=Path)
+    parser.add_argument("--sortie", type=Path, help="Rapport JSON neuf dans l’atelier privé ou un temporaire système.")
     try:
         options = parser.parse_args(args)
     except SystemExit as arret:
         return arret.code
     try:
         overrides = dict(v.split("=") for v in options.plafonds.split(",")) if options.plafonds is not None else None
+        # Un résultat U25, même FAIL, est une preuve distincte du 3MF examiné.
+        cible = destination_neuve(options.sortie) if options.sortie is not None else None
         result = analyser(options.source, overrides)
-        if options.sortie:
-            options.sortie.write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
+        if cible is not None:
+            ecrire_json_neuf(cible, result, entrees=[options.source])
         for p in result["plaques"]:
             print("plaque", p["plaque"], "conforme", p["conforme"], "erreurs", p["erreurs"])
         if result.get("motif"):

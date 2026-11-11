@@ -36,6 +36,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 from benchab.archives_3mf import Archive3MF
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 
 def empreinte(m):
@@ -140,6 +141,23 @@ def controler(arguments, *, placement=None, candidats=None):
     return res, int(bool(pire))
 
 
+def _entrees_controle(fichiers, placement=None, candidats=None):
+    """Énumère les fichiers réellement lus afin qu’un rapport ne remplace aucune entrée."""
+    entrees = list(fichiers)
+    for fichier in fichiers:
+        if fichier.suffix.lower() != ".3mf":
+            continue
+        racine_projet = fichier.resolve().parents[1]
+        chemin_placement = placement or racine_projet / "preuves/placement.json"
+        dossier_candidats = candidats or racine_projet / "candidats"
+        entrees.append(chemin_placement)
+        donnees = json.loads(Path(chemin_placement).read_text(encoding="utf-8"))
+        for objet in donnees["objects"]:
+            modele = objet.get("model", objet["name"])
+            entrees.append(Path(dossier_candidats) / f"{modele}.stl")
+    return list(dict.fromkeys(Path(entree) for entree in entrees))
+
+
 def main(argv=None):
     """Rapporte le risque de décollement géométrique, sans validation physique."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -149,10 +167,14 @@ def main(argv=None):
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     try:
+        sortie = destination_neuve(args.json) if args.json else None
+        entrees = (
+            _entrees_controle(args.fichiers, placement=args.placement, candidats=args.candidats)
+            if sortie is not None else []
+        )
         resultats, code = controler(args.fichiers, placement=args.placement, candidats=args.candidats)
-        if args.json:
-            args.json.parent.mkdir(parents=True, exist_ok=True)
-            args.json.write_text(json.dumps(resultats, indent=1, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+        if sortie is not None:
+            ecrire_json_neuf(sortie, resultats, entrees=entrees)
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
         print("Contrôle refusé : " + str(error), file=sys.stderr)
         return 2

@@ -60,7 +60,18 @@ refuse une plaque ambiguë (#140), le verrou d’export reste confiné (#138) et
 le lanceur distingue les incidents inconnus sans lever le plafond des causes
 établies (#143). Aucun verdict numérique n’atteste une impression physique.
 
-## Prochaine version : 1.5.0
+## Version 1.5.0 — contrôles et échanges de l’atelier
+
+Le [CHANGELOG](CHANGELOG.md#150--2026-11-11) décrit les changements livrés.
+Le placement d’un 3MF importé repose sur une déclaration liée par SHA-256
+et des relations OPC explicites (#105). La couverture Z restitue son repère
+et ses transformations (#110), et l’inventaire des envois refuse les plaques
+homonymes (#147). L’export indexé de découpe (#113) conserve les indices à la
+relecture. Le guide de premiers essais (#74), la vitrine du savoir (#75), la
+lecture PDF optionnelle (#114) et la mise à jour des guides (#149) facilitent
+la lecture des preuves. Aucun contrôle n’atteste une impression physique.
+
+## Prochaine version : 1.6.0
 
 ### 1. Fiabiliser les fondations et les preuves
 

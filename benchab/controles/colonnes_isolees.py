@@ -18,7 +18,6 @@ ne sont calculées.
 
 """
 
-import json
 import math
 import re
 import sys
@@ -29,6 +28,7 @@ from scipy import ndimage
 
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf, membres_gcode_3mf
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 PIECE = (
     "Outer wall",
@@ -264,6 +264,18 @@ def main(argv=None):
     def opt(n, d):
         return float(a[a.index(n) + 1]) if n in a else d
 
+    sortie = None
+    if "--json" in a:
+        try:
+            index_json = a.index("--json")
+            if index_json + 1 >= len(a):
+                raise ValueError("Chemin requis après --json")
+            # Refuser avant lecture/calcul pour protéger la source (#152, chemins-et-atelier.md).
+            sortie = destination_neuve(Path(a[index_json + 1]))
+        except (OSError, ValueError, IndexError) as erreur:
+            print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
+            return 2
+
     res = {
         f"plaque {k}": controler(
             g,
@@ -289,11 +301,12 @@ def main(argv=None):
                 for s in al[:8]
             )
         )
-    if "--json" in a:
-        Path(a[a.index("--json") + 1]).write_text(
-            json.dumps({"fichier": a[0], "plaques": res}, indent=1, ensure_ascii=False),
-            encoding="utf-8",
-        )
+    if sortie is not None:
+        try:
+            ecrire_json_neuf(sortie, {"fichier": a[0], "plaques": res}, entrees=[Path(a[0])])
+        except (OSError, ValueError) as erreur:
+            print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
+            return 2
     return (
         2
         if not res or any(r["statut"] == "NON VÉRIFIÉ" for r in res.values())

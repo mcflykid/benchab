@@ -32,7 +32,7 @@ from pathlib import Path
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf
-from benchab.qualite.ecritures import PublicationNeuve
+from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, remplacer_texte, sortie_privee
 
 # Critères de la revue P07 (26/10/2026), seuils théoriques jusqu'aux retours d'impression ; les réviser avec date.
 CRITERES = {
@@ -225,6 +225,28 @@ def revoir(tranche, envoi, revue_p, faits_p):
     return {"env": env, "faits": faits, "auto": auto, "gardees": gardees, "reste": reste, "plaques": resume_pl}
 
 
+def _valider_sorties_application(tranche, envoi, revue_p, faits_p):
+    """Valide les deux destinations privées et leurs identités avant toute lecture de l'application.
+
+    Entrées : chemins du tranchage, de l'envoi et des deux sorties ; unités sans objet.
+    Sortie : chemins de sortie privés ou temporaires distincts par nom et inode.
+    Refuse les alias par chemin canonique ou hardlink sans modifier les décisions existantes.
+    """
+    entrees = [_sans_lien(Path(chemin)) for chemin in (tranche, envoi)]
+    sorties = [sortie_privee(Path(chemin)) for chemin in (revue_p, faits_p)]
+    for sortie in sorties:
+        for entree in entrees:
+            if sortie.resolve() == entree.resolve():
+                raise ValueError("Collision entrée/sortie : aucun tranchage ni envoi ne sera écrasé.")
+            if sortie.exists() and entree.exists() and os.path.samefile(sortie, entree):
+                raise ValueError("Collision par identité de fichier : aucune entrée ne sera écrasée.")
+    if sorties[0].resolve() == sorties[1].resolve():
+        raise ValueError("Collision entre les sorties revue et faits.")
+    if sorties[0].exists() and sorties[1].exists() and os.path.samefile(sorties[0], sorties[1]):
+        raise ValueError("Collision par identité de fichier entre les sorties revue et faits.")
+    return sorties
+
+
 def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
     """Écrit les JSON de revue liés par SHA-256, dont les mesures en mm si fournies.
 
@@ -281,11 +303,14 @@ def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
     else:
         # Le parcours historique réécrit sa revue explicitement choisie après avoir gardé ses décisions.
         fp.parent.mkdir(parents=True, exist_ok=True)
-        fp.write_bytes(faits)
-        rp.write_bytes(revue)
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        # Le remplacement ne suit pas une référence devenue un lien physique entre les deux validations.
+        remplacer_texte(fp, faits.decode("utf-8"))
+        remplacer_texte(rp, revue.decode("utf-8"))
 
 
 def main(argv):
+    """Relit les zones en mm et applique sur demande une revue privée distincte des entrées."""
     if not argv or "--envoi" not in argv:
         print(__doc__)
         return 64
@@ -296,7 +321,15 @@ def main(argv):
     tranche = Path(argv[0])
     revue_p = opt("--revue", "REVUE-ZONES-LOCALES.json")
     faits_p = opt("--faits", "preuves/revue-locale-faits.json")
-    res = revoir(tranche, opt("--envoi"), revue_p, faits_p)
+    appliquer = "--appliquer" in argv
+    envoi = opt("--envoi")
+    try:
+        if appliquer:
+            revue_p, faits_p = _valider_sorties_application(tranche, envoi, revue_p, faits_p)
+    except (OSError, ValueError, TypeError) as erreur:
+        print(f"Revue refusée : {erreur}", file=sys.stderr)
+        return 2
+    res = revoir(tranche, envoi, revue_p, faits_p)
     sortie = {
         "zones": len(res["env"]["zones"]),
         "justifiees_automatiquement": len(res["auto"]),
@@ -304,10 +337,15 @@ def main(argv):
         "a_revoir": len(res["reste"]),
         "a_revoir_exemples": res["reste"][:15],
         "temps_couche_par_plaque": res["plaques"],
-        "ecrit": "--appliquer" in argv,
+        "ecrit": appliquer,
     }
-    if "--appliquer" in argv:
-        ecrire(res, revue_p, faits_p)
+    if appliquer:
+        try:
+            revue_p, faits_p = _valider_sorties_application(tranche, envoi, revue_p, faits_p)
+            ecrire(res, revue_p, faits_p)
+        except (OSError, ValueError) as erreur:
+            print(f"Revue refusée : {erreur}", file=sys.stderr)
+            return 2
     print(json.dumps(sortie, ensure_ascii=False, indent=1))
     return 0 if not res["reste"] else 1
 

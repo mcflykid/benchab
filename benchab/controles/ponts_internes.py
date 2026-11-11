@@ -21,12 +21,12 @@ réelle d'un pont, ni l'effet du refroidissement : un PASS ne garantit pas un de
 
 """
 
-import json
 import re
 import sys
 from pathlib import Path
 
 from benchab.gcode.lecture import lire_texte_gcode_3mf, membres_gcode_3mf
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 NUM = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 
@@ -82,6 +82,11 @@ def main(a):
 
     portee, sous, seuil = opt("--portee", 10.0), opt("--sous-sommet", 2.0), int(opt("--seuil", 5))
     f = Path(a[0])
+    try:
+        sortie = destination_neuve(a[a.index("--json") + 1]) if "--json" in a else None
+    except (OSError, ValueError, IndexError) as erreur:
+        print("Sortie JSON refusée : " + str(erreur), file=sys.stderr)
+        return 2
     if f.suffix == ".3mf":
         noms = sorted(membres_gcode_3mf(f), key=lambda name: int(re.findall(r"\d+", name)[0]))
         gcodes = {
@@ -99,8 +104,12 @@ def main(a):
             f"à moins de {sous:g} mm du sommet (max {m['portee_max_sous_sommet_mm']} mm)"
         )
     res["statut"] = "WARN" if any(p["statut"] == "WARN" for p in res["plaques"].values()) else "PASS"
-    if "--json" in a:
-        Path(a[a.index("--json") + 1]).write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+    if sortie is not None:
+        try:
+            ecrire_json_neuf(sortie, res, entrees=[f])
+        except (OSError, ValueError) as erreur:
+            print("Sortie JSON refusée : " + str(erreur), file=sys.stderr)
+            return 2
     return 0 if res["statut"] == "PASS" else 1
 
 

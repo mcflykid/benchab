@@ -34,6 +34,7 @@ import trimesh
 from benchab import processus
 from benchab.chemins import atelier_prive
 from benchab.controles import cache_geometrie as O
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 from benchab.qualite.statuts import code_statut
 
 CC = Path(__file__).resolve().parent / "couches_courtes.py"
@@ -274,6 +275,14 @@ def main(argv=None):
     parser.add_argument("--json", type=Path)
     parser.add_argument("--sans-cache", action="store_true")
     args = parser.parse_args(argv)
+    sortie = None
+    if args.json is not None:
+        try:
+            # Refuser avant contrôle et cache pour protéger les maillages (#152, chemins-et-atelier.md).
+            sortie = destination_neuve(args.json)
+        except (OSError, ValueError) as erreur:
+            print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
+            return 2
     from benchab.machine.configuration import charger as charger_configuration
 
     options = {
@@ -314,11 +323,10 @@ def main(argv=None):
         )
         for path in args.fichiers
     }
-    if args.json:
-        cible = args.json
-        cible.parent.mkdir(parents=True, exist_ok=True)
-        cible.write_text(
-            json.dumps(
+    if sortie is not None:
+        try:
+            ecrire_json_neuf(
+                sortie,
                 {
                     "fichiers": resultats,
                     "parametres": {
@@ -328,12 +336,11 @@ def main(argv=None):
                         "non_applicable": options["non_applicable"],
                     },
                 },
-                indent=1,
-                ensure_ascii=False,
-                allow_nan=False,
-            ),
-            encoding="utf-8",
-        )
+                entrees=args.fichiers,
+            )
+        except (OSError, ValueError) as erreur:
+            print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
+            return 2
     pire = 0
     for fichier, controles in resultats.items():
         print("#", fichier)

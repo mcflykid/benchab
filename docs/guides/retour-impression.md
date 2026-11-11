@@ -21,8 +21,7 @@ début, évolution et arrêt éventuel. Une pièce fonctionnelle peut présenter
 couture inacceptable ; un dessus propre ne valide pas le dessous.
 
 Conserver photos privées et commentaire de l’auteur. Ne pas transformer une
-suggestion d’analyse d’image en observation confirmée. Le futur retour photo
-assisté ne fait pas partie de la 1.0.
+suggestion d’analyse d’image en observation confirmée. La saisie reste déclarative ; l’assistance à l’observation par zone est suivie dans #28.
 
 ## Distinguer fait, hypothèse et validation
 
