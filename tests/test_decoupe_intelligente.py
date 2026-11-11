@@ -48,7 +48,8 @@ def test_coupe_courbe_non_plane_fermee_et_complementaire():
 def test_chaque_connecteur_ferme_se_reassemble_sans_interpenetration(connecteur):
     original = trimesh.creation.box((40, 40, 40))
     parts, _ = G.couper(original, COUPE)
-    corps, extras, rapport = C.appliquer(original, parts, COUPE, {"type": connecteur})
+    options = _options_vis() if connecteur == "vis-ecrou" else {"type": connecteur}
+    corps, extras, rapport = C.appliquer(original, parts, COUPE, options)
     assert rapport["statut"] != "FAIL"
     assert rapport["reassemblage"]["statut"] == "PASS"
     assert not rapport["reassemblage"]["interpenetrations"]
@@ -367,3 +368,79 @@ def test_paroi_du_canal_verifiee_jusque_dans_le_col_eloigne_du_joint():
     controle = next(c for c in rapport["controles"] if c["controle"] == "Paroi et logement dans la matière")
     assert controle["statut"] == "FAIL"
     assert rapport["statut"] == "FAIL"
+
+
+def _options_vis():
+    """Déclare la visserie fictive ; aucune cote ISO ou mesure réelle n’est présumée."""
+    return {
+        "type": "vis-ecrou",
+        "diametre": 4,
+        "source_cotes": "fixture de test",
+        "lamage_diametre_mm": 8,
+        "lamage_profondeur_mm": 4,
+        "ecrou_sur_plats_mm": 8,
+        "ecrou_profondeur_mm": 4,
+        "ecrou_orientation_deg": 30,
+    }
+
+
+def test_vis_ecrou_traverse_et_creuse_les_deux_faces_exterieures():
+    """Les logements restent sur les faces extérieures, avec un passage plus étroit au joint."""
+    original = trimesh.creation.box((40, 40, 40))
+    coupe = {"type": "plan", "origine": [0, 0, 0], "normale": [0, 0, 1]}
+    parties, _ = G.couper(original, coupe)
+    corps, extras, rapport = C.appliquer(original, parties, coupe, _options_vis())
+    assert all(piece.is_volume for piece in corps.values()) and not extras
+    assert rapport["reassemblage"]["statut"] == "PASS"
+    vis = rapport["visserie"]
+    assert vis["distance_faces_mm"] == pytest.approx(40)
+    assert vis["passage_diametre_mm"] == pytest.approx(4 + 2 * max(C.JEUX))
+    assert vis["lamage"]["centre_entree_mm"] == pytest.approx([0, 0, 20])
+    assert vis["ecrou"]["centre_entree_mm"] == pytest.approx([0, 0, -20])
+    assert vis["ajustement_reel"] == "NON VÉRIFIÉ"
+    # Un point décalé du passage est absent près des deux faces, présent près du joint.
+    for piece, signe in ((corps["dessous"], -1), (corps["dessus"], 1)):
+        assert piece.contains([[3.2, 0, signe * 19], [3.2, 0, signe * 1]]).tolist() == [False, True]
+
+
+def test_vis_ecrou_refuse_logement_trop_profond_et_coupe_courbe():
+    """Un logement ne peut pas rejoindre le joint ni être calculé sur une surface courbe."""
+    original = trimesh.creation.box((40, 40, 40))
+    coupe = {"type": "plan", "origine": [0, 0, 0], "normale": [0, 0, 1]}
+    parties, _ = G.couper(original, coupe)
+    with pytest.raises(ValueError, match="joint"):
+        C.appliquer(original, parties, coupe, {**_options_vis(), "lamage_profondeur_mm": 19.5})
+    sans_diametre = _options_vis()
+    sans_diametre.pop("diametre")
+    with pytest.raises(ValueError, match="diamètre nominal"):
+        C.appliquer(original, parties, coupe, sans_diametre)
+    with pytest.raises(ValueError, match="coupe plane"):
+        C.appliquer(original, parties, {**coupe, "type": "courbe"}, _options_vis())
+
+
+def test_vis_ecrou_refuse_une_paroi_de_logement_percee():
+    """Le centre peut traverser les faces alors que la garde du logement sort du côté."""
+    original = trimesh.creation.box((40, 40, 40))
+    coupe = {"type": "plan", "origine": [0, 0, 0], "normale": [0, 0, 1]}
+    parties, _ = G.couper(original, coupe)
+    _, _, rapport = C.appliquer(original, parties, coupe, {**_options_vis(), "position": [15, 0, 0]})
+    assert rapport["statut"] == "FAIL"
+    garde = next(c for c in rapport["controles"] if c["controle"] == "Paroi et logement dans la matière")
+    assert garde["statut"] == "FAIL"
+    assert garde["volume_garde_hors_matiere_mm3"] > 0
+
+
+def test_vis_ecrou_exporte_deux_volumes_et_conserve_le_plan(tmp_path):
+    """Le 3MF relu conserve les deux corps et le rapport garde la source des cotes."""
+    source = tmp_path / "boite.stl"
+    trimesh.creation.box((40, 40, 40)).export(source)
+    avant = source.read_bytes()
+    plan = A.nouveau_plan(source, "mm", 2)
+    plan["coupes"][0].update(origine=[0, 0, 0], normale=[0, 0, 1], connecteur=_options_vis())
+    sortie = A.exporter(A.calculer(plan), tmp_path / "export-vis", "3mf")
+    rapport = json.loads((sortie / "decoupe.json").read_bytes())
+    assert rapport["reassemblage"]["statut"] == "PASS"
+    assert rapport["coupes"][0]["connecteur"]["visserie"]["source_cotes"] == "fixture de test"
+    assert rapport["validation_physique"] is False
+    assert len(list(sortie.glob("*.3mf"))) == 2
+    assert source.read_bytes() == avant

@@ -130,7 +130,24 @@ if (D.decoupe) {
       const select=document.createElement('select');select.setAttribute('aria-label','Connecteur coupe '+(i+1));
       for(const [k,v] of Object.entries(catalogue)){const o=document.createElement('option');o.value=k;o.textContent=v;select.append(o);}
       coupe.connecteur ||= {type:'douille'};if(coupe.connecteur.type===undefined)coupe.connecteur.type='douille';select.value=coupe.connecteur.type;select.onchange=()=>{coupe.connecteur.type=select.value;if(!select.value.startsWith('clip-'))delete coupe.connecteur.placement;etatDec.textContent='Connecteur modifié : recalcul requis.';formulairesDec();dessinerDec();};bloc.append(select);
-      for(const [cle,val,libelle] of [['diametre',6,'Diamètre (mm)'],['longueur',12,'Longueur (mm)'],['paroi_min',1.2,'Paroi minimale (mm)']])champDec(bloc,libelle+' connecteur '+(i+1),coupe.connecteur[cle]??val,v=>{coupe.connecteur[cle]=v;});
+      const visserie=coupe.connecteur.type==='vis-ecrou';
+      const dimensions=visserie?
+        [['diametre','','Diamètre nominal de la vis (mm)'],['paroi_min',1.2,'Paroi minimale (mm)'],
+         ['lamage_diametre_mm','','Diamètre de tête (mm)'],['lamage_profondeur_mm','','Profondeur du lamage (mm)'],
+         ['ecrou_sur_plats_mm','','Largeur de l’écrou sur plats (mm)'],['ecrou_profondeur_mm','','Profondeur de l’écrou (mm)'],
+         ['ecrou_orientation_deg',0,'Orientation de l’écrou (°)']]:
+        [['diametre',6,'Diamètre (mm)'],['longueur',12,'Longueur (mm)'],['paroi_min',1.2,'Paroi minimale (mm)']];
+      for(const [cle,val,libelle] of dimensions)champDec(bloc,libelle+' connecteur '+(i+1),coupe.connecteur[cle]??val,v=>{
+        coupe.connecteur[cle]=v;etatDec.textContent='Cote modifiée : recalcul requis.';
+      });
+      if(visserie){
+        // La source et les cotes de visserie restent à déclarer, sans dimensions ISO inventées.
+        const etiquette=document.createElement('label'),source=document.createElement('input');
+        etiquette.textContent='Source des cotes de la visserie';source.type='text';source.maxLength=512;
+        source.value=coupe.connecteur.source_cotes||'';source.setAttribute('aria-label','Source des cotes visserie coupe '+(i+1));
+        source.oninput=()=>{coupe.connecteur.source_cotes=source.value;etatDec.textContent='Source modifiée : recalcul requis.';};
+        etiquette.append(source);bloc.append(etiquette);
+      }
       formulairePlacementClip(bloc,coupe,i,dernier);
       const conseil=document.createElement('p');
       function texteConseil(){const initial=coupe.conseil_connecteur;

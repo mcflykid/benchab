@@ -35,13 +35,16 @@ def generer_outil(
     source_cotes: str,
     passage_mm: float | None = None,
     orientation_deg: float = 0.0,
+    inclure_passage: bool = True,
 ) -> tuple[trimesh.Trimesh, dict]:
     """Génère un volume à soustraire et les marges nominales dans un bloc rectangulaire.
 
     Toutes les cotes sont en mm, l’angle dans le plan XY est en degrés.
     Le bloc va de l’origine aux dimensions XYZ ; l’entrée du logement est à z=0.
     La largeur est un diamètre pour les formes rondes et une cote sur plats pour
-    l’écrou. L’insert est borgne ; les autres formes exigent un passage traversant.
+    l’écrou. L’insert est borgne ; les autres formes exigent un diamètre de passage.
+    Pour un lamage ou un écrou, inclure_passage=False génère le renfoncement
+    seul, tout en contrôlant son épaulement par rapport au passage déclaré.
     Le fraisage relie son diamètre d’entrée à celui du passage à la profondeur
     déclarée ; son angle inclus en degrés est calculé, sans référence ISO.
     PASS concerne uniquement la géométrie, NON VÉRIFIÉ l’ajustement physique.
@@ -67,6 +70,8 @@ def generer_outil(
         raise ValueError("Orientation XY attendue entre 0 inclus et 360 degrés exclus")
     hexagonal = forme == "ecrou_hexagonal"
     conique = forme == "fraisage"
+    if type(inclure_passage) is not bool or (not inclure_passage and forme not in {"lamage", "ecrou_hexagonal"}):
+        raise ValueError("Le renfoncement seul est réservé au lamage et à l’écrou hexagonal")
     if not hexagonal and orientation_deg != 0:
         raise ValueError("L’orientation s’applique seulement à l’écrou hexagonal")
     if forme == "insert_cylindrique":
@@ -111,7 +116,7 @@ def generer_outil(
         outil = _cylindre(
             rayon, profondeur, centre, sections=6 if hexagonal else _SECTIONS_RONDES, angle=orientation_deg,
         )
-        if passage is not None:
+        if passage is not None and inclure_passage:
             foret = _cylindre(passage / 2, bloc[2], centre, sections=_SECTIONS_RONDES)
             outil = trimesh.boolean.union([outil, foret], engine="manifold")
     if not outil.is_volume or outil.body_count != 1:
@@ -126,6 +131,7 @@ def generer_outil(
         "largeur_mm": largeur,
         "profondeur_mm": profondeur,
         "passage_mm": passage,
+        **({"outil_inclut_passage": False} if not inclure_passage else {}),
         "orientation_deg": float(orientation_deg),
         **({"angle_inclus_deg": angle_inclus} if angle_inclus is not None else {}),
         "marge_min_mm": marge_min,
