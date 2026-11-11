@@ -125,3 +125,23 @@ def test_contexte_refuse_le_remplacement_du_chemin_avant_le_sha(tmp_path, monkey
     assert refus and "contexte" in refus[0]
     assert lire_membre_3mf(ancien, membre) == b"G1 X22"
     vider_cache_lecture()
+
+
+def test_cache_analyse_ne_substitue_pas_un_autre_contexte(tmp_path):
+    """Un résultat en cache ne valide pas un descripteur ouvert sur un autre fichier."""
+    from benchab.archives_3mf import Archive3MF
+
+    actuel, autre = (tmp_path / f"{nom}.3mf" for nom in ("actuel", "autre"))
+    membre = "Metadata/plate_1.gcode"
+    with ZipFile(actuel, "w") as archive:
+        archive.writestr(membre, "G1 X1\n")
+    autre.write_bytes(actuel.read_bytes())
+
+    def analyser(lignes):
+        return {"mouvements": sum(ligne.startswith("G1") for ligne in lignes)}
+
+    assert analyser_membre_gcode_3mf(actuel, membre, {}, analyser) == {"mouvements": 1}
+    with Archive3MF(autre) as contexte:
+        with pytest.raises(ValueError, match="Source différente"):
+            analyser_membre_gcode_3mf(actuel, membre, {}, analyser, archive=contexte)
+    vider_cache_lecture()

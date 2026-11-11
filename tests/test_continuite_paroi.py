@@ -355,3 +355,25 @@ def test_fail_legacy_dominant_dans_agregation(tmp_path, monkeypatch):
         lambda _: {"controle": "témoin", "statut": "FAIL"},
     )
     assert controler_envoi(archive)["statut"] == "FAIL"
+
+
+def test_3mf_continuite_selectionne_nom_exact_et_refuse_les_alias(tmp_path):
+    """Le numéro choisi désigne un seul membre, quel que soit le zéro initial."""
+    gcode = "G90\nM83\n;TYPE:Outer wall\nG0 Z0.2\nG1 X10 E0.5 F600\n"
+    canonique, rembourre, ambigu = (tmp_path / f"{nom}.3mf" for nom in ("canonique", "rembourre", "ambigu"))
+    for fichier, membres in (
+        (canonique, [("plate_1", gcode)]),
+        (rembourre, [("plate_01", gcode)]),
+        (ambigu, [("plate_1", gcode), ("plate_01", "G90\n")]),
+    ):
+        with zipfile.ZipFile(fichier, "w") as sortie:
+            for nom, contenu in membres:
+                sortie.writestr(f"Metadata/{nom}.gcode", contenu)
+    attendu = controler(canonique, plaque=1)
+    assert attendu["statut"] == "PASS"
+    assert controler(rembourre, plaque=1) == attendu
+    for plaque in (None, 1):
+        refus = controler(ambigu, plaque=plaque)
+        assert refus["statut"] == "NON VÉRIFIÉ"
+        assert "ambigu" in refus["avertissements"][0].lower()
+        assert "couches_analysees" not in refus

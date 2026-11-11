@@ -101,3 +101,8 @@ Cette extension concerne les mesures par boîte. Les contrôles de couverture
 première couche, de continuité et d’appuis qui attendent encore des segments
 restent NON VÉRIFIÉS pour les arcs. Les autres plans et centres absolus ne sont
 pas qualifiés. La mesure est numérique et ne valide pas une impression.
+
+Dans un 3MF, un numéro de plaque désigne un seul membre G-code. Un nom
+unique avec un zéro initial est lisible ; plusieurs graphies du même numéro
+donnent NON VÉRIFIÉ, même avec une plaque choisie explicitement. Le résultat
+en cache reste lié aux octets du 3MF et à l’archive effectivement ouverte (#178).

@@ -14,9 +14,10 @@ from collections import Counter
 from pathlib import Path
 from zipfile import BadZipFile
 
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter, axes_homing
 from benchab.gcode.geometrie_arc import point_debut_deposee_xyz
-from benchab.gcode.lecture import analyser_membre_gcode_3mf, membres_gcode_3mf
+from benchab.gcode.lecture import analyser_membre_gcode_3mf, plaques_gcode_archive
 
 SEUILS_DEFAUT = {
     "morceaux_par_couche": 10,
@@ -272,7 +273,12 @@ def _analyser_lignes(lignes, intervalle_z_mm=None, seuils_absolus=None, longueur
 
 def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, longueur_micro_mm=LONGUEUR_MICRO_MM,
              reference=None):
-    """Analyse en flux et réutilise les résultats 3MF par empreinte, plaque, options et version du lecteur."""
+    """Analyse en flux la continuité nominale (longueurs en mm, accélérations en mm/s²).
+
+    Reçoit un G-code ou un 3MF et, si nécessaire, un numéro de plaque. Le
+    cache lie les résultats à la version du lecteur et aux octets de la source.
+    Un numéro ambigu est refusé ; aucune écriture ou validation physique.
+    """
     intervalle, seuils, longueur, _relation = _options(
         intervalle_z_mm, seuils_absolus, longueur_micro_mm, reference,
     )
@@ -289,19 +295,26 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
         return _analyser_lignes(lignes, **options)
 
     if Path(chemin).suffix.lower() == ".3mf":
-        membres = list(membres_gcode_3mf(chemin))
-        if plaque is not None:
-            membres = [nom for nom in membres if nom == f"Metadata/plate_{int(plaque)}.gcode"]
-        if len(membres) != 1:
-            if not membres:
-                raise _PlaqueAmbigue("aucun G-code pour la plaque sélectionnée")
-            raise _PlaqueAmbigue("plusieurs plaques G-code sans sélection")
-        version = hashlib.sha256(
-            Path(__file__).read_bytes()
-            + inspect.getsource(Interpreter).encode()
-            + inspect.getsource(axes_homing).encode()
-        ).hexdigest()
-        return analyser_membre_gcode_3mf(chemin, membres[0], options, calculer, version=version)
+        with Archive3MF(chemin) as archive:
+            try:
+                membres = dict(plaques_gcode_archive(archive))
+            except ValueError as erreur:
+                raise _PlaqueAmbigue("numéro de plaque ambigu") from erreur
+            if plaque is not None:
+                numero = int(plaque)
+                membres = {numero: membres[numero]} if numero in membres else {}
+            if len(membres) != 1:
+                if not membres:
+                    raise _PlaqueAmbigue("aucun G-code pour la plaque sélectionnée")
+                raise _PlaqueAmbigue("plusieurs plaques G-code sans sélection")
+            version = hashlib.sha256(
+                Path(__file__).read_bytes()
+                + inspect.getsource(Interpreter).encode()
+                + inspect.getsource(axes_homing).encode()
+            ).hexdigest()
+            return analyser_membre_gcode_3mf(
+                chemin, next(iter(membres.values())), options, calculer, version=version, archive=archive,
+            )
     entree = Path(chemin).open("r", encoding="utf-8", errors="replace")
     try:
         return calculer(entree)
@@ -311,7 +324,11 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
 
 def controler(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None,
               longueur_micro_mm=LONGUEUR_MICRO_MM, reference=None):
-    """Contrôle envoi; les options d'analyse sont validées et les plaques ambiguës restent non vérifiées."""
+    """Retourne PASS, FAIL ou NON VÉRIFIÉ pour la continuité nominale de la paroi.
+
+    Les mesures spatiales sont en mm et les options suivent analyser.
+    Une plaque ambiguë n’est jamais analysée ; aucune écriture ni preuve physique.
+    """
     _options(intervalle_z_mm, seuils_absolus, longueur_micro_mm, reference)
     if not Path(chemin).is_file():
         return {
@@ -347,17 +364,19 @@ def controler(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None,
                 )
         return rapport
     except _PlaqueAmbigue as erreur:
+        if "plusieurs" in str(erreur):
+            message = "3MF avec plusieurs plaques : préciser la plaque; aucune n'a été analysée."
+        elif "ambigu" in str(erreur):
+            message = "Numéro de plaque ambigu : aucun G-code n’a été analysé."
+        else:
+            message = "Aucun G-code pour la plaque sélectionnée."
         return {
             "controle": "continuité paroi extérieure",
             "statut": "NON VÉRIFIÉ",
-            "avertissements": [
-                "3MF avec plusieurs plaques : préciser la plaque; aucune n'a été analysée."
-                if "plusieurs" in str(erreur)
-                else "Aucun G-code pour la plaque sélectionnée."
-            ],
+            "avertissements": [message],
             "validation_physique": False,
         }
-    except (OSError, KeyError, BadZipFile):
+    except (OSError, ValueError, KeyError, BadZipFile):
         return {
             "controle": "continuité paroi extérieure",
             "statut": "NON VÉRIFIÉ",
