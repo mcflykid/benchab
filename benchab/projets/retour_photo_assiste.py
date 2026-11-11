@@ -242,14 +242,20 @@ def _lier_archive(archive_3mf, declaration, plaque, region_id):
 
 
 def creer_suggestion(
-    photo, destination, *, prive=None, archive_3mf=None, declaration=None, plaque=None, region_id=None
+    photo, destination, *, prive=None, archive_3mf=None, declaration=None, plaque=None, region_id=None,
+    origine_media="NON VÉRIFIÉ",
 ):
     """Crée un candidat privé neuf avec photo conservée, aperçu JPEG et SHA ; aucun projet/DB écrit.
 
     Entrées : photo locale, destination de dossier privé, archive/déclaration facultatives.
+    Origine média déclarée facultative : photo_importee, image_deja_disponible ou NON VÉRIFIÉ.
     Sortie : manifeste CANDIDAT ; le lien photo, l’identité du modèle et le défaut restent NON VÉRIFIÉS.
     Les nombres Z déclarés sont en mm. Aucun diagnostic visuel ou validation physique n’est produit.
     """
+    if not isinstance(origine_media, str) or origine_media not in {
+        "photo_importee", "image_deja_disponible", "NON VÉRIFIÉ"
+    }:
+        raise ValueError("origine média déclarée non prise en charge")
     racine = atelier_prive(prive)
     source, identite_source = _entree_prive(photo)
     cible = sortie_durable(destination, prive=racine)
@@ -275,6 +281,7 @@ def creer_suggestion(
     rapport = {
         "schema": 1,
         "suggestion": "CANDIDAT",
+        "origine_media_declaree": origine_media,
         "cree_utc": datetime.now(timezone.utc).isoformat(),
         "photo": {
             "source_fichier": copie.name,
@@ -387,6 +394,15 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         membres_attendus[nom] = (sha, info.st_size, limite)
     if fichiers_references[0] == fichiers_references[1] or identites_references[0] == identites_references[1]:
         raise ValueError("les fichiers source et aperçu doivent être distincts")
+    from benchab.projets.observation_zone import construire
+
+    origine_media = suggestion.get("origine_media_declaree", "NON VÉRIFIÉ")
+    observation_zone = construire(
+        suggestion,
+        sha_suggestion=empreinte_suggestion,
+        texte_declare=observation_declaree.strip(),
+        origine_media=origine_media,
+    )
     capture = {
         "schema": 1,
         "nature": "CONFIRMATION_HUMAINE_SEPAREE",
@@ -394,6 +410,7 @@ def confirmer_suggestion(fiche, empreinte_suggestion, observation_declaree, sort
         "suggestion_sha256": empreinte_suggestion,
         "confirmation_humaine": True,
         "observation_declaree": observation_declaree.strip(),
+        "observation_zone": observation_zone,
         "cree_utc": datetime.now(timezone.utc).isoformat(),
         "limite": (
             "Cette confirmation consigne une déclaration ; elle ne certifie ni photo, modèle, "
@@ -544,6 +561,10 @@ def main(argv=None, *, prive=None):
     proposer.add_argument("--declaration", type=Path, help="JSON privé liant SHA 3MF, plaque, région et plage Z")
     proposer.add_argument("--plaque", type=int)
     proposer.add_argument("--region")
+    proposer.add_argument(
+        "--origine-image", choices=("photo_importee", "image_deja_disponible", "NON VÉRIFIÉ"),
+        default="NON VÉRIFIÉ", help="Origine déclarée du fichier image ; aucun accès caméra",
+    )
     confirmer = sous.add_parser("confirmer", help="Consigne une déclaration humaine dans un JSON distinct")
     confirmer.add_argument("fiche", type=Path)
     confirmer.add_argument("--sha256", required=True, dest="empreinte")
@@ -573,6 +594,7 @@ def main(argv=None, *, prive=None):
                 declaration=declaration,
                 plaque=args.plaque,
                 region_id=args.region,
+                origine_media=args.origine_image,
             )
             rapport["dossier_prive"] = str(args.destination)
         else:

@@ -32,6 +32,13 @@ avec `sips` quand Pillow ne sait pas le lire. L’original est conservé octet p
 octet et les deux fichiers reçoivent une empreinte SHA-256. La commande n’ouvre
 pas SQLite et ne modifie aucun projet.
 
+Le même contrat s’applique à une image déjà disponible dans l’atelier.
+Déclarer son origine avec `--origine-image image_deja_disponible` ; pour un
+nouveau fichier apporté au parcours, utiliser `--origine-image photo_importee`.
+La valeur par défaut reste NON VÉRIFIÉ. Cette origine est une déclaration
+utilisateur, pas une provenance automatiquement authentifiée. Les deux cas
+copient les octets dans un dossier privé neuf.
+
 Si la publication échoue avant le renommage, le dossier d’étape privé reste
 conservé pour diagnostic ; BENCHAB ne le supprime ni ne le déplace.
 
@@ -69,6 +76,17 @@ benchab visualisation retour-photo confirmer DOSSIER/suggestion.json \
 Cette confirmation neuve garde le SHA de la fiche et la déclaration écrite ; elle
 ne modifie ni la fiche candidate, ni le projet, ni SQLite. Elle n’identifie pas
 un défaut, le modèle ou l’impression et ne constitue pas une mesure physique.
+Le JSON de confirmation inclut `observation_zone`, le contrat partagé schema 1 :
+média source et aperçu par SHA, origine déclarée, zone exacte si liée, plage Z
+en mm et observation déclarée. Sans liaison qualifiée, sa zone reste
+NON VÉRIFIÉE. L’image n’est pas interprétée pour détecter une région ou un défaut.
+
+Un [exemple commun entièrement fictif](../examples/observation-zone-fictive.json)
+illustre le format. Pour une image déjà disponible, seule la valeur
+`media.origine_declaree` devient `image_deja_disponible` ; les autres champs
+gardent le même schéma. Aucun exemple ne reprend de photo, projet ou
+renseignement réel ; les SHA de l’exemple sont des valeurs factices, sans
+archive ni image associée.
 La commande affiche également `confirmation_sha256`, l’empreinte du fichier
 de confirmation qu’elle a relu.
 

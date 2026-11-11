@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "nature": "OBSERVATION_ZONE",
+  "statut": "CONFIRMATION_HUMAINE",
+  "media": {
+    "origine_declaree": "photo_importee",
+    "format_source": "PNG",
+    "source_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "apercu_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "zone": {
+    "statut": "PASS",
+    "source_3mf_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "plaque": 1,
+    "region_id_declaree": "zone-fictive-7",
+    "plage_z_mm_declaree": [
+      1.25,
+      3.5
+    ],
+    "gcode_membre": "Metadata/plate_01.gcode",
+    "gcode_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "reglages_membre": "Metadata/project_settings.config",
+    "reglages_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "confirmation": {
+    "suggestion_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+    "observation_declaree": "Exemple fictif : texture irrégulière dans la zone choisie."
+  },
+  "limite": "L’origine du média et l’observation sont déclarées par une personne. Aucune zone n’est reconnue dans les pixels ; cela ne prouve ni défaut, impression ni cause physique."
+}
