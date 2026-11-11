@@ -542,7 +542,10 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
 
 
 class Serveur(http.server.ThreadingHTTPServer):
-    """Serveur local de pages privées ; statuts HTTP, aucune exposition réseau ni commande machine implicite."""
+    """Sert les pages privées à l’adresse fournie par l’appelant.
+
+    Le lanceur CLI utilise 127.0.0.1. Le serveur ne commande pas la machine.
+    """
     request_queue_size = 32
 
     def __init__(self, address, handler=Gestion, racine=None):

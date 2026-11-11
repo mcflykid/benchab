@@ -138,6 +138,7 @@ def _projeter_sources(sources_brutes, copies_brutes):
 
 
 def native(root):
+    """Indique si un fichier de base est présent, sans qualifier son contenu."""
     return (Path(root) / "benchab.sqlite").exists()
 
 
@@ -227,6 +228,10 @@ def lire_connexion(connexion):
 
 
 def charger(root):
+    """Retourne la projection SQLite privée après vérification de l’identité BENCHAB.
+
+    Si l’index initial manque, reprend le registre JSON d’origine présent.
+    """
     chemin = _sans_lien(Path(root) / "benchab.sqlite").resolve(strict=True)
     connexion = sqlite3.connect(chemin.as_uri() + "?mode=ro", uri=True)
     connexion.row_factory = sqlite3.Row

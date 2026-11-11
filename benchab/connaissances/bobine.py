@@ -153,6 +153,7 @@ def _inscrire_historique(p, entry, fiche, recu, reprise, empreinte):
 
 
 def main(argv=None, *, racine=None):
+    """Importe une fiche JSON de bobine dans l’atelier privé. Renvoie 0 ou 2 si refus."""
     a = argparse.ArgumentParser(description=__doc__)
     a.add_argument("commande", choices=["importer"])
     a.add_argument("donnees", type=Path)
