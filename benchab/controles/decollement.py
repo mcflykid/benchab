@@ -113,7 +113,8 @@ def evaluer(m):
 def depuis_projet(plaques, placement, candidats):
     """Pièces du projet (candidats/<modèle>.stl, déjà posées) et brim_type : réglage de l'objet
     (placement.json), sinon du 3MF. Réglages en unités natives (mm, s, °C, %) lus via le
-    dictionnaire typé ; aucun réglage inconnu transformé."""
+    dictionnaire typé ; aucun réglage inconnu transformé.
+    """
     with Archive3MF(plaques) as archive:
         st = archive.reglages()
     out, vus = [], {}

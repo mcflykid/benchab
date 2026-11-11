@@ -96,6 +96,7 @@ def typographie(chemins):
 
 class LiensHTML(HTMLParser):
     """Collecte les cibles href et src des balises HTML, sans ouvrir de lien."""
+
     def __init__(self):
         """Initialise le parseur avec décodage des entités et une liste vide de cibles."""
         super().__init__(convert_charrefs=True)

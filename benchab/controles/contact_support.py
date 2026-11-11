@@ -28,6 +28,7 @@ PIECE = {
 
 class ContactSupport:
     """Accumule une projection nominale des interfaces et des écarts Z en mm, sans mesure physique."""
+
     def __init__(self, cellule=0.5, max_ecart=2.0, max_cellules=100000, max_echantillons=2000000, max_niveaux=200000):
         """Initialise la grille et l’écart maximal en mm, avec des budgets de comptage sans unité."""
         if (

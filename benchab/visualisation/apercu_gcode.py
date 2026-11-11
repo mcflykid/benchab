@@ -17,7 +17,8 @@ contrôle de première couche
 (outils/controles/premiere_couche.py) sont marqués en rouge. Temps par couche : longueur / vitesse commandée,
 sans accélérations
 (estimation grossière, le temps total du slicer fait foi). Affichage du fichier tranché, pas une simulation de
-l'impression."""
+l'impression.
+"""
 
 import base64
 import html as html_lib
@@ -103,7 +104,8 @@ def couches(g):
     [x0, y0, x1, y1, relevage]}].
     Vitesse : celle commandée au début de la polyligne (une polyligne est coupée quand F change).
     Déplacements à vide de 1 mm et plus,
-    relevage = Z du déplacement − Z de la couche (unités de 1/Q mm). Vue 3D ajoutée le 25/10/2026."""
+    relevage = Z du déplacement − Z de la couche (unités de 1/Q mm). Vue 3D ajoutée le 25/10/2026.
+    """
     from benchab.controles.gcode_interpreter import Interpreter
 
     parser = Interpreter()
@@ -182,7 +184,8 @@ def couches(g):
 
 def alertes(zones=None, colonnes=None):
     """Alertes des contrôles par plaque : zones locales (contrôle avant envoi) et séries de colonnes
-    isolées. Fichiers absents : ignorés."""
+    isolées. Fichiers absents : ignorés.
+    """
     a = {}
     if zones and Path(zones).exists():
         zl = json.loads(Path(zones).read_text()).get("zones_locales", {})

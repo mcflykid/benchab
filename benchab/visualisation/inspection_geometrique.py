@@ -1,7 +1,8 @@
 """Contrôles bornés sur le maillage source, jamais sur son aperçu allégé.
 
 La base est celle du repère du modèle : ce n'est pas un contact plateau attesté.
-Aucune écriture, réparation, décision de fabrication ou déduction de paroi."""
+Aucune écriture, réparation, décision de fabrication ou déduction de paroi.
+"""
 
 import hashlib
 import re

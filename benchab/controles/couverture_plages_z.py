@@ -256,7 +256,6 @@ def _lire_contexte(source, identifiant):
 
 def _lire_geometrie(source):
     """Lit les bornes Z (mm) d’une archive déjà reliée à son instance imprimable."""
-
     # Le lecteur partagé valide les unités 3MF et applique les transforms d’instance.
     # Dans cette étape, le contrôle ci-dessus garantit que la coordonnée résultante Z
     # reste identique au Z objet auquel les plages sont référencées.

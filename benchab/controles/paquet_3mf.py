@@ -36,6 +36,7 @@ _CHUNK = 64 * 1024
 @dataclass(frozen=True)
 class PacketLimits:
     """Budgets de lecture ZIP/JSON : tailles en octets, nombres de membres et profondeur sans unité."""
+
     archive_bytes: int = 64 * 1024 * 1024
     member_bytes: int = 64 * 1024 * 1024
     total_bytes: int = 256 * 1024 * 1024
@@ -59,6 +60,7 @@ DEFAULT_LIMITS = PacketLimits()
 @dataclass(frozen=True)
 class PacketMember:
     """Identité d’un membre contrôlé : tailles en octets, CRC32 et SHA-256, sans interprétation métier."""
+
     name: str
     size: int
     compressed_size: int
@@ -70,6 +72,7 @@ class PacketMember:
 @dataclass(frozen=True)
 class ProjectSettings:
     """Nom, empreinte et clés du membre de réglages, sans mutation de leur valeur."""
+
     member: str
     sha256: str
     keys: tuple[str, ...]
@@ -78,6 +81,7 @@ class ProjectSettings:
 @dataclass(frozen=True)
 class PacketReport:
     """Résultat structurel du paquet : taille en octets, inventaire et CRC, sans verdict d’envoi."""
+
     archive_sha256: str
     archive_size: int
     members: tuple[PacketMember, ...]

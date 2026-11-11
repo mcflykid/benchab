@@ -22,6 +22,7 @@ def sha(chemin):
 
 class Projet:
     """Adaptateur du cache JSON local de géométrie, sans accès machine."""
+
     def __init__(self, racine):
         """Prépare le dossier de cache déclaré en mode privé ; racine liée refusée."""
         self.racine = Path(racine).expanduser().absolute()

@@ -10,7 +10,8 @@ Trois catégories, sans aucune tolérance automatique :
 Un écart documentaire ne compense jamais un écart de géométrie ou de fabrication.
 Identité binaire : un 3MF dont les membres sont identiques mais dont le conteneur ZIP
 diffère (par exemple horodatages) est compté « contenu identique » et relevé séparément.
-Un .gcode isolé est comparé par commandes puis par commentaires."""
+Un .gcode isolé est comparé par commandes puis par commentaires.
+"""
 
 import argparse
 import hashlib

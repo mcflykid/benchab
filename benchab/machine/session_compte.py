@@ -200,6 +200,7 @@ def etat():
 
 class SessionCompte:
     """Gère l’authentification Anycubic et le cache privé utilisé pour la lecture Cloud."""
+
     def __init__(self, compte=None, session=None, *, opener=None, clock=None):
         """Résout deux chemins privés distincts et prépare le transport et l’horloge de session."""
         defaults = chemins()

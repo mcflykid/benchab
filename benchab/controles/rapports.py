@@ -77,6 +77,7 @@ def _reconnu(data, outil, source, path):
 
 class RapportCourant:
     """Publie le rapport courant d’un outil et d’une source identifiés ; protège les preuves figées."""
+
     def __init__(self, path, entrees, outil):
         """Épingle les empreintes des entrées et vérifie la destination existante ; refuse les collisions."""
         self.path = _sans_lien(path)

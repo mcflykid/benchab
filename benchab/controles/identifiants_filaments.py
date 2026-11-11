@@ -27,7 +27,8 @@ def _contient_marqueur(flux):
 
 def controler(chemin):
     """Exécute controler avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en
-    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé."""
+    unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
+    """
     membres = []
     champs = []
     try:

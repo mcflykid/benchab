@@ -182,7 +182,8 @@ def planifier(root, changements):
 
 def executer(root, plan):
     """Exécute les tests sélectionnés avec diagnostic privé et durée s ; code exact, aucun atelier initialisé
-    implicitement."""
+    implicitement.
+    """
     from benchab.processus import executer as processus
 
     if not plan["tests"]:
