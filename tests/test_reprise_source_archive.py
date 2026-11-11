@@ -13,7 +13,7 @@ MEMBRE = "projets/fixture/sources/original.stl"
 
 def _archive(
     path: Path, *, contenu=b"STL synthetique\n", contenu_manifeste=None, manifeste_brut=None, nom=MEMBRE,
-    entrees_supplementaires=(), pax_headers=None,
+    entrees_supplementaires=(), pax_headers=None, pax_headers_manifeste=None,
 ):
     """Construit une sauvegarde tar petite et reproductible pour les tests."""
     sha = hashlib.sha256(contenu if contenu_manifeste is None else contenu_manifeste).hexdigest()
@@ -37,6 +37,8 @@ def _archive(
             info.size = len(donnees)
             if membre == nom and pax_headers:
                 info.pax_headers = pax_headers
+            if membre == "BENCHAB-MANIFEST.json" and pax_headers_manifeste:
+                info.pax_headers = pax_headers_manifeste
             tar.addfile(info, io.BytesIO(donnees))
     return sha
 
@@ -430,3 +432,35 @@ def test_cli_prepare_depuis_tar_ne_ouvre_pas_base(tmp_path, capsys, monkeypatch)
     ]) == 2
     capsys.readouterr()
     assert not (prive / "benchab.sqlite").exists()
+
+
+@pytest.mark.parametrize("queue", [b"", b"\0" * 512, b"\0" * 1024 + b"a" * 512])
+def test_fin_tar_incomplete_ou_non_nulle_refusee(tmp_path, queue):
+    """Une fin TAR incomplète ou suivie de données ne produit aucune copie."""
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+    archive = tmp_path / "sauvegarde.tar"
+    sha_source = _archive(archive)
+    with tarfile.open(archive, "r:") as tar:
+        tar.getmembers()
+        fin_membres = tar.offset
+    archive.write_bytes(archive.read_bytes()[:fin_membres] + queue)
+    sha_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="Fin du TAR"):
+        _appel(prive, archive, sha_archive, sha_source, prive / "rapports" / "sortie")
+    assert list((prive / "rapports").iterdir()) == []
+
+
+def test_budget_cumule_entetes_meme_si_chacune_est_petite(tmp_path, monkeypatch):
+    """Le budget cumulé empêche les extensions ordinaires de gonfler l’index."""
+    from benchab.donnees import reprise_source
+
+    prive = tmp_path / "prive"
+    (prive / "rapports").mkdir(parents=True)
+    archive = tmp_path / "sauvegarde.tar"
+    sha_source = _archive(archive, pax_headers={"mtime": "42.1"}, pax_headers_manifeste={"mtime": "43.2"})
+    sha_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
+    monkeypatch.setattr(reprise_source, "_MAX_OCTETS_EXTENSIONS", 20, raising=False)
+    with pytest.raises(ValueError, match="budget cumulé des extensions"):
+        _appel(prive, archive, sha_archive, sha_source, prive / "rapports" / "sortie")
+    assert list((prive / "rapports").iterdir()) == []

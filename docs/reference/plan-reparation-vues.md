@@ -158,7 +158,10 @@ membre, 64 Gio pour les fichiers cumulés et 32 Mio pour le manifeste. Les noms,
 types et tailles sont validés contre `BENCHAB-MANIFEST.json` ; le membre demandé
 doit être un fichier régulier `projets/SLUG/sources/FICHIER` dont le SHA du
 manifeste, le SHA déclaré et les octets lus concordent. Aucun arbre n’est extrait
-et les liens ou membres TAR spéciaux sont refusés.
+et les liens ou membres TAR spéciaux sont refusés. Les extensions PAX et
+GNU sont bornées en nombre, en profondeur et en taille (64 Mio cumulés,
+64 Kio pour un corps PAX). Les membres creux sont refusés. Les deux blocs
+de fin TAR et le remplissage nul du producteur sont exigés.
 
 La sortie doit être un dossier neuf sous `prive/rapports/`. Il contient la copie
 `source/FICHIER` et `preuve.json`. Le fichier de preuve conserve `CANDIDAT` ; le
@@ -166,5 +169,6 @@ retour `PASS` signifie seulement que la copie et la preuve publiées ont été
 relues et correspondent aux empreintes prévues. Cela ne certifie ni l’origine
 historique de l’archive ni la pertinence de l’original, et n’applique pas la
 copie au projet. Une archive changée, un membre absent ou altéré, un SHA
-différent, une sortie existante ou un chemin ambigu refusent sans dossier final
-(#119).
+différent, une sortie existante ou un chemin ambigu refusent la publication.
+Si une incohérence est constatée après le renommage, la sortie est laissée
+en place pour diagnostic et ne donne pas PASS (#119).
