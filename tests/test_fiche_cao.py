@@ -254,3 +254,52 @@ def test_base_cylindrique_refuse_operations_hors_du_cercle(tmp_path, trous, poch
     with pytest.raises(ValueError, match="marge"):
         generer(source, tmp_path / "p")
     assert not (tmp_path / "p").exists()
+
+
+def test_fraisage_supprime_seulement_le_tronc_autour_du_passage(tmp_path):
+    """Le diamètre d’entrée et l’angle imposent la profondeur et le volume nominal."""
+    from math import pi
+
+    from benchab.conception.fiche_cao import generer
+
+    data = _fiche()
+    data["percages"][0]["fraisage"] = {
+        "diametre_mm": 9, "angle_inclus_deg": 90, "source_cotes": "géométrie de référence",
+    }
+    source = tmp_path / "fiche.json"
+    for i in (0, 1):
+        source.write_text(json.dumps(data, indent=i, sort_keys=bool(i)), encoding="utf-8")
+        generer(source, tmp_path / f"p{i}")
+    plan = json.loads((tmp_path / "p0/plan.json").read_bytes())
+    fraisage = plan["percages"][0]["fraisage"]
+    assert fraisage["profondeur_calculee_mm"] == pytest.approx(2)
+    assert fraisage["angle_inclus_deg"] == 90
+    anneau = pi * 2 * ((4.5**2 + 4.5 * 2.5 + 2.5**2) / 3 - 2.5**2)
+    assert plan["attendu"]["volume_mm3"] == pytest.approx(2400 - pi * 2.5**2 * 4 - anneau)
+    for fichier in ("plan.json", "modele.py"):
+        assert (tmp_path / "p0" / fichier).read_bytes() == (tmp_path / "p1" / fichier).read_bytes()
+    script = (tmp_path / "p0/modele.py").read_bytes()
+    assert b"Cone(" in script and b"g\xc3\xa9om\xc3\xa9trie de r" not in script
+
+
+@pytest.mark.parametrize(
+    ("fraisage", "autres", "message"),
+    [
+        ({"diametre_mm": 9, "angle_inclus_deg": True}, {}, "angle"),
+        ({"diametre_mm": 5, "angle_inclus_deg": 90}, {}, "diamètre supérieur"),
+        ({"diametre_mm": 15, "angle_inclus_deg": 90}, {}, "profondeur"),
+        ({"diametre_mm": 9, "angle_inclus_deg": 90}, {"lamage": {}}, "exclusifs"),
+        ({"diametre_mm": 9, "angle_inclus_deg": 90}, {"y_mm": 7}, "marge insuffisante"),
+    ],
+)
+def test_fraisage_invalide_ne_publie_aucun_plan(tmp_path, fraisage, autres, message):
+    """Fond débouchant, angle invalide et opérations concurrentes sont refusés."""
+    from benchab.conception.fiche_cao import generer
+
+    data = _fiche()
+    data["percages"][0].update(autres, fraisage={**fraisage, "source_cotes": "fixture"})
+    source = tmp_path / "fiche.json"
+    source.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        generer(source, tmp_path / "sortie")
+    assert not (tmp_path / "sortie").exists()

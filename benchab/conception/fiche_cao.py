@@ -31,13 +31,24 @@ class _Lamage:
 
 
 @dataclass(frozen=True, slots=True)
+class _Fraisage:
+    """Conserve rayon et profondeur nominale en mm, angle inclus en degrés et source."""
+
+    rayon: float
+    angle_inclus: float
+    profondeur: float
+    source_cotes: str
+
+
+@dataclass(frozen=True, slots=True)
 class _Percage:
-    """Décrit le passage traversant et son éventuel lamage supérieur, en mm."""
+    """Décrit le passage traversant et son éventuel élargissement supérieur, en mm."""
 
     x: float
     y: float
     rayon: float
     lamage: _Lamage | None
+    fraisage: _Fraisage | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +65,8 @@ class _Poche:
 
 def _rayon_entree(trou):
     """Renvoie le rayon XY maximal au bord supérieur, en mm."""
-    return trou.lamage.rayon if trou.lamage else trou.rayon
+    entree = trou.lamage or trou.fraisage
+    return entree.rayon if entree else trou.rayon
 
 
 def _paires_uniques(paires):
@@ -120,6 +132,24 @@ def _normaliser_lamage(lamage, numero, rayon_passage, epaisseur):
     return _Lamage(rayon, profondeur, source)
 
 
+def _normaliser_fraisage(fraisage, numero, rayon_passage, epaisseur):
+    """Déduit la profondeur du tronc de cône à partir du diamètre et de l’angle inclus."""
+    etiquette = f"Fraisage {numero}"
+    if not isinstance(fraisage, dict) or set(fraisage) != {"diametre_mm", "angle_inclus_deg", "source_cotes"}:
+        raise ValueError(f"{etiquette} : diamètre, angle inclus et source des cotes requis.")
+    rayon = _cote(fraisage["diametre_mm"], f"{etiquette} diamètre", longueur=True) / 2
+    angle = fraisage["angle_inclus_deg"]
+    if type(angle) not in (int, float) or not 30 <= angle <= 150:
+        raise ValueError(f"{etiquette} : angle inclus fini entre 30 et 150 degrés requis.")
+    source = _source_cotes(fraisage["source_cotes"], etiquette)
+    if rayon - rayon_passage <= _MARGE_MM:
+        raise ValueError(f"{etiquette} : diamètre supérieur à celui du passage requis.")
+    profondeur = (rayon - rayon_passage) / math.tan(math.radians(angle) / 2)
+    if not _MARGE_MM < profondeur < epaisseur - _MARGE_MM:
+        raise ValueError(f"{etiquette} : profondeur positive et inférieure à l’épaisseur de la base requise.")
+    return _Fraisage(rayon, float(angle), profondeur, source)
+
+
 def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
     """Valide le fond, la marge XY et les intersections au dessus du bloc."""
     if not isinstance(valeurs, list) or len(valeurs) > 4:
@@ -152,7 +182,9 @@ def _normaliser_poches(valeurs, bloc, percages, rayon_base=None):
             hx = max(0.0, abs(x - trou.x) - lx / 2)
             hy = max(0.0, abs(y - trou.y) - ly / 2)
             if math.hypot(hx, hy) - _rayon_entree(trou) <= _MARGE_MM:
-                raise ValueError(f"{etiquette} : chevauchement ou tangence avec un perçage ou son lamage.")
+                raise ValueError(
+                    f"{etiquette} : chevauchement ou tangence avec un perçage, son lamage ou son fraisage."
+                )
         for voisine in poches:
             if (
                 abs(x - voisine.x) - (lx + voisine.largeur_x) / 2 <= _MARGE_MM
@@ -196,13 +228,16 @@ def _normaliser(data):
     percages = []
     cles_trou = {"x_mm", "y_mm", "diametre_mm"}
     for numero, trou in enumerate(trous, 1):
-        if not isinstance(trou, dict) or not cles_trou <= trou.keys() <= cles_trou | {"lamage"}:
+        if not isinstance(trou, dict) or not cles_trou <= trou.keys() <= cles_trou | {"lamage", "fraisage"}:
             raise ValueError(f"Perçage {numero} : x_mm, y_mm et diametre_mm requis.")
+        if {"lamage", "fraisage"} <= trou.keys():
+            raise ValueError(f"Perçage {numero} : lamage et fraisage sont exclusifs.")
         x = _cote(trou["x_mm"], f"perçage {numero} x", longueur=False)
         y = _cote(trou["y_mm"], f"perçage {numero} y", longueur=False)
         rayon = _cote(trou["diametre_mm"], f"perçage {numero} diamètre", longueur=True) / 2
         lamage = _normaliser_lamage(trou["lamage"], numero, rayon, dz) if "lamage" in trou else None
-        operation = _Percage(x, y, rayon, lamage)
+        fraisage = _normaliser_fraisage(trou["fraisage"], numero, rayon, dz) if "fraisage" in trou else None
+        operation = _Percage(x, y, rayon, lamage, fraisage)
         marge = min(dx / 2 - abs(x), dy / 2 - abs(y)) if rayon_base is None else rayon_base - math.hypot(x, y)
         if marge - _rayon_entree(operation) <= _MARGE_MM:
             raise ValueError(f"Perçage {numero} : marge insuffisante au bord de la base.")
@@ -228,10 +263,14 @@ def _script(bloc, trous, poches, rayon_base=None):
         f"Box({bloc[0]!r}, {bloc[1]!r}, {bloc[2]!r}, " if rayon_base is None
         else f"Cylinder({rayon_base!r}, {bloc[2]!r}, "
     )
+    imports = (
+        "from build123d import Align, Box, Cone, Cylinder, Pos"
+        if any(trou.fraisage for trou in trous) else "from build123d import Align, Box, Cylinder, Pos"
+    )
     lignes = [
         '"""Bloc CAO en mm issu d’une fiche BENCHAB ; aucune validation physique."""',
         "",
-        "from build123d import Align, Box, Cylinder, Pos",
+        imports,
         "from cadgen.engine import step",
         "",
         "",
@@ -257,6 +296,17 @@ def _script(bloc, trous, poches, rayon_base=None):
                 f"        {lamage.rayon!r}, {lamage.profondeur + 1!r}, align=(Align.CENTER, Align.CENTER, Align.MIN)",
                 "    )",
             ])
+        if trou.fraisage:
+            # Dépasser le dessus d’un mm sans changer la pente, afin
+            # d’éviter une coupe coplanaire au diamètre d’entrée.
+            fraisage = trou.fraisage
+            rayon_haut = fraisage.rayon + (fraisage.rayon - rayon) / fraisage.profondeur
+            lignes.extend([
+                f"    solide -= Pos({x!r}, {y!r}, {bloc[2] - fraisage.profondeur!r}) * Cone(",
+                f"        {rayon!r}, {rayon_haut!r}, {fraisage.profondeur + 1!r},",
+                "        align=(Align.CENTER, Align.CENTER, Align.MIN)",
+                "    )",
+            ])
     for poche in poches:
         # L'outil dépasse le dessus comme le cylindre du lamage ; le fond
         # reste à l'altitude explicite plutôt qu'au milieu du bloc.
@@ -279,12 +329,18 @@ def _generer(source, sortie, *, prive):
         math.pi * (trou.lamage.rayon**2 - trou.rayon**2) * trou.lamage.profondeur
         for trou in trous if trou.lamage
     )
+    # Le passage cylindrique est déjà retiré dans aire_base moins les trous.
+    volume_fraisages = math.fsum(
+        math.pi * f.profondeur * ((f.rayon - trou.rayon) * (f.rayon + 2 * trou.rayon) / 3)
+        for trou in trous if (f := trou.fraisage)
+    )
     volume_poches = math.fsum(poche.largeur_x * poche.largeur_y * poche.profondeur for poche in poches)
     attendu = {
         "dimensions_mm": bloc,
         "solides": 1,
         "volume_mm3": (
-            (aire_base - math.fsum(math.pi * trou.rayon**2 for trou in trous)) * dz - volume_lamages - volume_poches
+            (aire_base - math.fsum(math.pi * trou.rayon**2 for trou in trous)) * dz
+            - volume_lamages - volume_poches - volume_fraisages
         ),
     }
     statut = "NON VÉRIFIÉ" if exclus else "PASS"
@@ -299,6 +355,12 @@ def _generer(source, sortie, *, prive):
                 "profondeur_mm": trou.lamage.profondeur,
                 "source_cotes": trou.lamage.source_cotes,
             }} if trou.lamage else {})
+            | ({"fraisage": {
+                "diametre_mm": 2 * trou.fraisage.rayon,
+                "angle_inclus_deg": trou.fraisage.angle_inclus,
+                "profondeur_calculee_mm": trou.fraisage.profondeur,
+                "source_cotes": trou.fraisage.source_cotes,
+            }} if trou.fraisage else {})
             for trou in trous
         ],
         **({"poches_rectangulaires": [

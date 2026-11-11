@@ -98,3 +98,27 @@ volumes analytiques conformes et plans/scripts identiques au rejeu. Les cinq
 fiches rectangulaires avec poches conservent leurs plans et scripts historiques.
 Préparation : 3,0 ms en médiane ; construction : 23 ms (premier démarrage :
 2,08 s). Le résumé normalisé occupe 74 octets et le détail 640 à 1 532 octets.
+
+### Fraisage conique d’un perçage
+
+Une entrée `fraisage` peut remplacer `lamage` sur un perçage :
+
+```json
+{"diametre_mm": 9, "angle_inclus_deg": 90, "source_cotes": "plan coté"}
+```
+
+Le diamètre est celui de l’ouverture supérieure. L’angle inclus est mesuré
+entre les deux génératrices, de 30 à 150 degrés. La profondeur est calculée
+depuis la différence des rayons et le demi-angle ; le plan la conserve en
+mm. Le diamètre supérieur sert aux contrôles de tangence avec les bords,
+les autres perçages et les poches. Un passage débouchant reste cylindrique
+sous le fraisage ; un fraisage qui atteint le dessous est refusé. Aucune
+cote de visserie, tolérance ou conformité ISO n’est déduite.
+
+Cinq fiches synthétiques ont été construites deux fois avec cadgen 0.8.4
+et build123d 0.13.0 : trois angles sur bases rectangulaire ou circulaire,
+un cas mixte avec lamage et poche, puis deux entrées distinctes. Les dix
+STEP ont un solide valide, avec dimensions et volume conformes au calcul
+indépendant. Les plans et scripts sont identiques entre répétitions ; les
+cinq fiches cylindriques historiques gardent aussi leurs octets. Il s’agit
+d’une vérification numérique, sans ajustement imprimé établi (#27, #32).
