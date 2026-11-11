@@ -18,8 +18,8 @@ réelle.
 
 import math
 import sys
-from zipfile import BadZipFile
 from pathlib import Path
+from zipfile import BadZipFile
 
 import numpy as np
 from scipy import ndimage

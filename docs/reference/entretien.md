@@ -25,9 +25,9 @@ fourni ; `WARN` signifie qu'il l'atteint ou le dépasse. Le seuil est comparé
 aux quantités décimales sans erreur d’addition binaire. Cela ne décrit pas
 l'usure ni l'état physique.
 
-Si le cumul exact dépasse la plage représentable par un nombre JSON flottant,
-le verdict reste `WARN` ou `PASS` selon le seuil exact, la `valeur` est `null`
-et le rapport indique cette limite de représentation ; le JSON reste fini.
+Si le cumul exact est trop grand pour être rendu dans le champ numérique du
+rapport, le dépassement du seuil fini donne toujours `WARN`. La `valeur` est
+`null` et le rapport indique cette limite de représentation.
 
 Le rapport relie l'analyse au chemin relatif privé et au SHA-256 exact du JSON
 lu. Les sources et preuves déclarées pour chaque événement et seuil restent
