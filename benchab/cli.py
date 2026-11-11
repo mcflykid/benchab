@@ -309,6 +309,7 @@ def parser():
         "retour",
         "envois-slicer",
         "tracer-3mf",
+        "remplacer-maillage",
     ):
         route = fabrication.add_parser(nom, add_help=False)
         route.add_argument("-h", "--help", action="store_true", help="Affiche l’aide métier sans exécution")
@@ -694,6 +695,10 @@ def executer(arguments, base):
             from benchab.fabrication.tracer_3mf import main as tracer
 
             return _deleguer(tracer, arguments.arguments, options={"base": base})
+        if arguments.action == "remplacer-maillage":
+            from benchab.fabrication.remplacement_maillage import main as remplacer_maillage
+
+            return _deleguer(remplacer_maillage, arguments.arguments, options={"base": base})
         if arguments.action == "couches-variables":
             from benchab.fabrication.couches_variables import cli
 
@@ -950,6 +955,9 @@ def main(argv=None):
             "entretien",
         }
         for i in range(len(argv) - 1)
+    ) or any(
+        argv[i] == "fabrication" and argv[i + 1] == "remplacer-maillage"
+        for i in range(len(argv) - 1)
     )
     commande, sensible = commande_sans_secrets(argv)
     if sensible:
@@ -1051,6 +1059,18 @@ def main(argv=None):
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
             print(f"BENCHAB : {erreur}", file=sys.stderr)
             return 2
+    if arguments.commande == "fabrication" and arguments.action == "remplacer-maillage":
+        from types import SimpleNamespace
+
+        from benchab.fabrication.remplacement_maillage import main as remplacer_maillage
+
+        # Le remplacement reste indépendant de SQLite et de ses mesures automatiques.
+        base_ephemere = SimpleNamespace(prive=atelier_prive(arguments.prive))
+        try:
+            return _deleguer(remplacer_maillage, arguments.arguments, options={"base": base_ephemere})
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
+            print(f"BENCHAB : remplacement de maillage refusé : {erreur}", file=sys.stderr)
+            return 1
     mesure = Mesure()
     base = None
     code = 1
