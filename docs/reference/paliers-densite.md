@@ -1,7 +1,7 @@
 # Paliers radiaux de densité
 
 `benchab.conception.paliers_densite.modificateurs_radiaux` prépare une première
-forme de champ de densité pour [#83](https://github.com/mcflykid/benchab/issues/83).
+forme de champ de densité (#83).
 L’appel prend un maillage fermé en mm, un centre explicite dans son repère et
 un à cinq paliers. Chaque palier indique `rayon_mm` et `densite`, par exemple
 `{"rayon_mm": 7, "densite": "35%"}`. Les rayons croissent avec un pas minimal de
