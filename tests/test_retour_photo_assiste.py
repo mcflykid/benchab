@@ -321,22 +321,22 @@ def test_heic_surdimensionne_est_refuse_avant_conversion(tmp_path, monkeypatch):
 
     def sips(arguments, **kwargs):
         appels.append(arguments)
-        return SimpleNamespace(returncode=0, stdout=f"{heic}:\n  pixelWidth: 10000\n  pixelHeight: 5000\n", stderr="")
+        assert kwargs["delai"] == 10
+        return SimpleNamespace(raison="TERMINE", ok=True, sortie_tronquee=False,
+                               stdout=f"{heic}:\n  pixelWidth: 10000\n  pixelHeight: 5000\n")
 
-    monkeypatch.setattr(retour_photo.subprocess, "run", sips)
+    monkeypatch.setattr(retour_photo.processus, "executer", sips)
     with pytest.raises(ValueError, match="40 mégapixels"):
         retour_photo._apercu(heic, tmp_path / "apercu.jpg")
     assert len(appels) == 1
 
 
 def test_timeout_heic_devient_refus_metier(tmp_path, monkeypatch):
-    import subprocess
+    from types import SimpleNamespace
 
     heic = tmp_path / "photo.heic"
     heic.write_bytes(b"temoin")
-    def expire(*args, **kwargs):
-        raise subprocess.TimeoutExpired(args[0], 10)
-    monkeypatch.setattr(retour_photo.subprocess, "run", expire)
+    monkeypatch.setattr(retour_photo.processus, "executer", lambda *_a, **_k: SimpleNamespace(raison="DELAI"))
     with pytest.raises(ValueError, match="expirée"):
         retour_photo._apercu(heic, tmp_path / "apercu.jpg")
 

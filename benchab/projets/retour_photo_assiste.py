@@ -9,12 +9,12 @@ import math
 import os
 import re
 import stat
-import subprocess
 import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from benchab import processus
 from benchab.archives_3mf import Archive3MF
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.gcode.lecture import plaques_gcode_archive
@@ -90,6 +90,23 @@ def _copier_photo(source, destination, identite_attendue):
             os.close(destination_fd)
 
 
+def _sips(photo, arguments, *, delai, etape):
+    """Lance l’outil HEIC local avec le superviseur, sous un délai en secondes."""
+    resultat = processus.executer(
+        ["/usr/bin/sips", *arguments],
+        cwd=photo.parent,
+        diagnostics=photo.parent,
+        delai=delai,
+        limite_queue=4096,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    if resultat.raison == "DELAI":
+        raise ValueError(etape + " expirée")
+    if not resultat.ok or resultat.sortie_tronquee:
+        raise ValueError(etape + " locale indisponible ou illisible")
+    return resultat.stdout
+
+
 def _apercu(photo, destination):
     """Produit un JPEG d’aperçu borné ; aucun classement ni OCR des pixels."""
     from PIL import Image, ImageOps
@@ -105,36 +122,24 @@ def _apercu(photo, destination):
         except (OSError, ValueError):
             if photo.suffix.lower() != ".heic":
                 raise ValueError("image illisible par le décodeur local")
-            try:
-                dimensions = subprocess.run(
-                    ["/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", str(photo)],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as erreur:
-                raise ValueError("inspection des dimensions HEIC expirée") from erreur
-            largeur = re.search(r"pixelWidth:\s*(\d+)", dimensions.stdout)
-            hauteur = re.search(r"pixelHeight:\s*(\d+)", dimensions.stdout)
-            if dimensions.returncode != 0 or largeur is None or hauteur is None:
+            dimensions = _sips(
+                photo, ["-g", "pixelWidth", "-g", "pixelHeight", str(photo)],
+                delai=10, etape="inspection des dimensions HEIC",
+            )
+            largeur = re.search(r"pixelWidth:\s*(\d+)", dimensions)
+            hauteur = re.search(r"pixelHeight:\s*(\d+)", dimensions)
+            if largeur is None or hauteur is None:
                 raise ValueError("dimensions HEIC illisibles")
             if int(largeur[1]) <= 0 or int(hauteur[1]) <= 0 or int(largeur[1]) * int(hauteur[1]) > _MAX_PIXELS:
                 raise ValueError("dimensions photo invalides ou supérieures à 40 mégapixels")
             fd, nom = tempfile.mkstemp(suffix=".jpg", prefix="benchab-heic-")
             os.close(fd)
             temporaire_heic = Path(nom)
-            try:
-                resultat = subprocess.run(
-                    ["/usr/bin/sips", "-s", "format", "jpeg", str(photo), "--out", str(temporaire_heic)],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as erreur:
-                raise ValueError("conversion HEIC expirée") from erreur
-            if resultat.returncode != 0 or not temporaire_heic.is_file():
+            _sips(
+                photo, ["-s", "format", "jpeg", str(photo), "--out", str(temporaire_heic)],
+                delai=30, etape="conversion HEIC",
+            )
+            if not temporaire_heic.is_file():
                 raise ValueError("conversion HEIC locale indisponible")
             chemin_lecture = temporaire_heic
             conversion_heic = True
