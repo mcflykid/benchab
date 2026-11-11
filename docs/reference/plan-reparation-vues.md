@@ -1,0 +1,50 @@
+# Plan de régénération des vues privées
+
+`benchab controle plan-reparation` relit la base privée SQLite en mode `ro` et
+`query_only`, puis compare les rendus calculés par `donnees.vues._rendre`,
+`_fiches_filaments` et `_manifeste`. La commande n'ouvre pas `Base`, n'enregistre
+pas de mesure et n'écrit aucun fichier.
+
+Le JSON distingue `PRESENTE_IDENTIQUE`, `ABSENTE`, `DIVERGENTE`,
+`LIEN_A_VERIFIER` et `A_VERIFIER`. Une divergence signifie seulement que les
+octets présents diffèrent du rendu actuel de la source SQLite ; elle ne permet
+pas de conclure à une falsification. Le README est comparé dans sa section
+marquée uniquement ; le reste du README n'entre pas dans la comparaison.
+Les textes lus au-delà de 2 Mio ou sans UTF-8 valide restent à vérifier ;
+l'application refuse aussi une vue antérieure qui dépasse cette borne.
+
+Les actions proposées contiennent la cible privée relative, son SHA antérieur
+ou `ABSENTE`, l'identité de la base, le SHA-256 attendu, l'empreinte logique du
+rendu et les préconditions d'application. Un lien ou une structure ambiguë reste
+à vérifier sans suivre sa cible. Une base absente, illisible ou un contenu
+indécidable renvoie `NON VÉRIFIÉ` et aucune action correspondante. Les fichiers
+sans source canonique ne sont pas proposés à la réparation.
+
+Exemple : `benchab controle plan-reparation --prive /chemin/atelier`.
+Une seule vue canonique peut ensuite être appliquée explicitement depuis ce
+plan :
+
+```sh
+benchab --prive /chemin/atelier controle plan-reparation > /tmp/plan-vues.json
+benchab --prive /chemin/atelier controle appliquer-reparation-vue \
+  --plan /tmp/plan-vues.json --cible vues/INDEX.md
+```
+
+La commande accepte uniquement `vues/INDEX.md` ou une fiche
+`vues/etats/<24 caractères hexadécimaux>.md` explicitement présente dans le
+plan. Elle relit le rendu dans une transaction SQLite `ro` et `query_only`,
+vérifie l'identité de la base et les empreintes prévues, puis refuse toute
+reprise ou changement de source, de cible ou de lien. Le plan ne permet pas de
+réparer `README.md`, le manifeste, le changelog privé ni un fichier de projet.
+
+Une vue divergente est copiée dans une sauvegarde privée neuve sous
+`sauvegardes/vues/`, relue et vérifiée avant le remplacement atomique. Une vue
+absente n'a pas de contenu antérieur à sauvegarder. La commande contrôle ensuite
+le SHA de la vue réparée et ne modifie aucune table SQLite. Régénération et
+réparation partagent le verrou `cache/vues.lock`. Les fichiers source, le
+journal éditorial, les profils et les sorties machine ou réseau restent hors
+de cette opération.
+
+Le plan exige l’identité et le schéma BENCHAB, ainsi que le format de journal
+SQLite ordinaire. Un journal WAL reste NON VÉRIFIÉ sans ouverture par SQLite.
+Chaque action décrit aussi l’état et le SHA actuels de la cible, quand connus.

@@ -58,16 +58,17 @@ Traiter les prérequis avant les nouveaux réglages :
 - **Lecture G-code** : #123 étend les usages géométriques au-delà
   du contrat qualifié de #13 ; les témoins déjà acquis restent conservés.
   La mesure dans une boîte peut utiliser la courbe ; la couverture des autres
-  contrôles demeure NON VÉRIFIÉE tant qu’elle n’est pas qualifiée. #133 garde
+  contrôles demeure NON VÉRIFIÉE tant qu’elle n’est pas qualifiée. #133 a conservé
   le débit mesurable de l’arc dans la finition des parois. #134 suit la
   précision des arcs I/J natifs que le contrat de rayon constant ne qualifie pas.
 - **Fichiers et archives** : #122 poursuit la migration des familles hors contrôles ;
   #42 suit la traçabilité 3MF.
 - **Contrôle avant envoi** : #71 pour ACE/buse/démarrage, #109 pour les
   avertissements natifs, #111 pour les mesures structurées des zones locales.
-- **Provenance et profils** : #36 avant l’enrichissement communautaire #40 ;
-  #38 compare les réglages au profil système. #103 factorise le contexte typé
-  des listes sans réindexation implicite.
+- **Provenance et profils** : la provenance du modèle (#36), le registre des
+  signalements communautaires (#40) et la comparaison aux profils fournis
+  (#38) sont disponibles dans la candidate. #103 factorise le contexte typé
+  des listes sans réindexation implicite. Restent notamment #41 et #42.
 
 ### 2. Qualifier le comportement réel du slicer
 
@@ -115,7 +116,10 @@ séparées des preuves physiques. Aucun nouveau réglage n’est adopté automat
   des connaissances, #41 les avertissements de cohérence et #75 la vitrine publique.
 - #114 : lecture PDF optionnelle des guides, sans dépendance imposée à tous les usages.
 - #119 regroupe le diagnostic, la réparation conservatrice et l’apprentissage des
-  incidents. Les premiers outils existent ; l’autoréparation générale reste à concevoir.
+  incidents. Le plan passif signale les vues privées absentes ou divergentes.
+  Une vue canonique peut être régénérée explicitement, après contrôle du plan et
+  sauvegarde vérifiée de la version précédente. La réparation des liens et les
+  autres familles de connaissances restent à traiter.
 
 La boucle attendue est : retour sourcé → défaut reproduit → correctif → test de
 régression → contrôle et relecture → livraison. Une vue peut être régénérée depuis

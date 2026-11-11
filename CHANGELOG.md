@@ -4,6 +4,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.4.0
 
+- Provenance : registre public de signalements communautaires contextualisés et non prescriptifs (#40).
 - G-code : mesure analytique des arcs G17 dans les régions de remplissage, avec reprise d’extrusion et repère G92 (suite de #123).
 - Densité : verdict numérique d’effet isolé par comparaison région/témoin hors zone (suite de #82).
 - Finition : le débit d’un arc peut donner FAIL même si sa couverture géométrique reste NON VÉRIFIÉE (#133).
@@ -14,6 +15,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Données : conserve inode et octets des JSONL canoniques, répare les exports divergents depuis SQLite et publie le manifeste en dernier ; première étape de #19.
 - Qualité : un seul graphe de dépendances par lot, avec la suite complète conservée pour le code (#34).
 - Données : revalidation du répertoire d’export et du verrou avant publication, même si l’atelier est déjà ouvert (#138).
+- Contrôle : comparaison des réglages projet, objets, parties et plaques aux profils explicitement fournis ; écarts sensibles, provenance par clé et filiations de profils en lecture seule (#38).
+- Atelier : plan passif et réparation explicite d’une vue canonique, avec preuve de la source et sauvegarde relue (suite de #119).
 
 ## 1.3.0 — 2026-11-11
 
@@ -28,6 +31,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Réglages : comparaison des valeurs énumérées avec les essais du binaire ASN identifié ; les replis observés échouent et les valeurs non essayées restent NON VÉRIFIÉES (première étape de #80).
 - Lecture 3MF : intégrité avant/après, noms et résultats de plaques et optimisation utilisent les limites et le décodage communs (suite de #122).
 - Qualification ASN : tranchage natif d’une sonde synthétique à deux volumes ; rôles, géométrie et réglages contrôlés, effet de la densité mesuré dans le G-code (#48).
+
 
 ## 1.2.0 — 2026-11-11
 

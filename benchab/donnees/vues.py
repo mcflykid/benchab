@@ -145,6 +145,15 @@ def generer(base, *, racine_publique=None):
     La version publique suit le paquet, pas la base privée ; CHANGELOG public manuel préservé.
     Les fiches modernes reprennent SQLite ; les fiches historiques ne sont jamais réécrites.
     """
+    from benchab.qualite.ecritures import verrou_publication
+
+    # Le verrou commun empêche une régénération de remplacer la vue en réparation (#119).
+    with verrou_publication(base.prive / "cache", "vues.lock"):
+        return _generer_sous_verrou(base, racine_publique=racine_publique)
+
+
+def _generer_sous_verrou(base, *, racine_publique=None):
+    """Écrit les vues après acquisition du verrou commun ; conserve SQLite et les fichiers éditoriaux hors vues."""
     rendu = _rendre(base.connexion)
     fiches = _fiches_filaments(base.connexion)
     for chemin, texte in {**rendu["fichiers"], **fiches}.items():

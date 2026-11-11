@@ -7,6 +7,7 @@ import json
 import math
 import os
 import sqlite3
+import stat
 import sys
 import uuid
 from datetime import datetime
@@ -42,6 +43,7 @@ CONTROLES_DIRECTS = {
     "supports-requis": "supports_requis",
     "appuis-gcode": "appuis_gcode",
     "assemblage": "assemblage",
+    "ecarts-profils-3mf": "ecarts_profils_3mf",
 }
 
 
@@ -118,6 +120,12 @@ def parser():
     installation.add_argument("--profil", type=Path, action="append", default=[])
     installation.add_argument("--espace-minimum-mio", type=int, default=1024)
     installation.add_argument("--detail", action="store_true", help="Inclut les preuves et chemins privés dans stdout")
+    controle.add_parser("plan-reparation", help="Compare les vues privées et prépare un plan sans écriture")
+    appliquer_vue = controle.add_parser(
+        "appliquer-reparation-vue", help="Applique une seule vue privée depuis un plan explicite"
+    )
+    appliquer_vue.add_argument("--plan", type=Path, required=True, help="Fichier JSON produit par plan-reparation")
+    appliquer_vue.add_argument("--cible", required=True, help="Vue relative canonique à réparer")
     complet = controle.add_parser("complet", help="Vérifie le dépôt et, sur demande explicite, les témoins S/M/L")
     complet.add_argument("--racine", type=Path, default=Path.cwd())
     complet.add_argument("--temoins", action="store_true")
@@ -362,7 +370,11 @@ def executer(arguments, base):
             module = importlib.import_module("benchab.controles." + CONTROLES_DIRECTS[arguments.controle])
             directs = arguments.arguments[1:] if arguments.arguments[:1] == ["--"] else arguments.arguments
             try:
-                options = {"prive": base.prive} if arguments.controle == "appuis-gcode" else {}
+                options = (
+                    {"prive": base.prive}
+                    if arguments.controle in {"appuis-gcode", "ecarts-profils-3mf"}
+                    else {}
+                )
                 return int(module.main(directs, **options) or 0)
             except SystemExit as arret:
                 return _code_arret(arret)
@@ -888,7 +900,12 @@ def main(argv=None):
 
     argv = sys.argv[1:] if argv is None else argv
     diagnostic_seul = any(
-        argv[i] == "controle" and argv[i + 1] == "installation" for i in range(len(argv) - 1)
+        argv[i] == "controle" and argv[i + 1] in {
+            "installation",
+            "plan-reparation",
+            "appliquer-reparation-vue",
+        }
+        for i in range(len(argv) - 1)
     )
     commande, sensible = commande_sans_secrets(argv)
     if sensible:
@@ -908,6 +925,49 @@ def main(argv=None):
         return 0
     if "--help" in argv or "-h" in argv:
         return _aide_deleguee(arguments)
+    if arguments.commande == "controle" and arguments.controle == "plan-reparation":
+        from benchab.qualite.plan_reparation import planifier
+
+        # Comme le diagnostic d'installation, ce plan reste hors Base() et hors mesure (#119).
+        rapport = planifier(atelier_prive(arguments.prive))
+        print(json.dumps(rapport, ensure_ascii=False, separators=(",", ":")))
+        return rapport["code"]
+    if arguments.commande == "controle" and arguments.controle == "appliquer-reparation-vue":
+        try:
+            fd = os.open(arguments.plan, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, "rb") as fichier:
+                avant = os.fstat(fichier.fileno())
+                if not stat.S_ISREG(avant.st_mode) or avant.st_size > 8 * 1024 * 1024:
+                    raise ValueError("Le plan doit être un fichier JSON régulier de 8 Mio au plus.")
+                brut = fichier.read(8 * 1024 * 1024 + 1)
+                apres = os.fstat(fichier.fileno())
+                identite_avant = (avant.st_dev, avant.st_ino, avant.st_size, avant.st_mtime_ns, avant.st_ctime_ns)
+                identite_apres = (apres.st_dev, apres.st_ino, apres.st_size, apres.st_mtime_ns, apres.st_ctime_ns)
+                if len(brut) > 8 * 1024 * 1024 or identite_avant != identite_apres:
+                    raise ValueError("Le plan est trop grand ou a changé pendant sa lecture.")
+
+            def sans_doublons(paires):
+                resultat = {}
+                for cle, valeur in paires:
+                    if cle in resultat:
+                        raise ValueError("Clé dupliquée dans le plan.")
+                    resultat[cle] = valeur
+                return resultat
+
+            rapport = json.loads(
+                brut.decode("utf-8"),
+                object_pairs_hook=sans_doublons,
+                parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Constante JSON interdite.")),
+            )
+            from benchab.qualite.plan_reparation import appliquer_vue as reparer_vue
+
+            # La réparation vérifie sa source SQLite en RO et n'enregistre donc ni mesure ni état (#119).
+            resultat = reparer_vue(atelier_prive(arguments.prive), rapport, arguments.cible)
+            print(json.dumps(resultat, ensure_ascii=False, separators=(",", ":")))
+            return 0
+        except (OSError, ValueError, RuntimeError, sqlite3.Error, json.JSONDecodeError) as erreur:
+            print(f"BENCHAB : réparation de vue refusée : {erreur}", file=sys.stderr)
+            return 1
     if arguments.commande == "controle" and arguments.controle == "installation":
         from benchab.qualite.installation import diagnostiquer
 
