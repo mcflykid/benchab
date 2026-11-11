@@ -227,3 +227,35 @@ def test_cli_ecrit_uniquement_le_rapport_prive(tmp_path):
     assert code == 0
     assert json.loads(rapport.read_text())["statut"] == "PASS"
     assert hashlib.sha256(profil.read_bytes()).hexdigest() == sha
+
+
+def test_archive_liee_refusee_avant_comparaison(tmp_path):
+    """Un lien d’archive ne contourne pas les gardes du lecteur commun."""
+    archive = tmp_path / "source.3mf"
+    _archive(archive, {"top_shell_layers": "5"})
+    lien = tmp_path / "lien.3mf"
+    lien.symlink_to(archive)
+    preset = _profil(tmp_path / "Processus.json", "process", "Processus", {"top_shell_layers": "5"})
+    with pytest.raises(ValueError, match="Lien symbolique refusé"):
+        ecarts_profils_3mf.comparer(lien, [preset])
+
+
+def test_meme_racine_presets_ne_cree_pas_de_parent_ambigu(tmp_path):
+    """Une racine répétée ne compte pas comme deux sources concurrentes."""
+    archive = tmp_path / "source.3mf"
+    _archive(archive, {"top_shell_layers": "5"})
+    _profil(tmp_path / "Parent.json", "process", "Parent", {"top_shell_layers": "5"})
+    preset = _profil(tmp_path / "Processus.json", "process", "Processus", {}, inherits="Parent")
+    r = ecarts_profils_3mf.comparer(archive, [preset], dossiers_presets=(tmp_path, tmp_path))
+    assert len(r["comparaisons"]) == 1
+    assert len(r["profils_sha256_avant"]) == 2
+
+
+def test_deux_formes_non_qualifiees_ne_donnent_pas_egalite(tmp_path):
+    """Deux valeurs brutes identiques d’un type non admis restent inconnues."""
+    archive = tmp_path / "source.3mf"
+    _archive(archive, {"top_shell_layers": 5})
+    preset = _profil(tmp_path / "Processus.json", "process", "Processus", {"top_shell_layers": 5})
+    r = ecarts_profils_3mf.comparer(archive, [preset])
+    assert not r["comparaisons"]
+    assert r["statut"] == "NON VÉRIFIÉ"

@@ -32,3 +32,9 @@ inconnu. `WARN` indique un ou plusieurs écarts connus. `NON VÉRIFIÉ` indique
 qu’une partie du périmètre n’a pas pu être comparée. Aucun résultat n’établit
 un changement manuel, une règle fabricant, une compatibilité physique ou une
 validation d’impression.
+
+Deux lectures complémentaires d’archives de l’atelier ont trouvé des profils
+exacts par identité : 261 comparaisons procédé et 86 machine sur une archive
+(7 écarts), puis 95 filament et 86 machine sur une autre (aucun écart).
+Dans chaque cas, la famille sans identité exacte reste NON VÉRIFIÉE.
+Les archives et les 646 profils contrôlés sont restés intacts.

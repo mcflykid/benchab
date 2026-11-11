@@ -73,7 +73,8 @@ def _charger_profils(fichiers, dossiers):
         racine = sans_lien(Path(dossier).expanduser(), strict=True)
         if not racine.is_dir():
             raise ValueError("Dossier explicite de presets requis : " + str(dossier))
-        racines.append(racine)
+        if racine not in racines:
+            racines.append(racine)
     en_attente = [parent for donnees in bruts.values() for parent in _parents(donnees)]
     while en_attente:
         nom_parent = en_attente.pop()
@@ -148,6 +149,12 @@ def _sensibilites(cle):
     return [domaine for domaine, fragments in SENSIBLES.items() if any(x in nom for x in fragments)]
 
 
+def _forme_connue(valeur, definition):
+    # Deux valeurs identiques dans une forme hors dictionnaire ne prouvent pas l'égalité typée (#38).
+    formes = definition.get("formes_certifiees", definition.get("formes", ()))
+    return definition.get("type") not in (None, "inconnu") and (not formes or type(valeur).__name__ in formes)
+
+
 def comparer(archive, fichiers_profils, *, dossiers_presets=()):
     """Compare les portées projet/objet/partie aux presets explicitement fournis.
 
@@ -155,7 +162,7 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
     NON VÉRIFIÉ, les sources par clé et les SHA avant/après ; aucune écriture.
     Les écarts ne prouvent jamais une modification manuelle ni un fait fabricant.
     """
-    archive = Path(archive).resolve(strict=True)
+    archive = sans_lien(Path(archive).expanduser(), strict=True)
     sha_3mf_avant = sha256_fichier(archive)
     profils, chemins, sha_avant = _charger_profils(fichiers_profils, dossiers_presets)
     etat, types = integrite_3mf.instantane(archive, avec_types=True)
@@ -179,7 +186,7 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
         if cle == "name" and chemin.startswith("objet/"):
             # Le nom identifie l’objet XML ; ce n’est pas un réglage de slicer à comparer.
             continue
-        if definition.get("type") == "inconnu":
+        if not _forme_connue(valeur, definition):
             ligne_nv(chemin, cle, "Clé ou forme non qualifiée par le dictionnaire typé.", valeur)
             continue
         familles = definition.get("familles", [])
@@ -205,7 +212,10 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
                     continue
                 valeur_profil = preset["resolution"]["valeurs"].get(cle)
                 definition_profil = reglages.definition(cle, valeur=valeur_profil)
-                if definition_profil["type"] == "inconnu" or "filament" not in definition_profil.get("familles", []):
+                if (
+                    not _forme_connue(valeur_profil, definition_profil)
+                    or "filament" not in definition_profil.get("familles", [])
+                ):
                     ligne_nv(chemin, cle, "Forme ou famille du profil filament NON VÉRIFIÉE.", valeur[indice])
                     continue
                 if (
@@ -247,7 +257,10 @@ def comparer(archive, fichiers_profils, *, dossiers_presets=()):
                 continue
             profil_valeur = valeurs[cle]
             definition_profil = reglages.definition(cle, valeur=profil_valeur)
-            if definition_profil["type"] == "inconnu" or categorie not in definition_profil.get("familles", []):
+            if (
+                not _forme_connue(profil_valeur, definition_profil)
+                or categorie not in definition_profil.get("familles", [])
+            ):
                 ligne_nv(chemin, cle, "Forme ou famille du profil NON VÉRIFIÉE.", valeur)
                 continue
             if type(valeur) is not type(profil_valeur):
@@ -318,6 +331,7 @@ def _comparaison(chemin, cle, valeur_3mf, valeur_profil, preset, *, slot_id=None
         "sensible": bool(domaines), "domaines_sensibles": domaines,
         "profil": {
             "name": preset["resolution"]["valeurs"].get("name"),
+            "categorie": preset["categorie"],
             "source": str(fichier_origine),
             "sha256": preset["sha_par_nom"].get(origine),
         },
