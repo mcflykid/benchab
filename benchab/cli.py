@@ -39,6 +39,7 @@ CONTROLES_DIRECTS = {
     "colonnes-isolees": "colonnes_isolees",
     "couches-courtes": "couches_courtes",
     "orientations-supports": "orientations_supports",
+    "surplombs-connexes": "surplombs_connexes",
     "premiere-couche": "premiere_couche",
     "supports-requis": "supports_requis",
     "appuis-gcode": "appuis_gcode",

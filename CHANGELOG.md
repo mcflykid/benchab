@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## À venir — 1.6.0
 
+- Surplombs : cartographie les groupes de triangles STL par arête partagée,
+  sans déduire la possibilité d’un pont ou le besoin de support (suite de #93).
 - Rapports : ajoute une sortie privée complète et un résumé plafonné pour le
   contrôle des plages Z, avec JSON historique conservé (suite de #35).
 - Îlots : décrit les recouvrements et ambiguïtés entre coupes XY, sans conclure

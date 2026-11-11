@@ -17,6 +17,15 @@ Une paroi propre et un assemblage correct ne valident donc pas tous les dessous.
 Classer les zones visibles et les appuis avant de décider de supprimer des
 supports. Une modification de profil peut déplacer le défaut vers une autre zone.
 
+`benchab controle surplombs-connexes piece.stl --unite-mm` produit une carte
+numérique des faces connexes orientées vers le bas, avec aire, inclinaison et
+altitudes en unités explicites. Pour STL, `--unite-mm` confirme l'unité fournie
+par l'appelant : le format ne la déclare pas. Le seuil d'angle est un filtre
+géométrique configurable, pas un seuil de support. Le rapport ne calcule ni
+l'accès réel au plateau, ni la franchissabilité d'un pont, ni les trajectoires
+du slicer ; ces champs restent NON VÉRIFIÉS. Il ne justifie aucun réglage ni
+besoin physique de support.
+
 ## Choisir le support dans Slicer Next 2.0.0.3
 
 | Famille | Usage envisagé | Point à contrôler après tranchage |
