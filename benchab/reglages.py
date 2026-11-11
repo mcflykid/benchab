@@ -440,6 +440,39 @@ def valeur_brute(donnees, cle):
     return copy.deepcopy(valeur)
 
 
+def lire_matrice_purge(donnees):
+    """Lit une matrice de purge en mm³ selon la convention source, PASS conditionnel ou NON VÉRIFIÉ.
+
+    Ne change pas le type générique : les réglages historiques et le comportement d’un binaire
+    restent non qualifiés. Les lignes désignent les outils source, les colonnes les destinations.
+    """
+    cle = "flush_volumes_matrix"
+    convention = definition(cle)["lecture_conditionnelle"]
+    inconnu = {"statut": "NON VÉRIFIÉ", "convention": convention, "nombre_slots": None, "valeurs": None}
+    if not isinstance(donnees, dict):
+        return {**inconnu, "raison": "Réglages projet absents."}
+    nombre = nombre_filaments_metadata(donnees)
+    profils = donnees.get("filament_settings_id")
+    couleurs = donnees.get("filament_colour")
+    if nombre is None or any(not isinstance(x, str) or not x.strip() for x in [*profils, *couleurs]):
+        return {**inconnu, "raison": "Les listes de profils et couleurs ne qualifient pas les mêmes slots."}
+    matrice = donnees.get(cle)
+    inconnu["nombre_slots"] = nombre
+    if not isinstance(matrice, list) or len(matrice) != nombre * nombre:
+        return {**inconnu, "raison": "Dimensions de la matrice différentes du contexte déclaré de slots."}
+    try:
+        if any(type(v) not in (str, int, float) for v in matrice):
+            raise ValueError("type inattendu")
+        valeurs = [float(v) for v in matrice]
+        if any(not math.isfinite(v) or v < 0 for v in valeurs):
+            raise ValueError("valeur non finie ou négative")
+        if any(valeurs[i * nombre + i] != 0 for i in range(nombre)):
+            raise ValueError("diagonale non nulle")
+    except (ValueError, OverflowError):
+        return {**inconnu, "raison": "Valeurs ou diagonale incompatibles avec la convention source."}
+    return {"statut": "PASS", "convention": convention, "nombre_slots": nombre, "valeurs": valeurs}
+
+
 def valeur_unique(donnees, cle):
     """Lit une valeur scalaire ou un filament unique en unités natives ; refuse listes ambiguës et modes machine."""
     valeur = donnees.get(cle)

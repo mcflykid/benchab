@@ -44,6 +44,7 @@ CONTROLES_DIRECTS = {
     "appuis-gcode": "appuis_gcode",
     "assemblage": "assemblage",
     "ecarts-profils-3mf": "ecarts_profils_3mf",
+    "purge-changements": "purge_changements",
     "plages-z": "couverture_plages_z",
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({"appuis-gcode", "ecarts-profils-3mf"})
