@@ -52,7 +52,8 @@ fichier, même si le membre demandé est en cache. Le catalogue garde son plafon
 de 256 Mio par archive et de 128 Mio par G-code de support.
 
 L’inventaire des envois locaux lit masses et outils par plaque en flux, sans
-charger tout le G-code. Le CRC de chaque membre reste vérifié. Deux graphies
+charger tout le G-code. Une ligne de plus de 1 048 576 caractères est refusée.
+Le CRC de chaque membre, y compris les entrées de répertoire, reste vérifié. Deux graphies
 du même numéro de plaque sont refusées avant inventaire ou archivage ; une
 copie neuve doit garder le SHA-256 de l’archive entièrement contrôlée.
 
