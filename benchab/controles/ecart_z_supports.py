@@ -70,7 +70,7 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
             "roles_inconnus": 0,
             "trajectoires_non_lineaires": 0,
             "depots_non_horizontaux": 0,
-            "depots_sans_dimensions": 0,
+            "depots_inexploitables": 0,
         }
         lignes = 0
         with archive.ouvrir_flux(membre) as flux:
@@ -103,10 +103,10 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
                     if debut is None or fin is None or debut[2] != fin[2]:
                         exclusions["depots_non_horizontaux"] += 1
                         continue
-                    # Compter aussi les dimensions présentes mais inexploitables.
+                    # Le moteur exclut ici aussi les coordonnées invalides, même avec WIDTH/HEIGHT.
                     absents_avant = contact.absents
                     contact.ajouter(mouvement, analyseur.metadata)
-                    exclusions["depots_sans_dimensions"] += contact.absents - absents_avant
+                    exclusions["depots_inexploitables"] += contact.absents - absents_avant
                 else:
                     exclusions["roles_inconnus"] += 1
 
@@ -116,7 +116,7 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
             resultat = contact.resultat()
         statut = resultat["statut"]
         if exclusions["roles_inconnus"] or any(
-            exclusions[k] for k in ("trajectoires_non_lineaires", "depots_non_horizontaux", "depots_sans_dimensions")
+            exclusions[k] for k in ("trajectoires_non_lineaires", "depots_non_horizontaux", "depots_inexploitables")
         ):
             if statut == "ESTIMATION":
                 statut = "PARTIEL"
@@ -137,6 +137,8 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
                 "arret": contact.arret,
             }
             return rapport
+        couverture = dict(resultat["couverture"])
+        couverture["segments_inexploitables"] = couverture.pop("segments_sans_metadonnees_exploitables")
         return {
             "schema": 1,
             "controle": "ecart_z_supports",
@@ -146,7 +148,7 @@ def analyser(source: str | Path, plaque: int | None = None) -> dict:
             "plaque": {"numero": numero, "membre": membre},
             "ecart_z_local_mm": resultat["ecart_z_local_mm"],
             "projection_interface_estimee_mm2": resultat["projection_interface_estimee_mm2"],
-            "couverture": resultat["couverture"],
+            "couverture": couverture,
             "exclusions": exclusions,
             "diagnostics_parseur": analyseur.errors,
             "budgets": resultat["budgets"],

@@ -175,3 +175,15 @@ def test_role_support_inconnu_ne_devient_pas_support_mesure(tmp_path):
     assert rapport["statut"] == "PARTIEL"
     assert rapport["exclusions"]["roles_inconnus"] == 1
     assert rapport["couverture"]["segments_mesures"] == 2
+
+
+def test_depot_hors_limite_ne_fait_pas_accuser_les_dimensions(tmp_path):
+    """Une coordonnée hors contrat rend le dépôt inexploitable avec WIDTH/HEIGHT valides."""
+    source = tmp_path / "borne.3mf"
+    texte = _gcode() + ";WIDTH:0.6\n;HEIGHT:0.2\nG1 X10000101 Y200 E1 F1200\n"
+    _archive(source, {"Metadata/plate_1.gcode": texte})
+    rapport = analyser(source)
+    assert rapport["statut"] == "PARTIEL"
+    assert rapport["exclusions"]["depots_inexploitables"] == 1
+    assert "depots_sans_dimensions" not in rapport["exclusions"]
+    assert rapport["couverture"]["segments_inexploitables"] == 1

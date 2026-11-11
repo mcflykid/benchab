@@ -14,8 +14,9 @@ physique suivi par l’interpréteur ; les commentaires `;Z:` et les réglages d
 3MF ne remplacent jamais les positions effectivement déposées. Les arcs ne sont
 pas approximés par des cordes. Les rôles Support, Support interface et Support
 transition sont reconnus ; les rôles auxiliaires connus sont exclus. Les
-rôles inconnus, arcs, dépôts non horizontaux, métadonnées manquantes et erreurs
-de parseur sont signalés et peuvent limiter le rapport à `PARTIEL`.
+rôles inconnus, arcs, dépôts non horizontaux, dépôts inexploitables et erreurs
+de parseur sont signalés et peuvent limiter le rapport à `PARTIEL`. Le compteur
+de dépôts inexploitables comprend les dimensions ou coordonnées invalides.
 
 L’échantillonnage est plafonné à 15 000 000 opérations de voisinage, avec des
 budgets complémentaires de grille hérités de `ContactSupport`. L’archive et le
