@@ -57,6 +57,7 @@ def test_liaison_du_blob_independante_de_la_copie_de_travail(incident):
     }]
     assert rapport["execution"]["statut"] == "NON VÉRIFIÉ"
     assert rapport["execution"]["sha256"] == hashlib.sha256(preuve.read_bytes()).hexdigest()
+    assert "rapport_junit" not in rapport["execution"]
     assert rapport["validation_physique"] is False
 
 
@@ -99,6 +100,162 @@ def test_preuve_locale_changee_refusee(incident):
     depot, prive, declaration, preuve, _ = incident
     preuve.write_bytes(b'{"statut":"FAIL"}\n')
     with pytest.raises(ValueError, match="empreinte"):
+        incidents.fiche(declaration, depot=depot, prive=prive)
+
+
+def test_junit_opt_in_rapporte_les_cas_declares_sans_authentifier_execution(incident):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_exemple",
+        }],
+    })
+    preuve.write_text(
+        '<testsuite><testcase file="tests/test_regression.py" '
+        'classname="tests.test_regression" name="test_exemple"/></testsuite>',
+        encoding="utf-8",
+    )
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+
+    rapport = incidents.fiche(declaration, depot=depot, prive=prive)
+
+    assert rapport["execution"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["execution"]["rapport_junit"]["statut"] == "CONTENU RAPPORTÉ : TOUS LES CAS SANS ÉCHEC"
+    assert rapport["execution"]["rapport_junit"]["cas_attendus"] == 1
+
+
+def test_junit_signale_un_cas_attendu_absent(incident):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_absent",
+        }],
+    })
+    preuve.write_text("<testsuite/>", encoding="utf-8")
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+
+    rapport = incidents.fiche(declaration, depot=depot, prive=prive)
+
+    assert rapport["execution"]["statut"] == "NON VÉRIFIÉ"
+    assert rapport["execution"]["rapport_junit"]["statut"] == "CONTENU RAPPORTÉ : CAS MANQUANT"
+
+
+def test_junit_signale_echec_ou_cas_ignore(incident):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_exemple",
+        }],
+    })
+    preuve.write_text(
+        '<testsuite><testcase file="tests/test_regression.py" '
+        'classname="tests.test_regression" name="test_exemple"><failure/></testcase></testsuite>',
+        encoding="utf-8",
+    )
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+
+    rapport = incidents.fiche(declaration, depot=depot, prive=prive)
+
+    assert rapport["execution"]["rapport_junit"]["statut"] == "CONTENU RAPPORTÉ : ÉCHEC"
+    assert rapport["execution"]["statut"] == "NON VÉRIFIÉ"
+
+
+@pytest.mark.parametrize("enfant,statut", [
+    ("<skipped/>", "CONTENU RAPPORTÉ : CAS IGNORÉ"),
+    ("<error/>", "CONTENU RAPPORTÉ : ÉCHEC"),
+])
+def test_junit_distingue_cas_ignore_et_erreur(incident, enfant, statut):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_exemple",
+        }],
+    })
+    preuve.write_text(
+        '<testsuite><testcase file="tests/test_regression.py" '
+        f'classname="tests.test_regression" name="test_exemple">{enfant}</testcase></testsuite>',
+        encoding="utf-8",
+    )
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+
+    rapport = incidents.fiche(declaration, depot=depot, prive=prive)
+
+    assert rapport["execution"]["rapport_junit"]["statut"] == statut
+    assert rapport["execution"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_junit_refuse_identite_dupliquee_et_entites(incident):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_exemple",
+        }],
+    })
+    testcase = '<testcase file="tests/test_regression.py" classname="tests.test_regression" name="test_exemple"/>'
+    preuve.write_text(f"<testsuite>{testcase}{testcase}</testsuite>", encoding="utf-8")
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="dupliquée"):
+        incidents.fiche(declaration, depot=depot, prive=prive)
+
+    preuve.write_text(
+        '<!DOCTYPE testsuite [<!ENTITY x "contenu">]><testsuite>&x;</testsuite>', encoding="utf-8",
+    )
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="DOCTYPE|ENTITY"):
+        incidents.fiche(declaration, depot=depot, prive=prive)
+
+
+def test_junit_xml_invalide_est_refuse_sans_sortie_brute(incident):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_regression.py",
+            "classe": "tests.test_regression",
+            "nom": "test_exemple",
+        }],
+    })
+    preuve.write_text("<testsuite>", encoding="utf-8")
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="XML JUnit invalide"):
+        incidents.fiche(declaration, depot=depot, prive=prive)
+
+
+def test_junit_refuse_cas_non_declare_et_depassement_de_taille(incident):
+    depot, prive, declaration, preuve, _ = incident
+    declaration["preuve_execution"].update({
+        "format": "junit",
+        "cas_attendus": [{
+            "chemin": "tests/test_absent.py",
+            "classe": "tests.test_absent",
+            "nom": "test_exemple",
+        }],
+    })
+    preuve.write_text("<testsuite/>", encoding="utf-8")
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="déclaré"):
+        incidents.fiche(declaration, depot=depot, prive=prive)
+
+    declaration["preuve_execution"]["cas_attendus"][0]["chemin"] = "tests/test_regression.py"
+    preuve.write_bytes(b" " * (incidents._MAX_JUNIT + 1))
+    declaration["preuve_execution"]["sha256"] = hashlib.sha256(preuve.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="8 Mio"):
         incidents.fiche(declaration, depot=depot, prive=prive)
 
 
