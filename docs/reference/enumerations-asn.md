@@ -1,0 +1,48 @@
+# Énumérations d’Anycubic Slicer Next
+
+`benchab controle enumerations-asn -- ARCHIVE.3mf` compare les valeurs
+énumérées présentes aux observations connues pour le binaire configuré.
+La commande relève sa version et son SHA-256 sans démarrer le moteur, lit le
+3MF sans écrire, et n’attribue pas au moteur la production de cette archive.
+Le dictionnaire typé conserve les valeurs exactes, casse et espaces compris.
+
+- **PASS** : la valeur a été conservée dans le 3MF tranché et un effet a été
+  mesuré dans le rôle G-code concerné, dans les conditions du témoin.
+- **FAIL** : la valeur contredit le type ou un remplacement a été observé.
+- **NON VÉRIFIÉ** : binaire, clé ou valeur sans observation suffisante ; l’absence
+  du catalogue ne prouve pas qu’une valeur est refusée.
+
+## Binaire observé
+
+ASN 2.0.0.3, SHA-256
+`618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d`.
+Le témoin S a été copié avant chaque variante et tranché par le lanceur commun.
+Les valeurs ont été relues dans le 3MF et les dépôts comparés par rôle. La source
+et les empreintes de 646 profils installés ou utilisateur sont restées intactes.
+Les rapports et fichiers de recette restent dans l’atelier privé.
+
+| Réglage | Valeurs conservées | Mesure numérique |
+| --- | --- | --- |
+| `sparse_infill_pattern` | `gyroid`, `grid`, `rectilinear`, `zigzag` | Trajectoires distinctes ; 5 502, 468, 456 et 456 segments déposés dans cet ordre. |
+| `internal_solid_infill_pattern` | `rectilinear`, `monotonic` | Trajectoires de remplissage plein interne distinctes. |
+| `top_surface_pattern` | `monotonicline`, `rectilinear` | Trajectoires de surface supérieure distinctes. |
+| `bottom_surface_pattern` | `monotonic`, `rectilinear` | Trajectoires de surface inférieure distinctes. |
+| `wall_sequence` | `inner wall/outer wall`, `outer wall/inner wall`, `inner-outer-inner wall` | Ordres de dépôt des parois distincts. |
+
+Avec `zig-zag`, le moteur a sorti `zigzag` et les mêmes trajectoires qu’avec
+`zigzag` explicite. Une valeur fictive a donné `crosshatch`. Dans les deux cas,
+le moteur a terminé normalement et BENCHAB a refusé l’intégrité du résultat.
+Les défauts exportés par le moteur indiquent `crosshatch` ; cela ne remplace pas
+un essai de cette valeur en entrée avec comparaison des dépôts.
+
+Lors des essais de peau et squelette verrouillés (motif clairsemé
+`lockedzag`, valeur `rectilinear`), les champs
+`locked_skin_infill_pattern` et `locked_skeleton_infill_pattern` étaient
+absents des sorties et l’intégrité a refusé chacune. Ils sont également absents
+des défauts exportés. Leur effet reste NON VÉRIFIÉ ; cela ne prouve pas une
+absence dans toutes les configurations.
+
+Le [code source publié d’Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L2182)
+fournit des noms candidats. Aucun lien n’est établi entre cette révision et
+le binaire mesuré ; seuls le 3MF natif et le G-code tranché appuient les
+observations du tableau. Rien ici ne valide une vitesse ou une tenue physique.

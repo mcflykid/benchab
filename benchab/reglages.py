@@ -13,6 +13,31 @@ def _schema():
     return json.loads(files("benchab").joinpath("reference/reglages-types.json").read_text())
 
 
+@lru_cache(maxsize=1)
+def _enumerations_asn():
+    return json.loads(files("benchab").joinpath("reference/enumerations-asn.json").read_text())
+
+
+def _enumeration_asn(cle, valeur, identite):
+    catalogue = _enumerations_asn()
+    if cle not in catalogue["cles"]:
+        return None
+    if not isinstance(valeur, str):
+        return {"statut": "FAIL", "valeur_embarquee": None, "detail": "La valeur doit être une chaîne."}
+    inconnu = {"statut": "NON VÉRIFIÉ", "valeur_embarquee": None}
+    # Une version affichée ne suffit pas : le comportement est attaché aux octets du binaire (#80).
+    sha = identite.get("sha256") if isinstance(identite, dict) else None
+    binaire = catalogue["binaires"].get(sha) if isinstance(sha, str) else None
+    if binaire is None or binaire["version"] != identite.get("version"):
+        return {**inconnu, "detail": "Identité du binaire non qualifiée."}
+    observation = binaire["cas"].get(cle, {}).get(valeur)
+    if observation is None:
+        return {**inconnu, "preuve": binaire["preuve"], "detail": "Valeur non qualifiée pour ce binaire."}
+    detail = ("Valeur conservée et effet observé." if observation["statut"] == "PASS"
+              else "Valeur remplacée par le slicer ; le repli ne vaut pas acceptation.")
+    return {**observation, "preuve": binaire["preuve"], "detail": detail}
+
+
 def definition(cle, *, valeur=_ABSENT, portee="reglage"):
     """Décrit une clé et sa portée XML ; sans unité, inconnu reste NON VÉRIFIÉ et non transformable.
 
@@ -135,12 +160,14 @@ def longueur_attendue(cle, contexte):
     return None
 
 
-def verifier(donnees, contexte=None):
+def verifier(donnees, contexte=None, *, identite_slicer=None):
     """Contrôle en lecture les types et cardinalités ; renvoie PASS/WARN/FAIL/NON VÉRIFIÉ sans réécrire.
 
     Pour un vecteur machine court non vide, expose les valeurs effectives par indice selon Orca
     `ConfigOptionVector.get_at` (Config.hpp:434-440) ; cela ne certifie pas le consommateur G-code
     Anycubic ni la version du binaire (docs/reference/reglages-et-integrite.md).
+    Si identite_slicer fournit version et SHA-256, ajoute les verdicts observés
+    pour les clés énumérées, sans normaliser les chaînes ni changer les archives.
     """
     ctx = {**donnees, **getattr(donnees, "contexte", {}), **(contexte or {})}
     resultat = []
@@ -190,6 +217,13 @@ def verifier(donnees, contexte=None):
             ]
             if len(valeur) > attendu:
                 ligne["elements_supplementaires"] = valeur[attendu:]
+        if identite_slicer is not None:
+            enumeration = _enumeration_asn(cle, valeur, identite_slicer)
+            if enumeration is not None:
+                ligne["enumeration"] = enumeration
+                # Une qualification d'énumération ne peut assouplir le type déclaré.
+                if statut == "PASS":
+                    ligne["statut"] = enumeration["statut"]
         resultat.append(ligne)
     return resultat
 

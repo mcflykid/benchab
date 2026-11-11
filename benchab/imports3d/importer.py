@@ -8,6 +8,9 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
+from benchab.imports3d.lecture_3mf import lire as lire_3mf
+from benchab.imports3d.provenance import CHAMPS
+from benchab.imports3d.provenance import controler as controler_provenance
 from benchab.qualite.ecritures import PublicationNeuve, valider_chemins
 from benchab.qualite.empreintes import sha256_fichier as empreinte
 
@@ -100,20 +103,39 @@ def alertes(mesure):
     return problemes
 
 
-def auditer(source, unites, provenance=""):
+def auditer(source, unites, provenance="", *, fiche_provenance=None):
+    """Audite une source STL/OBJ/GLB/3MF et retourne maillage en mm et rapport, sans écrire.
+
+    La géométrie renvoie PASS/WARN ; la fiche déclarée a son statut distinct
+    RENSEIGNÉE/NON VÉRIFIÉ. Une empreinte déclarée divergente interrompt l'audit.
+    """
     valider_chemins([source], [])
     sha = empreinte(source)
-    mesh = charger(source, unites)
+    attribution = controler_provenance(fiche_provenance, sha)
+    est_3mf = Path(source).suffix.lower() == ".3mf"
+    if est_3mf and unites != "mm":
+        raise ValueError("Le 3MF déclare ses unités ; --unites mm demande les mesures normalisées.")
+    # Le lecteur 3MF garde les unités et rôles d'origine ; l'audit n'étudie que les volumes imprimables.
+    scene = lire_3mf(source) if est_3mf else None
+    mesh = scene.to_mesh() if scene is not None else charger(source, unites)
     mesure = mesurer(mesh)
     if empreinte(source) != sha:
         raise ValueError("La source a changé pendant l’audit.")
     problemes = alertes(mesure)
+    details_3mf = {}
+    if scene is not None:
+        ignores = scene.metadata["modificateurs_non_geometriques"]
+        details_3mf["modificateurs_non_geometriques"] = ignores
+        if ignores:
+            problemes.append("Modificateurs 3MF exclus du maillage ; leur effet reste NON VÉRIFIÉ.")
     return mesh, {
+        **details_3mf,
         "schema": 1,
         "source": Path(source).name,
         "source_sha256": sha,
-        "unites_entree": unites,
+        "unites_entree": scene.metadata["unites_fichier"] if scene is not None else unites,
         "provenance": provenance,
+        "provenance_modele": attribution,
         "avant": mesure,
         "statut": "WARN" if problemes else "PASS",
         "alertes": problemes,
@@ -128,13 +150,23 @@ def auditer(source, unites, provenance=""):
     }
 
 
-def preparer(source, sortie, unites, provenance="", hauteur_mm=None, nettoyer=False, rapport_sortie=None):
+def preparer(
+    source, sortie, unites, provenance="", hauteur_mm=None, nettoyer=False, rapport_sortie=None,
+    *, fiche_provenance=None,
+):
+    """Crée une copie STL en mm et renvoie son rapport PASS/WARN sans modifier la source.
+
+    Les transformations explicites gardent l'attribution liée au SHA d'origine.
+    Une fiche incohérente ou une sortie existante interrompt la préparation.
+    """
     source, sortie = Path(source), Path(sortie)
     destinations = [sortie] + ([Path(rapport_sortie)] if rapport_sortie else [])
     valider_chemins([source], destinations)
+    if source.suffix.lower() == ".3mf":
+        raise ValueError("Le 3MF est accepté en audit ; utiliser le parcours dédié pour conserver les rôles.")
     if sortie.suffix.lower() != ".stl":
         raise ValueError("La copie préparée doit être un STL (coordonnées en mm).")
-    mesh, rapport = auditer(source, unites, provenance)
+    mesh, rapport = auditer(source, unites, provenance, fiche_provenance=fiche_provenance)
     operations = []
     if hauteur_mm is not None:
         if not math.isfinite(hauteur_mm) or hauteur_mm <= 0 or mesh.extents[2] <= 0:
@@ -192,26 +224,33 @@ def verifier_export(attendu, relu):
 
 
 def main(argv=None):
+    """Exécute audit ou préparation en mm ; codes 0 PASS, 1 WARN, 2 erreur."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("commande", choices=["audit", "preparer"])
     p.add_argument("source", type=Path)
     p.add_argument("--unites", choices=UNITES, required=True)
-    p.add_argument("--provenance", default="")
+    p.add_argument("--provenance", default="", help="note libre historique, sans preuve d'attribution")
+    for champ in CHAMPS:
+        p.add_argument(f"--provenance-{champ}", help=f"fiche d'attribution déclarée : {champ}")
     p.add_argument("--sortie", type=Path)
     p.add_argument("--hauteur-mm", type=float)
     p.add_argument("--nettoyer", action="store_true")
     p.add_argument("--rapport", type=Path, required=True)
     a = p.parse_args(argv)
+    fiche = {champ: getattr(a, f"provenance_{champ}") for champ in CHAMPS}
     try:
         valider_chemins([a.source], [a.rapport] + ([a.sortie] if a.sortie else []))
         if a.commande == "audit":
             if a.sortie or a.hauteur_mm is not None or a.nettoyer:
                 raise ValueError("Options de transformation réservées à preparer.")
-            _, rapport = auditer(a.source, a.unites, a.provenance)
+            _, rapport = auditer(a.source, a.unites, a.provenance, fiche_provenance=fiche)
         else:
             if not a.sortie:
                 raise ValueError("--sortie est requis pour preparer.")
-            rapport = preparer(a.source, a.sortie, a.unites, a.provenance, a.hauteur_mm, a.nettoyer, a.rapport)
+            rapport = preparer(
+                a.source, a.sortie, a.unites, a.provenance, a.hauteur_mm, a.nettoyer, a.rapport,
+                fiche_provenance=fiche,
+            )
         if a.commande == "audit":
             with PublicationNeuve([a.source], [a.rapport]) as publication:
                 publication.temporaire(a.rapport).write_text(

@@ -26,6 +26,7 @@ CONTROLES_DIRECTS = {
     "plaques-interface": "plaques_interface",
     "ergots-faces": "ergots_faces",
     "reglages": "verifier_reglages",
+    "enumerations-asn": "enumerations_asn",
     "pieces": "controles_piece",
     "paquet-3mf": "paquet_3mf",
     "finition-parois": "finition_parois",

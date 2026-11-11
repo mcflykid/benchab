@@ -11,6 +11,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Qualité : Ruff D10x contrôle les nouveaux modules et portées publiques modifiées ; les annotations historiques sont reprises par lots (#37, suite #127).
 - Lecture 3MF : flux G-code séquentiel borné avec caches SHA préservés et garde de chemin avant le cache (première étape de #122).
 - Lecture 3MF : réouverture avec un index et un quota neufs, réentrée simultanée refusée (#128) ; import des modèles et réglages sur le lecteur commun (#122).
+- Import : attribution déclarée des modèles, liée à leur SHA-256 et conservée à la reprise (#36).
+- Réglages : comparaison des valeurs énumérées avec les essais du binaire ASN identifié ; les replis observés échouent et les valeurs non essayées restent NON VÉRIFIÉES (première étape de #80).
 
 ## 1.2.0 — 2026-11-11
 
