@@ -63,15 +63,17 @@ def _projection(triangles_mm, translation_mm, rotation_z_deg):
     return projection, float((z.min() + z.max()) / 2), translation.tolist()
 
 
-def rapprocher(triangles_mm, lignes, *, translation_mm, rotation_z_deg=None, tolerance_z_mm=0.001):
+def rapprocher(triangles_mm, lignes, *, translation_mm, rotation_z_deg=None, tolerance_z_mm=0.001, objet_id=None):
     """Compare les dépôts linéaires de pont à un îlot horizontal en mm.
 
     La rotation facultative autour de Z, en degrés, précède la translation
     XYZ en mm. L’appelant déclare les deux transformations. Le
     rapport mesure les intersections d’axes XY et le niveau nominal
     Z − HEIGHT en mm ; PASS signifie que cette comparaison est couverte,
-    NON VÉRIFIÉ qu’une trajectoire ou une donnée manque. Ne mesure ni la
-    largeur des cordons, ni leur appui, ni la tenue ; aucune action machine.
+    NON VÉRIFIÉ qu’une trajectoire ou une donnée manque. Avec objet_id,
+    mesure seulement les axes dans les blocs G-code portant ce nom exact.
+    Le nom déclaré n’authentifie pas le lien STL/objet. Aucun appui,
+    largeur de cordon ou tenue ne sont mesurés. Aucune action machine.
     """
     if type(tolerance_z_mm) not in (float, int) or not 0.000001 <= tolerance_z_mm <= 0.05:
         raise ValueError("Tolérance Z finie entre 0,000001 et 0,05 mm requise.")
@@ -89,6 +91,14 @@ def rapprocher(triangles_mm, lignes, *, translation_mm, rotation_z_deg=None, tol
         "hauteur_non_verifiee": 0, "role_non_verifie": 0, "trajet_non_lineaire_ou_incline": 0,
         "budget_lignes": 0, "ligne_non_verifiee": 0,
     }
+    segments_autre_objet = 0
+    if objet_id is not None:
+        if (
+            not isinstance(objet_id, str) or not 1 <= len(objet_id) <= 256
+            or any(c.isspace() or ord(c) < 32 for c in objet_id)
+        ):
+            raise ValueError("Identifiant objet G-code exact requis.")
+        exclusions.update(objet_non_attribue=0, objet_non_clos=0)
     lecteur = Interpreter(error_limit=16)
     hauteur = niveau_hauteur = None
     role_declare = None
@@ -127,6 +137,12 @@ def rapprocher(triangles_mm, lignes, *, translation_mm, rotation_z_deg=None, tol
         role = mouvement["type"]
         if role not in roles:
             continue
+        if objet_id is not None and mouvement["object"] != objet_id:
+            if mouvement["object"] is None:
+                exclusions["objet_non_attribue"] += 1
+            else:
+                segments_autre_objet += 1
+            continue
         mesures = roles[role]
         mesures["segments_lus"] += 1
         if role_declare != role:
@@ -148,6 +164,11 @@ def rapprocher(triangles_mm, lignes, *, translation_mm, rotation_z_deg=None, tol
             mesures["segments_niveau_concordant"] += 1
             mesures["longueur_niveau_concordant_mm"] += longueur
 
+    portee_objet = {}
+    if objet_id is not None:
+        # Les marqueurs EXCLUDE_OBJECT délimitent la preuve ; un bloc ouvert ne la qualifie pas (#93).
+        exclusions["objet_non_clos"] = int(lecteur.object is not None)
+        portee_objet = {"objet_id_declare": objet_id, "segments_autre_objet": segments_autre_objet}
     verifie = not any(exclusions.values()) and not lecteur.errors and any(
         m["segments_lus"] for m in roles.values()
     )
@@ -163,6 +184,7 @@ def rapprocher(triangles_mm, lignes, *, translation_mm, rotation_z_deg=None, tol
         ),
         "translation_declaree_mm": translation,
         **placement,
+        **portee_objet,
         "altitude_ilot_mm": round(altitude, 6),
         "tolerance_z_mm": tolerance_z_mm,
         "projection_mm2": round(projection.area, 6),
@@ -219,6 +241,7 @@ def _rapport_fichiers(args):
         with archive.ouvrir_flux(membre) as flux:
             resultat = rapprocher(
                 triangles, _lignes(flux), translation_mm=args.translation_mm, rotation_z_deg=args.rotation_z_deg,
+                objet_id=args.objet_id,
             )
         archive.verifier_source(args.tranche)
     return {
@@ -232,7 +255,8 @@ def main(argv=None, *, prive=None):
 
     Codes 0 si comparaison couverte, 2 si refus ou NON VÉRIFIÉ. Les deux SHA
     et le placement (translation en mm, rotation Z facultative en degrés)
-    sont déclarés. Aucun tranchage ou réglage modifié.
+    sont déclarés, ainsi que le nom G-code de l’objet si demandé.
+    Aucun tranchage ou réglage modifié.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="STL exact de l’îlot")
@@ -241,6 +265,7 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--ilot", required=True, help="Identifiant de surplombs-connexes")
     parser.add_argument("--angle-max-deg", type=float, default=50.0)
     parser.add_argument("--plaque", type=int, required=True)
+    parser.add_argument("--objet-id", help="Nom exact déclaré par EXCLUDE_OBJECT_START dans le G-code")
     parser.add_argument("--translation-mm", nargs=3, type=float, required=True)
     parser.add_argument("--rotation-z-deg", type=float, help="Rotation autour de l’origine du STL, avant translation")
     parser.add_argument("--sha-stl", required=True)
@@ -256,6 +281,8 @@ def main(argv=None, *, prive=None):
                 "statut": resultat["statut"], "association": resultat["association"],
                 "ilot": args.ilot, "plaque": args.plaque, "rapport": str(cible),
             }
+            if args.objet_id is not None:
+                affiche["objet_id_declare"] = args.objet_id
         else:
             affiche = resultat
         print(json.dumps(affiche, ensure_ascii=False, indent=2, allow_nan=False))

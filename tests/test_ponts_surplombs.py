@@ -104,7 +104,11 @@ def test_cli_rattache_un_ilot_a_une_plaque_et_aux_deux_empreintes(tmp_path, caps
     piece.apply_translation((4, 2, 4.5))
     source.write_bytes(piece.export(file_type="stl"))
     with ZipFile(tranche, "w") as archive:
-        archive.writestr("Metadata/plate_2.gcode", "G90\nM83\nG1 X0 Y2 Z4.2\n;HEIGHT:0.2\n;TYPE:Bridge\nG1 X8 E1\n")
+        archive.writestr(
+            "Metadata/plate_2.gcode",
+            "G90\nM83\nEXCLUDE_OBJECT_START NAME=PieceA\nG1 X0 Y2 Z4.2\n;HEIGHT:0.2\n"
+            ";TYPE:Bridge\nG1 X8 E1\nEXCLUDE_OBJECT_END NAME=PieceA\n",
+        )
     sha_stl, sha_tranche = [hashlib.sha256(p.read_bytes()).hexdigest() for p in (source, tranche)]
     commande = [
         str(source), str(tranche), "--unite-mm", "--ilot", "surplomb-001", "--plaque", "2",
@@ -117,6 +121,50 @@ def test_cli_rattache_un_ilot_a_une_plaque_et_aux_deux_empreintes(tmp_path, caps
     assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 8
     assert main([*commande, "--sha-3mf", sha_tranche, "--rotation-z-deg", "0"]) == 0
     assert json.loads(capsys.readouterr().out)["rotation_z_declaree_deg"] == 0
+    assert main([*commande, "--sha-3mf", sha_tranche, "--objet-id", "PieceA"]) == 0
+    assert json.loads(capsys.readouterr().out)["objet_id_declare"] == "PieceA"
+    assert main([*commande, "--sha-3mf", sha_tranche, "--objet-id", "piecea"]) == 2
+    assert json.loads(capsys.readouterr().out)["association"] == "NON VÉRIFIÉE"
     assert main([*commande, "--sha-3mf", "0" * 64]) == 2
     sortie = capsys.readouterr()
     assert "empreinte" in sortie.err.lower() and not sortie.out
+
+
+@pytest.mark.parametrize("objet,attendu", [("PieceA", 8), ("PieceB", 2)])
+def test_isole_les_axes_de_pont_par_objet(objet, attendu):
+    """Deux objets à la même altitude et dans la même projection restent distincts."""
+    lignes = [
+        "G90", "M83", ";LAYER_CHANGE", ";HEIGHT:0.2", ";TYPE:Bridge",
+        "EXCLUDE_OBJECT_START NAME=PieceA", "G1 X0 Y2 Z4.2", "G1 X8 E1",
+        "EXCLUDE_OBJECT_END NAME=PieceA",
+        "EXCLUDE_OBJECT_START NAME=PieceB", "G1 X0 Y3", "G1 X2 E1",
+        "EXCLUDE_OBJECT_END NAME=PieceB",
+    ]
+    global_ = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0))
+    rapport = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0), objet_id=objet)
+    assert global_["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 10
+    assert "objet_id_declare" not in global_
+    assert rapport["statut"] == "PASS"
+    assert rapport["objet_id_declare"] == objet
+    assert rapport["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == attendu
+    assert rapport["segments_autre_objet"] == 1
+    assert rapport["validation_physique"] is False
+
+
+@pytest.mark.parametrize(
+    "fin,champ",
+    [
+        (["EXCLUDE_OBJECT_END NAME=PieceA", "G1 X0 Y3", "G1 X8 E1"], "objet_non_attribue"),
+        ([], "objet_non_clos"),
+    ],
+)
+def test_objet_sans_portee_complete_reste_non_verifie(fin, champ):
+    """Une portée d’objet absente ou ouverte ne donne pas une comparaison attribuée."""
+    lignes = [
+        "G90", "M83", ";HEIGHT:0.2", ";TYPE:Bridge",
+        "EXCLUDE_OBJECT_START NAME=PieceA", "G1 X0 Y2 Z4.2", "G1 X8 E1", *fin,
+    ]
+    rapport = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0), objet_id="PieceA")
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["association"] == "NON VÉRIFIÉE"
+    assert rapport["exclusions"][champ] == 1
