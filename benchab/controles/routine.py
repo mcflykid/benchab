@@ -12,7 +12,7 @@ from pathlib import Path
 
 from benchab.controles import debit_gcode, disposition_reelle, plaques_interface, verifier_reglages
 from benchab.controles.placement import lire as lire_placement
-from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, sortie_privee, verrou_publication
+from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, ecrire_json_neuf, sortie_privee, verrou_publication
 from benchab.qualite.statuts import code_statut
 
 
@@ -133,6 +133,28 @@ def controler(plaques, tranche, placement, sortie):
         "conforme": conforme,
         "resultats": resultats,
         "validation_physique": False,
+    }
+
+
+def publier_resume(rapport, sortie, *, entrees):
+    """Publie le JSON complet dans un fichier neuf et renvoie le résumé de la routine.
+
+    Entrées : rapport PASS/FAIL et chemins de sortie et des sources, sans unité.
+    Le résumé conserve le code global, le nombre de contrôles et les journaux
+    des échecs. Les rapports, journaux et sources précédents restent intacts.
+    """
+    cible = sortie_privee(Path(sortie)) / f"routine-{uuid.uuid4().hex}.json"
+    ecrire_json_neuf(cible, rapport, entrees=entrees)
+    return {
+        "statut": rapport["statut"],
+        "code": rapport["code"],
+        "controles": len(rapport["resultats"]),
+        "echecs": [
+            {cle: resultat[cle] for cle in ("controle", "code", "journal")}
+            for resultat in rapport["resultats"]
+            if resultat["statut"] == "FAIL"
+        ],
+        "rapport": str(cible),
     }
 
 

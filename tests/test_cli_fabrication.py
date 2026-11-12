@@ -56,3 +56,36 @@ def test_planning_rejoue_refuse_ecrasement_et_garde_le_code_mesure(tmp_path, ate
     assert sortie.read_bytes() == avant
     with sqlite3.connect(prive / "benchab.sqlite") as connexion:
         assert connexion.execute("SELECT code FROM mesures ORDER BY rowid").fetchall() == [(0,), (2,)]
+
+
+def test_planning_resume_conserve_le_document_complet(tmp_path, capsys, atelier_initialise, monkeypatch):
+    """Les durées estimées et le lien au Markdown complet sont identiques sur les deux parcours."""
+    from benchab.fabrication import planning
+
+    prive = tmp_path / "prive"
+    detail = prive / "rapports/planning.md"
+    court = prive / "rapports/planning-resume.md"
+    plaques = [
+        {"projet": "fixture", "preparation": "P01", "plaque": 1, "nom": "A", "heures": 1.25,
+         "grammes": 12.0, "filament": "PLA", "fichier": "fixture.3mf"},
+    ]
+    monkeypatch.setattr(planning, "plaques_pretes", lambda *_: plaques)
+    commande = ["--prive", str(prive), "fabrication", "planning", "--sortie"]
+    assert main([*commande, str(detail)]) == 0
+    complet = capsys.readouterr().out
+    assert main([*commande, str(court), "--resume"]) == 0
+    sortie = capsys.readouterr().out
+    assert len(sortie.encode()) < len(complet.encode())
+    assert json.loads(sortie) == {
+        "statut": "PASS",
+        "plaques": 1,
+        "duree_estimee_s": 4500,
+        "masse_estimee_g": 12.0,
+        "rapport": str(court),
+    }
+    assert court.read_bytes() == detail.read_bytes() == complet.encode()
+    assert main([*commande, str(court), "--resume"]) == 2
+    retour = capsys.readouterr()
+    assert retour.out == ""
+    assert "sortie existe déjà" in retour.err
+    assert court.read_bytes() == complet.encode()

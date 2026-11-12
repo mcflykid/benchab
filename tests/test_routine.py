@@ -205,3 +205,46 @@ def test_rejeu_different_preserve_ancien_rapport_et_journal(tmp_path, monkeypatc
     assert Path(nouveau["rapport"]).read_text(encoding="utf-8") == '{"conforme":true}'
     assert (dossier_rejeu / "debit-gcode.log").read_text(encoding="utf-8") == "journal du rejeu\n"
     assert {chemin: chemin.read_bytes() for chemin in avant} == avant
+
+
+@pytest.mark.parametrize("erreur", [False, True])
+def test_cli_resume_routine_conserve_rapport_et_journal(tmp_path, capsys, atelier_initialise, monkeypatch, erreur):
+    """Le résumé reprend le verdict et garde le rapport complet ainsi que les journaux exacts."""
+    from benchab.cli import main
+
+    source = tmp_path / "fixture.3mf"
+    placement = fixture(source)
+    sortie = tmp_path / "prive" / "rapports" / "routine"
+    args = ["--prive", str(tmp_path / "prive"), "controle", "routine", str(source), str(source), str(placement)]
+    if erreur:
+        def debit_refuse(_arguments):
+            print("Débit mesuré invalide sur la plaque 1.")
+            return 7
+
+        monkeypatch.setattr(debit_gcode, "main", debit_refuse)
+
+    code = main(args)
+    detail = capsys.readouterr().out
+    rapport = json.loads(detail)
+    assert main([*args, "--resume"]) == code
+    sortie_courte = capsys.readouterr().out
+    resume = json.loads(sortie_courte)
+    assert len(sortie_courte.encode()) < len(detail.encode())
+    assert resume["statut"] == ("FAIL" if erreur else "PASS") == rapport["statut"]
+    assert resume["code"] == code == rapport["code"]
+    assert resume["controles"] == 5
+    chemin = Path(resume["rapport"])
+    assert chemin.parent == sortie
+    assert json.loads(chemin.read_bytes()) == rapport
+    if erreur:
+        (echec,) = resume["echecs"]
+        assert echec["controle"] == "debit-gcode"
+        assert echec["code"] == 7
+        assert Path(echec["journal"]).read_text() == "Débit mesuré invalide sur la plaque 1.\n"
+    else:
+        assert resume["echecs"] == []
+
+    avant = chemin.read_bytes()
+    assert main([*args, "--resume"]) == code
+    assert json.loads(capsys.readouterr().out)["rapport"] != str(chemin)
+    assert chemin.read_bytes() == avant
