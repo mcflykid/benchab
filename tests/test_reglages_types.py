@@ -274,3 +274,37 @@ def test_vecteur_machine_court_ne_peut_pas_etre_complete_ni_reinterprete():
     imbrique["machine_max_speed_x"][:] = ["780", "780", "780"]
     with pytest.raises(ValueError, match="origine NON VÉRIFIÉ"):
         reglages.encoder(imbrique)
+
+
+def test_retraction_changement_couche_typee_par_extrudeur_pour_mode_vase():
+    """#245 : le mode vase force retract_when_changing_layer à « 0 » ; la déclaration devient possible.
+
+    Longueur = nombre de buses déclarées ; valeurs hors « 0 »/« 1 » FAIL ; sans buse, NON VÉRIFIÉ.
+    """
+    valeurs = reglages.Reglages({"nozzle_diameter": ["0.4"], "retract_when_changing_layer": ["1"]})
+    assert reglages.definition("retract_when_changing_layer")["type"] == "liste_extrudeur"
+    assert reglages.longueur_attendue("retract_when_changing_layer", valeurs) == 1
+    valeurs["retract_when_changing_layer"] = ["0"]
+    assert valeurs["retract_when_changing_layer"] == ["0"]
+    ligne = next(r for r in reglages.verifier(valeurs) if r["cle"] == "retract_when_changing_layer")
+    assert ligne["statut"] == "PASS"
+    reglages.encoder(valeurs)
+    # Une seule buse : deux valeurs seraient une réindexation implicite.
+    with pytest.raises(ValueError, match="Cardinalité"):
+        valeurs["retract_when_changing_layer"] = ["0", "0"]
+    assert valeurs["retract_when_changing_layer"] == ["0"]
+    # Valeur hors du domaine booléen du moteur : écriture acceptée par cardinalité, livraison refusée.
+    valeurs["retract_when_changing_layer"] = ["vrai"]
+    with pytest.raises(ValueError, match="cardinalité invalide"):
+        reglages.encoder(valeurs)
+
+
+def test_retraction_changement_couche_sans_buse_reste_non_verifiee():
+    """Sans nozzle_diameter, aucune longueur supposée : lecture NON VÉRIFIÉE, valeur conservée."""
+    valeurs = reglages.Reglages({"retract_when_changing_layer": ["1"]})
+    assert reglages.longueur_attendue("retract_when_changing_layer", valeurs) is None
+    ligne = next(r for r in reglages.verifier(valeurs) if r["cle"] == "retract_when_changing_layer")
+    assert ligne["statut"] == "NON VÉRIFIÉ"
+    with pytest.raises(ValueError, match="réindexation"):
+        valeurs["retract_when_changing_layer"] = ["0"]
+    assert valeurs["retract_when_changing_layer"] == ["1"]

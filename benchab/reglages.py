@@ -169,6 +169,12 @@ def longueur_attendue(cle, contexte):
         return nombre + 2 if nombre else None
     if regle == "plaques_declarees":
         return contexte.get("nombre_plaques_declares")
+    if regle == "buses_declarees":
+        # Les options d'extrudeur partagent la longueur de nozzle_diameter, première clé de
+        # m_extruder_option_keys (PrintConfig.cpp:6077-6084, #245). Sans buse déclarée sous
+        # forme de liste non vide, la longueur reste NON VÉRIFIÉE : aucune buse supposée.
+        buses = contexte.get("nozzle_diameter")
+        return len(buses) if isinstance(buses, list) and buses else None
     if d["type"] == "liste_filament":
         # Les anciennes archives stockent parfois des entrées inutilisées. Leur
         # correspondance exige une déclaration, pas un broadcast supposé (docs/reference/slicer-anycubic.md).
@@ -220,6 +226,10 @@ def verifier(donnees, contexte=None, *, identite_slicer=None, inclure_contextuel
             elif not valeur and (d["type"] == "liste_mode_machine" or attendu is not None and attendu > 0):
                 # Un vecteur machine vide échoue à l'assert get_at ; une liste vide ne remplit
                 # aucune cardinalité positive déclarée (docs/reference/reglages-et-integrite.md).
+                statut = "FAIL"
+            elif "valeurs" in d and any(v not in d["valeurs"] for v in valeur):
+                # Valeurs permises de la définition (ex. booléens « 0 »/« 1 » de coBools) :
+                # une autre chaîne serait relue autrement par le moteur (#245).
                 statut = "FAIL"
             elif attendu is None:
                 statut = "NON VÉRIFIÉ"
