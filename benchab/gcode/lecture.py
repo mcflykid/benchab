@@ -1,6 +1,4 @@
-"""
-Lecture bornée des membres G-code d'un paquet 3MF tranché.
-"""
+"""Lecture bornée des membres G-code d'un paquet 3MF tranché."""
 
 from __future__ import annotations
 
@@ -71,8 +69,8 @@ def _cle_stat(chemin: Path) -> tuple[int, int, int, int, int]:
 
 
 def empreinte_3mf(chemin: str | Path) -> str:
-    """
-    Retourne le SHA-256 du 3MF complet, avec invalidation par stat et cache concurrent protégé.
+    """Retourne le SHA-256 du 3MF complet, avec invalidation par stat et cache concurrent protégé.
+
     Chemin sans unité ; lecture seule, FAIL sur lien, fichier spécial ou mutation.
     """
     # Un résultat déjà mémorisé ne qualifie jamais un autre chemin lié (#122).
@@ -162,8 +160,8 @@ def lire_texte_gcode_3mf(
 
 @contextmanager
 def ouvrir_membre_3mf(chemin: str | Path, membre: str, *, archive: Archive3MF | None = None):
-    """
-    Ouvre un membre en flux, sans charger les gros G-code en mémoire ; cache concurrent protégé.
+    """Ouvre un membre en flux, sans charger les gros G-code en mémoire ; cache concurrent protégé.
+
     Flux d’octets en sortie ; source inchangée, FAIL sur mutation pendant la lecture.
     Un contexte fourni reste ouvert par l'appelant et doit correspondre à la source exacte.
     """
@@ -198,8 +196,8 @@ def ouvrir_membre_3mf(chemin: str | Path, membre: str, *, archive: Archive3MF | 
 def iter_lignes_gcode_3mf(
     chemin: str | Path, membre: str, encodage: str = "utf-8", *, archive: Archive3MF | None = None,
 ):
-    """
-    Itère sur les lignes G-code, en flux, avec le contexte existant si fourni.
+    """Itère sur les lignes G-code, en flux, avec le contexte existant si fourni.
+
     Le cache par empreinte est conservé et aucun fichier n'est modifié.
     """
     with ouvrir_membre_3mf(chemin, membre, archive=archive) as flux:
@@ -244,9 +242,7 @@ def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1"
 
 
 def vider_cache_lecture() -> None:
-    """
-    Vide les caches et compteurs en octets atomiquement ; ne modifie aucune archive.
-    """
+    """Vide les caches et compteurs en octets atomiquement ; ne modifie aucune archive."""
     global _CACHE_OCTETS
     global _ANALYSE_OCTETS
     with _VERROU_CACHE:

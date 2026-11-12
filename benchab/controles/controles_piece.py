@@ -1,7 +1,7 @@
-"""
+"""Contrôle la géométrie d’une pièce dans son orientation d’impression.
 
-Contrôles géométriques d'une pièce posée comme imprimée (lot S, Claude, 22/10/2026). Contrôles de FICHIER, pas une
-preuve physique.
+Le lot S du 22/10/2026 vérifie le fichier. La validation physique reste distincte.
+
 usage : python controles_piece.py <stl_orienté> [...] [--epaisseur-min 0.84] [--surplomb-max 45] [--plateau
 250x250x250]
         [--hauteur-couche 0.2] [--non-applicable controle=raison ...] [--json FICHIER]
@@ -17,7 +17,6 @@ Maillage dense (plus de --faces-max 300000 triangles) : l'épaisseur locale est 
 indiquée dans le détail) ; les autres contrôles restent sur le maillage complet. Constat du 23/10/2026 (support JBL
 GO 4, 3,2 M
 triangles) : sans embree, le lancer de rayons de trimesh a consommé 51 Go de mémoire.
-
 """
 
 import argparse
@@ -150,9 +149,10 @@ def controler_cache(fichier, projet, parametres, outils, options=None):
 
 
 def pour_rayons(m, faces_max):
-    """
-    Copie allégée pour le lancer de rayons : simplification manifold à tolérance croissante jusqu'à faces_max triangles.
-    Renvoie (maillage, note).
+    """Prépare un maillage allégé pour le lancer de rayons.
+
+    Renvoie le maillage et une note. La simplification augmente la tolérance en mm
+    pour viser faces_max triangles. Le maillage d’entrée reste intact.
     """
     if len(m.faces) <= faces_max:
         return m, ""

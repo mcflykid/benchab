@@ -181,8 +181,10 @@ def planifier(root, changements):
 
 
 def executer(root, plan):
-    """Exécute les tests sélectionnés avec diagnostic privé et durée s ; code exact, aucun atelier initialisé
-    implicitement.
+    """Exécute les tests sélectionnés et publie le diagnostic privé.
+
+    Renvoie le statut, le code de sortie exact et le chemin du diagnostic avec sa durée en secondes.
+    Aucun atelier n’est initialisé implicitement.
     """
     from benchab.processus import executer as processus
 

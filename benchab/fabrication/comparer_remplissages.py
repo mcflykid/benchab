@@ -413,7 +413,9 @@ def main(
     prive: str | Path,
     dossier_sortie_precree: bool = False,
 ) -> dict:
-    """Exécute une étude locale ; les seuls tranchages passent par le lanceur commun. Réglages en
+    """Compare les motifs dans une étude locale avec le lanceur commun.
+
+    Réglages en
     unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
 
     `dossier_sortie_precree` est réservé au CLI après création de sa preuve INCOMPLET ;

@@ -1,6 +1,7 @@
 """Comparaison stricte d'une reconstruction à ses références. Lecture seule.
+
 Lancé séparément, hors du bac à sable, après la reconstruction : seul ce comparateur lit attendu/.
-Trois catégories, sans aucune tolérance automatique :
+Trois catégories, avec leurs propres critères de comparaison :
   géométrie   : STL, STEP, GLB, manifestes (assemblage.json, cao-nominale.json) -> égalité d'empreinte ;
   fabrication : 3MF membre par membre (G-code comparé ligne à ligne hors commentaires,
                 réglages comparés clé par clé), placements et noms de plaques ; toute

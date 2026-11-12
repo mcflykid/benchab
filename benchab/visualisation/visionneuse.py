@@ -127,7 +127,9 @@ class Visionneuse:
     """Prépare des vues de géométries (unités de scène) ; aucune source ou réglage d’impression modifié."""
 
     def __init__(self, titre, sous_titre="", note="", axe_haut="Z", vue_initiale=(1.0, -1.4, 0.9), source=None):
-        """axe_haut : axe vertical du repère du projet ('Z' ou 'Y').
+        """Prépare la visionneuse dans le repère du projet.
+
+        axe_haut : axe vertical du repère du projet ('Z' ou 'Y').
         vue_initiale : direction (repère du projet) d'où la caméra regarde le centre au chargement.
         source : dictionnaire libre affiché en pied de page (manifeste, empreinte, date des contrôles…).
         """
@@ -221,8 +223,10 @@ class Visionneuse:
         self.groupes[groupe] = False
 
     def mecanisme(self, ident, libelle, valeurs, poses, unite="", etat=None, defaut=0):
-        """valeurs : suite des positions échantillonnées. poses(v) -> {nom_pièce: matrice 4×4, ou None pour masquer}.
-        Les pièces absentes du dictionnaire gardent leur pose de base. etat(v) -> texte affiché (facultatif).
+        """Enregistre les poses du mécanisme pour chaque position échantillonnée.
+
+        Le rappel poses fournit une matrice 4×4 par pièce ou None pour la masquer.
+        Les pièces omises gardent leur pose initiale. Le rappel etat fournit le texte facultatif.
         """
         valeurs = list(valeurs)
         frames = [poses(v) for v in valeurs]

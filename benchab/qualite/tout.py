@@ -1,4 +1,5 @@
 """Pipeline local déclaratif. Arrêt au premier échec, état et différences automatiques.
+
 Usage : python tout.py qualite.json [--incremental|--verifier]
 Aucune commande d'imprimante ; les commandes déclarées sont celles du projet.
 """

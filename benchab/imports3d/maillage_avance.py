@@ -27,8 +27,9 @@ WORKER = "benchab.imports3d.moteur_maillage"
 
 
 def moteur(commande, mesh=None, *, delai=180, prive=None, **parametres):
-    """Cadre le moteur local et ses diagnostics privés ; unités natives conservées, aucune installation ni
-    source modifiée.
+    """Cadre le moteur local et ses diagnostics privés.
+
+    Les unités natives sont conservées. Le moteur ne modifie ni l’installation ni la source.
     """
     if not NATIF.is_file():
         raise ValueError("Python courant indisponible.")

@@ -1,7 +1,5 @@
-"""
+"""Supports que le slicer ajouterait avec les paramètres demandés.
 
-
-Supports que le slicer ajouterait avec les paramètres demandés.
 Usage : benchab controle supports-requis <plaques.3mf> <sortie.json> [--seuil-g 1.0] [--garder <dossier>]
         [--type arbre|normal] [--style organique|fin|fort|hybride|grille|ajuste|defaut] [--manuel] [--partout]
         [--angle 30] [--z-haut 0.18] [--interfaces 2] [--reglage cle=valeur …]
@@ -17,8 +15,6 @@ remplacent aussi ceux de chaque objet. Le 3MF d'origine n'est jamais modifié. C
 docs/guides/methodes/supports-anycubic.md.
 Code 0 si chaque plaque reste sous le seuil, 1 sinon, 2 si la preuve ne peut pas être publiée.
 Estimation du slicer, pas une observation d'impression.
-
-
 """
 
 import math
@@ -56,9 +52,9 @@ PAR_DEFAUT = {
 def reglages(
     type_="arbre", style="organique", manuel=False, partout=False, angle=None, z_haut=None, interfaces=None, autres=()
 ):
-    """
-    Clés Anycubic/Orca du support demandé. Lève ValueError sur un nom inconnu ou un style d'arbre posé sur un
-    support normal.
+    """Construit les clés Anycubic et Orca du support demandé.
+
+    Lève ValueError sur un nom inconnu ou un style d’arbre associé à un support normal.
     """
     if type_ not in TYPES or style not in STYLES:
         raise ValueError(f"type {type_!r} ou style {style!r} inconnu")
@@ -88,8 +84,8 @@ def reglages(
 
 
 def masse_support(g, aire, densite):
-    """
-    Masse de support extrudée dans le texte G-code g : ({tranche de 5 mm: grammes}, grammes d'interface).
+    """Masse de support extrudée dans le texte G-code g : ({tranche de 5 mm: grammes}, grammes d'interface).
+
         Seuls les trajets (X ou Y) comptent : un « G1 E… » sans déplacement est un réamorçage après rétraction, pas
     du
         support
@@ -132,7 +128,9 @@ def _publier_gcodes(source, dossier, fichiers):
 
 
 def mesurer(src, regl=None, seuil=1.0, garder=None):
-    """Tranche une copie de src avec regl (dict de clés) et renvoie le rapport (dict). src n'est jamais
+    """Tranche une copie et renvoie le rapport par plaque.
+
+    src n'est jamais
     modifié. Réglages en unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage
     inconnu transformé.
     """

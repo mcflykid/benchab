@@ -310,8 +310,9 @@ class Reglages(dict):
 
     # Conserver l’appel historique par mot-clé `autre` et la validation des écritures.
     def update(self, autre=(), **valeurs) -> None:  # type: ignore[override]
-        """Affecte des valeurs explicites dans leurs unités natives ;
-        aucune normalisation silencieuse, lève sur FAIL.
+        """Affecte des valeurs explicites dans leurs unités natives.
+
+        Lève une erreur sur FAIL et écarte les normalisations silencieuses.
         """
         nouveaux = {**dict(autre), **valeurs}
         essai = self.copy()
@@ -321,8 +322,9 @@ class Reglages(dict):
         dict.update(self, essai)
 
     def copy(self):
-        """Renvoie une copie typée indépendante, sans unité ni statut ;
-        conserve toutes les valeurs inconnues intactes.
+        """Renvoie une copie typée indépendante, sans unité ni statut.
+
+        Les valeurs inconnues sont conservées intégralement.
         """
         resultat = Reglages(self, contexte=self.contexte)
         resultat.original = copy.deepcopy(self.original)

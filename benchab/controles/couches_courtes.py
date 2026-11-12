@@ -1,6 +1,4 @@
-"""
-
-Repère les petits îlots et sommets à revoir dans l'orientation d'impression.
+"""Repère les petits îlots et sommets à revoir dans l'orientation d'impression.
 
 Usage : benchab controle couches-courtes <stl> [hauteur_couche=.2] [aire_max=40] [hauteur_min=2]
 Code 0 : aucun îlot signalé ; 2 : revue locale nécessaire.
@@ -249,8 +247,7 @@ def _rapport(track, terminal, lh, amax, hmin, qualifier_positions=False):
 
 
 def analyse(path, lh=0.2, amax=40.0, hmin=2.0, *, qualifier_positions=False):
-    """
-    Retourne les îlots géométriques et leurs observations de sections XY.
+    """Retourne les îlots géométriques et leurs observations de sections XY.
 
     ``path`` désigne un maillage STL ; ``lh`` et ``hmin`` sont en mm, ``amax``
     en mm². Le rapport conserve les champs historiques et ajoute

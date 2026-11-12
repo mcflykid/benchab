@@ -1,5 +1,7 @@
-"""Créer une fiche uniforme après recherche par l'assistant. Aucun réseau ni profil machine modifié.
-Usage : benchab connaissances bobine importer DONNEES.json
+"""Importe une fiche de bobine depuis les données documentées par l’assistant.
+
+L’import ne consulte pas le réseau et ne modifie aucun profil machine.
+Commande : benchab connaissances bobine importer DONNEES.json
 """
 
 import argparse

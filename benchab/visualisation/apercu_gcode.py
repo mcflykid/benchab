@@ -1,5 +1,7 @@
-"""Aperçu du G-code couche par couche (outil commun, Claude, 23/10/2026 ; proposition 9 retenue par
-l'utilisateur).
+"""Affiche le G-code couche par couche.
+
+La proposition 9 a été retenue le 23/10/2026.
+
 usage : python -I apercu_gcode.py <tranche.3mf | fichier.gcode> <sortie.html> [--defauts
 preuves/premiere-couche.json] [--titre "…"]
         [--zones preuves/controle-envoi.json] [--colonnes preuves/colonnes-isolees.json]
@@ -100,8 +102,12 @@ def gcodes(f):
 
 
 def couches(g):
-    """[{z, h, t (s), d: Int16 [type, n, x0, y0, …], v: Uint8 vitesse (mm/s) de chaque polyligne, tr: Int16
-    [x0, y0, x1, y1, relevage]}].
+    """Décode les dépôts et déplacements par couche pour l’aperçu.
+
+    Chaque entrée contient z, h et t (s), les polylignes d (type, nombre de points
+    et coordonnées Int16), v (vitesse UInt8 en mm/s) et les trajets tr (coordonnées
+    et relevage Int16).
+
     Vitesse : celle commandée au début de la polyligne (une polyligne est coupée quand F change).
     Déplacements à vide de 1 mm et plus,
     relevage = Z du déplacement − Z de la couche (unités de 1/Q mm). Vue 3D ajoutée le 25/10/2026.
@@ -183,8 +189,9 @@ def couches(g):
 
 
 def alertes(zones=None, colonnes=None):
-    """Alertes des contrôles par plaque : zones locales (contrôle avant envoi) et séries de colonnes
-    isolées. Fichiers absents : ignorés.
+    """Charge les alertes des contrôles par plaque.
+
+    Inclut les zones locales avant envoi et les séries de colonnes isolées. Les fichiers absents sont ignorés.
     """
     a = {}
     if zones and Path(zones).exists():

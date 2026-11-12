@@ -1,10 +1,8 @@
-"""
+"""Contrôle le débit commandé par objet et outil, en mm³/s.
 
-Débit commandé par objet et outil. U25 : chaque dépassement établi du plafond déclaré donne FAIL ;
-p99 pondéré par longueur informatif. Données insuffisantes : NON VÉRIFIÉ.
-usage : debit_gcode.py <tranche.3mf> [--plafonds 1=32,2=16] [--sortie fichier.json]
-
-
+U25 donne FAIL pour chaque dépassement établi du plafond déclaré et NON VÉRIFIÉ
+si les données sont insuffisantes. Le p99 pondéré par longueur reste informatif.
+Commande : debit_gcode.py <tranche.3mf> [--plafonds 1=32,2=16] [--sortie fichier.json]
 """
 
 import argparse

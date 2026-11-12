@@ -149,17 +149,18 @@ global, le chemin du JSON complet et le statut et le journal de chaque
 étape. Le rapport privé conserve les diagnostics et les mesures. La
 commande renvoie le même code avec ou sans résumé (#35).
 
-La CI exécute `ruff check --select D10,D202,D204,D209,D300 benchab`.
+La CI exécute `ruff check --select D10,D200,D202,D204,D205,D207,D208,D209,D211,D212,D300,D400,D403 benchab`.
 `D10` vérifie la présence des docstrings publiques. La garde des portées
 modifiées contrôle aussi les annotations des fonctions et classes touchées.
 La relecture vérifie les unités, statuts et invariants annoncés par le texte.
 
-Les quatre règles de forme portent sur les lignes vides, la fermeture
-des docstrings multilignes et les guillemets doubles. Le rattrapage de ces
-règles a gardé les textes normalisés et le code identiques. Les couples
-`D203` / `D211` et `D212` / `D213` proposent des formes incompatibles
-au sein de chaque couple. Leur choix et l’adaptation des règles de style
-rédactionnel aux textes français restent suivis dans #127.
+Les règles de forme contrôlent les lignes vides, l’indentation, les guillemets
+doubles et la ponctuation du résumé. Le résumé commence sur la ligne des guillemets
+ouvrants (D212). Une docstring qui tient sur une ligne garde ses guillemets
+sur cette ligne (D200). La docstring d’une classe suit directement sa
+déclaration (D211). Une ligne vide sépare le résumé du développement (D205).
+La relecture vérifie la rédaction française. L’impératif « Calcule » dans
+une docstring française donne par exemple un faux positif D401.
 
 `benchab qualite syntaxe-privee PROJET` vérifie les scripts Python actifs de
 `prive/projets/PROJET` hors dépendances et archives de projet, sans les exécuter ni créer de `.pyc`. Un script illisible

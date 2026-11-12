@@ -64,6 +64,7 @@ def _projection(t, v, n):
 
 def poids_zone(sommets, texture):
     """Masque boîte optionnel, transition cubique continue vers zéro sur ses six bords.
+
     Coordonnées en mm dans le repère de la pièce. Ne lève aucune protection existante.
     """
     zone = texture.get("zone")

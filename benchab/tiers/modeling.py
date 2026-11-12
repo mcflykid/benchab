@@ -16,7 +16,7 @@ _results = []
 
 
 def load_parts(path):
-    """name -> world-transformed Trimesh (same-name nodes merged)."""
+    """Charge les maillages par nom dans le repère de la scène et fusionne les noms répétés."""
     loaded = trimesh.load(path)
     if isinstance(loaded, trimesh.Trimesh):
         return {"part": loaded}
@@ -172,7 +172,7 @@ def breach_check(shell, parts, names, min_wall, pitch, seed=0):
 
 
 def placed_meshes(path, skip=()):
-    """name -> world-transformed mesh, from a GLB scene (or a single mesh file)."""
+    """Charge une scène ou un maillage dans son repère de placement et filtre les noms exclus."""
     loaded = trimesh.load(path)
     out = {}
     if isinstance(loaded, trimesh.Scene):
@@ -267,8 +267,10 @@ def finish():
 
 
 def bore_pierces(mesh, start, direction, length, n=60):
-    """True if a bore is open along its real axis: probe points along the axis must
-    all be OUTSIDE the solid. start/direction in mm / unit vector.
+    """Sonde si un alésage est ouvert suivant son axe.
+
+    Les coordonnées de départ et la longueur sont en mm. La direction est normalisée.
+    Renvoie True si aucun des points échantillonnés n’est dans le solide.
     """
     d = np.asarray(direction, float)
     d /= np.linalg.norm(d)
@@ -277,9 +279,10 @@ def bore_pierces(mesh, start, direction, length, n=60):
 
 
 def open_from(mesh, point, direction, reach=500.0):
-    """True if `point` (e.g. a pocket floor center) can be reached from `direction`
-    without passing through the solid, i.e. the pocket is open (a bearing/motor can
-    actually be inserted). Catches the sealed-void 'lid that is not a lid' class.
+    """Sonde si une cavité est accessible depuis la direction donnée.
+
+    Le point et la portée sont en mm. Renvoie True si les points échantillonnés le long de la direction
+    normalisée restent hors du solide. Ce test repère une cavité fermée sur le trajet sondé.
     """
     d = np.asarray(direction, float)
     d /= np.linalg.norm(d)
@@ -294,9 +297,12 @@ def clearance(a, b, n=600, seed=0):
 
 
 def bore_is_keyed(mesh, center, axis, radius, z, n=90):
-    """True if a bore section at height z deviates from a plain circle (D-flat, key,
-    spline). A perfectly round result means the 'driven' part FREEWHEELS on its
-    shaft; torque paths through plain bores have shipped to plastic twice.
+    """Sonde si un alésage présente un détrompeur sur la section choisie.
+
+    Le centre, le rayon et z sont en mm. Renvoie True si le solide contient au moins un point du cercle
+    échantillonné, par exemple sur un méplat, une clavette ou une cannelure. Un résultat False
+    laisse le couple non vérifié. Deux pièces à alésage circulaire avaient été imprimées malgré
+    ce défaut de conception.
     """
     ax = np.asarray(axis, float)
     ax /= np.linalg.norm(ax)

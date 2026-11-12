@@ -1,8 +1,4 @@
-"""
-
-Actualiser uniquement un rapport courant reconnu, jamais une entrée ni une preuve figée.
-
-"""
+"""Actualiser uniquement un rapport courant reconnu, jamais une entrée ni une preuve figée."""
 
 import json
 import os

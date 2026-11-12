@@ -1,6 +1,4 @@
-"""
-
-Gel et vérification des livrables d'un projet (outil commun, 21/10/2026).
+"""Gel et vérification des livrables d'un projet (outil commun, 21/10/2026).
 
   figer    : python3 livrables.py figer <dossier_projet> <motif> [<motif> ...] [--version NOM] [--note TEXTE]
              -> écrit <dossier_projet>/LIVRABLES.json (chemin relatif, taille, SHA-256 de chaque fichier retenu)

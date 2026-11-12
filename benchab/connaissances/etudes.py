@@ -132,8 +132,9 @@ def proposer(donnees, instantane):
 
 
 def main(argv=None, *, racine=None):
-    """Affiche les études de l’atelier choisi ; unités/statuts des sources conservés, aucune validation
-    physique inférée.
+    """Affiche les études de l’atelier choisi.
+
+    Conserve les unités et les statuts des sources, sans déduire de validation physique.
     """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--racine", type=Path, default=atelier_prive(racine))

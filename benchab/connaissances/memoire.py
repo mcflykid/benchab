@@ -591,8 +591,9 @@ def resoudre_chemin(root, texte):
 
 
 def main(argv=None, *, racine=None):
-    """Recherche/capitalise dans l’atelier choisi ; dates ISO et statuts déclarés, jamais de validation
-    physique inventée.
+    """Recherche et capitalise dans l’atelier choisi.
+
+    Conserve les dates ISO et les statuts déclarés, sans déduire de validation physique.
     """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--racine", type=Path, default=atelier_prive(racine))

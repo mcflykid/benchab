@@ -426,7 +426,9 @@ def preparer_etude(
 
 
 def executer_etude(base: Base, etude: str | Path, maitre=None) -> dict:
-    """Exécute executer_etude avec les entrées déclarées et renvoie le résultat du contrôle. Réglages
+    """Exécute une étude de procédé déclarée après vérification du manifeste.
+
+    Réglages
     en unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu
     transformé.
     """

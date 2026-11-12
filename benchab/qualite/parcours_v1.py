@@ -51,8 +51,9 @@ return out}
 
 
 def recevoir(page, url, projet, sortie):
-    """Teste les interactions d’une fixture locale (pixels, s) ; renvoie ses mesures ou lève sur FAIL,
-    sans commande machine.
+    """Teste les interactions d’une fixture locale.
+
+    Renvoie les mesures en pixels et secondes ou lève sur FAIL. Aucune commande machine n’est émise.
     """
     erreurs = []
     page.on("pageerror", lambda e: erreurs.append(str(e)))

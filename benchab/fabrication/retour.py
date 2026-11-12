@@ -189,8 +189,9 @@ def journal(projet, ident, fiche, *, prive):
 
 
 def main(argv=None, *, base=None):
-    """Enregistre un retour dans la base existante ; faits/statuts déclarés conservés, aucune preuve physique
-    inventée.
+    """Enregistre un retour dans la base existante.
+
+    Conserve les faits et statuts déclarés. Le retour contient seulement les preuves fournies.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prive", type=Path)

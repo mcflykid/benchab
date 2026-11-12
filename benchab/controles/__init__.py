@@ -1,5 +1,1 @@
-"""
-
-Contrôles numériques de fabrication et de géométrie.
-
-"""
+"""Contrôles numériques de fabrication et de géométrie."""

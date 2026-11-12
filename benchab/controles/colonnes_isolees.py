@@ -64,9 +64,10 @@ def gcodes(f):
 
 
 def couches(g):
-    """
-    [{z, piece: [(x0,y0,x1,y1)], support: [...], trajets: [(x0,y0,x1,y1,relevage)]}] ; relevage = Z du trajet − Z de
-    la couche.
+    """Regroupe les dépôts et les déplacements du G-code par couche.
+
+    Renvoie z, les segments XY de pièce et de support, et les trajets XY avec leur relevage.
+    Le relevage est le Z maximal du trajet moins celui de la couche, en mm.
     """
     out, cur, zl = [], None, 0.0
     it = Interpreter()
@@ -101,13 +102,10 @@ def couches(g):
 
 
 def cases(segs, o, forme, pas, paquet=1_000_000):
-    """
-    Cases (forme) touchées par les segments (x0, y0, x1, y1) : même échantillonnage que l'ancienne boucle (n points
-    par segment,
-        n = max(2, longueur / (pas / 2) + 1), répartis comme np.linspace), en un passage NumPy par paquet d'au plus
-        `paquet` points
-        (mémoire bornée). Vectorisé sur des grilles
-    identiques.
+    """Repère les cellules de la grille touchées par les segments XY.
+
+    Les segments sont échantillonnés comme avec np.linspace, avec max(2, int(longueur / (pas / 2)) + 1) points
+    par segment, et le pas est exprimé en mm. Le calcul NumPy utilise des paquets d’au plus paquet points.
     """
     if not isinstance(pas, (int, float)) or isinstance(pas, bool) or not math.isfinite(pas) or pas <= 0:
         raise ValueError("pas fini positif requis")

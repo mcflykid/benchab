@@ -31,7 +31,9 @@ def test_orientations_publie_rapport_dans_dossier_neuf_sans_trancher(tmp_path, m
 
     monkeypatch.setattr(orientations_supports, "trancher", interdit)
     assert orientations_supports.main(["--profil", str(profil), "--sortie", str(dossier)]) == 0
-    assert json.loads((dossier / "orientations.json").read_bytes())["pieces"] == {}
+    rapport = json.loads((dossier / "orientations.json").read_bytes())
+    assert rapport["pieces"] == {}
+    assert rapport["methode"] == ""
 
 
 def test_orientations_publie_ensemble_ou_rien_si_moteur_refuse(tmp_path, monkeypatch):
