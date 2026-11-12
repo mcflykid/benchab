@@ -6,6 +6,14 @@ sens. Les définitions proviennent des profils système installés, lus sans
 modification, et des métadonnées des préparations privées.
 
 Une clé inconnue reste intacte et NON VÉRIFIÉE. Sa transformation est refusée.
+
+Les listes par extrudeur (`liste_extrudeur`) ont la longueur de `nozzle_diameter`,
+première clé des options d’extrudeur du slicer. Sans buse déclarée, leur
+longueur reste NON VÉRIFIÉE. Seule `retract_when_changing_layer` est qualifiée,
+avec ses valeurs « 0 » et « 1 » : le mode vase la force à « 0 », et la
+préparation doit la déclarer (#245). Les autres options d’extrudeur restent
+inconnues jusqu’à leur propre qualification.
+
 Une ancienne liste de filaments sans correspondance certaine est conservée ;
 elle n'est ni raccourcie ni diffusée implicitement.
 
