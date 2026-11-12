@@ -149,6 +149,17 @@ global, le chemin du JSON complet et le statut et le journal de chaque
 étape. Le rapport privé conserve les diagnostics et les mesures. La
 commande renvoie le même code avec ou sans résumé (#35).
 
+Avec `benchab controle routine PLAQUES TRANCHE PLACEMENT --resume`,
+la commande écrit le JSON complet dans un fichier neuf du dossier
+de rapports (`--sortie` ou `prive/rapports/routine`). Le résumé conserve
+le verdict, le code, le nombre de contrôles et, pour chaque échec, le
+contrôle, son code et le chemin du journal qui contient le message exact.
+Sans `--resume`, le JSON complet reste affiché dans le terminal.
+
+`benchab fabrication planning --sortie PLANNING.md --resume` écrit le même
+planning Markdown et affiche le nombre de plaques, les durées estimées
+en secondes, la masse estimée en grammes et le chemin du document complet.
+
 La CI exécute `ruff check --select D10,D200,D202,D204,D205,D207,D208,D209,D211,D212,D300,D400,D403 benchab`.
 `D10` vérifie la présence des docstrings publiques. La garde des portées
 modifiées contrôle aussi les annotations des fonctions et classes touchées.

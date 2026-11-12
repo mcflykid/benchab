@@ -205,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--projets", type=Path, required=True, help="Dossier projets dans l’espace privé BENCHAB")
     parser.add_argument("--sortie", type=Path, required=True, help="Rapport dans prive/ ou /private/tmp")
     parser.add_argument("--creneau", type=float, default=3.0, help="Durée maximale d’un créneau, en heures")
+    parser.add_argument("--resume", action="store_true", help="Affichage court avec lien au planning complet")
     args = parser.parse_args(argv)
     prive = args.prive.expanduser().resolve(strict=True)
     projets = args.projets.expanduser().resolve(strict=True)
@@ -225,14 +226,26 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("La sortie doit rester dans prive/ ou /private/tmp.")
     base = Base(prive, creer=False)
     try:
-        rapport = rendre(plaques_pretes(projets, base), args.creneau)
+        plaques = plaques_pretes(projets, base)
+        rapport = rendre(plaques, args.creneau)
         with sortie.open("x", encoding="utf-8") as flux:
             flux.write(rapport)
     except (OSError, ValueError, KeyError, json.JSONDecodeError, BadZipFile) as erreur:
         parser.error(str(erreur))
     finally:
         base.fermer()
-    print(rapport, end="")
+    if args.resume:
+        # Le code qualifie la publication ; les quantités gardent leur statut d’estimation (#35).
+        resume = {
+            "statut": "PASS",
+            "plaques": len(plaques),
+            "duree_estimee_s": round(math.fsum(plaque["heures"] for plaque in plaques) * 3600),
+            "masse_estimee_g": math.fsum(plaque["grammes"] for plaque in plaques),
+            "rapport": str(sortie),
+        }
+        print(json.dumps(resume, ensure_ascii=False, separators=(",", ":"), allow_nan=False))
+    else:
+        print(rapport, end="")
     return 0
 
 

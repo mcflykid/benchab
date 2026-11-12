@@ -343,6 +343,7 @@ def parser():
     routine.add_argument("tranche", type=Path)
     routine.add_argument("placement", type=Path)
     routine.add_argument("--sortie", type=Path)
+    routine.add_argument("--resume", action="store_true", help="Affichage court avec rapport complet dans la sortie")
     continuite = controle.add_parser("continuite-paroi", aliases=["continuite_paroi"])
     continuite.add_argument("fichier", type=Path)
     continuite.add_argument("--plaque", type=int)
@@ -390,6 +391,7 @@ def parser():
     planning = fabrication.add_parser("planning")
     planning.add_argument("--projets", type=Path)
     planning.add_argument("--sortie", type=Path, required=True)
+    planning.add_argument("--resume", action="store_true", help="Affichage court avec lien au planning complet")
     for nom in (
         "preparation",
         "optimisation",
@@ -589,15 +591,16 @@ def executer(arguments, base):
             options = {"prive": base.prive} if arguments.controle in CONTROLES_DIRECTS_AVEC_PRIVE else {}
             return _deleguer(module.main, arguments.arguments, options=options)
         if arguments.controle == "routine":
-            from benchab.controles.routine import controler
+            from benchab.controles.routine import controler, publier_resume
 
-            rapport = controler(
-                arguments.plaques,
-                arguments.tranche,
-                arguments.placement,
-                arguments.sortie or base.prive / "rapports/routine",
-            )
-            print(json.dumps(rapport, ensure_ascii=False, indent=2))
+            entrees = (arguments.plaques, arguments.tranche, arguments.placement)
+            sortie = arguments.sortie or base.prive / "rapports/routine"
+            rapport = controler(*entrees, sortie)
+            if arguments.resume:
+                resume = publier_resume(rapport, sortie, entrees=entrees)
+                print(json.dumps(resume, ensure_ascii=False, separators=(",", ":")))
+            else:
+                print(json.dumps(rapport, ensure_ascii=False, indent=2))
             return rapport["code"]
         if arguments.controle in {"continuite-paroi", "continuite_paroi"}:
             from benchab.controles.continuite_paroi import controler, resumer
@@ -799,16 +802,14 @@ def executer(arguments, base):
         if arguments.action == "planning":
             from benchab.fabrication.planning import main as planifier
 
-            return planifier(
-                [
-                    "--prive",
-                    str(base.prive),
-                    "--projets",
-                    str(arguments.projets or base.prive / "projets"),
-                    "--sortie",
-                    str(arguments.sortie),
-                ]
-            )
+            directs = [
+                "--prive", str(base.prive),
+                "--projets", str(arguments.projets or base.prive / "projets"),
+                "--sortie", str(arguments.sortie),
+            ]
+            if arguments.resume:
+                directs.append("--resume")
+            return planifier(directs)
         if arguments.action in {"preparation", "optimisation", "strategies-procede"}:
             noms_modules = {
                 "preparation": "preparation",
