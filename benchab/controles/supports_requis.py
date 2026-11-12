@@ -1,7 +1,4 @@
-"""
-
-
-Supports que le slicer ajouterait avec les paramètres demandés.
+"""Supports que le slicer ajouterait avec les paramètres demandés.
 Usage : benchab controle supports-requis <plaques.3mf> <sortie.json> [--seuil-g 1.0] [--garder <dossier>]
         [--type arbre|normal] [--style organique|fin|fort|hybride|grille|ajuste|defaut] [--manuel] [--partout]
         [--angle 30] [--z-haut 0.18] [--interfaces 2] [--reglage cle=valeur …]
@@ -56,8 +53,7 @@ PAR_DEFAUT = {
 def reglages(
     type_="arbre", style="organique", manuel=False, partout=False, angle=None, z_haut=None, interfaces=None, autres=()
 ):
-    """
-    Clés Anycubic/Orca du support demandé. Lève ValueError sur un nom inconnu ou un style d'arbre posé sur un
+    """Clés Anycubic/Orca du support demandé. Lève ValueError sur un nom inconnu ou un style d'arbre posé sur un
     support normal.
     """
     if type_ not in TYPES or style not in STYLES:
@@ -88,8 +84,7 @@ def reglages(
 
 
 def masse_support(g, aire, densite):
-    """
-    Masse de support extrudée dans le texte G-code g : ({tranche de 5 mm: grammes}, grammes d'interface).
+    """Masse de support extrudée dans le texte G-code g : ({tranche de 5 mm: grammes}, grammes d'interface).
         Seuls les trajets (X ou Y) comptent : un « G1 E… » sans déplacement est un réamorçage après rétraction, pas
     du
         support

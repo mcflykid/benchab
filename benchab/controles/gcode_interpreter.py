@@ -1,6 +1,4 @@
-"""
-
-Interpréteur modal linéaire partagé. Aucun accès machine.
+"""Interpréteur modal linéaire partagé. Aucun accès machine.
 
 XYZ absolus au départ ; E exige M82/M83 pour une mesure certifiable.
 Position E et dette de rétraction sur l’axe partagé. G92 change le repère de commande

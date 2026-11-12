@@ -1,5 +1,4 @@
-"""
-Outils communs de préparation/tranchage (nom historique conservé pour les imports) : écrire un 3MF multi-plaques,
+"""Outils communs de préparation/tranchage (nom historique conservé pour les imports) : écrire un 3MF multi-plaques,
 le trancher avec le moteur externe déclaré (Anycubic Slicer Next, retour décidé le 30/10/2026),
 lire les résultats. Repris du coffre V4 (preparer_projet.py / trancher_projet.py), rendu générique.
 
@@ -58,8 +57,7 @@ def colonnes(n):
 
 
 def zone(k, n, cli=False):
-    """
-    Zone utile (x0, x1, y0, y1) de la plaque k (0-based), valable avec les deux pas (ou seulement la ligne de
+    """Zone utile (x0, x1, y0, y1) de la plaque k (0-based), valable avec les deux pas (ou seulement la ligne de
     commande : cli).
     """
     if cli:
@@ -71,8 +69,7 @@ def zone(k, n, cli=False):
 
 
 def ranger(items, k, n, gap, cli=False):
-    """
-    Rangement en lignes (plus hautes d'abord). items : dicts avec 'w', 'h' (mm). Ajoute x, y. Lève si ça ne tient
+    """Rangement en lignes (plus hautes d'abord). items : dicts avec 'w', 'h' (mm). Ajoute x, y. Lève si ça ne tient
     pas.
     """
     x0, x1, y0, y1 = zone(k, n, cli)
@@ -93,8 +90,7 @@ def ranger(items, k, n, gap, cli=False):
 
 
 def empreinte_geometrie(mesh, max_faces=3_000_000):
-    """
-    Identité des triangles orientés en mm, quantifiée à 0,00001 mm.
+    """Identité des triangles orientés en mm, quantifiée à 0,00001 mm.
 
         Invariante à l'ordre des sommets/faces, pas à la triangulation ni au sens
         des faces. Ce n'est pas une preuve d'identité exacte sous le quantum.
@@ -508,9 +504,7 @@ def noms_plaques(path):
 
 
 def _signature_sortie(path):
-    """
-    Identité et contenu : détecte aussi un remplacement à contenu identique.
-    """
+    """Identité et contenu : détecte aussi un remplacement à contenu identique."""
     if path.is_symlink():
         raise ValueError("sortie symbolique refusée")
     try:
@@ -559,9 +553,7 @@ def _valider_tranchage(path, noms, attendu=None):
 
 
 def trancher(src, outdir, nom, log=None, timeout=None, attendu=None, *, usage="impression", prive=None):
-    """
-    Délègue au lanceur unique ; garde le contrat historique (chemin, secondes).
-    """
+    """Délègue au lanceur unique ; garde le contrat historique (chemin, secondes)."""
     timeout = 1800.0 if timeout is None else float(timeout)
     if not math.isfinite(timeout) or timeout <= 0 or timeout > 1800:
         raise ValueError("délai de tranchage fini entre 0 et 1800 secondes requis")

@@ -1,6 +1,4 @@
-"""
-
-Revue locale des ponts et surplombs : faits G-code, pas diagnostic thermique.
+"""Revue locale des ponts et surplombs : faits G-code, pas diagnostic thermique.
 
 Les ponts extérieurs et parois en surplomb, même courts et sur la dernière
 couche, nécessitent une revue documentée. Internal Bridge n'est pas assimilé

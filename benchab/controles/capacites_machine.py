@@ -1,6 +1,4 @@
-"""
-
-Mesures de commandes et contraintes du profil maître, sans accès machine.
+"""Mesures de commandes et contraintes du profil maître, sans accès machine.
 
 analyser(p3mf, maitre=None, limites_filaments=None) -> rapport JSON.
 Les vitesses sont nominales ; accélérations/jonctions et macros ne sont jamais
@@ -781,8 +779,7 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
 
 
 def analyser(p3mf, maitre=None, limites_filaments=None):
-    """
-    Contrôle un 3MF en lecture seule ; distances en mm, débits en mm³/s et
+    """Contrôle un 3MF en lecture seule ; distances en mm, débits en mm³/s et
     durées nominales en s. Rapporte PASS/WARN/FAIL/NON VÉRIFIÉ ; source
     illisible ou modifiée : FAIL/NO GO. Ne change aucun réglage, et le
     SHA-256 vient du lecteur qui analyse les membres du même fichier.

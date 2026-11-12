@@ -1,6 +1,4 @@
-"""
-
-Projection XY estimée des trajets extrudés, jamais contact physique.
+"""Projection XY estimée des trajets extrudés, jamais contact physique.
 
 Cellules dont le centre traverse le ruban nominal de largeur WIDTH ; les bouts
 sont arrondis. Z du trajet est le dessus, Z-HEIGHT le dessous. On cherche le

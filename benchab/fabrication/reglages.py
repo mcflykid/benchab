@@ -1,13 +1,10 @@
-"""
-Normalisation de métadonnées 3MF sans lancement du slicer.
-"""
+"""Normalisation de métadonnées 3MF sans lancement du slicer."""
 
 from benchab import reglages as schema_reglages
 
 
 def normaliser_heritages(reglages):
-    """
-    Contrat procédé + N filaments + machine (longueurs sans unité).
+    """Contrat procédé + N filaments + machine (longueurs sans unité).
 
     Renvoie une copie et les changements déclarés ; refuse les parents nommés,
     ne modifie aucun réglage d'impression ni profil installé.

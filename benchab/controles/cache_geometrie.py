@@ -1,8 +1,4 @@
-"""
-
-Cache local et privé des rapports géométriques réutilisables.
-
-"""
+"""Cache local et privé des rapports géométriques réutilisables."""
 
 from __future__ import annotations
 

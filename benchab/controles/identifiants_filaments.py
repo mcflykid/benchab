@@ -1,8 +1,4 @@
-"""
-
-Refuse les identifiants de témoin dans une préparation destinée à l'impression.
-
-"""
+"""Refuse les identifiants de témoin dans une préparation destinée à l'impression."""
 
 import json
 from zipfile import BadZipFile
@@ -13,9 +9,7 @@ MARQUEUR = b"BENCHAB-temporaire-"
 
 
 def _contient_marqueur(flux):
-    """
-    Recherche en flux, y compris quand le marqueur chevauche deux blocs.
-    """
+    """Recherche en flux, y compris quand le marqueur chevauche deux blocs."""
     fin = b""
     while bloc := flux.read(1024 * 1024):
         contenu = fin + bloc

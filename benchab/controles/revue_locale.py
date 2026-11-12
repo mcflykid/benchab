@@ -1,6 +1,4 @@
-"""
-
-Revue locale anti-boudinage par critères déclarés (chantier K, lot 2 ; Claude, 27/10/2026).
+"""Revue locale anti-boudinage par critères déclarés (chantier K, lot 2 ; Claude, 27/10/2026).
 
 Industrialise la revue faite à la main pour l'horloge P07 (26/10/2026, 4 421 zones). Pour chaque zone de
 `zones_locales` (sortie --json de controle_envoi.py), mesure dans le G-code :
@@ -52,9 +50,7 @@ def sha(p):
 
 
 def mesurer_plaque(g):
-    """
-    Temps de couche par Z, extrusions de support par Z, première couche.
-    """
+    """Temps de couche par Z, extrusions de support par Z, première couche."""
     tc = collections.Counter()
     sup = collections.defaultdict(list)
     z = 0.0
@@ -137,9 +133,7 @@ def faits_zone(zo, m):
 
 
 def juger(v):
-    """
-    Justification si un critère est rempli, sinon None.
-    """
+    """Justification si un critère est rempli, sinon None."""
     c = CRITERES
     t = v["temps_couche_min_s"]
     if t < c["temps_couche_min_s"]:

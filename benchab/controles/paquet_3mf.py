@@ -1,6 +1,4 @@
-"""
-
-Inspection bornée des ZIP/3MF, sans extraction ni qualification d'impression.
+"""Inspection bornée des ZIP/3MF, sans extraction ni qualification d'impression.
 
 Adaptation locale de RUVYKO/core/ruvyko_core/packet.py (30/10/2026).
 Voir docs/reference/integrite-3mf.md pour les budgets. Aucun accès à RUVYKO à l’exécution.
@@ -235,8 +233,7 @@ def _json_object(data: bytes, limits: PacketLimits, *, require_object: bool) -> 
 
 
 def inspect_packet(path: Path, *, limits: PacketLimits = DEFAULT_LIMITS) -> PacketReport:
-    """
-    Lit et hache un instantané en mémoire, sans extraction ni exécution.
+    """Lit et hache un instantané en mémoire, sans extraction ni exécution.
 
         Seul le membre exact Metadata/project_settings.config est identifié comme
         configuration de projet. Les autres JSON sont contrôlés syntaxiquement.

@@ -287,9 +287,7 @@ def valider_chemins(entrees, sorties):
 
 
 class PublicationNeuve:
-    """
-    Contexte : écrire/relire temporaire(cible), puis publier une seule fois.
-    """
+    """Contexte : écrire/relire temporaire(cible), puis publier une seule fois."""
 
     def __init__(self, entrees, sorties):
         """Valide les entrées et sorties sans unité avant de préparer une publication exclusive."""
@@ -367,8 +365,7 @@ def ecrire_json_neuf(cible, donnees, *, entrees=()):
 
 
 def renommer_exclusif(source, destination, *, src_dir_fd=None, dst_dir_fd=None):
-    """
-    Publication atomique d’un dossier, refusant même une destination vide.
+    """Publication atomique d’un dossier, refusant même une destination vide.
 
         Les arguments historiques sont des chemins. Avec deux FD de répertoire,
         seuls des noms simples relatifs sont acceptés : les parents restent épinglés.
@@ -497,8 +494,7 @@ def publier_dossier_neuf(chemin, fichiers, *, prive=None):
 
 
 class TransactionVues:
-    """
-    Journal d'annulation durable pour les petits fichiers de catalogue.
+    """Journal d'annulation durable pour les petits fichiers de catalogue.
 
         Appelé sous le verrou stable publication.transaction. Après SIGKILL, les
         lecteurs refusent un catalogue en cours ; la prochaine transaction restaure

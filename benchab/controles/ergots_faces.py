@@ -1,7 +1,4 @@
-"""
-
-
-Ergots par face d'assemblage (outil commun, Claude, 27/10/2026 ; règle de l'utilisateur après l'oubli de l'horloge
+"""Ergots par face d'assemblage (outil commun, Claude, 27/10/2026 ; règle de l'utilisateur après l'oubli de l'horloge
 V4 : au moins 2
 ergots par face où deux pièces se collent ou s'emboîtent, voir docs/guides/mecanismes-imprimes.md).
 usage : python -I ergots_faces.py <dossier des STL en position d'assemblage> [--json sortie.json] [--ecarts
@@ -38,9 +35,7 @@ from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 
 def faces_contact(a, b, contact=0.6, aire_min=100.0):
-    """
-    Plans de contact de a contre b : [(point, normale sortante de a, triangles 3D)].
-    """
+    """Plans de contact de a contre b : [(point, normale sortante de a, triangles 3D)]."""
     lo, hi = np.maximum(a.bounds[0], b.bounds[0]) - contact, np.minimum(a.bounds[1], b.bounds[1]) + contact
     if np.any(lo > hi):
         return []
@@ -77,9 +72,7 @@ def repere(o, n):
 
 
 def trous(m, o, n, en2d, prof):
-    """
-    Trous intérieurs de la section de m dans le plan à prof mm à l'intérieur de m (n sortante de m).
-    """
+    """Trous intérieurs de la section de m dans le plan à prof mm à l'intérieur de m (n sortante de m)."""
     s = m.section(plane_origin=o - n * prof, plane_normal=n)
     if s is None:
         return []

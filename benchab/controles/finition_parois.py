@@ -1,8 +1,4 @@
-"""
-
-Diagnostic indépendant des vitesses de paroi ; aucune commande machine ni transformation.
-
-"""
+"""Diagnostic indépendant des vitesses de paroi ; aucune commande machine ni transformation."""
 
 import argparse
 import collections
@@ -117,9 +113,7 @@ def _quantile(samples, fraction):
 
 
 def _proposer(speeds, zs, cfg):
-    """
-    Enveloppe descendante indépendante ; résidu après dernière itération explicite.
-    """
+    """Enveloppe descendante indépendante ; résidu après dernière itération explicite."""
     result = list(speeds)
     count = 0
     if len(result) < 2:

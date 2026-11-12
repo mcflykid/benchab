@@ -72,8 +72,7 @@ def rotation_vers_bas(v):
 
 
 def pose(m, direction_bas, plateau=None):
-    """
-    Matrice 4×4 : direction_bas (repère de la pièce) vers le plateau, lacet minimisant l'empreinte, coin minimal à
+    """Matrice 4×4 : direction_bas (repère de la pièce) vers le plateau, lacet minimisant l'empreinte, coin minimal à
     l'origine.
         Renvoie (matrice, tient_sur_le_plateau).
     """
@@ -110,9 +109,7 @@ def directions(m, n=520):
 
 
 def faces_surplomb(q):
-    """
-    Indices des faces du contrôle existant, dans le repère Z de fabrication.
-    """
+    """Indices des faces du contrôle existant, dans le repère Z de fabrication."""
     return np.flatnonzero((q.face_normals[:, 2] < -SEUIL) & (q.triangles_center[:, 2] > 0.4))
 
 
@@ -161,8 +158,7 @@ def support_rayons(q, maxi=3000):
 
 
 def risque_couches(direction_bas, efforts):
-    """
-    |cos| maximal entre les efforts déclarés et l'axe de fabrication (−direction_bas) : 1 = effort perpendiculaire
+    """|cos| maximal entre les efforts déclarés et l'axe de fabrication (−direction_bas) : 1 = effort perpendiculaire
     aux couches.
     """
     z = -np.asarray(direction_bas, float)
@@ -171,8 +167,7 @@ def risque_couches(direction_bas, efforts):
 
 
 def resistance(fins, efforts, seuil=0.5):
-    """
-    Avertissement de résistance : meilleure orientation pour les supports contre meilleure à effort dans le plan des
+    """Avertissement de résistance : meilleure orientation pour les supports contre meilleure à effort dans le plan des
     couches.
     """
     if not fins:
@@ -209,8 +204,7 @@ def resistance(fins, efforts, seuil=0.5):
 
 
 def etudier(m, appui_min=150.0, plateau=None, garder=25, efforts=None, seuil=0.5):
-    """
-    Classe les orientations d'une pièce ; renvoie [{direction_bas, matrice, surplomb_mm2, appui_mm2,
+    """Classe les orientations d'une pièce ; renvoie [{direction_bas, matrice, surplomb_mm2, appui_mm2,
     support_rayons_mm3, …}] trié.
         efforts (option) : ajoute risque_couches à chaque orientation et garde aussi les meilleures à risque ≤ seuil
     (voir resistance()).
@@ -344,7 +338,8 @@ def _calculer_orientations(a, stls, profil, sortie):
     )
     efforts = [[float(v) for v in a[i + 1].split(",")] for i, x in enumerate(a) if x == "--effort"] or None
     seuil = float(a[a.index("--seuil-couches") + 1]) if "--seuil-couches" in a else 0.5
-    rapport, cands = {"methode": __doc__.split("\n")[0], "seuil_pente_deg": 40, "supports": rs, "pieces": {}}, []
+    # Le champ historique vide garde le contrat de rapport indépendamment de l'aide CLI.
+    rapport, cands = {"methode": "", "seuil_pente_deg": 40, "supports": rs, "pieces": {}}, []
     for f in stls:
         m = tm.load(f, force="mesh")
         nom = Path(f).stem

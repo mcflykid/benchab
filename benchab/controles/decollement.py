@@ -1,6 +1,4 @@
-"""
-
-Risque de décollement au plateau et accroche conseillée (outil commun, Claude, 24/10/2026 ; proposition 8 retenue
+"""Risque de décollement au plateau et accroche conseillée (outil commun, Claude, 24/10/2026 ; proposition 8 retenue
 par l'utilisateur).
 usage : python -I decollement.py <projet>/candidats/plaques.3mf [--placement preuves/placement.json] [--candidats
 candidats] [--json sortie.json]

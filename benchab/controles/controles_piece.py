@@ -1,6 +1,4 @@
-"""
-
-Contrôles géométriques d'une pièce posée comme imprimée (lot S, Claude, 22/10/2026). Contrôles de FICHIER, pas une
+"""Contrôles géométriques d'une pièce posée comme imprimée (lot S, Claude, 22/10/2026). Contrôles de FICHIER, pas une
 preuve physique.
 usage : python controles_piece.py <stl_orienté> [...] [--epaisseur-min 0.84] [--surplomb-max 45] [--plateau
 250x250x250]
@@ -150,9 +148,10 @@ def controler_cache(fichier, projet, parametres, outils, options=None):
 
 
 def pour_rayons(m, faces_max):
-    """
-    Copie allégée pour le lancer de rayons : simplification manifold à tolérance croissante jusqu'à faces_max triangles.
-    Renvoie (maillage, note).
+    """Prépare un maillage allégé pour le lancer de rayons.
+
+    Renvoie le maillage et une note. La simplification augmente la tolérance en mm
+    pour viser faces_max triangles. Le maillage d’entrée reste intact.
     """
     if len(m.faces) <= faces_max:
         return m, ""
