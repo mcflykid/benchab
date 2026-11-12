@@ -95,3 +95,56 @@ def test_comparaison_arbres_cli_signale_ecart_sans_reparer(tmp_path, atelier_ini
     (b / "note").write_text("def")
     assert main(args) == 2
     assert (a / "note").read_text() == "abc" and (b / "note").read_text() == "def"
+
+
+def test_resume_reimpression_conserve_les_ecarts_et_le_projet(tmp_path, capsys, atelier_initialise):
+    """Le résumé retrouve les écarts exacts dans un rapport créé hors du projet contrôlé."""
+    prive = tmp_path / "prive"
+    source = prive / "projets/fixture"
+    source.mkdir()
+    contenu = {"schema": 1, "fichiers": {f"note-{i}.txt": "0" * 64 for i in range(12)}, "repertoires_figes": ["."]}
+    verrou = source / "VERROU-REIMPRESSION.json"
+    verrou.write_text(json.dumps(contenu))
+    commande = ["--prive", str(prive), "controle", "reimpression", "--", "--projet", str(source)]
+    assert main(commande) == 1
+    detail = capsys.readouterr().out
+    resultat = json.loads(detail)
+    assert len(resultat["erreurs"]) == 13
+    rapport = prive / "rapports/reimpression.json"
+    assert main([*commande, "--sortie", str(rapport), "--resume"]) == 1
+    court = capsys.readouterr().out
+    assert len(court.encode()) < len(detail.encode())
+    assert json.loads(court) == {
+        "statut": "FAIL", "projet": "fixture", "references_attendues": 12, "erreurs": 13, "rapport": str(rapport),
+    }
+    assert json.loads(rapport.read_bytes()) == resultat
+    avant = rapport.read_bytes()
+    assert main([*commande, "--sortie", str(rapport), "--resume"]) == 2
+    assert capsys.readouterr().out == ""
+    assert rapport.read_bytes() == avant
+    dans_projet = source / "rapport.json"
+    assert main([*commande, "--sortie", str(dans_projet), "--resume"]) == 2
+    retour = capsys.readouterr()
+    assert "hors du projet contrôlé" in retour.err
+    assert retour.out == ""
+    assert not dans_projet.exists()
+    assert set(source.iterdir()) == {verrou}
+    assert main([*commande, "--resume"]) == 2
+    retour = capsys.readouterr()
+    assert "--resume exige --sortie" in retour.err
+    assert retour.out == ""
+
+
+def test_resume_reimpression_sans_verrou_garde_le_code_2(tmp_path, capsys, atelier_initialise):
+    """Un contrôle non applicable ne rapporte aucun nombre de fichiers ou d’écarts."""
+    prive = tmp_path / "prive"
+    source = prive / "projets/fixture"
+    source.mkdir()
+    rapport = prive / "rapports/reimpression.json"
+    assert main([
+        "--prive", str(prive), "controle", "reimpression", "--", "--projet", str(source),
+        "--sortie", str(rapport), "--resume",
+    ]) == 2
+    resume = json.loads(capsys.readouterr().out)
+    assert resume == {"statut": "NON APPLICABLE", "projet": "fixture", "rapport": str(rapport)}
+    assert json.loads(rapport.read_bytes())["detail"] == "Aucun verrou de réimpression déclaré."

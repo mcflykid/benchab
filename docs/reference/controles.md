@@ -160,6 +160,15 @@ Sans `--resume`, le JSON complet reste affiché dans le terminal.
 planning Markdown et affiche le nombre de plaques, les durées estimées
 en secondes, la masse estimée en grammes et le chemin du document complet.
 
+`benchab controle reimpression -- --projet PROJET --sortie RAPPORT.json --resume`
+affiche le statut, le nombre de références et d’écarts, et le chemin du rapport
+qui contient les messages exacts. Choisir une sortie neuve dans l’atelier privé,
+hors du projet contrôlé. Le code de retour reste celui du contrôle.
+
+Dans une session d’assistance équipée du plugin facultatif `context-mode`,
+le chemin indiqué par le résumé permet de lire le rapport local par sections.
+Le JSON ou le Markdown complet reste disponible pour une lecture directe.
+
 La CI exécute `ruff check --select D10,D200,D202,D204,D205,D207,D208,D209,D211,D212,D300,D400,D403 benchab`.
 `D10` vérifie la présence des docstrings publiques. La garde des portées
 modifiées contrôle aussi les annotations des fonctions et classes touchées.
