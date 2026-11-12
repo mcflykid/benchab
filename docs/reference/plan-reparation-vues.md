@@ -53,7 +53,7 @@ reprise ou changement de source, de cible ou de lien. Le plan ne permet pas de
 réparer `README.md`, le manifeste, le changelog privé ni un fichier de projet.
 
 Une vue divergente est copiée dans une sauvegarde privée neuve sous
-`sauvegardes/vues/`, relue et vérifiée avant le remplacement atomique. Une vue
+`qualite/reparation-vues/`, relue et vérifiée avant le remplacement atomique. Une vue
 absente n'a pas de contenu antérieur à sauvegarder. La commande contrôle ensuite
 le SHA de la vue réparée et ne modifie aucune table SQLite. Régénération et
 réparation partagent le verrou `cache/vues.lock`. Les fichiers source, le
@@ -74,7 +74,7 @@ benchab --prive /chemin/atelier controle appliquer-reparation-vue \
 
 Cette voie recalcule le plan et le rendu SQLite sous le verrou, relit le lien et
 la candidate privée, puis conserve une preuve neuve relue sous
-`sauvegardes/vues/` avant la copie. Seules les cibles feuille absentes dont les
+`qualite/reparation-vues/` avant la copie. Seules les cibles feuille absentes dont les
 parents existent sans lien, à l'intérieur de `vues/`, sont admissibles ; une vue
 canonique ou le manifeste est refusé. La publication exclusive refuse toute
 cible apparue entre-temps. Le lien et la candidate sont conservés, et le contrôle

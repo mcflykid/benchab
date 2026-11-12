@@ -244,7 +244,7 @@ def test_appliquer_refuse_wal_effectif_avant_preuve(tmp_path, monkeypatch):
 
     assert bascule_effectuee
     assert not cible.exists()
-    assert not list((prive / "sauvegardes/vues").glob("reprise-lien-*.json"))
+    assert not list((prive / "qualite/reparation-vues").glob("reprise-lien-*.json"))
     assert index.is_symlink() and candidat.read_bytes() == attendu
 
 
@@ -285,7 +285,8 @@ def test_appliquer_refuse_base_remplacee_apres_preuve(tmp_path, monkeypatch, apr
     else:
         assert not cible.exists()
     assert index.is_symlink() and candidat.read_bytes() == attendu
-    assert list((prive / "sauvegardes/vues").glob("reprise-lien-*.json"))
+    assert list((prive / "qualite/reparation-vues").glob("reprise-lien-*.json"))
+    assert not (prive / "sauvegardes").exists()
 
 
 def test_appliquer_vue_absente_depuis_plan_conserve_sqlite(tmp_path):
@@ -333,6 +334,8 @@ def test_appliquer_vue_divergente_sauvegarde_et_relit_les_octets(tmp_path):
 
     sauvegarde = prive / resultat["sauvegarde"]
     action = next(item for item in rapport["actions"] if item["cible"] == cible.relative_to(prive).as_posix())
+    assert sauvegarde.parent == prive / "qualite/reparation-vues"
+    assert not (prive / "sauvegardes").exists()
     assert sauvegarde.is_file() and not sauvegarde.is_symlink()
     assert sauvegarde.read_bytes() == ancien
     assert resultat["sha256_sauvegarde"] == hashlib.sha256(ancien).hexdigest()
