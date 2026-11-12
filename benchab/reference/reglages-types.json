@@ -2349,8 +2349,17 @@
       "familles": [
         "machine"
       ],
-      "type": "inconnu",
-      "longueur": null
+      "type": "liste_extrudeur",
+      "longueur": "buses_declarees",
+      "valeurs": [
+        "0",
+        "1"
+      ],
+      "source_semantique": [
+        "https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L4208-L4212",
+        "https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L6077-L6084",
+        "https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L7062-L7070"
+      ]
     },
     "retraction_distances_when_cut": {
       "formes": [
