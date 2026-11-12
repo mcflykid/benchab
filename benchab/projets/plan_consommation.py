@@ -331,7 +331,7 @@ class _RefusPesee(ValueError):
     """Motif contrôlé qui peut être affiché sans exposer les chemins ni les octets lus."""
 
 
-def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
+def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve, *, exiger_depot=False):
     """Rapproche une déclaration de pesée et les octets du membre, sans imputation."""
     inconnu = {
         "statut": "NON VÉRIFIÉ", "variation_declaree_g": None,
@@ -379,6 +379,12 @@ def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
             raise _RefusPesee("SHA-256 du membre G-code invalide.")
         fichier = _chemin_prive(prive, envoi["chemin"])
         explicite = False
+        depot = False
+        lecteur = None
+        if exiger_depot:
+            from benchab.controles.gcode_interpreter import Interpreter
+
+            lecteur = Interpreter(error_limit=16)
         empreinte = hashlib.sha256()
         # Même lecture pour l’empreinte, les lignes T explicites et le CRC.
         # Le vecteur d’estimation seul peut repérer un outil par masse positive.
@@ -393,9 +399,15 @@ def _lier_pesee(prive, connexion, rapport, preuve, sha_preuve):
                     selection = _T_EXPLICITE.fullmatch(ligne)
                     if selection is not None and int(selection[1]) == outil:
                         explicite = True
+                    if lecteur is not None:
+                        mouvement = lecteur.feed_line(ligne.decode("utf-8"))
+                        if explicite and mouvement and mouvement["tool"] == outil and mouvement["deposited_length"] > 0:
+                            depot = True
             archive.verifier_source(fichier)
         if empreinte.hexdigest() != sha_gcode or not explicite:
             raise _RefusPesee("SHA du membre différent ou aucune sélection T explicite pour cet index.")
+        if lecteur is not None and (not depot or lecteur.errors):
+            raise _RefusPesee("Aucun dépôt vérifiable pour l’outil confirmé dans le G-code.")
         return {
             **inconnu, "statut": "DÉCLARATION LIÉE",
             "sha256_preuve": sha_preuve, "gcode_sha256": sha_gcode,

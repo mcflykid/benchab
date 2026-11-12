@@ -35,7 +35,7 @@ class PlanConsommation(unittest.TestCase):
         self.fiche_sha = hashlib.sha256(octets_fiche).hexdigest()
         with zipfile.ZipFile(self.racine / "envoi.gcode.3mf", "w") as archive:
             archive.writestr("Metadata/project_settings.config", json.dumps({"filament_ids": ["f1", "f2"]}))
-            archive.writestr("Metadata/plate_1.gcode", "; filament used [g] = 0, 12.5\nT1\nG1 X1 E1\n")
+            archive.writestr("Metadata/plate_1.gcode", "; filament used [g] = 0, 12.5\nT1\nM83\nG1 X1 E1\n")
             archive.writestr("Metadata/plate_2.gcode", "; filament used [g] = 3.25, 0\nT0\nG1 X2 E1\n")
         self.envoi = self.racine / "envoi.gcode.3mf"
         self.envoi_sha = hashlib.sha256(self.envoi.read_bytes()).hexdigest()
@@ -144,6 +144,190 @@ class PlanConsommation(unittest.TestCase):
         self.assertFalse(observation["imputation"])
         self.assertFalse(observation["validation_physique"])
         self.assertEqual(avant, {p: p.read_bytes() for p in avant})
+
+    def _confirmation_pesee(self, sha, **modifications):
+        """Crée une attestation synthétique distincte du relevé de masse."""
+        attestation = {
+            "schema": 1, "pesee_sha256": sha, "confirmee": True,
+            "date": "2026-01-01T12:00:00+00:00", "auteur": "Fixture",
+            "observation": "Bobine, emplacement et pesée avant/après vérifiés sur ce témoin.",
+            **modifications,
+        }
+        source = self.racine / "confirmation.json"
+        octets = json.dumps(attestation).encode()
+        source.write_bytes(octets)
+        return source, hashlib.sha256(octets).hexdigest()
+
+    def test_imputation_cli_et_rejeu_atomique(self):
+        """Un rejeu sur une connexion neuve retrouve la trace sans débiter le stock."""
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from benchab.cli import main
+
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        sources = {p: p.read_bytes() for p in (preuve, confirmation, self.archive_prive)}
+        arguments = [
+            "--prive", str(self.racine), "donnees", "imputer-bobine",
+            "--retour", self.retour_id, "--preuve-pesee", str(preuve), "--sha256-preuve", sha,
+            "--confirmation", str(confirmation), "--sha256-confirmation", sha_confirmation,
+        ]
+        rapports = []
+        for _ in range(2):
+            sortie = StringIO()
+            with redirect_stdout(sortie):
+                self.assertEqual(main(arguments), 0)
+            rapports.append(json.loads(sortie.getvalue()))
+        self.assertEqual([r["deja_imputee"] for r in rapports], [False, True])
+        self.assertEqual(rapports[0]["decision_id"], rapports[1]["decision_id"])
+        self.assertEqual(rapports[0]["consommation_declaree_g"], 11.75)
+        self.assertEqual(rapports[0]["stock_apres_g"], 68.25)
+        stock = self.base.connexion.execute("SELECT masse_restante_g FROM bobines").fetchone()[0]
+        self.assertEqual(stock, 68.25)
+        self.assertEqual(sources, {p: p.read_bytes() for p in sources})
+        decision = self.base.connexion.execute(
+            "SELECT donnees_json FROM decisions WHERE id=?", (rapports[0]["decision_id"],),
+        ).fetchone()[0]
+        self.assertEqual(json.loads(decision)["confirmation_sha256"], sha_confirmation)
+        self.assertFalse(rapports[0]["validation_physique"])
+
+    def test_imputation_refuse_confirmation_stock_et_depot_insuffisants(self):
+        """Un refus conserve stock, trace et exports pour une nouvelle tentative."""
+        from benchab.projets.imputation_bobine import imputer
+
+        for cas in ("confirmation", "stock", "retraction"):
+            with self.subTest(cas=cas):
+                if cas == "stock":
+                    self.base.ecrire("UPDATE bobines SET masse_restante_g=1")
+                if cas == "retraction":
+                    self.base.ecrire("UPDATE bobines SET masse_restante_g=80")
+                    self.envoi_sha = self._remplacer_archive_et_sha({
+                        "Metadata/plate_1.gcode": "; filament used [g] = 0, 12.5\nT1\nM83\nG1 E-1\nG1 X1 E1\n",
+                    })
+                preuve, sha = self._declaration_pesee()
+                options = {"confirmee": False} if cas == "confirmation" else {}
+                confirmation, sha_confirmation = self._confirmation_pesee(sha, **options)
+                exports = self.racine / "export"
+                avant = {p: p.read_bytes() for p in exports.iterdir() if p.is_file()}
+                attendu = {"confirmation": "confirmation", "stock": "Stock", "retraction": "dépôt"}[cas]
+                with self.assertRaisesRegex(ValueError, attendu):
+                    imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+                self.assertEqual(avant, {p: p.read_bytes() for p in avant})
+
+    def test_rejeu_imputation_repare_un_export_interrompu(self):
+        """Après le commit SQLite, un échec d’export ne permet pas de débiter à nouveau."""
+        from unittest.mock import patch
+
+        from benchab.projets.imputation_bobine import imputer
+
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        with patch.object(self.base, "exporter", side_effect=OSError("export interrompu")):
+            with self.assertRaisesRegex(OSError, "interrompu"):
+                imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        with self.assertRaisesRegex(ValueError, "imputation différente"):
+            variante, sha_variante = self._confirmation_pesee(sha, observation="Autre confirmation.")
+            imputer(self.base, self.retour_id, preuve, sha, variante, sha_variante)
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        rapport = imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        self.assertTrue(rapport["deja_imputee"])
+        self.assertEqual(rapport["stock_apres_g"], 68.25)
+        export = (self.racine / "export/bobines.jsonl").read_text()
+        self.assertEqual(json.loads(export)["masse_restante_g"], 68.25)
+
+    def test_deux_connexions_ne_peuvent_pas_imputer_la_meme_pesee(self):
+        """Les deux écrivains voient le même débit final et une trace unique."""
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        from benchab.projets.imputation_bobine import imputer
+
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        barrier = Barrier(2, timeout=5)
+
+        def lancer():
+            base = Base(self.racine, creer=False)
+            try:
+                barrier.wait()
+                return imputer(base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+            finally:
+                base.fermer()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(lancer) for _ in range(2)]
+            rapports = [f.result(timeout=20) for f in futures]
+        self.assertEqual({r["deja_imputee"] for r in rapports}, {False, True})
+        self.assertEqual({r["decision_id"] for r in rapports}, {rapports[0]["decision_id"]})
+        stock = self.base.connexion.execute("SELECT masse_restante_g FROM bobines").fetchone()[0]
+        self.assertEqual(stock, 68.25)
+
+    def test_imputation_refuse_deux_pesees_qui_se_chevauchent(self):
+        """Une même baisse de poids ne peut pas être affectée à deux outils."""
+        from benchab.projets.imputation_bobine import imputer
+
+        self.envoi_sha = self._remplacer_archive_et_sha({
+            "Metadata/plate_1.gcode": "; filament used [g] = 5, 12.5\nM83\nT1\nG1 X1 E1\nT0\nG1 X2 E1\n",
+        })
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        preuve, sha = self._declaration_pesee(index_gcode=0, masse_avant_g=98, masse_apres_g=86)
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        with self.assertRaisesRegex(ValueError, "se chevauchent"):
+            imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        self.assertEqual(self.base.connexion.execute("SELECT masse_restante_g FROM bobines").fetchone()[0], 68.25)
+
+    def test_imputation_compare_les_pesees_de_la_bobine_entre_impressions(self):
+        """Un intervalle commun est refusé et une deuxième pesée adjacente est permise."""
+        from benchab.projets.imputation_bobine import imputer
+
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        retour = json.loads(self.base.connexion.execute(
+            "SELECT donnees_json FROM retours WHERE id=?", (self.retour_id,),
+        ).fetchone()[0])
+        autre = "retour-seconde-impression"
+        retour["id"] = autre
+        brut = json.dumps(retour)
+        with self.base.transaction() as connexion:
+            connexion.execute(
+                "INSERT INTO impressions(id,preparation_id,resultat,donnees_json) VALUES(?,?,'reussie',?)",
+                ("impression-2", self.preparation_id, brut),
+            )
+            connexion.execute(
+                "INSERT INTO retours(id,impression_id,texte,source,donnees_json) VALUES(?,?,?,?,?)",
+                (autre, "impression-2", "Fixture", "fixture", brut),
+            )
+        preuve, sha = self._declaration_pesee(retour_id=autre, masse_avant_g=98, masse_apres_g=86)
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        with self.assertRaisesRegex(ValueError, "se chevauchent"):
+            imputer(self.base, autre, preuve, sha, confirmation, sha_confirmation)
+        preuve, sha = self._declaration_pesee(retour_id=autre, masse_avant_g=88.25, masse_apres_g=87.25)
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        self.assertEqual(imputer(self.base, autre, preuve, sha, confirmation, sha_confirmation)["stock_apres_g"], 67.25)
+
+    def test_imputation_refuse_une_declaration_modifiee_pendant_le_controle(self):
+        """Le débit conserve un lien vérifiable vers la déclaration de pesée."""
+        from unittest.mock import patch
+
+        from benchab.projets import imputation_bobine
+
+        preuve, sha = self._declaration_pesee()
+        confirmation, sha_confirmation = self._confirmation_pesee(sha)
+        original = imputation_bobine._confirmation
+
+        def modifier(*args):
+            resultat = original(*args)
+            preuve.write_bytes(preuve.read_bytes() + b"\n")
+            return resultat
+
+        with patch.object(imputation_bobine, "_confirmation", side_effect=modifier):
+            with self.assertRaisesRegex(ValueError, "preuve a changé"):
+                imputation_bobine.imputer(self.base, self.retour_id, preuve, sha, confirmation, sha_confirmation)
+        self.assertEqual(self.base.connexion.execute("SELECT masse_restante_g FROM bobines").fetchone()[0], 80)
 
     def test_pesee_refuse_identite_membre_outil_ou_bobine_non_etablie(self):
         """Un décalage ne doit pas fabriquer une quantité de stock imputable."""
