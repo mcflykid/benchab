@@ -584,7 +584,7 @@ des surplombs par objet. Les issues #127, #234 et #236 sont closes.
 
 ## Suite — issues ouvertes
 
-Le [jalon 1.31.0](https://github.com/mcflykid/benchab/milestones) rassemble
+Le jalon 1.31.0 rassemble
 les travaux ouverts. Les critères des issues et les références d’origine
 restent applicables.
 
