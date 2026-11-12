@@ -1,18 +1,21 @@
-"""Outils communs de préparation/tranchage (nom historique conservé pour les imports) : écrire un 3MF multi-plaques,
-le trancher avec le moteur externe déclaré (Anycubic Slicer Next, retour décidé le 30/10/2026),
-lire les résultats. Repris du coffre V4 (preparer_projet.py / trancher_projet.py), rendu générique.
+"""Prépare et tranche des archives 3MF multi-plaques, puis lit leurs résultats.
 
-Compatibilité conservée depuis Anycubic (docs/guides/slicer-anycubic.md) :
-  - pas des plaques : interface 314,4 mm, ligne de commande 300 mm -> positions écrites dans le repère de
-l'interface,
-    chaque plaque rangée dans une zone valable avec les deux pas ;
-  - colonnes de la grille : sqrt(n) arrondi, +1 s'il est dépassé ;
-  - ancien plantage sur les plaques nommées -> noms écrits après tranchage ;
-  - les variantes de températures _BRASS/_HS et le plafond par objet sont des précautions historiques Anycubic,
-    pas des comportements établis d'Orca. Les réglages effectifs restent à contrôler dans le G-code exporté.
-Le 30/10/2026, deux plaques nommées ont été tranchées par Orca 2.5.0-beta aux deux pas ;
-ce contrôle de format et de placement ne valide pas l'impression physique.
-Aucune impression n'est lancée, aucun profil installé n'est modifié.
+Le nom du module préserve les imports historiques. Le moteur externe est déclaré explicitement.
+Le retour à Anycubic Slicer Next a été décidé le 30/10/2026. Les outils proviennent de la
+généralisation de preparer_projet.py et trancher_projet.py du coffre V4.
+
+Compatibilité Anycubic (docs/reference/slicer-anycubic.md) :
+- Pas des plaques de 314,4 mm dans l’interface et 300 mm en ligne de commande.
+  Les positions sont écrites dans le repère de l’interface, dans la zone commune aux deux pas.
+- Le nombre de colonnes part de la racine carrée arrondie du nombre de plaques,
+  avec une colonne de plus si la grille est trop petite.
+- Le nom des plaques est écrit après tranchage à la suite d’un ancien plantage.
+- Les variantes de températures _BRASS et _HS et le plafond par objet sont des
+  précautions historiques Anycubic. Leur effet reste à lire dans le G-code exporté.
+
+Le 30/10/2026, Orca 2.5.0-beta a tranché deux plaques nommées aux deux pas.
+Le contrôle portait sur le format et le placement. Aucun profil installé
+n’est modifié et le lanceur ne démarre aucune impression.
 """
 
 import copy
@@ -57,8 +60,9 @@ def colonnes(n):
 
 
 def zone(k, n, cli=False):
-    """Zone utile (x0, x1, y0, y1) de la plaque k (0-based), valable avec les deux pas (ou seulement la ligne de
-    commande : cli).
+    """Renvoie les bornes XY utiles en mm de la plaque d’indice k, à partir de zéro.
+
+    Le calcul tient compte des deux pas ou du seul pas de la ligne de commande.
     """
     if cli:
         return _ZONE_MIN_X, _ZONE_MAX_X, _ZONE_MIN_Y, _ZONE_MAX_Y
@@ -69,8 +73,9 @@ def zone(k, n, cli=False):
 
 
 def ranger(items, k, n, gap, cli=False):
-    """Rangement en lignes (plus hautes d'abord). items : dicts avec 'w', 'h' (mm). Ajoute x, y. Lève si ça ne tient
-    pas.
+    """Range les pièces en lignes, en commençant par les plus hautes.
+
+    Ajoute x et y, en mm, aux entrées portant w et h en mm. Lève une erreur si les pièces ne tiennent pas.
     """
     x0, x1, y0, y1 = zone(k, n, cli)
     rows = []
@@ -92,8 +97,8 @@ def ranger(items, k, n, gap, cli=False):
 def empreinte_geometrie(mesh, max_faces=3_000_000):
     """Identité des triangles orientés en mm, quantifiée à 0,00001 mm.
 
-        Invariante à l'ordre des sommets/faces, pas à la triangulation ni au sens
-        des faces. Ce n'est pas une preuve d'identité exacte sous le quantum.
+    Invariante à l'ordre des sommets/faces, pas à la triangulation ni au sens
+    des faces. Ce n'est pas une preuve d'identité exacte sous le quantum.
 
     """
     import numpy as np
@@ -153,7 +158,11 @@ def empreinte_geometrie(mesh, max_faces=3_000_000):
 
 
 def charger_reglages_reference(path):
-    """Lit les réglages plats d'un 3MF explicitement choisi, sans profil installé. Réglages en unités
+    """Lit les réglages plats d’un 3MF explicitement choisi.
+
+    La source est l’archive et les profils installés restent intacts.
+
+    Réglages en unités
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
     """
     path = Path(path)

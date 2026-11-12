@@ -1,6 +1,7 @@
-"""Serveur local des visionneuses 3D (outil commun, Claude, 23/10/2026) : sert uniquement les pages de
-visualisation et leurs scripts locaux, et enregistre les commentaires pointés
-dans le projet, pour que l'assistant les lise sans copier-coller.
+"""Sert les pages locales de visualisation 3D et enregistre les commentaires.
+
+Le serveur expose les scripts locaux nécessaires à ces pages. Mise en place le 23/10/2026.
+
 usage : <venv>/bin/python -m benchab.visualisation.serveur [--port 8770]
         <venv>/bin/python -m benchab.visualisation.serveur --ouvrir <page.html | />
 Navigateur (27/10/2026) : Safari sur macOS s'il est installé (rendu Retina, trackpad) ;
@@ -60,9 +61,10 @@ def fichier_commentaires(page, racine=None):
 
 
 def fusionner(anciens, nouveaux, supprimes=()):
-    """La page envoie sa liste ; les réponses écrites entre-temps par l'outil commentaires sont
-    conservées : réponses réunies (sans doublon), statut le plus récent. Une absence conserve le
-    commentaire ; seuls les identifiants dans supprimes le retirent.
+    """Fusionne les commentaires de la page avec les réponses déjà enregistrées.
+
+    Les réponses sont réunies sans doublon et le statut le plus récent prévaut. Une absence conserve
+    le commentaire. Les identifiants explicitement listés dans supprimes sont retirés.
     """
     par_id = {c.get("id"): c for c in anciens}
     for c in nouveaux:

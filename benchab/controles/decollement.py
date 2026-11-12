@@ -1,5 +1,7 @@
-"""Risque de décollement au plateau et accroche conseillée (outil commun, Claude, 24/10/2026 ; proposition 8 retenue
-par l'utilisateur).
+"""Estime le risque de décollement et recommande une accroche au plateau.
+
+La proposition 8 a été retenue le 24/10/2026.
+
 usage : python -I decollement.py <projet>/candidats/plaques.3mf [--placement preuves/placement.json] [--candidats
 candidats] [--json sortie.json]
         (pièces posées = candidats/<modèle>.stl ; réglages par objet lus dans placement.json, réglage de projet dans
@@ -18,7 +20,6 @@ sur les coins) : brim_type = brim_ears, que le slicer pose
 Si le 3MF est fourni, compare avec brim_type réellement réglé (objet, sinon projet) : WARN (code 1, non bloquant)
 quand une pièce à
 risque n'a ni oreilles ni bordure. Le slicer en mode auto_brim décide seul : signalé comme NON VÉRIFIÉ.
-
 """
 
 import argparse
@@ -109,7 +110,9 @@ def evaluer(m):
 
 
 def depuis_projet(plaques, placement, candidats):
-    """Pièces du projet (candidats/<modèle>.stl, déjà posées) et brim_type : réglage de l'objet
+    """Récupère les pièces posées et leur réglage d’accroche.
+
+    Pièces du projet (candidats/<modèle>.stl, déjà posées) et brim_type : réglage de l'objet
     (placement.json), sinon du 3MF. Réglages en unités natives (mm, s, °C, %) lus via le
     dictionnaire typé ; aucun réglage inconnu transformé.
     """

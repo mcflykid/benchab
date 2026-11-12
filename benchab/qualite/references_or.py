@@ -37,7 +37,8 @@ def _commandes_archive(archive):
 
 
 def relever(chemin):
-    """Relit un 3MF ;
+    """Relit un 3MF et produit la référence à comparer.
+
     renvoie SHA, réglages en unités natives et commandes sans commentaires, avec lignes limitées à 1 Mio.
     Les lectures secondaires restent liées au même fichier ; aucune écriture ni slicer.
     """
@@ -72,8 +73,9 @@ def relever(chemin):
 
 
 def verifier(prive, *, reference=None):
-    """Compare le manifeste fixe aux fichiers privés ;
-    PASS/FAIL/NON VÉRIFIÉ, aucune création ni réécriture de référence.
+    """Compare le manifeste fixe aux fichiers privés.
+
+    Renvoie PASS, FAIL ou NON VÉRIFIÉ. Les références restent en lecture seule.
     """
     prive = _sans_lien(Path(prive).absolute()).resolve()
     manifeste = prive / "references-or/manifest.json"

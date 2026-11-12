@@ -72,9 +72,11 @@ def rotation_vers_bas(v):
 
 
 def pose(m, direction_bas, plateau=None):
-    """Matrice 4×4 : direction_bas (repère de la pièce) vers le plateau, lacet minimisant l'empreinte, coin minimal à
-    l'origine.
-        Renvoie (matrice, tient_sur_le_plateau).
+    """Calcule une pose minimisant l’empreinte d’un maillage sur le plateau.
+
+    La direction indiquée dans le repère de la pièce pointe vers le plateau. Renvoie une matrice 4×4
+    qui place le coin minimal à l’origine et un booléen indiquant si la pièce tient sur le plateau,
+    dont les dimensions sont en mm.
     """
     plateau = zone_etude() if plateau is None else plateau
     T = rotation_vers_bas(direction_bas)
@@ -158,8 +160,10 @@ def support_rayons(q, maxi=3000):
 
 
 def risque_couches(direction_bas, efforts):
-    """|cos| maximal entre les efforts déclarés et l'axe de fabrication (−direction_bas) : 1 = effort perpendiculaire
-    aux couches.
+    """Calcule le cosinus absolu maximal entre les efforts et l’axe de fabrication.
+
+    L’axe est l’opposé de direction_bas. Le résultat est sans unité. Un résultat de 1 indique un effort
+    perpendiculaire aux couches.
     """
     z = -np.asarray(direction_bas, float)
     z /= np.linalg.norm(z)
@@ -167,8 +171,10 @@ def risque_couches(direction_bas, efforts):
 
 
 def resistance(fins, efforts, seuil=0.5):
-    """Avertissement de résistance : meilleure orientation pour les supports contre meilleure à effort dans le plan des
-    couches.
+    """Compare la meilleure orientation pour les supports au compromis sous effort.
+
+    Le rapport décrit le seuil sans unité et le volume de supports estimé en mm³.
+    Renvoie None sans candidate et ne mesure pas la résistance.
     """
     if not fins:
         return None
@@ -204,9 +210,12 @@ def resistance(fins, efforts, seuil=0.5):
 
 
 def etudier(m, appui_min=150.0, plateau=None, garder=25, efforts=None, seuil=0.5):
-    """Classe les orientations d'une pièce ; renvoie [{direction_bas, matrice, surplomb_mm2, appui_mm2,
-    support_rayons_mm3, …}] trié.
-        efforts (option) : ajoute risque_couches à chaque orientation et garde aussi les meilleures à risque ≤ seuil
+    """Classe les orientations candidates d’un maillage.
+
+    Chaque résultat contient direction, matrice, surplomb et appui en mm²,
+    ainsi que le volume estimé des supports en mm³.
+
+    efforts (option) : ajoute risque_couches à chaque orientation et garde aussi les meilleures à risque ≤ seuil
     (voir resistance()).
     """
     plateau = zone_etude() if plateau is None else plateau

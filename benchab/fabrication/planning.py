@@ -196,8 +196,9 @@ def rendre(plaques: list[dict], heures_max: float) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Affiche un planning privé (s) ; aucune machine ni base initialisée implicitement, estimations sans
-    essai physique.
+    """Affiche le planning privé à partir des durées estimées en secondes.
+
+    Aucune machine n’est sollicitée et l’atelier doit être déjà initialisé. Les durées viennent du trancheur.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prive", type=Path, required=True, help="Racine privée BENCHAB")

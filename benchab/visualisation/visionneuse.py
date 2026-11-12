@@ -127,7 +127,9 @@ class Visionneuse:
     """Prépare des vues de géométries (unités de scène) ; aucune source ou réglage d’impression modifié."""
 
     def __init__(self, titre, sous_titre="", note="", axe_haut="Z", vue_initiale=(1.0, -1.4, 0.9), source=None):
-        """axe_haut : axe vertical du repère du projet ('Z' ou 'Y').
+        """Prépare la visionneuse dans le repère du projet.
+
+        axe_haut : axe vertical du repère du projet ('Z' ou 'Y').
         vue_initiale : direction (repère du projet) d'où la caméra regarde le centre au chargement.
         source : dictionnaire libre affiché en pied de page (manifeste, empreinte, date des contrôles…).
         """

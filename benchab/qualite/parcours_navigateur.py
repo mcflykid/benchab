@@ -82,8 +82,9 @@ def capturer_vues(page, chemin, sortie):
 
 
 def parcourir(page, chemin, sortie):
-    """Teste les interactions d’une fixture locale (pixels, s) ; renvoie ses mesures ou lève sur FAIL,
-    sans commande machine.
+    """Teste les interactions d’une fixture locale.
+
+    Renvoie les mesures en pixels et secondes ou lève sur FAIL. Aucune commande machine n’est émise.
     """
     erreurs = []
     page.on("pageerror", lambda error: erreurs.append(str(error)))
@@ -160,8 +161,9 @@ def parcourir(page, chemin, sortie):
 
 
 def main():
-    """Lit les arguments de réception ; mesure pixels et secondes, lève une erreur sur FAIL, sans
-    impression ni réglage machine.
+    """Lit les arguments de réception et lance le parcours navigateur.
+
+    Mesures en pixels et secondes, erreur sur FAIL. Le parcours ne commande ni impression ni réglage machine.
     """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--page", type=Path, action="append", required=True)

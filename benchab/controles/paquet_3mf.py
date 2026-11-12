@@ -235,9 +235,9 @@ def _json_object(data: bytes, limits: PacketLimits, *, require_object: bool) -> 
 def inspect_packet(path: Path, *, limits: PacketLimits = DEFAULT_LIMITS) -> PacketReport:
     """Lit et hache un instantané en mémoire, sans extraction ni exécution.
 
-        Seul le membre exact Metadata/project_settings.config est identifié comme
-        configuration de projet. Les autres JSON sont contrôlés syntaxiquement.
-        Aucun contenu XML, G-code, MD5, mapping ou profil n'est interprété.
+    Seul le membre exact Metadata/project_settings.config est identifié comme
+    configuration de projet. Les autres JSON sont contrôlés syntaxiquement.
+    Aucun contenu XML, G-code, MD5, mapping ou profil n'est interprété.
 
     """
     if not isinstance(path, Path) or type(limits) is not PacketLimits:

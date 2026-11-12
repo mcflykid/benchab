@@ -1,5 +1,7 @@
-"""Contrôles géométriques d'une pièce posée comme imprimée (lot S, Claude, 22/10/2026). Contrôles de FICHIER, pas une
-preuve physique.
+"""Contrôle la géométrie d’une pièce dans son orientation d’impression.
+
+Le lot S du 22/10/2026 vérifie le fichier. La validation physique reste distincte.
+
 usage : python controles_piece.py <stl_orienté> [...] [--epaisseur-min 0.84] [--surplomb-max 45] [--plateau
 250x250x250]
         [--hauteur-couche 0.2] [--non-applicable controle=raison ...] [--json FICHIER]
@@ -15,7 +17,6 @@ Maillage dense (plus de --faces-max 300000 triangles) : l'épaisseur locale est 
 indiquée dans le détail) ; les autres contrôles restent sur le maillage complet. Constat du 23/10/2026 (support JBL
 GO 4, 3,2 M
 triangles) : sans embree, le lancer de rayons de trimesh a consommé 51 Go de mémoire.
-
 """
 
 import argparse

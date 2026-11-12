@@ -87,7 +87,9 @@ def _preparation_courante(projet: Path) -> Path | None:
 
 
 def pieces_projet(prive: str | Path, nom: str) -> tuple[dict | None, str | None]:
-    """Charge la dernière préparation privée et filtre les pièces protégées. Réglages en unités natives
+    """Charge la dernière préparation privée et filtre les pièces protégées.
+
+    Réglages en unités natives
     (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
     """
     racine = Path(prive).expanduser().resolve(strict=True)

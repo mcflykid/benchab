@@ -367,10 +367,10 @@ def ecrire_json_neuf(cible, donnees, *, entrees=()):
 def renommer_exclusif(source, destination, *, src_dir_fd=None, dst_dir_fd=None):
     """Publication atomique d’un dossier, refusant même une destination vide.
 
-        Les arguments historiques sont des chemins. Avec deux FD de répertoire,
-        seuls des noms simples relatifs sont acceptés : les parents restent épinglés.
-        Darwin : renamex_np / renameatx_np(RENAME_EXCL), SDK sys/stdio.h.
-        Linux : renameat2(RENAME_NOREPLACE), sans repli écrasant.
+    Les arguments historiques sont des chemins. Avec deux FD de répertoire,
+    seuls des noms simples relatifs sont acceptés : les parents restent épinglés.
+    Darwin : renamex_np / renameatx_np(RENAME_EXCL), SDK sys/stdio.h.
+    Linux : renameat2(RENAME_NOREPLACE), sans repli écrasant.
 
     """
     import ctypes
@@ -496,10 +496,10 @@ def publier_dossier_neuf(chemin, fichiers, *, prive=None):
 class TransactionVues:
     """Journal d'annulation durable pour les petits fichiers de catalogue.
 
-        Appelé sous le verrou stable publication.transaction. Après SIGKILL, les
-        lecteurs refusent un catalogue en cours ; la prochaine transaction restaure
-        les vues avant toute autre opération. Un changement tiers bloque la reprise.
-        Les fichiers de fabrication sont publiés par les primitives exclusives.
+    Appelé sous le verrou stable publication.transaction. Après SIGKILL, les
+    lecteurs refusent un catalogue en cours ; la prochaine transaction restaure
+    les vues avant toute autre opération. Un changement tiers bloque la reprise.
+    Les fichiers de fabrication sont publiés par les primitives exclusives.
 
     """
 

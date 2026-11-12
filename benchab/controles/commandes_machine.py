@@ -75,9 +75,10 @@ def verifier_format_s1(texte, settings, format_declare):
 
 
 def analyser(texte, settings, limites, *, mode="standard"):
-    """Compare le démarrage : mm/s, mm/s², jerk mm/s, températures °C ;
-    retourne PASS/FAIL/NON VÉRIFIÉ, sans correction. Les températures par outil exigent
-    l'indice explicitement présent ; une association absente reste NON VÉRIFIÉE.
+    """Compare les commandes de démarrage aux valeurs déclarées.
+
+    Vitesses et jerk en mm/s, accélérations en mm/s², températures en °C. Renvoie PASS, FAIL
+    ou NON VÉRIFIÉ, sans correction. Une température par outil sans index explicite reste NON VÉRIFIÉE.
     """
     settings = reglages.Reglages(settings)
     lignes = []
@@ -231,8 +232,9 @@ def analyser(texte, settings, limites, *, mode="standard"):
 
 
 def controler(chemin, *, mode=None):
-    """Lit réglages et G-code de toutes plaques, unités mm/s, mm/s² et °C ;
-    agrège les statuts, sans slicer ni machine.
+    """Agrège les contrôles de démarrage sur toutes les plaques.
+
+    Lit les réglages et le G-code en mm/s, mm/s² et °C, sans solliciter le slicer ni la machine.
     """
     limites = charger().get("mouvement", {})
     mode = mode or limites.get("mode_par_defaut")

@@ -1,4 +1,5 @@
 """Ponts internes longs juste sous le sommet de la pièce, dans le G-code tranché (outil commun, Claude, 27/10/2026).
+
 usage : python -I ponts_internes.py <tranche.3mf | fichier.gcode> [--json sortie.json] [--portee 10] [--sous-sommet
 2] [--seuil 5]
 Constat d'origine (observation de l'utilisateur, 27/10/2026, horloge P11, Lune 3 arrière en Lightning 10 %) : dessus
@@ -16,7 +17,6 @@ Le sommet est celui de
 la plaque : sur une plaque à plusieurs objets de hauteurs différentes, les objets plus bas ne sont pas couverts. Ne
 prédit ni la flèche
 réelle d'un pont, ni l'effet du refroidissement : un PASS ne garantit pas un dessus fermé.
-
 """
 
 import re

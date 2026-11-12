@@ -1,6 +1,8 @@
-"""Ergots par face d'assemblage (outil commun, Claude, 27/10/2026 ; règle de l'utilisateur après l'oubli de l'horloge
-V4 : au moins 2
-ergots par face où deux pièces se collent ou s'emboîtent, voir docs/guides/mecanismes-imprimes.md).
+"""Compte les ergots sur les faces d’assemblage.
+
+Règle adoptée le 27/10/2026 après l’oubli sur l’horloge V4. Prévoir au moins
+deux ergots par face collée ou emboîtée, selon docs/guides/mecanismes-imprimes.md.
+
 usage : python -I ergots_faces.py <dossier des STL en position d'assemblage> [--json sortie.json] [--ecarts
 ecarts.json]
         [--contact 0.6] [--aire-min 100] [--minimum 2]
@@ -17,8 +19,6 @@ Statut par face : PASS si au moins --minimum ergots ; WARN si un écart est déc
 "justification arbitrée
 par l'utilisateur"}) ; FAIL sinon. Code 0 si aucun FAIL. Contrôle géométrique : il ne vérifie ni le jeu ni la tenue
 des ergots.
-
-
 """
 
 import json

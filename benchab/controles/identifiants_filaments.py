@@ -20,7 +20,9 @@ def _contient_marqueur(flux):
 
 
 def controler(chemin):
-    """Exécute controler avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en
+    """Vérifie les identifiants de filament déclarés.
+
+    Réglages en
     unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
     """
     membres = []

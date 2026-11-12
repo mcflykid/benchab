@@ -287,8 +287,9 @@ def reprendre_registre(root, donnees):
 
 
 def sauver(root, donnees):
-    """Sauve une projection dans la base existante ; unités/statuts conservés, aucune initialisation ni
-    archive réécrite.
+    """Sauve une projection dans la base existante.
+
+    Conserve les unités et les statuts. L’atelier doit déjà être initialisé et l’archive reste intacte.
     """
     base = Base(root, creer=False)
     try:

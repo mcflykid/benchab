@@ -1,4 +1,5 @@
 """Barrières communes : preuves courantes, couverture, fichiers produits et gel.
+
 Lecture seule. Aucune décision humaine n'est inventée par cet outil.
 """
 

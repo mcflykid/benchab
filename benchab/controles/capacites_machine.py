@@ -779,10 +779,11 @@ def _analyser(p3mf, maitre=None, limites_filaments=None):
 
 
 def analyser(p3mf, maitre=None, limites_filaments=None):
-    """Contrôle un 3MF en lecture seule ; distances en mm, débits en mm³/s et
-    durées nominales en s. Rapporte PASS/WARN/FAIL/NON VÉRIFIÉ ; source
-    illisible ou modifiée : FAIL/NO GO. Ne change aucun réglage, et le
-    SHA-256 vient du lecteur qui analyse les membres du même fichier.
+    """Contrôle les capacités machine déclarées sur un 3MF en lecture seule.
+
+    Distances en mm, débits en mm³/s et durées nominales en s. Renvoie PASS, WARN, FAIL ou NON VÉRIFIÉ.
+    Une source illisible ou modifiée donne FAIL/NO GO. Le lecteur calcule le SHA-256 et lit les membres
+    sur le même fichier. Aucun réglage n’est changé.
     """
     try:
         return _analyser(p3mf, maitre, limites_filaments)

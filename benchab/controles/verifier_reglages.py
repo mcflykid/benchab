@@ -19,7 +19,9 @@ from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 
 def main(argv):
-    """Exécute main avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en unités
+    """Vérifie les réglages par objet dans un fichier tranché.
+
+    Réglages en unités
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
 
     Entrées : archive, placement et rapport neuf ; retour 0 conforme, 1 non conforme ou 2 refus.

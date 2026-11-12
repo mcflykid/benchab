@@ -146,6 +146,7 @@ def lire(p, *, sha256_attendu=None):
 
 def temperature_appliquee(st):
     """Variante de température du type déclaré : _BRASS pour laiton, _HS pour acier trempé.
+
     Ambiguë seulement si le type est inconnu et que les variantes diffèrent de la base.
     """
     s = SUFFIXE.get(str(st.get("nozzle_type", "")).lower())

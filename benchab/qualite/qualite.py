@@ -412,7 +412,9 @@ def score_accroche(o, cfg):
 
 
 def niveau3(cfg_path):
-    """Exécute niveau3 avec les entrées déclarées et renvoie le résultat du contrôle. Réglages en
+    """Exécute les contrôles de niveau 3 sur les entrées déclarées.
+
+    Réglages en
     unités natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
     """
     cfg, base, P = charger(cfg_path)
