@@ -8,13 +8,13 @@ import argparse
 import json
 from pathlib import Path
 
+from benchab.chemins import sans_lien
+from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
 from benchab.qualite.empreintes import sha256_fichier
 
 
 def verifier(projet):
     """Compare les SHA d'un projet privé ; PASS/FAIL/NON APPLICABLE, aucune écriture ni commande machine."""
-    from benchab.chemins import sans_lien
-
     projet = sans_lien(projet, strict=True)
     manifeste = projet / "VERROU-REIMPRESSION.json"
     if manifeste.is_symlink():
@@ -96,12 +96,42 @@ def verifier(projet):
 
 
 def main(argv=None):
-    """Vérifie le projet déclaré ; codes 0 PASS, 1 FAIL, 2 autre statut, sans action machine ni modification."""
+    """Vérifie un projet et publie facultativement le rapport complet hors du projet.
+
+    Entrées : chemins sans unité. Codes 0 pour PASS, 1 pour FAIL et 2 pour
+    les autres statuts. La publication laisse le projet contrôlé intact.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--projet", type=Path, required=True)
+    parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf, hors du projet contrôlé")
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     args = parser.parse_args(argv)
-    rapport = verifier(args.projet)
-    print(json.dumps(rapport, ensure_ascii=False, indent=2))
+    try:
+        sortie = destination_rapport_optionnel(args.sortie, resume=args.resume, nom="de réimpression")
+        projet = sans_lien(args.projet, strict=True)
+        # Écrire dans le périmètre contrôlé pourrait rendre le verdict périmé à sa publication (#35).
+        if sortie is not None and sortie.is_relative_to(projet):
+            raise ValueError("Le rapport de réimpression doit rester hors du projet contrôlé.")
+        rapport = verifier(projet)
+        if sortie is not None:
+            ecrire_json_neuf(sortie, rapport)
+    except (OSError, ValueError) as erreur:
+        if args.sortie is None and not args.resume:
+            raise
+        parser.error(str(erreur))
+    if args.resume:
+        resume = {
+            cle: rapport[cle] for cle in ("statut", "projet", "fichiers_historiques")
+            if cle in rapport
+        }
+        if "fichiers_verifies" in rapport:
+            resume["references_attendues"] = rapport["fichiers_verifies"]
+        if "erreurs" in rapport:
+            resume["erreurs"] = len(rapport["erreurs"])
+        resume["rapport"] = str(sortie)
+        print(json.dumps(resume, ensure_ascii=False, separators=(",", ":")))
+    else:
+        print(json.dumps(rapport, ensure_ascii=False, indent=2))
     return 1 if rapport["statut"] == "FAIL" else 0 if rapport["statut"] == "PASS" else 2
 
 

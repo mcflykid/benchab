@@ -139,14 +139,24 @@ deux fichiers relus avant de mesurer. Les trois composantes de translation
 en mm sont déclarées. Pour une pièce tournée sur le plateau, ajouter
 `--rotation-z-deg ANGLE`. L’angle positif tourne X vers Y autour de
 l’origine du STL, avant la translation. Le contrôle conserve le repère
-déclaré dans le rapport et laisse l’échelle et la correspondance entre
-objets à la qualification de l’appelant. `--sortie RAPPORT_NEUF`
-conserve le détail en privé et affiche un résumé.
+déclaré dans le rapport et laisse l’échelle à la qualification de l’appelant.
+Sur une plaque à plusieurs objets, `--objet-id NOM_EXACT` limite la mesure
+aux blocs `EXCLUDE_OBJECT_START` portant ce nom, sensible à la casse.
+Le rapport compte séparément les segments des autres objets. Un segment de
+pont sans attribution ou un bloc ouvert laisse la comparaison NON VÉRIFIÉE.
+Le lien entre le STL et le nom G-code reste déclaré par l’appelant.
+`--sortie RAPPORT_NEUF` conserve le détail en privé et affiche un résumé.
 
 Sur une copie du coupon de pont de 4 mm tournée de −90°, la déclaration
 de +90° retrouve le résultat de référence sur les deux archives tranchées
 déjà conservées. Chacune donne neuf axes `Bridge` concordants, sur 36 mm
 au total. Ce rejeu numérique vérifie la transformation de repère (#93).
+
+Avec le même binaire et deux coupons sur une seule plaque, les blocs G-code
+des deux objets sont identifiés séparément. Pour chacun, le contrôle retrouve
+neuf axes `Bridge` concordants sur 36 mm et écarte 57 segments de pont ou
+de pont interne de l’autre objet. Les sources et les 646 profils contrôlés
+gardent leurs empreintes. Ces valeurs décrivent cette plaque et ses fichiers.
 
 Le sous-cas couvre un îlot horizontal et des axes de dépôt linéaires
 des rôles `Bridge` et `Internal Bridge`. Le rapport distingue les longueurs

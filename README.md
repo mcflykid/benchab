@@ -66,6 +66,13 @@ précisent leurs conditions d’application dans les références
 [matières](docs/reference/filaments.md), [réglages](docs/reference/profils-et-procedes.md)
 et [défauts observés](docs/explications/retours-d-experience.md).
 
+## Rapports de contrôle
+
+Les commandes documentées avec `--resume` affichent le verdict et
+le chemin du rapport détaillé. Le
+[guide des rapports](docs/guides/lire-les-rapports.md) explique comment
+retrouver les mesures et les journaux d’échec.
+
 ## Données privées et sauvegarde
 
 Les projets, photos, profils personnels et la base SQLite se trouvent dans

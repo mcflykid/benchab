@@ -482,7 +482,7 @@ Anycubic. Le contrôle strict reste applicable. La révision exacte du
 binaire et l’effet des vecteurs courts restent à établir (#49).
 Les contrats de consultation et des pages de l’atelier sont annotés (#127).
 
-## Prochaine version : 1.29.0
+## Plan de travail de la 1.29.0
 
 ### 1. Fiabiliser les fondations et les preuves
 
@@ -576,30 +576,30 @@ Le [CHANGELOG](CHANGELOG.md#1290--2026-11-11) décrit le correctif de relance
 des références (#231), la couverture par compteur d’entretien (#73) et
 le contrôle Ruff D10 généralisé à tout le paquet (#127).
 
-## Objectif 1.30.0 — clôturer les issues ouvertes
+## Version 1.30.0 — preuves de contrôle et rapports
 
-La 1.30.0 vise la clôture vérifiée des 32 issues ouvertes en dehors de
-la refonte du README (#230), suivie dans la 1.28.0.
-La 1.29.0 peut livrer des prérequis déjà vérifiés. Les preuves attendues
-restent celles des issues, même si un premier sous-cas a déjà été publié.
+Le [CHANGELOG](CHANGELOG.md#1300--2026-11-12) décrit les rapports courts,
+la provenance des régressions, l’imputation de filament et la comparaison
+des surplombs par objet. Les issues #127, #234 et #236 sont closes.
 
-| Travail restant | Preuve attendue avant clôture |
-| --- | --- |
-| #19, #119 | Mesures des transactions à plusieurs tailles, cohérence des exports et récupération rejouée sur copie, avec provenance des régressions. |
-| #35, #127 | Inventaire des commandes à résumer, détail conservé et mesures de volume, puis qualification des docstrings antérieures et des règles de forme Ruff. |
-| #49, #134 | Provenance du binaire et qualification des cas d’arrondi et de lecture qui restent hors contrat. Conserver les verdicts stricts tant que la preuve manque. |
-| #80, #81, #82 | Valeurs consommées par une version identifiée du slicer, comparaisons à réglage isolé et effet mesuré dans le G-code. |
-| #89, #93 | Comparaison des supports et de leur écart Z, puis localisation des zones de surplomb avec limites documentées. |
-| #27, #29, #32 | Modèles, cotes et réassemblages rejoués. Les jeux, l’insertion et la tenue exigent des observations dans les conditions d’usage. |
-| #83, #87 | Témoins distincts de génération, maillage et tranchage. Toute tenue annoncée exige une mesure. |
-| #43, #45 | Réouverture des échanges avec palette, facettes et réglages vérifiés. L’export manuel exige une décision puis une recette d’import. |
-| #72, #73, #77 | Relevés de purge et d’usage traçables, identité des bobines et outils, preuves de masse et de durée pour les compteurs qui en dépendent. |
-| #50, #51, #52 | Recette Safari et gestes réels, validation physique des témoins et lecture Cloud avec un compte autorisé. |
-| #84, #85, #86, #90, #91, #92 | Mesures reproductibles de rigidité, d’orientation sous effort, de durée, de retrait, d’interface et d’ailettes. |
-| #24, #44 | Décisions sur les plateformes et équipements à qualifier. Recette de l’état et de la caméra en lecture seule avec expiration et reconnexion. |
+## Suite — issues ouvertes
 
-Avant de publier la 1.30.0, vérifier la liste initiale et les nouvelles
-issues ouvertes pendant le chantier. Une simulation ne remplace pas une
-mesure physique, une connexion autorisée ou une décision requise. Tant
-qu’une preuve manque, l’issue reste ouverte avec son état et le prochain
-essai à effectuer.
+Le jalon 1.31.0 rassemble
+les travaux ouverts. Les critères des issues et les références d’origine
+restent applicables.
+
+| Ordre | Issues | Prochaine preuve |
+| --- | --- | --- |
+| P2 · moteur et réglages | #49, #80, #81, #82, #134 | Établir la provenance du binaire et les conditions de lecture des archives. Qualifier les valeurs avant les comparaisons de motifs, puis mesurer l’effet des modificateurs dans le G-code. Garder les refus stricts sur les arcs hors contrat. |
+| P2 · reprise | #119 | Rejouer les familles de reprise restantes sur des copies et lier chaque incident reproduit à ses cas de régression. |
+| P2 · supports et témoins | #89, #51 | Comparer les familles et l’écart Z numérique. Relever séparément résultat réel, ajustement et tenue sur les témoins physiques approuvés. |
+| P3 · atelier et fichiers | #19, #35, #43 | Mesurer le coût des transactions selon la taille avec contrôle des exports. Étendre les résumés et mesurer leurs lectures. Recetter la réouverture 3MF avec palette, facettes et réglages. |
+| P3 · conception | #27, #29, #32, #83, #93 | Rejouer les modèles, cotes, réassemblages, modificateurs et comparaisons par îlot. Mesurer les jeux et la tenue lorsqu’une validation physique est requise. |
+| P3 · machine et matière | #50, #52, #72, #73, #77 | Tester les gestes Safari, la lecture Cloud autorisée, l’attribution de la purge, les durées et les pesées. Rapprocher les relevés et les identités d’outil ou de bobine. |
+| P3 · essais physiques | #84, #90, #91, #92 | Consigner des mesures reproductibles de rigidité, de retrait, de marques, d’interface et d’ailettes. |
+| P4 · études | #85, #86, #87 | Mesurer l’orientation sous effort et les écarts de durée. Rejouer la géométrie et le tranchage du réseau gyroïde. |
+| P4 · décisions et accès | #24, #44, #45 | Définir les plateformes, équipements et exports à qualifier. Recetter la caméra en lecture seule et l’import manuel après décision. |
+
+Chaque recette précise sa source et son périmètre. Les observations
+physiques et les accès autorisés restent à établir sur les issues
+concernées.

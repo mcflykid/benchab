@@ -2,6 +2,24 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.30.0 — 2026-11-12
+
+- Rapports. Les contrôles et le planning disposent de sorties courtes avec
+  accès au détail. La routine conserve les journaux d’échec et le contrôle
+  de réimpression publie son rapport hors du projet contrôlé (#35).
+- Reprise. Les fiches d’incident vérifient le rattachement d’un JUnit à
+  une tentative de CI et rapportent les résultats des cas déclarés (#119).
+- Filament. Une pesée et une affectation confirmées permettent une
+  imputation unique au stock. La recette avec une pesée réelle reste
+  ouverte (#77).
+- Surplombs. La comparaison des axes de pont tient compte de la rotation
+  déclarée et distingue les objets nommés dans le G-code. Les preuves
+  portent sur les fichiers et les trajectoires nominales (#93).
+- Correctifs. Les sorties existantes sont refusées avec un diagnostic
+  explicite (#234). Les chemins durables sont contrôlés après décodage
+  JSON (#236). La CI contrôle la présence et la forme des docstrings
+  du paquet (#127).
+
 ## 1.29.0 — 2026-11-11
 
 - Diagnostic d’atelier. La relance du contrôle des références utilise le
