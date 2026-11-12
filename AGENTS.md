@@ -12,6 +12,7 @@
 - Ne pas imprimer, chauffer, déplacer ou calibrer sans demande explicite.
 - Ne jamais modifier les profils installés ; conserver originaux, preuves et préparations figées.
 - Toutes les données projet et préférences personnelles restent dans `prive/`.
+- Utiliser l’historique Git pour les fichiers versionnés. Ne jamais créer le dossier `sauvegardes/` de l’atelier ni y écrire.
 - Les règles vérifiables sont reliées à leurs contrôles dans [la référence des règles](docs/reference/regles.md).
 - U20 : `benchab controle plaques-interface` ; U22 : `benchab controle regles`.
 - U25 : `benchab controle debit-gcode` ; les plafonds proviennent des réglages déclarés.

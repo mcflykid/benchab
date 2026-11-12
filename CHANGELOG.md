@@ -2,6 +2,10 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.30.1
+
+- Les réparations de vues écrivent leurs preuves sous `qualite/reparation-vues/` (#243).
+
 ## 1.30.0 — 2026-11-12
 
 - Rapports. Les contrôles et le planning disposent de sorties courtes avec

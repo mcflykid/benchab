@@ -19,6 +19,8 @@ from benchab.donnees.base import APPLICATION_ID
 from benchab.qualite.ecritures import PublicationNeuve, remplacer_texte, verrou_publication
 from benchab.qualite.statuts import code_statut
 
+# La réparation conserve sa preuve locale hors du dossier historique (#243).
+DOSSIER_REPARATION = "qualite/reparation-vues"
 MANIFESTE = "vues/manifest.json"
 README = "README.md"
 MAX_CONTENU_LU_OCTETS = 2 * 1024 * 1024
@@ -604,7 +606,7 @@ def appliquer_vue(prive: Path | str, rapport: dict[str, Any], cible: str) -> dic
             sauvegarde_sha = None
             if ancien is not None:
                 sauvegarde_sha = hashlib.sha256(ancien).hexdigest()
-                sauvegarde = racine / "sauvegardes/vues" / f"vue-{uuid.uuid4().hex}-{sauvegarde_sha[:24]}.md"
+                sauvegarde = racine / DOSSIER_REPARATION / f"vue-{uuid.uuid4().hex}-{sauvegarde_sha[:24]}.md"
                 with PublicationNeuve([cible_path], [sauvegarde]) as publication:
                     temporaire = publication.temporaire(sauvegarde)
                     temporaire.write_bytes(ancien)
@@ -830,7 +832,7 @@ def appliquer_candidat_lien(
             "origine_historique_et_pertinence": "NON VÉRIFIÉES",
         }
         texte_preuve = json.dumps(donnees_preuve, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-        preuve = racine / "sauvegardes/vues" / (
+        preuve = racine / DOSSIER_REPARATION / (
             f"reprise-lien-{uuid.uuid4().hex}-{proposition['sha256'][:24]}.json"
         )
         _verifier_identite_base_sqlite(base, identite_base)
