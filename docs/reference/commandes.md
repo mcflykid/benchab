@@ -146,7 +146,7 @@ bas. Déclarer les zones comme une liste d’objets JSON avec `nom`, `type`,
 sélectionnent les centroïdes des triangles. Une zone `paroi_fine` déclare
 `angle_max_deg`. Pour une `zone_pleine`, déclarer `hauteur_couche_mm` et
 `largeur_ligne_mm`. Le seuil est atteint quand le décalage par couche vaut
-une demi-largeur de ligne. Le rapport localise le maximum, donne le p99
+une demi-largeur de ligne. Le rapport localise le maximum, donne le 99e centile
 pondéré par aire et les aires par tranche d’angles. Un dépassement vaut WARN
 pour la zone. Une zone sans face descendante reste NON VÉRIFIÉE. Pour les
 îlots connexes et l’accès au plateau, utiliser `surplombs-connexes`.
