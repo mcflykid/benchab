@@ -8,6 +8,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Le vissage et les fentes d’interface proposent un résumé avec rapport privé. Le bilan des dépôts peut afficher tous ses groupes (#35).
+
 - La recette gyroïde compare la géométrie modélisée à deux références tranchées avec la même enveloppe (#87).
 
 - La greffe d’un filet femelle contrôle la source, le recouvrement et le profil du STL relu (#263).

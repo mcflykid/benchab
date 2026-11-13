@@ -58,10 +58,23 @@ visibles. `validation_physique: NON FOURNIE` rappelle que ce bilan ne valide
 pas une intervention ou l'état d'un organe. Les codes CLI suivent la table
 commune : PASS 0, WARN 1, NON VÉRIFIÉ 2 et erreur technique 2.
 
-L'issue #73 reste ouverte : aucun historique d'exploitation réel, aucun lien
-de provenance spécifique aux compteurs et aucun intervalle fabricant par
-modèle/firmware n'ont encore été qualifiés. Les recommandations de maintenance
-ne sont donc pas intégrées comme seuils par défaut.
+### Recommandations documentées pour la Kobra S1 Combo
+
+| Élément | Indication du fabricant | Unité ou condition |
+| --- | --- | --- |
+| Coupe-fil | Inspecter après trois à cinq bobines | Bobines utilisées. La source ne donne pas de masse de référence par bobine. |
+| Vis de l’axe Z | Entretenir environ tous les trois mois ou en cas de bruit anormal | Temps calendaire ou observation. |
+| Tiges de l’axe Y | Inspecter chaque mois | Temps calendaire. |
+| Compensation des vibrations | Vérifier après plus de 300 heures d’impression ou après déplacement de la machine | Heures d’impression ou événement. |
+
+Sources et portée : [recommandations de maintenance Kobra S1](https://wiki.anycubic.com/en/fdm-3d-printer/kobra-s1-combo/maintenance-recommendations)
+pour les trois organes, et [manuel Kobra S1 Combo v1.3](https://wiki.anycubic.com/kobra-s1/anycubic_kobra_s1_combo_user_manual-en-v1.3.pdf)
+pour la compensation. Ces indications sont vérifiées dans la documentation
+fabricant et restent des hypothèses de seuil pour BENCHAB. Leur portée par
+version de firmware et la couverture de l’historique d’exploitation restent
+à établir (#73). Aucun seuil n’est chargé par défaut. Le bilan utilise une
+unité déclarée et ne convertit pas les mois, les grammes ou les estimations
+du slicer en heures d’impression ou en bobines consommées.
 
 Avec `--resume --sortie prive/rapports/entretien.json`, la commande enregistre
 d’abord le bilan complet, puis affiche le statut et le nombre de compteurs
