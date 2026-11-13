@@ -51,6 +51,14 @@ fiche historique relue le 22/10/2026 : 200–230 °C, plateau 60–70 °C. Les
 190/55 °C du retour sont une expérience locale, distincte des recommandations.
 Ancienne et nouvelle formulation ne garantissent pas la même compatibilité ACE.
 
+Le profil système **Anycubic PLA Glow @Anycubic Kobra S1 0.4 nozzle** livré
+avec Anycubic Slicer Next 2.0.0.3 déclare `required_nozzle_HRC = ["3"]` et
+55 °C sur PEI texturé. Le profil machine fourni déclare une buse en laiton et
+`nozzle_hrc = "0"`. La valeur 3 relève du [paramètre de comparaison d’Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L2016-L2022).
+Elle décrit ce profil et ne mesure pas la dureté d’une buse montée. Les
+additifs luminescents peuvent user la buse. Déclarer le matériel effectivement
+monté dans la fiche d’envoi.
+
 ## Anycubic PLA Marble blanc
 
 Une impression du 24/10/2026 a repris avec ce matériau après changement de

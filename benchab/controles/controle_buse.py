@@ -25,6 +25,7 @@ def controler(parametres, declaration, extrudeurs):
     """Compare la buse du 3MF à la déclaration optionnelle, par diamètre mm et HRC par filament.
 
     Entrées : réglages typés du 3MF, déclaration d’envoi et numéros d’extrudeur actifs (1-indexés).
+    Le booléen facultatif buse.trempee décrit la buse montée telle que déclarée.
     Sortie : résultats PASS/WARN/NON VÉRIFIÉ, sans inférer abrasivité ou compatibilité physique.
     Invariant : sans le bloc optionnel `buse`, aucun ancien rapport n’est modifié.
     """
@@ -33,7 +34,8 @@ def controler(parametres, declaration, extrudeurs):
     contrat = declaration.get("buse")
     contrat_valide = (
         type(contrat) is dict
-        and set(contrat) == {"diametre_mm"}
+        and set(contrat) <= {"diametre_mm", "trempee"}
+        and ("trempee" not in contrat or type(contrat["trempee"]) is bool)
         and type(contrat.get("diametre_mm")) in (int, float)
         and _nombre_positif(contrat.get("diametre_mm")) is not None
     )
@@ -67,6 +69,12 @@ def controler(parametres, declaration, extrudeurs):
             "3MF typé: nozzle_diameter ; déclaration d’envoi: buse.diametre_mm",
         ))
 
+    trempee = contrat.get("trempee") if contrat_valide else None
+    resultats[0]["buse_montee"] = {
+        True: "trempée déclarée",
+        False: "non trempée déclarée",
+        None: "non déclarée",
+    }[trempee]
     buse_hrc = None
     try:
         valeur_hrc = parametres.get("nozzle_hrc")
