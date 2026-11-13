@@ -46,7 +46,11 @@ maillé au pas nominal de 0,35 mm avec la protection de l’exemple. Le
 rapport donne 105 044 triangles, un corps positif fermé et une perte
 de volume protégé de 0 mm³ à la tolérance du contrôle. La borne
 analytique du champ infini est de 0,404 mm pour le diamètre indiqué
-ci-dessus.
+ci-dessus. Deux générations à paramètres égaux ont retrouvé le SHA-256
+du coupon en 0,35 et 0,43 s sur le poste d’essai. Sur le STL relu, le
+contrôle d’épaisseur locale par 3 000 rayons estime 0,83 mm au minimum
+échantillonné et 0,85 mm au premier centile. L’échantillonnage peut
+manquer un point plus fin.
 
 | Variante | Remplissage clairsemé | Matière estimée | Durée estimée |
 | --- | ---: | ---: | ---: |
