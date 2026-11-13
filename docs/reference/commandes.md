@@ -115,3 +115,24 @@ puis ajouter `--notre-machine` pour une unique Kobra S1 ou `--machine ID`
 pour sélectionner une machine précise. La lecture rapporte les données ACE
 disponibles. Les raisons publiables indiquent notamment une copie manquante,
 une configuration de compte manquante ou un compte situé dans le dépôt.
+
+## Répartition des dépôts et carte des coutures
+
+```sh
+benchab controle bilan-depots TRANCHE.3mf --borne-z 4 --borne-z 12 --sortie BILAN.json
+benchab controle carte-coutures TRANCHE.3mf --centre-xy 125 125 --comparaison AUTRE.3mf --sortie CARTE.json --svg CARTE.svg
+```
+
+Le bilan groupe les dépôts par plaque, objet étiqueté, type de trajet, outil
+et zone Z. Une borne Z (mm) ouvre la zone suivante. Un mouvement est classé
+sur son altitude finale. La masse dépend du diamètre et de la densité
+déclarés. Le temps nominal porte sur le dépôt à l’avance programmée. Pour
+visualiser les trajectoires d’une couche, ouvrir l’archive avec
+`benchab visualisation apercu-gcode`.
+
+La carte relève le premier dépôt de paroi extérieure par couche et objet
+étiqueté. Le centre XY en mm est commun aux archives comparées. Le rapport
+donne la largeur du plus petit arc contenant 95 % des départs, la
+concentration circulaire (de 0 à 1), les secteurs de 10° occupés et la part
+des départs qui montent ou descendent en Z. Une variation en Z est un indice
+de raccord en biseau. L’aperçu comporte un panneau par archive.

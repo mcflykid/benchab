@@ -2,6 +2,12 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.32.0
+
+- Le bilan G-code répartit la matière et le temps nominal de dépôt par plaque, outil, objet, type de trajet et zone Z (#267).
+- La carte des coutures relève les départs de paroi par couche et compare leur dispersion en angle et altitude (#269).
+- La continuité de paroi en mode vase regroupe les dépôts selon les couches déclarées par le moteur (#249).
+
 ## 1.31.1
 
 - L’écriture d’un 3MF canonique refuse un corps imprimé ouvert ou mal orienté et le nomme (#250).
