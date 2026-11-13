@@ -15,6 +15,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - Le registre privé vérifie la filiation, les preuves et les promotions des variantes (#268).
 
 - Le diagnostic de finition décrit la continuité, le fond et la largeur observée en mode vase (#246).
+- Le diagnostic de finition lit en flux le G-code des grandes archives 3MF déclarées en mode vase (#286).
 
 - Un aperçu de candidate identifie les maillages déclarés et refuse les fichiers étrangers (#260).
 

@@ -9,6 +9,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from benchab.controles import finition_parois as F
 
 M = {"volume_mm": [250, 250, 250], "sources": {}, "non_verifie": []}
@@ -395,3 +397,31 @@ def test_diagnostic_vase_releve_une_spirale_continue(tmp_path):
     html = tmp_path / "vase.html"
     F.rendre_html(resultat, html)
     assert "Mode vase" in html.read_text()
+
+
+def test_vase_en_flux_equivalent_et_borne(tmp_path, monkeypatch):
+    """Vérifie la spirale et le fond lorsque la lecture en mémoire est hors budget."""
+    source = tmp_path / "vase.3mf"
+    gcode = (
+        "G90\nM83\nT0\n;LAYER_CHANGE\n;TYPE:Bottom surface\nG1 Z0.2 F600\nG1 X1 E0.1\n"
+        ";LAYER_CHANGE\n;TYPE:Outer wall\n;WIDTH:0.45\nG1 X2 Z0.3 E0.1\nG1 X3 Z0.4 E0.1\n"
+    )
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", '{"spiral_mode":"1","bottom_shell_layers":"1"}')
+        archive.writestr("Metadata/plate_1.gcode", gcode)
+        archive.writestr("3D/Objects/pieces.model", " " * 4096)
+    reference = F.analyser(source, maitre=M)
+    monkeypatch.setattr(F, "MAX_BYTES", 1024)
+    rapport = F.analyser(source, maitre=M)
+    assert rapport["source_sha256"] == reference["source_sha256"]
+    assert rapport["plaques"] == reference["plaques"]
+    assert rapport["couverture"]["statut"] == "PASS"
+    assert rapport["controle_capacites"]["statut"] == "NON VÉRIFIÉ"
+    monkeypatch.setattr(F, "MAX_LIGNES_VASE", 5)
+    incomplet = F.analyser(source, maitre=M)
+    assert incomplet["statut"] == "NON VÉRIFIÉ"
+    assert any("budget" in erreur for erreur in incomplet["couverture"]["erreurs"])
+
+    source.write_bytes(source.read_bytes()[:-40])
+    with pytest.raises(zipfile.BadZipFile):
+        F.analyser(source, maitre=M)

@@ -202,7 +202,8 @@ gardent leur propre déclaration d’intégrité avant/après.
 Deux validateurs conservent leur format de lecture spécialisé. Le contrôle
 `paquet-3mf` examine d’abord le répertoire central ZIP sur octets bornés, et
 `finition_parois` interprète un instantané mémoire immuable qui peut être
-un G-code simple. Les contrôles de qualité des paquets ZIP/TAR génériques
+un G-code simple. Les grandes archives déclarées en mode vase passent par le
+lecteur commun en flux avec vérification de la source. Les contrôles de qualité des paquets ZIP/TAR génériques
 conservent leurs budgets de parcours et ne chargent pas de réglages 3MF.
 
 Les rapports de synthèse et les membres des clones des trois témoins
