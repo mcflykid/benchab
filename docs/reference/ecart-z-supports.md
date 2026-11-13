@@ -264,3 +264,19 @@ Le rejeu filtré reproduit le G-code hors date. Les sources et les
 646 profils relus sont intacts. Les quatre tailles ne définissent
 pas un seuil universel et le comportement à l’impression reste
 NON VÉRIFIÉ (#89).
+
+### Régions critiques sur les quatre surplombs isolés
+
+Sur le même témoin, avec le filtre des petits surplombs désactivé,
+les archives d’entrée et de sortie ne diffèrent que par le réglage
+`support_critical_regions_only` (0 à 1) dans les réglages contrôlés.
+Dans les boîtes sous les débords de 1,4 × 2 et 2,5 × 3 mm, les
+trajets de support et d’interface passent à zéro. Les débords de
+4,5 × 5 et 10 × 12 mm conservent leurs 42,0 et 110,5 mm d’interface.
+Au total, les trajets de corps de support passent de 6 713,337 à
+4 360,789 mm. La médiane Z reste à 0,40 mm et la projection
+estimée passe de 64,0 à 56,25 mm². La plaque passe de 959 à
+915 s et de 4,61 à 4,37 g estimés. Le rejeu à partir de la même
+copie reproduit le G-code hors date. Les sources et les 646 profils
+relus gardent leurs empreintes. La tenue des débords et le retrait
+du support restent à observer sur cette géométrie (#89).
