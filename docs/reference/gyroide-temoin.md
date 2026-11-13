@@ -38,3 +38,28 @@ slicer, les réglages embarqués, les avertissements et deux rejeux des mêmes
 octets. La comparaison porte sur des géométries et réglages déclarés. Les
 durées et grammes du slicer sont des estimations. La tenue physique reste
 NON VÉRIFIÉE (#87, #84).
+
+### Comparaison numérique sur une enveloppe de 24 × 16 × 16 mm
+
+Un coupon à paroi de 2 mm, cellule de 8 mm et seuil de 0,55 a été
+maillé au pas nominal de 0,35 mm avec la protection de l’exemple. Le
+rapport donne 105 044 triangles, un corps positif fermé et une perte
+de volume protégé de 0 mm³ à la tolérance du contrôle. La borne
+analytique du champ infini est de 0,404 mm pour le diamètre indiqué
+ci-dessus. Deux générations à paramètres égaux ont retrouvé le SHA-256
+du coupon en 0,35 et 0,43 s sur le poste d’essai. Sur le STL relu, le
+contrôle d’épaisseur locale par 3 000 rayons estime 0,83 mm au minimum
+échantillonné et 0,85 mm au premier centile. L’échantillonnage peut
+manquer un point plus fin.
+
+| Variante | Remplissage clairsemé | Matière estimée | Durée estimée |
+| --- | ---: | ---: | ---: |
+| Bloc et gyroïde du slicer | 15 % | 3,25 g | 861 s |
+| Peau et protections | 0 % | 3,79 g | 893 s |
+| Peau, protections et gyroïde modélisé | 0 % | 4,91 g | 1 183 s |
+
+Les deux tranchages de la troisième variante par Anycubic Slicer Next
+2.0.0.3 donnent le même G-code hors date. Les SHA-256 des entrées, des
+sorties et des membres G-code ont été relus. Ce coupon renseigne le
+volume et le coût du modèle. L’épaisseur réellement déposée et la
+résistance relèvent des essais physiques suivis dans #84.

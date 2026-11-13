@@ -8,6 +8,11 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- La recette gyroïde compare la géométrie modélisée à deux références tranchées avec la même enveloppe (#87).
+
+- La greffe d’un filet femelle contrôle la source, le recouvrement et le profil du STL relu (#263).
+- La conception produit l’aperçu de la candidate et enregistre la décision avec ses empreintes (#259).
+
 - Le contrôle de vissage mesure les intersections à des poses hélicoïdales déclarées et vérifie la phase, le sens et le dépassement de butée (#264).
 
 - Le contrôle des interfaces repère les fentes fines dans une zone déclarée et documente leur ouverture sur la grille de mesure (#265).
@@ -22,7 +27,7 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 - La lecture Cloud Anycubic évite le refus HTTP 403 de Workbench lié au User-Agent ajouté par Python (#52).
 
-- Le tranchage d’une candidate de projet vérifie la décision visuelle et les empreintes de l’archive et de son aperçu (suite de #259).
+- Le tranchage d’une candidate de projet vérifie la décision visuelle et les empreintes de l’archive et de son aperçu (#259).
 
 - Le registre privé vérifie la filiation, les preuves et les promotions des variantes (#268).
 

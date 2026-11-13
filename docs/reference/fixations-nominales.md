@@ -111,3 +111,23 @@ incompatibles avec ce mode. Le rapport donne les diamètres mineur et sur
 flancs avant jeu. Le modèle maillé garde des bouts plats. Le choix de la
 série de pas, la classe de tolérance, les entrées de filet et les jeux
 validés par matière restent à établir pour la pièce (#27).
+
+### Greffer un filet femelle existant
+
+```sh
+benchab conception greffer-interface -- prive/col.stl prive/support.stl \
+  --sha256 EMPREINTE_DU_COL --zone-mm 0.75 4.5 6 --sortie prive/col-greffe
+```
+
+Les deux STL utilisent le même repère en mm et l’axe Z passe au centre du
+filet. Les trois cotes délimitent la zone à conserver (Z bas, Z haut,
+rayon). Prévoir une marge radiale au-delà du dernier contact du filet et
+du recouvrement de matière avec le support. Le col peut provenir d’une
+pièce existante ou d’un solide creusé avec l’outil intérieur nominal (#27).
+
+Le rapport de greffe (#263) relève le recouvrement, le nombre de
+composantes du STL rouvert, le premier contact sur 256 angles et 150
+hauteurs, ainsi que l’écart de volume dans la zone déclarée. Un PASS
+publie le STL et son rapport dans le dossier privé neuf. FAIL ou NON
+VÉRIFIÉ affiche le motif sans publier de STL. La tenue de la jonction
+et l’ajustement imprimé restent à qualifier séparément.

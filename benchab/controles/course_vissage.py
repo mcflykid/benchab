@@ -11,6 +11,7 @@ from benchab.chemins import atelier_prive, sans_lien
 from benchab.conception.decoupe import _vers_trimesh
 from benchab.conception.decoupe.geometrie import solide
 from benchab.conception.vissage import profil_radial
+from benchab.projets.validation_apercu import verifier_candidate
 from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 from benchab.qualite.empreintes import sha256_fichier
 from benchab.qualite.statuts import code_statut
@@ -140,7 +141,10 @@ def main(argv=None, *, prive=None):
     fichiers = [sans_lien(args.pop(champ), racine=racine, strict=True) for champ in ("male", "femelle")]
     if any(f.suffix.casefold() != ".stl" or not f.is_file() or f.stat().st_size > 32 * 1024 * 1024 for f in fichiers):
         raise ValueError("STL réguliers de 32 Mio au plus requis.")
+    preuves = [verifier_candidate(f, prive=racine) for f in fichiers]
     empreintes = list(map(sha256_fichier, fichiers))
+    if any(preuve and preuve["source_sha256"] != sha for preuve, sha in zip(preuves, empreintes)):
+        raise ValueError("Maillage changé après sa validation visuelle.")
     rapport = mesurer(*(charger_maillage(f) for f in fichiers), **args)
     if list(map(sha256_fichier, fichiers)) != empreintes:
         raise ValueError("Maillage modifié pendant le contrôle.")

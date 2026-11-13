@@ -74,7 +74,7 @@ ROUTES_NAMESPACE = {
         "normalisation": "tirets_vers_underscore",
         "modules_prives": frozenset(
             {"trous", "eprouvette_trous", "vissage", "cad_engine", "fiche_cao", "filetage_nominal", "decoupe",
-             "registre_variantes"}
+             "registre_variantes", "greffer_interface", "apercu"}
         ),
     },
     "imports": {
@@ -446,6 +446,8 @@ def parser():
         "cad-engine",
         "fiche-cao",
         "filetage-nominal",
+        "greffer-interface",
+        "apercu",
         "decoupe",
     ):
         conception.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)

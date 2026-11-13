@@ -17,6 +17,8 @@ options de résumé et de détail déjà couvertes.
 | `conception fiche-cao` | [Plan et script CAO depuis des cotes JSON](fiche-cao.md) |
 | `conception trous`, `eprouvette-trous`, `vissage`, `decoupe` | Ajustements et assemblage |
 | `conception filetage-nominal -- OPTIONS` | STL et rapport privé en mm, profil sur mesure ou [profil métrique ISO nominal](fixations-nominales.md#profil-métrique-iso-nominal), avec jeu radial déclaré pour l’outil intérieur |
+| `conception apercu -- produire` / `decider` | Page HTML privée et décision visuelle sur les deux empreintes |
+| `conception greffer-interface -- OPTIONS` | Greffe d’un filet femelle identifié et [contrôles du STL relu](fixations-nominales.md#greffer-un-filet-femelle-existant) |
 | `conception gyroide-temoin` | [STL et rapport d’un coupon gyroïde numérique](gyroide-temoin.md) |
 | `fabrication trancher`, `revue-archive`, `preparation`, `optimisation`, `plaques-mixtes` | Préparation, revue d’archive et tranchage |
 | `fabrication couches-variables`, `strategies-procede`, `resistance` | Études de procédé |
