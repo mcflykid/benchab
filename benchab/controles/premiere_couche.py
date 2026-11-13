@@ -34,8 +34,9 @@ from benchab.gcode.geometrie_arc import enveloppe_deposee_xyz
 from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
 from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
-# Budget conservateur des tableaux NumPy/SciPy : 64 octets/cellule, 256 Mio.
-MAX_CELLS = 4_000_000
+# Une surface de 250 × 250 mm et ses marges doivent tenir à 0,10 mm (#287).
+# Borne conservatrice de 64 octets/cellule, soit environ 397 Mio pour la grille.
+MAX_CELLS = 6_500_000
 MAX_SAMPLES = 2_000_000
 MAX_SEGMENTS = 250_000
 MAX_KERNEL = 4096
@@ -213,7 +214,7 @@ def masquer_arcs(arcs, origine, forme, pas, *, budget=MAX_ARC_CELL_TESTS):
     if not math.isfinite(pas) or pas <= 0:
         raise ValueError("pas fini strictement positif requis")
     if len(forme) != 2 or any(not isinstance(n, int) or n <= 0 for n in forme) or math.prod(forme) > MAX_CELLS:
-        raise ValueError("budget de grille dépassé (4 millions de cellules)")
+        raise ValueError(f"budget de grille dépassé ({MAX_CELLS} cellules)")
     valides, total = _preparer_arcs(arcs, origine, forme, pas)
     if total > budget:
         raise ValueError("budget de cellules testées pour arcs dépassé")
@@ -247,7 +248,7 @@ def tracer(segs, origine, forme, pas):
     if not math.isfinite(pas) or pas <= 0:
         raise ValueError("pas fini strictement positif requis")
     if len(forme) != 2 or any(not isinstance(n, int) or n <= 0 for n in forme) or math.prod(forme) > MAX_CELLS:
-        raise ValueError("budget de grille dépassé (4 millions de cellules)")
+        raise ValueError(f"budget de grille dépassé ({MAX_CELLS} cellules)")
     if segs:
         data = np.asarray(segs, dtype=float)
         if (
@@ -331,7 +332,7 @@ def _controler(g, ilot_max, creux_max, pas, *, arcs_planaires=False):
     o = (xmin - marge, ymin - marge)
     forme = (int((xmax - o[0] + marge) / pas) + 1, int((ymax - o[1] + marge) / pas) + 1)
     if math.prod(forme) > MAX_CELLS:
-        raise ValueError("budget de grille dépassé (4 millions de cellules)")
+        raise ValueError(f"budget de grille dépassé ({MAX_CELLS} cellules au pas de {pas:g} mm)")
     if arcs_planaires:
         _, cellules_arcs = _preparer_arcs(a1 + a2, o, forme, pas)
         if cellules_arcs > MAX_ARC_CELL_TESTS:
@@ -360,14 +361,19 @@ def _controler(g, ilot_max, creux_max, pas, *, arcs_planaires=False):
                 )
     trous = ndimage.binary_fill_holes(m1) & ~m1
     lab, n = ndimage.label(trous)
-    for k in range(1, n + 1):
-        z = lab == k
-        ar = z.sum() * px
+    # Les composantes restent globales. Seul le calcul par creux est local,
+    # afin de ne pas rescanner toute la plaque pour chaque étiquette (#287).
+    for k, region in enumerate(ndimage.find_objects(lab, max_label=n), start=1):
+        z = lab[region] == k
+        cellules = z.sum()
+        ar = cellules * px
         if ar < 0.3 or ar > creux_max:
             continue
-        cov = float((z & m2).sum() / z.sum())
+        cov = float((z & m2[region]).sum() / cellules)
         if cov > 0.5:
             i, j = np.argwhere(z).mean(0)
+            i += region[0].start
+            j += region[1].start
             defauts.append(
                 {
                     "type": "creux d'une seule couche (recouvert dès la 2e)",
@@ -382,6 +388,11 @@ def _controler(g, ilot_max, creux_max, pas, *, arcs_planaires=False):
         "segments": [len(c1), len(c2)],
         "aire_1re_couche_mm2": round(float(m1.sum() * px)),
         "defauts": defauts,
+        "grille": {
+            "pas_mm": pas,
+            "forme_xy_cellules": list(forme),
+            "couverture": "complete",
+        },
     }
     if arcs_planaires:
         resultat["arcs_planaires"] = {
