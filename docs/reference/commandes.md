@@ -215,3 +215,22 @@ seulement en diagonale ou un budget dépassé donne NON VÉRIFIÉ. Une fente
 plus fine que le pas peut échapper au contrôle.
 Les options `--json` et `--coupe` enregistrent sous l’atelier privé le
 rapport et, si un vide est repéré, une coupe PNG au niveau du défaut.
+
+## Course de vissage
+
+`benchab controle vissage MALE.stl FEMELLE.stl --pas-mm 4 --sens droite --butee-mm 0
+--phase-deg 0 --course-mm 8 --increment-mm 0.25 --zone-male-mm 0 12
+--zone-femelle-mm 0 14` mesure les intersections aux poses échantillonnées.
+Les STL partagent l’origine XY et un axe Z de vissage. La pièce mâle part à
+`butee + course` et descend jusqu’à la butée. Vu depuis +Z, le sens droite
+correspond à une rotation horaire pendant cette descente. La phase indique
+la rotation à la butée dans le repère direct du modèle.
+
+Les zones Z sont déclarées dans le repère de chaque fichier. Le calcul
+d’intersection utilise les volumes coupés à ces hauteurs. Il rapporte aussi
+les essais avec une phase décalée de 180°, un sens inversé et une pose
+au-delà de la butée. Le jeu radial est échantillonné à la butée quand le
+mâle occupe l’axe et que l’alésage femelle est ouvert sur l’axe aux plans
+analysés. La limite de 0,01 mm³ s’applique aux intersections numériques.
+Le verdict couvre les poses échantillonnées et les zones déclarées.
+L’option `--json` enregistre un rapport privé avec les empreintes des STL.

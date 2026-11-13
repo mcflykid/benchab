@@ -8,6 +8,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Le contrôle de vissage mesure les intersections à des poses hélicoïdales déclarées et vérifie la phase, le sens et le dépassement de butée (#264).
+
 - Le contrôle des interfaces repère les fentes fines dans une zone déclarée et documente leur ouverture sur la grille de mesure (#265).
 
 - Le diagnostic des vecteurs machine indique les cardinalités en échec et permet de compléter les listes courtes compatibles avec le profil fabricant (#251).
