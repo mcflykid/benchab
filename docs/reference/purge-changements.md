@@ -18,8 +18,10 @@ Cette convention documentaire ne prouve pas la lecture par un binaire
 particulier. Un témoin à un seul outil avec neuf valeurs ne qualifie aucune
 paire, même si le tableau rappelle une matrice de trois outils.
 
-Le rapport distingue le comptage, les valeurs par paire et leur somme
-conditionnelle en mm³. Le statut PASS couvre seulement ce calcul conditionnel.
+Le rapport distingue le comptage, la valeur unitaire et le volume conditionnel
+de chaque paire en mm³ (nombre de changements × valeur de la case). Un total
+indéterminé ne masque pas les paires calculables. Le statut PASS couvre
+seulement ce calcul conditionnel.
 Le volume attribuable aux commandes de purge, le temps réel, la densité,
 la masse et les effets des commandes du firmware restent NON VÉRIFIÉS.
 Aucun plafond, multiplicateur ou réglage machine n’est ajouté.

@@ -23,8 +23,8 @@ def test_paires_directionnelles_ne_confondent_pas_la_premiere_selection_ni_une_r
     rapport = analyser_lignes(texte.splitlines(), _reglages())
     assert rapport["changements_explicites"] == 3
     assert rapport["paires"] == [
-        {"depart": 0, "arrivee": 1, "nombre": 2, "valeur_unitaire_matrice": 12.0},
-        {"depart": 1, "arrivee": 0, "nombre": 1, "valeur_unitaire_matrice": 31.0},
+        {"depart": 0, "arrivee": 1, "nombre": 2, "valeur_unitaire_matrice": 12.0, "somme_conditionnelle_mm3": 24.0},
+        {"depart": 1, "arrivee": 0, "nombre": 1, "valeur_unitaire_matrice": 31.0, "somme_conditionnelle_mm3": 31.0},
     ]
     assert rapport["somme_conditionnelle_matrice"] == 55.0
     assert rapport["purge_physique_mm3"] is None
@@ -43,10 +43,19 @@ def test_matrice_trois_par_trois_ne_qualifie_pas_un_temoin_mono():
 
 def test_selection_hors_slots_interrompt_la_couverture():
     """Un indice inconnu ne doit pas fabriquer une transition entre deux slots valides."""
-    rapport = analyser_lignes(["T0", "T255", "T1"], _reglages())
-    assert rapport["changements_explicites"] == 2
+    rapport = analyser_lignes(["T0", "T255", "T1", "T0"], _reglages())
+    assert rapport["changements_explicites"] == 3
     assert rapport["changements_hors_contexte"] == 2
+    assert [p["somme_conditionnelle_mm3"] for p in rapport["paires"]] == [None, 31.0, None]
     assert rapport["somme_conditionnelle_matrice"] is None
+
+
+def test_somme_de_paire_debordante_reste_indeterminee():
+    """Le rapport JSON ne contient ni infini ni volume global partiel."""
+    rapport = analyser_lignes(["T0", "T1", "T0", "T1"], _reglages([0, 1e308, 31, 0]))
+    assert [p["somme_conditionnelle_mm3"] for p in rapport["paires"]] == [None, 31.0]
+    assert rapport["somme_conditionnelle_matrice"] is None
+    json.dumps(rapport, allow_nan=False)
 
 
 def test_lecture_conditionnelle_ne_change_pas_le_type_historique():

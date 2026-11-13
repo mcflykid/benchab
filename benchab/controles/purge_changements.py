@@ -54,16 +54,21 @@ def _compter(lignes, matrice, *, tour=None):
         connus = nombre is not None and 0 <= depart < nombre and 0 <= arrivee < nombre
         if not connus:
             hors_contexte += compte
+        unitaire = valeurs[depart * nombre + arrivee] if connus and valeurs is not None else None
+        volume = compte * unitaire if unitaire is not None else None
         resultats.append({
             "depart": depart,
             "arrivee": arrivee,
             "nombre": compte,
-            "valeur_unitaire_matrice": valeurs[depart * nombre + arrivee] if connus and valeurs is not None else None,
+            "valeur_unitaire_matrice": unitaire,
+            # Une paire hors matrice n’efface pas les contributions calculables des autres (#72).
+            "somme_conditionnelle_mm3": volume if volume is not None and math.isfinite(volume) else None,
         })
     total = None
-    if valeurs is not None and not hors_contexte:
+    sommes = [r["somme_conditionnelle_mm3"] for r in resultats]
+    if valeurs is not None and all(somme is not None for somme in sommes):
         try:
-            somme = math.fsum(r["nombre"] * r["valeur_unitaire_matrice"] for r in resultats)
+            somme = math.fsum(sommes)
             if math.isfinite(somme):
                 total = somme
         except OverflowError:
