@@ -12,6 +12,8 @@ import json
 import math
 from pathlib import Path
 
+from benchab.qualite.ecritures import destination_neuve
+
 LIMITES = [
     "Estimation numérique de sections et charges déclarées ; sections non extraites automatiquement du STL.",
     "Pas de validation physique, fatigue, impact, fluage, flambement, assemblage ou concentration de contraintes.",
@@ -382,7 +384,10 @@ def cle_classement(variante):
 
 
 def main(argv=None, *, prive=None):
-    """Audite les déclarations mécaniques et écrit un rapport neuf ; renvoie un code de statut."""
+    """Audite les déclarations mécaniques (N, mm, MPa) et publie dans l’atelier choisi ou le temporaire.
+
+    Renvoie un code de statut sans modifier les modèles ou les réglages.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--projet", type=Path, required=True)
     p.add_argument("--json", type=Path, required=True)
@@ -393,19 +398,7 @@ def main(argv=None, *, prive=None):
         resultat = json.loads(a.materiaux.read_text(encoding="utf-8"))
         if not isinstance(resultat, dict) or not isinstance(resultat.get("materiaux"), dict):
             raise ValueError("Registre matière invalide.")
-        brut = a.json.expanduser()
-        if any(element.is_symlink() for element in (brut, *brut.parents)):
-            raise ValueError("Lien symbolique dans le chemin du rapport refusé.")
-        cible = brut.resolve()
-        racine_privee = (
-            Path(prive).expanduser().resolve(strict=True)
-            if prive is not None
-            else Path(__file__).resolve().parents[2] / "prive"
-        )
-        if not cible.is_relative_to(racine_privee) and not cible.is_relative_to(Path("/private/tmp")):
-            raise ValueError("Le rapport doit rester dans prive/ ou /private/tmp.")
-        if cible.exists() or cible.is_symlink():
-            raise FileExistsError("Le rapport existe déjà : aucun écrasement.")
+        cible = destination_neuve(a.json, prive=prive)
         cible.parent.mkdir(parents=True, exist_ok=True)
         r = auditer_projet(a.projet, a.tranche, resultat)
         with cible.open("x", encoding="utf-8") as flux:

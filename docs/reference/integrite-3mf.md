@@ -13,6 +13,11 @@ ne reconstitue pas l'historique d'un maillage importé. Le volume unique hérite
 de l'extrudeur déclaré sur son objet. Les objets multivolumes gardent leurs
 affectations distinctes.
 
+Chaque corps imprimé doit former un volume étanche et correctement orienté avant
+l’écriture canonique. Une soupe de triangles importée d’un STL doit d’abord
+être reconstruite avec des sommets partagés. En cas de refus, le diagnostic
+indique la plaque et le corps concernés.
+
 Les plaques nouvelles sont déverrouillées ; leur chemin de G-code désigne une
 sortie prévue, encore absente avant le tranchage. La correspondance de plaque
 du format Anycubic contient un `1` par couleur de filament déclarée. Ce champ

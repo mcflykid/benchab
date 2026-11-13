@@ -15,6 +15,7 @@ from pathlib import Path
 from benchab.fabrication import slicer_runtime
 from benchab.machine.configuration import charger
 from benchab.mesure.runtime import controler as controler_runtime
+from benchab.qualite.ecritures import destination_neuve
 
 PAQUETS_REQUIS = ("cadgen", "numpy", "scipy", "trimesh", "manifold3d", "build123d", "mapbox-earcut")
 ORDRE_STATUT = {"PASS": 0, "WARN": 1, "NON VÉRIFIÉ": 1, "FAIL": 2}
@@ -267,30 +268,15 @@ def collecter(prive: str | Path | None = None) -> dict:
     return rapport
 
 
-def _chemin_sortie(chemin: Path) -> Path:
-    brut = chemin.expanduser()
-    if any(element.is_symlink() for element in (brut, *brut.parents)):
-        raise ValueError("Lien symbolique dans le rapport d’environnement refusé.")
-    parent = brut.parent.resolve(strict=True)
-    cible = parent / brut.name
-    racine = Path(__file__).resolve().parents[2]
-    temporaire = Path("/private/tmp").resolve()
-    if not cible.is_relative_to(racine / "prive") and not cible.is_relative_to(temporaire):
-        raise ValueError("Le rapport doit rester dans prive/ ou /private/tmp.")
-    if cible.exists():
-        raise FileExistsError("Le rapport d’environnement existe déjà.")
-    return cible
-
-
 def main(argv: list[str] | None = None) -> int:
-    """Écrit un rapport neuf dans l’espace privé choisi ou `/private/tmp`."""
+    """Écrit un rapport neuf dans l’atelier choisi ou le temporaire système, sans écrasement."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prive", type=Path)
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         rapport = collecter(args.prive)
-        destination = _chemin_sortie(args.json)
+        destination = destination_neuve(args.json, prive=args.prive)
         with destination.open("x", encoding="utf-8") as flux:
             json.dump(rapport, flux, ensure_ascii=False, indent=2, allow_nan=False)
             flux.write("\n")
