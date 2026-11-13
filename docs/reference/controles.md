@@ -69,7 +69,10 @@ décollement, ergots, ponts, première couche, colonnes et géométrie sont publ
 dans un fichier neuf, sous l’atelier privé ou dans un temporaire système hors
 dépôt. Un fichier existant ou un lien est refusé. Les G-code conservés avec
 `supports-requis --garder` sont traités comme des preuves neuves, plaque par
-plaque. Une étude d’orientation publie ensemble son rapport et ses STL dans
+plaque. `supports-requis SOURCE RAPPORT.json --resume` affiche le seuil en
+grammes, les plaques au seuil d’alerte ou au-delà et le chemin du JSON
+complet ; le code de sortie et la répartition par hauteur sont conservés
+(#35). Une étude d’orientation publie ensemble son rapport et ses STL dans
 un dossier neuf. Le renouvellement explicite de la revue locale avec
 `--appliquer` conserve les décisions humaines et refuse une sortie liée au
 tranchage, à la déclaration d’envoi ou à l’autre sortie.

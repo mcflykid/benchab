@@ -24,6 +24,33 @@ def test_rapport_supports_identique_a_source_refuse_avant_tranchage(tmp_path, mo
     assert not appels
 
 
+def test_resume_supports_localise_warn_et_conserve_la_preuve(tmp_path, monkeypatch, capsys):
+    """Le résumé indique la plaque en cause et garde la répartition par hauteur dans le JSON."""
+    source = tmp_path / "support.3mf"
+    source.write_bytes(b"source")
+    rapport = {
+        "statut": "WARN", "seuil_g": 1.0, "plaques": [
+            {"plaque": 1, "statut": "PASS", "support_g": 0.4, "par_5mm_g": {"0": 0.4}},
+            {"plaque": 3, "statut": "WARN", "support_g": 1.2, "par_5mm_g": {"5": 1.2}},
+        ],
+    }
+    monkeypatch.setattr(supports_requis, "mesurer", lambda *_: rapport)
+    detail, court = tmp_path / "detail.json", tmp_path / "court.json"
+
+    assert supports_requis.main([str(source), str(detail)]) == 1
+    assert "plaque 3" in capsys.readouterr().out
+    assert supports_requis.main([str(source), str(court), "--resume"]) == 1
+    resume = json.loads(capsys.readouterr().out)
+    assert resume == {
+        "statut": "WARN", "plaques": 2, "seuil_g": 1.0,
+        "alertes": [{"plaque": 3, "support_g": 1.2}], "rapport": str(court),
+    }
+    assert json.loads(court.read_text()) == json.loads(detail.read_text()) == rapport
+    assert supports_requis.main([str(source), str(court), "--resume"]) == 2
+    assert capsys.readouterr().out == ""
+    assert source.read_bytes() == b"source"
+
+
 def test_reglages_protege_3mf_et_placement_et_ecrit_une_preuve_neuve(tmp_path):
     """Les deux entrées sont préservées et le format JSON du rapport reste exploitable."""
     source = tmp_path / "reglages.3mf"
