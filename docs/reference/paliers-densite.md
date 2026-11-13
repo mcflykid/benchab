@@ -90,3 +90,30 @@ une boule polyédrique conserve un cœur dont la différence avec le solide
 donne la bande cumulée. Le témoin rectangulaire vérifie les volumes à
 deux profondeurs avec des cotes analytiques. Le budget de calcul peut
 exiger un maillage plus simple.
+
+### Effet mesuré dans le G-code
+
+Sur un coupon de 32 × 24 × 12 mm, Anycubic Slicer Next 2.0.0.3 a
+tranché chaque cas à 20 %, à 60 %, puis une seconde fois à 60 %.
+Le SHA-256 du binaire correspond à celui du témoin plan ci-dessus.
+Le seul réglage différent entre les deux densités, avant et après
+tranchage, est `sparse_infill_density` du premier modificateur.
+Les maillages et placements ont été relus et comparés entre variantes.
+
+| Paliers et zone mesurée | Dépôt clairsemé à 20 % | À 60 % | Zone de contrôle, aux deux densités | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| Surface, 3 et 5 mm | 116,6 mm | 345,6 mm | 716,0 mm | PASS |
+| Fixation, 9 et 13 mm | 84,3 mm | 290,8 mm | 1 685,8 mm | PASS |
+| Fixation, 4 et 8 mm, petite boîte | 11,0 mm | 0,0 mm | 1 685,8 mm | FAIL |
+
+Chaque boîte cible est entièrement dans le premier palier. Chaque boîte de
+contrôle en est disjointe. L’axe du dépôt est mesuré dans ces boîtes.
+Les rejeux à 60 % reproduisent les mesures et ne diffèrent que par
+l’horodatage du G-code. Les 646 profils relus et l’archive de référence
+gardent leurs empreintes. Les avertissements du trancheur sur le plateau
+et la dureté de la buse sont identiques.
+
+Le troisième cas montre que l’effet est local. Une densité plus élevée
+peut modifier le tracé au point de supprimer le passage dans une boîte
+étroite. Le verdict vaut pour la boîte et la géométrie mesurées. La tenue
+physique et le calcul volumique des contraintes restent à établir (#83).
