@@ -24,6 +24,7 @@ SECRETS = {"--token", "--password", "--secret", "--api-key", "--access-token", "
 CONTROLES_DIRECTS = {
     "bilan-depots": "bilan_depots",
     "carte-coutures": "carte_coutures",
+    "surplombs-surface": "surplombs_surface",
     "reimpression": "reimpression",
     "decollement": "decollement",
     "plaques-interface": "plaques_interface",
@@ -53,7 +54,7 @@ CONTROLES_DIRECTS = {
     "plages-z": "couverture_plages_z",
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
-    "bilan-depots", "carte-coutures",
+    "bilan-depots", "carte-coutures", "surplombs-surface",
     "affleurement", "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
     "surplombs-connexes", "ponts-surplombs",
     "purge-changements",

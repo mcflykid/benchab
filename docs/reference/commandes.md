@@ -136,3 +136,17 @@ donne la largeur du plus petit arc contenant 95 % des départs, la
 concentration circulaire (de 0 à 1), les secteurs de 10° occupés et la part
 des départs qui montent ou descendent en Z. Une variation en Z est un indice
 de raccord en biseau. L’aperçu comporte un panneau par archive.
+
+## Surplomb par zone d’un maillage
+
+`benchab controle surplombs-surface CANDIDATE.stl --unite-mm --zones ZONES.json --sortie RAPPORT.json`
+mesure l’angle depuis la verticale à partir des normales tournées vers le
+bas. Déclarer les zones comme une liste d’objets JSON avec `nom`, `type`,
+`source` et `boite_mm` (coin minimal XYZ, coin maximal XYZ). Les zones
+sélectionnent les centroïdes des triangles. Une zone `paroi_fine` déclare
+`angle_max_deg`. Pour une `zone_pleine`, déclarer `hauteur_couche_mm` et
+`largeur_ligne_mm`. Le seuil est atteint quand le décalage par couche vaut
+une demi-largeur de ligne. Le rapport localise le maximum, donne le p99
+pondéré par aire et les aires par tranche d’angles. Un dépassement vaut WARN
+pour la zone. Une zone sans face descendante reste NON VÉRIFIÉE. Pour les
+îlots connexes et l’accès au plateau, utiliser `surplombs-connexes`.
