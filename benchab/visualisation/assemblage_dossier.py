@@ -3,6 +3,7 @@
 import argparse
 import json
 import math
+import re
 from pathlib import Path
 
 import numpy as np
@@ -31,10 +32,38 @@ def _matrice(valeur):
     return matrice
 
 
-def collecter(dossier=None, *, prive, unites):
+def _declaration_apercu(chemin, racine):
+    """Lit la liste des maillages autorisés et leur SHA-256, sans ouvrir de maillage."""
+    chemin = _prive(chemin, racine)
+    if not chemin.is_file() or chemin.stat().st_size > 64 * 1024:
+        raise ValueError("Déclaration d’aperçu régulière de 64 Kio au plus requise.")
+    contenu = chemin.read_bytes()
+    fiche = json.loads(contenu)
+    if not isinstance(fiche, dict) or set(fiche) != {"schema", "candidate", "pieces"} or fiche["schema"] != 1:
+        raise ValueError("Schéma de déclaration d’aperçu invalide.")
+    pieces = fiche["pieces"]
+    if not isinstance(pieces, list) or len(pieces) > 255:
+        raise ValueError("La déclaration accepte au plus 255 pièces d’assemblage.")
+    autorises = {}
+    for element in [fiche["candidate"], *pieces]:
+        if not isinstance(element, dict) or set(element) != {"fichier", "sha256"}:
+            raise ValueError("Chaque maillage doit déclarer son fichier et son SHA-256.")
+        fichier, sha = element["fichier"], element["sha256"]
+        if (not isinstance(fichier, str) or Path(fichier).name != fichier or not fichier.endswith(".stl")
+                or fichier in autorises or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha)):
+            raise ValueError("Nom STL unique et SHA-256 complet exigés.")
+        autorises[fichier] = sha
+    if chemin.read_bytes() != contenu:
+        raise ValueError("Déclaration d’aperçu modifiée pendant la lecture.")
+    return chemin, autorises
+
+
+def collecter(dossier=None, *, prive, unites, declaration=None):
     """Collecte des STL en mm déclarés et poses primary/extras ; retourne modèles, poses, instances et empreintes.
 
-    Sans dossier, cherche output/stl puis stl puis la racine privée courante. Ne modifie aucun modèle ni réglage.
+    Sans dossier, cherche output/stl puis stl puis la racine privée courante.
+    Une déclaration d’aperçu identifie chaque fichier par son SHA-256.
+    Ne modifie aucun modèle ni réglage.
     """
     if unites != "mm":
         raise ValueError("Déclarer explicitement les unités mm pour cette collecte de STL")
@@ -51,12 +80,20 @@ def collecter(dossier=None, *, prive, unites):
     if not fichiers or len(fichiers) > 256:
         raise ValueError("Un à 256 STL attendus dans le dossier")
     empreintes = {}
+    autorises = None
+    if declaration is not None:
+        fiche, autorises = _declaration_apercu(declaration, racine)
+        empreintes[fiche] = sha256_fichier(fiche)
+        if {p.name for p in fichiers} != set(autorises):
+            raise ValueError("Maillage non déclaré présent ou fichier déclaré absent du dossier.")
     modeles = {}
     for fichier in fichiers:
         fichier = _prive(fichier, racine)
         if not fichier.is_file() or fichier.stat().st_size > 256 * 1024**2:
             raise ValueError("STL absent ou supérieur à 256 Mio")
         empreintes[fichier] = sha256_fichier(fichier)
+        if autorises is not None and empreintes[fichier] != autorises[fichier.name]:
+            raise ValueError(f"Empreinte du maillage {fichier.name} différente de la déclaration.")
         modeles[fichier.stem] = charger_maillage(fichier)
     configurations = [dossier.parent / "assembly.json", point / "assembly.json"]
     configuration = next((p for p in configurations if p.is_file() and p.is_relative_to(racine)), None)
@@ -88,9 +125,14 @@ def collecter(dossier=None, *, prive, unites):
     return modeles, poses, instances, empreintes
 
 
-def creer(dossier, sortie, *, prive, unites, titre="Pièces et assemblage"):
-    """Produit un HTML privé neuf en mm et son bilan PASS ; grille/assemblage ne valident jamais un montage physique."""
-    modeles, poses, extras, empreintes = collecter(dossier, prive=prive, unites=unites)
+def creer(dossier, sortie, *, prive, unites, titre="Pièces et assemblage", declaration=None):
+    """Produit un HTML privé neuf en mm et son bilan PASS, à partir des sources déclarées si fournies.
+
+    Les empreintes des sources sont revérifiées avant publication. La géométrie
+    et les réglages restent intacts. La vue n’atteste pas le montage physique.
+    """
+    modeles, poses, extras, empreintes = collecter(dossier, prive=prive, unites=unites, declaration=declaration)
+    sources = {p.stem: f"{p.name} · SHA-256 {sha}" for p, sha in empreintes.items() if p.suffix == ".stl"}
     vue = Visionneuse(titre, note="STL en mm déclarés ; inspection visuelle, pas validation physique.")
     pas = max(float(np.max(m.extents[:2])) for m in modeles.values()) + 20
     colonnes = math.ceil(math.sqrt(len(modeles)))
@@ -102,11 +144,12 @@ def creer(dossier, sortie, *, prive, unites, titre="Pièces et assemblage"):
             (index % colonnes) * pas - centre[0], (index // colonnes) * pas - centre[1], -mesh.bounds[0, 2]
         )
         vue.modele(identifiants[nom], mesh)
-        vue.piece(nom, identifiants[nom], matrice=matrice)
+        vue.piece(nom, identifiants[nom], matrice=matrice, info=sources[nom] if declaration is not None else "")
         grille[nom], assemblage[nom] = matrice, poses.get(nom, np.eye(4))
     for extra in extras:
         vue.piece(
-            extra["nom"], identifiants[extra["modele"]], matrice=extra["matrice"], groupe="Instances d'assemblage"
+            extra["nom"], identifiants[extra["modele"]], matrice=extra["matrice"], groupe="Instances d'assemblage",
+            info=sources[extra["modele"]] if declaration is not None else "",
         )
         grille[extra["nom"]], assemblage[extra["nom"]] = None, extra["matrice"]
     if poses or extras:
@@ -139,8 +182,11 @@ def main(argv=None, *, prive=None):
     parser.add_argument("dossier", type=Path, nargs="?")
     parser.add_argument("--sortie", type=Path, required=True)
     parser.add_argument("--unites", choices=["mm"], required=True)
+    parser.add_argument("--declaration", type=Path, help="Sources et empreintes de la candidate et des pièces")
     args = parser.parse_args(argv)
-    chemin, rapport = creer(args.dossier, args.sortie, prive=atelier_prive(prive), unites=args.unites)
+    chemin, rapport = creer(
+        args.dossier, args.sortie, prive=atelier_prive(prive), unites=args.unites, declaration=args.declaration
+    )
     print(json.dumps({"fichier": str(chemin), **rapport}, ensure_ascii=False, indent=2))
     return 0
 
