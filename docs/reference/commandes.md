@@ -150,3 +150,15 @@ une demi-largeur de ligne. Le rapport localise le maximum, donne le p99
 pondéré par aire et les aires par tranche d’angles. Un dépassement vaut WARN
 pour la zone. Une zone sans face descendante reste NON VÉRIFIÉE. Pour les
 îlots connexes et l’accès au plateau, utiliser `surplombs-connexes`.
+
+## Estimer le restant RFID d’une bobine
+
+`benchab donnees releve-ace RELEVE.json --requis-g 230 --marge-g 25 --sortie ESTIMATION.json`
+enregistre une estimation privée à partir d’un relevé daté. Le JSON déclare
+`position_ace`, `matiere`, `restant_pct` de 0 à 100, `date` ISO avec fuseau
+et `source` (`lecture_cloud` ou `observation_utilisateur`). Renseigner
+`masse_nominale_g` pour convertir le pourcentage en grammes. La masse requise
+et la marge minimale sont facultatives et se déclarent ensemble. Une marge
+égale ou inférieure au seuil donne WARN. Le rapport conserve le relevé
+d’origine et marque l’incertitude NON VÉRIFIÉE. La pesée et le stock SQLite
+suivent le parcours distinct d’imputation.
