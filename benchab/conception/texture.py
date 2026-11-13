@@ -7,6 +7,7 @@ physique n'est déduite de la variante. L'original n'est jamais modifié.
 import argparse
 import json
 import math
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -14,8 +15,7 @@ import trimesh
 from PIL import Image
 
 from benchab.fabrication import remplissage_localise as RL
-
-R = Path(__file__).resolve().parents[2]
+from benchab.qualite.ecritures import destination_neuve
 
 LIGNE = 0.42  # largeur de ligne de la buse 0,4 (mm)
 MOTIFS = ("moletage", "cannelures", "grain", "damier")
@@ -266,17 +266,13 @@ def appliquer(piece, texture, contraintes=None):
 
 
 def main(argv=None):
-    """Génère un témoin de texture dans un nouveau dossier privé."""
+    """Génère un témoin de texture (mm) dans l’atelier choisi ou le temporaire, sans écrasement."""
     parser = argparse.ArgumentParser(description=__doc__)
     commandes = parser.add_subparsers(dest="commande", required=True)
     essai = commandes.add_parser("essai")
-    essai.add_argument("--sortie", type=Path, default=Path("/private/tmp/texture-essai"))
+    essai.add_argument("--sortie", type=Path, default=Path(tempfile.gettempdir()) / "texture-essai")
     args = parser.parse_args(argv)
-    out = args.sortie.expanduser().resolve()
-    if not out.is_relative_to(R / "prive") and not out.is_relative_to(Path("/private/tmp")):
-        raise ValueError("Les sorties dépendantes d'un projet doivent rester dans prive/ ou /private/tmp")
-    if out.exists() or out.is_symlink():
-        raise FileExistsError(f"{out} existe déjà : jamais d’écrasement")
+    out = destination_neuve(args.sortie)
     out.mkdir(parents=True)
     cube = trimesh.creation.box(extents=(30, 30, 30))
     cube.apply_translation((15, 15, 15))

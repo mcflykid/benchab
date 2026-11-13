@@ -2,6 +2,12 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.31.1
+
+- L’écriture d’un 3MF canonique refuse un corps imprimé ouvert ou mal orienté et le nomme (#250).
+- Les producteurs concernés respectent l’atelier sélectionné et le temporaire natif (#257).
+- Un test garantit le rapport U25 par plaque lorsque l’identifiant du seul filament est invalide (#262).
+
 ## 1.31.0
 
 - L’import 3MF restitue les topologies avant et après soudure et protège les liaisons entre corps lors du placement

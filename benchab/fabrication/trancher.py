@@ -33,6 +33,7 @@ from benchab.fabrication.tranchage_copies import restaurer_noms as restaurer_nom
 from benchab.fabrication.tranchage_copies import sha256 as sha256
 from benchab.gcode.lecture import plaques_gcode_archive
 from benchab.machine.configuration import charger
+from benchab.qualite.ecritures import sortie_privee
 
 ECHANGE = Path(f"/private/tmp/benchab-slicer-{os.getuid()}")
 CAUSES = (
@@ -559,16 +560,12 @@ def trancher(demande, *, prive=None, destination_finale=None):
     """Lance sous verrou et peut publier une sortie privée sans écrasement.
 
     `demande` contient la source et la cible temporaire; `prive` est la racine des preuves.
-    `destination_finale` est facultative et doit rester dans l’espace privé ou `/private/tmp`.
+    `destination_finale` est facultative et doit rester dans l’atelier choisi ou le temporaire système.
     Renvoie le rapport avec code de processus/statuts, sans lancer l’imprimante.
     """
+    destination = sortie_privee(destination_finale, prive=prive) if destination_finale is not None else None
     rapports = _prive(prive) / "mesures/tranchages"
     rapports.mkdir(parents=True, exist_ok=True)
-    destination = Path(destination_finale).resolve() if destination_finale is not None else None
-    if destination is not None and not (
-        destination.is_relative_to(_prive(prive)) or destination.is_relative_to(Path("/private/tmp"))
-    ):
-        raise ValueError("La sortie finale doit rester dans l’espace privé ou temporaire.")
     with verrou_slicer():
         source = demande.get("source")
         empreinte_source = sha256(chemin_temporaire(source)) if source is not None else None
@@ -613,19 +610,19 @@ def trancher_fichier(
     source, dossier_sortie, nom=None, *, usage="impression", prive=None, timeout_s=1800, journal=None, attendu=None,
     identifiants=None,
 ):
-    """Prépare un 3MF privé (mm) avec catalogue ; sortie/rapport, sans toucher aux profils installés."""
+    """Prépare un 3MF (mm) avec catalogue et publie dans l’atelier choisi ou le temporaire système.
+
+    Retourne la sortie et le rapport, sans modifier les profils installés.
+    """
     source = Path(source).resolve(strict=True)
-    sortie = Path(dossier_sortie).resolve() / (nom or f"{source.stem}.gcode.3mf")
+    sortie = Path(dossier_sortie) / (nom or f"{source.stem}.gcode.3mf")
     if Path(nom or sortie.name).name != (nom or sortie.name):
         raise ValueError("Nom simple exigé pour le 3MF de sortie")
-    if not sortie.is_relative_to(_prive(prive)) and not sortie.is_relative_to(Path("/private/tmp")):
-        raise ValueError("Le tranchage écrit seulement dans le dossier privé ou temporaire")
+    sortie = sortie_privee(sortie, prive=prive)
     if sortie.exists() or sortie == source:
         raise ValueError("Destination existante : aucun fichier n’est écrasé")
     if journal is not None:
-        journal = Path(journal).resolve()
-        if not journal.is_relative_to(_prive(prive)) and not journal.is_relative_to(Path("/private/tmp")):
-            raise ValueError("Le journal écrit seulement dans le dossier privé ou temporaire")
+        journal = sortie_privee(journal, prive=prive)
         if journal.exists() or journal in {source, sortie}:
             raise ValueError("Journal existant ou confondu avec un 3MF : écriture refusée")
     with tempfile.TemporaryDirectory(prefix="benchab-preparation-", dir="/private/tmp") as dossier:
@@ -769,12 +766,7 @@ def client(arguments):
 
 def _fichier_visualisable(source, prive):
     """Valide une archive tranchée privée : plaques 1–30, numéros uniques et CRC complet."""
-    from benchab.qualite.ecritures import _sans_lien
-
-    source = _sans_lien(Path(source).absolute())
-    racines = (_prive(prive), Path("/private/tmp"))
-    if not any(source.is_relative_to(r) for r in racines):
-        raise ValueError("Copie privée ou temporaire exigée pour la visualisation")
+    source = sortie_privee(source, prive=prive)
     with Archive3MF(source) as archive:
         noms = archive.noms()
         plaques = plaques_gcode_archive(archive)
