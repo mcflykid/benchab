@@ -7,6 +7,7 @@ from pathlib import Path
 from benchab import reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.fabrication import slicer_runtime
+from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
 from benchab.qualite.statuts import code_statut
 
 
@@ -35,17 +36,33 @@ def controler(source, identite, *, inclure_contextuelles=False):
     }
 
 
-def main(argv=None):
-    """Lit un 3MF et le binaire déclaré sans les lancer ; codes 0 PASS, 2 sinon."""
+def main(argv=None, *, prive=None):
+    """Lit le 3MF et l’identité du binaire sans lancer le moteur.
+
+    Codes 0 PASS, 2 FAIL ou NON VÉRIFIÉ. Le résumé exige un rapport privé
+    neuf et donne le premier constat pour un verdict incomplet.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source", type=Path)
     p.add_argument("--contextuelles", action="store_true", help="Vérifie aussi les conditions des observations")
+    p.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    p.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     a = p.parse_args(argv)
     try:
+        sortie = destination_rapport_optionnel(a.sortie, resume=a.resume, nom="des énumérations", prive=prive)
         rapport = controler(
             a.source, slicer_runtime.informations(empreinte=True), inclure_contextuelles=a.contextuelles,
         )
+        if sortie is not None:
+            ecrire_json_neuf(sortie, rapport, entrees=[a.source])
     except (OSError, ValueError) as exc:
         p.exit(2, f"ERREUR : {exc}\n")
-    print(json.dumps(rapport, ensure_ascii=False, indent=2))
+    affiche = rapport
+    if a.resume:
+        statut = rapport["statut"]
+        constat = next((ligne for ligne in rapport["controles"] if ligne["statut"] == statut), None)
+        affiche = {"statut": statut, "rapport": str(sortie), "nombre_controles": len(rapport["controles"])}
+        if statut != "PASS":
+            affiche["constat"] = constat if constat is not None else "Aucune valeur énumérée qualifiée."
+    print(json.dumps(affiche, ensure_ascii=False, indent=2, allow_nan=False))
     return code_statut(rapport["statut"])

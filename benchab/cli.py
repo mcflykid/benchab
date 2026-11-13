@@ -59,7 +59,7 @@ CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
     "bilan-depots", "carte-coutures", "surplombs-surface",
     "affleurement", "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
     "surplombs-connexes", "ponts-surplombs",
-    "purge-changements", "fentes-interface", "vissage",
+    "purge-changements", "fentes-interface", "vissage", "enumerations-asn",
 })
 
 # Les espaces homogènes gardent leur préfixe, leurs alias et leurs options en un seul endroit.
