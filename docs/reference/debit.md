@@ -49,3 +49,15 @@ type de trajet, puis donne la longueur cumulée au-dessus du plafond embarqué
 et la longueur totale déposée. Des coordonnées XY et une extrusion E arrondies
 peuvent amplifier un pic sur un segment court. Les deux longueurs permettent de
 distinguer ce cas d’un dépassement réparti sur une part étendue du parcours.
+
+### Noms et plaques en mode vase
+
+U25 rapproche les étiquettes avec suffixe `_id_N_copy_N` des noms déclarés
+selon la [normalisation du moteur Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/GCode.cpp#L3491-L3511).
+Les accents sont conservés. Une collision entre noms normalisés rend
+l’attribution NON VÉRIFIÉE.
+
+Sans étiquette d’objet, une plaque déclarée en mode vase avec un seul objet
+attendu est mesurée à partir des dépôts de la pièce, hors purge et bordure.
+Sans cette identité unique, la couverture demeure NON VÉRIFIÉE. Le contrôle
+de finition de la spirale est suivi dans le ticket #246.

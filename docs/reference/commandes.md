@@ -108,9 +108,9 @@ observer.
 ## Premier diagnostic Cloud Anycubic
 
 Une copie de configuration explicitement fournie se vérifie avec
-`benchab machine cloud-lecture -- --inspecter-session --copie-session CHEMIN`.
+`benchab machine cloud-lecture --inspecter-session --copie-session CHEMIN`.
 Pour le compte autonome déjà configuré, utiliser
-`benchab machine cloud-lecture -- --cloud --compte` pour lister les machines,
+`benchab machine cloud-lecture --cloud --compte` pour lister les machines,
 puis ajouter `--notre-machine` pour une unique Kobra S1 ou `--machine ID`
 pour sélectionner une machine précise. La lecture rapporte les données ACE
 disponibles. Les raisons publiables indiquent notamment une copie manquante,

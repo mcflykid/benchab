@@ -28,6 +28,12 @@ def positive(value):
     return debit.positif(value)
 
 
+def _nom_moteur(nom):
+    """Normalise un nom sans unité comme le moteur Anycubic, en conservant les accents."""
+    nom = re.sub(r"""[ !@#$%^&*()=+\[\]{};:",']+""", "_", nom)
+    return nom.removeprefix("_").removesuffix("_")
+
+
 def analyser(path, overrides=None, attendus=None):
     """Contrôle U25 par objet et outil, depuis le membre exact de chaque plaque.
 
@@ -116,25 +122,56 @@ def analyser(path, overrides=None, attendus=None):
             if not expected or any(not n for n in expected) or len(set(expected)) != len(expected):
                 errors.append("couverture des objets attendus absente ou ambiguë")
 
+            noms_moteur = collections.defaultdict(list)
+            for nom in expected:
+                if nom:
+                    noms_moteur[_nom_moteur(nom)].append(nom)
+            # Le mode vase d’ASN peut omettre les balises d’objet (docs/reference/debit.md).
+            vase_unique = (
+                "spiral_mode" in st and schema_reglages.valeur_brute(st, "spiral_mode") == "1"
+                and len(expected) == 1 and bool(expected[0]) and not definitions
+                and not re.search(r"^EXCLUDE_OBJECT_START\b", g, re.M)
+            )
+            if vase_unique:
+                source += " (objet unique, mode vase par plaque)"
+            ambigu = False
+
             def identity(name):
+                base = re.sub(r"_id_\d+_copy_\d+$", "", name)
+                if base == name and name in expected:
+                    return name
+                candidats = noms_moteur.get(base, [])
+                if len(candidats) > 1:
+                    return None
                 if name in expected:
                     return name
-                base = re.sub(r"_id_\d+_copy_\d+$", "", name)
-                return base if base in expected else name
+                return candidats[0] if candidats else name
 
             for line in g.splitlines():
                 m = it.feed_line(line)
                 if not m or m["deposited"] <= 0 or m["deposited_length"] <= 0:
                     continue
+                nom = m["object"]
+                if nom is not None:
+                    nom = identity(nom)
+                    if nom is None:
+                        ambigu = True
+                        continue
+                elif vase_unique and m["type"] in {
+                    "Outer wall", "Outer perimeter", "Inner wall", "Internal perimeter",
+                    "Bottom surface", "Solid infill", "Internal solid infill", "Gap infill", "Gap fill",
+                }:
+                    # Les purges et les bordures ne décrivent pas une extrusion de l’objet.
+                    nom = expected[0]
                 tool = str(m["tool"] + 1) if m["tool"] is not None else None
                 if tool not in fil:
                     errors.append("outil extrudant absent ou contradictoire avec slice_info : " + str(tool))
-                if m["object"]:
+                if nom:
                     diametre = schema_reglages.valeur_indice(
                         st, "filament_diameter", int(tool) - 1, lecteur="index_exact"
                     ) if tool is not None else None
                     q = debit.mesurer(m, diametre)["debit_mm3_s"]
-                    nom, longueur = identity(m["object"]), m["deposited_length"]
+                    longueur = m["deposited_length"]
                     samples[nom].append((q, longueur, tool))
                     cle = (nom, tool)
                     if debit.verdict(q, caps_embarques.get(tool)) == "FAIL":
@@ -147,7 +184,9 @@ def analyser(path, overrides=None, attendus=None):
                             "z_mm": m["end"][2], "type_trajet": m["type"], "longueur_mm": longueur,
                             "extrusion_mm": m["deposited"], "avance_mm_min": m["feed"],
                         }
-            missing = set(expected) - samples.keys()
+            if ambigu:
+                errors.append("identité moteur ambiguë")
+            missing = {nom for nom in expected if nom} - samples.keys()
             extra = samples.keys() - set(expected)
             if missing:
                 errors.append("objets sans extrusion exploitable : " + ", ".join(sorted(missing)))
@@ -213,11 +252,11 @@ def analyser(path, overrides=None, attendus=None):
                     "plafond": cap,
                     "objets": objects,
                     "erreurs": errors,
-                    "mesure_incomplete": bool(missing) or not samples or bool(it.errors),
+                    "mesure_incomplete": ambigu or bool(missing) or not samples or bool(it.errors),
                     "incoherence_etablie": any(
                         erreur not in it.errors
                         and not erreur.startswith("objets sans extrusion exploitable")
-                        and erreur != "aucun dépôt par objet analysable"
+                        and erreur not in {"aucun dépôt par objet analysable", "identité moteur ambiguë"}
                         and erreur != "plafond absent ou invalide pour les filaments déclarés"
                         for erreur in errors
                     ),
