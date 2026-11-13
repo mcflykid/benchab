@@ -5,6 +5,8 @@ import hashlib
 import io
 import json
 import math
+import os
+import stat
 from pathlib import Path
 
 import manifold3d as mf
@@ -28,14 +30,27 @@ def _lire_stl(chemin, sha_attendu=None):
     chemin = sans_lien(chemin)
     if chemin.suffix.lower() != ".stl":
         raise ValueError("Un fichier STL en mm est requis.")
-    with chemin.open("rb") as flux:
+    fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as flux:
+        avant = os.fstat(flux.fileno())
+        if not stat.S_ISREG(avant.st_mode):
+            raise ValueError("Un fichier STL régulier est requis.")
         contenu = flux.read(_MAX_STL + 1)
+        apres = os.fstat(flux.fileno())
+        if (avant.st_size, avant.st_mtime_ns, avant.st_ctime_ns) != (
+            apres.st_size, apres.st_mtime_ns, apres.st_ctime_ns
+        ):
+            raise ValueError("STL modifié pendant la lecture.")
     if len(contenu) > _MAX_STL:
         raise ValueError("STL hors budget. Isoler le col et déclarer l’empreinte du fichier isolé.")
     sha = hashlib.sha256(contenu).hexdigest()
     if sha_attendu is not None and sha_attendu != sha:
         raise ValueError("L’empreinte SHA-256 de la source diffère.")
-    return solide(trimesh.load_mesh(io.BytesIO(contenu), file_type="stl")), sha
+    try:
+        maillage = trimesh.load_mesh(io.BytesIO(contenu), file_type="stl")
+    except (TypeError, IndexError) as erreur:
+        raise ValueError("Géométrie STL illisible.") from erreur
+    return solide(maillage), sha
 
 
 def _profil(corps, hauteurs):
