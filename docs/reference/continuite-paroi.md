@@ -132,3 +132,14 @@ cercle complet à extrémités égales ne peut donc pas être ignoré comme
 un déplacement nul par le contrôle de disposition ou de colonnes.
 La précision des arcs natifs arrondis et le firmware restent suivis
 dans #134 ; U25 conserve le contrat de rayon exact.
+
+## Diagnostic de finition d’une paroi en vase
+
+`benchab controle finition-parois analyser TRANCHE.3mf` reconnaît le mode
+vase déclaré par le 3MF ou le G-code. Il compte les morceaux de dépôt
+contigus à Z croissant, relève la largeur documentée et compare le nombre de
+couches de fond déclarées aux couches portant un dépôt de fond observé.
+La largeur absente, une lecture incomplète ou l’absence de spirale donnent
+NON VÉRIFIÉ. Plusieurs morceaux ou un écart dans le fond donnent WARN si
+la lecture est complète. L’absence de couture visible reste NON VÉRIFIÉE.
+La proposition de vitesse s’applique aux parois classiques.

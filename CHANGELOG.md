@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Le diagnostic de finition décrit la continuité, le fond et la largeur observée en mode vase (#246).
+
 - Un aperçu de candidate identifie les maillages déclarés et refuse les fichiers étrangers (#260).
 
 - Mesure du surplomb par zone selon le procédé déclaré (#266).

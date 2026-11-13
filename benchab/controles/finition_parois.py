@@ -14,6 +14,7 @@ import sys
 import zipfile
 from pathlib import Path
 
+from benchab import reglages
 from benchab.controles.gcode_interpreter import WORDS, Interpreter
 
 VERSION = "1.0"
@@ -28,6 +29,7 @@ DEFAULTS = dict(
 )
 MAX_BYTES = 64 * 1024 * 1024
 OUTER = {"Outer wall", "Outer perimeter"}
+_VASE = re.compile(r"^\s*;\s*(spiral_mode|spiral_vase)\s*=\s*1\s*$", re.I | re.M)
 # Politique conservatrice du diagnostic : grammaire modale déléguée à Interpreter.
 KNOWN = {
     "G0",
@@ -519,6 +521,62 @@ def _proposer_serie(serie, cfg, calculation_cfg, report, layer_costs, after):
     return after
 
 
+def _fond_declare(config):
+    """Lit le nombre entier de couches de fond du réglage typé, sans défaut implicite."""
+    if "bottom_shell_layers" not in config:
+        return None
+    valeur = reglages.valeur_brute(config, "bottom_shell_layers")
+    return int(valeur) if isinstance(valeur, str) and re.fullmatch(r"[0-9]{1,6}", valeur) else None
+
+
+def _analyser_vase(texte, config, limites_filaments):
+    """Mesure en mm une spirale à Z variable, avec largeur et couches de fond documentées."""
+    lecteur = Interpreter(error_limit=50)
+    derniere = None
+    segments = morceaux = compte_largeurs = 0
+    largeurs = None
+    fonds = set()
+    flux = {}
+    for ligne in texte.splitlines():
+        if ligne.strip().startswith(";LAYER_CHANGE"):
+            # Une largeur oubliée n'est pas déduite de la couche précédente.
+            lecteur.metadata.pop("WIDTH", None)
+        mouvement = lecteur.feed_line(ligne)
+        if not mouvement or mouvement["deposited_length"] <= 0:
+            if mouvement and mouvement["length"] > 0:
+                derniere = None
+            continue
+        _mesurer_debit(mouvement, limites_filaments, flux, mouvement["feed"] / 60)
+        if mouvement["type"] in {"Bottom surface", "Solid infill", "Internal solid infill"} and segments == 0:
+            if mouvement["layer"] >= 0:
+                fonds.add(mouvement["layer"])
+        debut = mouvement["deposition_start"]
+        fin = mouvement["spatial_end"]
+        if mouvement["type"] not in OUTER or debut is None or fin[2] <= debut[2] + 1e-9:
+            derniere = None
+            continue
+        segments += 1
+        if derniere is None or math.dist(derniere, debut) > 0.02:
+            morceaux += 1
+        derniere = fin
+        largeur = mouvement["metadata"].get("WIDTH")
+        if largeur is not None and largeur > 0:
+            compte_largeurs += 1
+            largeurs = (largeur, largeur) if largeurs is None else (
+                min(largeurs[0], largeur), max(largeurs[1], largeur)
+            )
+    couches_fond = _fond_declare(config)
+    couverture = not lecteur.errors and segments > 0 and segments == compte_largeurs and couches_fond is not None
+    statut = "NON VÉRIFIÉ" if not couverture else "WARN" if morceaux > 1 or len(fonds) != couches_fond else "PASS"
+    return {
+        "statut": statut, "segments_deposes": segments, "morceaux_contigus": morceaux,
+        "largeur_ligne_mm": {"min": largeurs[0], "max": largeurs[1]} if largeurs else None,
+        "segments_avec_largeur": compte_largeurs,
+        "couches_fond_declarees": couches_fond, "couches_fond_observees": len(fonds),
+        "absence_couture": "NON VÉRIFIÉ", "erreurs": lecteur.errors,
+    }, flux
+
+
 def _analyser_plaque(member, text, cfg, limites_filaments, report):
     """Ajoute les résultats d’une plaque au rapport, en conservant leur ordre historique."""
     etat = _scanner_plaque(member, text, cfg, limites_filaments)
@@ -563,7 +621,7 @@ def _analyser_plaque(member, text, cfg, limites_filaments, report):
 
 def _finaliser_rapport(report):
     """Déduit les statuts globaux sans effacer les sous-statuts ni les limites."""
-    if not report["series"]:
+    if not report["series"] and not any("vase" in p for p in report["plaques"]):
         report["couverture"]["erreurs"].append("aucune paroi extérieure identifiable")
     report["couverture"]["erreurs"] = list(dict.fromkeys(report["couverture"]["erreurs"]))
     report["couverture"]["statut"] = "NON VÉRIFIÉ" if report["couverture"]["erreurs"] else "PASS"
@@ -597,6 +655,7 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
 
     Renvoie PASS, WARN, FAIL ou NON VÉRIFIÉ. Les arcs ne prouvent pas la
     couverture des parois, mais leur durée et leur débit sont analytiques.
+    Pour une plaque vase, rapporte la continuité nominale sans proposer de vitesses.
     Ne transforme ni archive, ni réglage, ni trajectoire ; pas de validation physique.
     """
     cfg = _options(options)
@@ -611,8 +670,25 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
         raise ValueError("budget diagnostic dépassé : 200000 lignes")
     report = _rapport_initial(path, raw, cfg, machine)
     report["controle_capacites"] = _controle_capacites(path, archive, machine, limites_filaments)
+    config = {}
+    if archive:
+        with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            if "Metadata/project_settings.config" in z.namelist():
+                config = reglages.decoder(z.read("Metadata/project_settings.config"))
+    vase = "spiral_mode" in config and reglages.valeur_brute(config, "spiral_mode") == "1"
     for member, text in parts:
-        _analyser_plaque(member, text, cfg, limites_filaments, report)
+        if vase or _VASE.search(text):
+            diagnostic, flux = _analyser_vase(text, config, limites_filaments)
+            report["plaques"].append({"membre": member, "sha256": _sha(text.encode()), "vase": diagnostic,
+                                     "debit_strict_brut_par_outil": flux, "temps_couches_nominaux": []})
+            if diagnostic["statut"] == "NON VÉRIFIÉ":
+                report["couverture"]["erreurs"].append(member + " : largeur, fond ou continuité vase incomplets")
+                report["couverture"]["erreurs"].extend(diagnostic["erreurs"])
+            elif diagnostic["statut"] == "WARN":
+                report["proposition"]["converge"] = False
+                report["couverture"]["avertissements"].append(member + " : écart sur la spirale ou le fond")
+        else:
+            _analyser_plaque(member, text, cfg, limites_filaments, report)
     if _octets(path) != raw:
         raise ValueError("source changée pendant analyse")
     return _finaliser_rapport(report)
@@ -698,11 +774,16 @@ def rendre_html(rapport, sortie):
         "<h3>"
         + html.escape(p["membre"])
         + "</h3><p>Segments exclus : "
-        + html.escape(json.dumps(p["zones_exclues_compteurs"], ensure_ascii=False))
+        + html.escape(json.dumps(p.get("zones_exclues_compteurs", {}), ensure_ascii=False))
         + "</p><p>Refroidissement : NON VÉRIFIÉ ; ventilateurs commandés finaux : "
-        + html.escape(json.dumps(p["ventilateurs_commandes_fin"]))
+        + html.escape(json.dumps(p.get("ventilateurs_commandes_fin", {})))
         + "</p>"
         for p in rapport["plaques"]
+    )
+    exclusions += "".join(
+        "<h3>Mode vase · " + html.escape(p["membre"]) + "</h3><p>"
+        + html.escape(json.dumps(p["vase"], ensure_ascii=False)) + "</p>"
+        for p in rapport["plaques"] if "vase" in p
     )
     diagnostics = list(rapport["raisons_refus_transformation"]) + list(rapport.get("couverture", {}).get("erreurs", []))
     cap = rapport.get("controle_capacites", {})
