@@ -8,6 +8,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Le diagnostic des vecteurs machine indique les cardinalités en échec et permet de compléter les listes courtes compatibles avec le profil fabricant (#251).
+
 - Le contrôle des premières couches couvre une plaque de 250 mm au pas de 0,10 mm et rapporte le pas utilisé (#287).
 
 - Le lecteur reconnaît le facteur de vitesse unitaire du G-code multi-matière et le contrôle 3MF affiche les champs protégés qui bloquent le tranchage (suite de #290).

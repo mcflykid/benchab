@@ -463,13 +463,21 @@ def encoder(donnees, **options):
         for cle, valeur in donnees.items()
         if definition(cle, valeur=valeur)["type"].startswith("liste_")
     }
-    if any(
-        cardinalites[ligne["cle"]] is not None
-        and ligne["longueur_observee"] != cardinalites[ligne["cle"]]
-        for ligne in controles
-        if ligne["cle"] in cardinalites
-    ) or any(ligne["statut"] == "FAIL" for ligne in controles):
-        raise ValueError("Réglages de cardinalité invalide : fichier non livré")
+    erreurs = []
+    vecteur_machine = False
+    for ligne in controles:
+        cle = ligne["cle"]
+        attendu = cardinalites.get(cle)
+        observe = ligne["longueur_observee"]
+        if attendu is not None and observe != attendu:
+            erreurs.append(f"{cle} ({observe if observe is not None else 'non vectoriel'}/{attendu})")
+            vecteur_machine |= ligne["type"] == "liste_mode_machine"
+        elif ligne["statut"] == "FAIL":
+            erreurs.append(cle)
+    if erreurs:
+        # Les clés et cardinalités suffisent à retrouver le défaut sans exposer les valeurs du profil.
+        aide = ". Examiner avec benchab fabrication vecteurs-machine." if vecteur_machine else ""
+        raise ValueError("Réglages de cardinalité invalide : fichier non livré : " + ", ".join(sorted(erreurs)) + aide)
     return json.dumps(dict(donnees), **options)
 
 
@@ -588,3 +596,35 @@ def valeur_mode(donnees, cle, mode="standard"):
         return None
     indice = {"standard": 0, "silencieux": 1, "sport": 2}.get(mode)
     return None if indice is None else valeur_indice(donnees, cle, indice, lecteur="get_at")
+
+
+def plan_vecteurs_machine(donnees):
+    """Renvoie les écarts machine et les compléments PASS en unités natives, sans écrire.
+
+    Un complément doit préserver les replis sur le premier et le dernier
+    éléments et correspondre au profil fabricant. Les autres écarts restent
+    NON VÉRIFIÉS.
+    """
+    nom = donnees.get("printer_settings_id")
+    fabricant = profil_machine(nom) if isinstance(nom, str) else {}
+    plan = []
+    for cle, avant in sorted(donnees.items()):
+        if definition(cle)["type"] != "liste_mode_machine":
+            continue
+        reference = fabricant.get(cle)
+        if isinstance(avant, list) and isinstance(reference, list) and len(avant) == len(reference):
+            continue
+        # Les deux replis documentés doivent donner la même valeur sur les indices ajoutés.
+        apres = None
+        if isinstance(avant, list) and isinstance(reference, list) and 0 < len(avant) < len(reference):
+            candidate = [
+                valeur_brute_indice(donnees, cle, i, lecteur="get_at") for i in range(len(reference))
+            ]
+            if avant[-1] == avant[0] and candidate == reference:
+                apres = candidate
+        plan.append({
+            "cle": cle, "avant": copy.deepcopy(avant), "apres": apres,
+            "longueur_attendue": len(reference) if isinstance(reference, list) else None,
+            "statut": "PASS" if apres is not None else "NON VÉRIFIÉ",
+        })
+    return plan
