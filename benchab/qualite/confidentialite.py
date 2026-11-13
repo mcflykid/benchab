@@ -9,17 +9,20 @@ from benchab.donnees.base import APPLICATION_ID
 from benchab.qualite.ecritures import _sans_lien
 
 
-def noms_prives(prive):
-    """Lit la base privée seule ; renvoie un ensemble de noms/alias sans unité, sans export ni modification."""
+def noms_prives(prive, *, inclure_alias=True):
+    """Renvoie les noms privés et, sur demande, les alias déclarés, sans modifier la base."""
     base = _sans_lien(Path(prive).absolute() / "benchab.sqlite")
     if not base.exists():
         return set()
     valeurs = set()
+    cles_noms = {"noms_modeles_tiers", "noms_confidentiels", "nom_modele_tiers"}
+    if inclure_alias:
+        cles_noms.update(("alias", "aliases"))
 
     def aliases(objet):
         if isinstance(objet, dict):
             for cle, valeur in objet.items():
-                if cle in {"alias", "aliases", "noms_modeles_tiers", "noms_confidentiels", "nom_modele_tiers"}:
+                if cle in cles_noms:
                     valeurs.update(
                         [valeur]
                         if isinstance(valeur, str)
@@ -36,7 +39,9 @@ def noms_prives(prive):
         if connexion.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
             raise ValueError("Base privée étrangère : confidentialité non vérifiée")
         for ident, nom, origine, brut in connexion.execute("SELECT id,nom,origine,donnees_json FROM projets"):
-            for v in (ident, nom, origine):
+            # Une origine peut être un libellé générique. Les chemins d’origine restent protégés.
+            origine_explicite = isinstance(origine, str) and ("/" in origine or "\\" in origine)
+            for v in (ident, nom, origine if inclure_alias or origine_explicite else None):
                 if isinstance(v, str) and v.strip():
                     valeurs.add(v.strip())
                     valeurs.add(v.rstrip("/").rsplit("/", 1)[-1])
@@ -44,15 +49,16 @@ def noms_prives(prive):
             aliases(donnees)
         for (brut,) in connexion.execute("SELECT donnees_json FROM decisions"):
             bloc = json.loads(brut).get("confidentialite", {})
-            for cle in ("alias", "modeles_tiers", "identifiants_github", "emails_locaux"):
+            cles = ("modeles_tiers", "identifiants_github", "emails_locaux")
+            for cle in (*cles, "alias") if inclure_alias else cles:
                 valeurs.update(s for s in bloc.get(cle, []) if isinstance(s, str))
     return {v.strip() for v in valeurs if v.strip()}
 
 
-def motifs(prive):
+def motifs(prive, *, inclure_alias=True):
     """Construit les motifs en mémoire ; renvoie des regex, sans journaliser de donnée personnelle ni statut."""
     expressions = []
-    for nom in noms_prives(prive):
+    for nom in noms_prives(prive, inclure_alias=inclure_alias):
         # Un alias peut être écrit avec tirets, espaces ou underscores. Les noms
         # sont des données privées, pas une liste livrée (frontière dans docs/decisions).
         mots = re.split(r"[\s_-]+", nom.strip())

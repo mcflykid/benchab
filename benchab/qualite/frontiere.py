@@ -2,11 +2,13 @@
 
 import ast
 import codecs
+import json
 import os
 import re
 import sqlite3
 import tempfile
 import zipfile
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
 EXCLUS = {"prive", ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", "dist", "build"}
@@ -184,6 +186,34 @@ def _fichiers_suivis(racine):
         return [os.fsdecode(nom) for nom in flux.read_bytes().split(b"\0") if nom], 0
 
 
+def _collisions(prive):
+    """Charge les exceptions privées attachées aux octets exacts d’un fichier public."""
+    from benchab.chemins import sans_lien
+
+    fiche = sans_lien(prive / "collisions-alias-publics.json", racine=prive)
+    if not fiche.is_file():
+        return {}
+    with fiche.open("rb") as lecture:
+        brut = lecture.read(65537)
+    if len(brut) > 65536:
+        raise ValueError("Fiche de collisions hors budget")
+    donnees = json.loads(brut)
+    if not isinstance(donnees, dict):
+        raise ValueError("Fiche de collisions invalide")
+    for fichier, regle in donnees.items():
+        chemin = PurePosixPath(fichier)
+        if (
+            chemin.is_absolute() or ".." in chemin.parts or fichier != chemin.as_posix()
+            or not isinstance(regle, dict) or set(regle) != {"sha256", "motifs_sha256", "justification"}
+            or not isinstance(regle["justification"], str) or not regle["justification"].strip()
+            or not isinstance(regle["motifs_sha256"], list)
+            or not all(isinstance(v, str) and re.fullmatch(r"[0-9a-f]{64}", v)
+                       for v in [regle["sha256"], *regle["motifs_sha256"]])
+        ):
+            raise ValueError("Exception de collision invalide")
+    return donnees
+
+
 def verifier(racine, *, prive=None):
     """Contrôle chemins/fichiers publics ; erreurs = FAIL, liste vide = PASS, sans unité ni nom privé révélé."""
     racine = Path(racine).resolve()
@@ -199,6 +229,8 @@ def verifier(racine, *, prive=None):
             return ["L’atelier privé recouvre la racine publique"]
         privees = {racine / "prive", racine_privee}
         expressions = motifs(racine_privee)
+        collisions = _collisions(racine_privee)
+        noms_explicites = {m.pattern for m in motifs(racine_privee, inclure_alias=False)} if collisions else set()
     except (OSError, ValueError, sqlite3.Error):
         return ["Confidentialité NON VÉRIFIÉE : base privée illisible"]
 
@@ -227,16 +259,34 @@ def verifier(racine, *, prive=None):
                 erreurs.append(f"{relatif} : nom ou identifiant privé dans la partie publique")
             # Les archives renommées restent contrôlées grâce à leur signature ;
             # voir docs/decisions/2026-11-04-frontiere-public-prive.md.
-            if chemin.suffix.lower() in {".zip", ".3mf"} or _est_zip(chemin):
+            est_archive = chemin.suffix.lower() in {".zip", ".3mf"} or _est_zip(chemin)
+            if est_archive:
                 _inspecter_zip(chemin, relatif, expressions, erreurs)
             try:
+                motifs_contenu = expressions
+                if not est_archive and relatif in collisions:
+                    from benchab.qualite.empreintes import sha256_fichier
+
+                    regle = collisions[relatif]
+                    # Une modification du fichier rétablit le contrôle de tous ses alias.
+                    if sha256_fichier(chemin) == regle["sha256"]:
+                        motifs_contenu = [
+                            m for m in expressions
+                            if m.pattern in noms_explicites
+                            or sha256(m.pattern.encode()).hexdigest() not in regle["motifs_sha256"]
+                        ]
                 with chemin.open("rb") as contenu:
-                    fuite_brute = _contient_flux(contenu, expressions)
+                    fuite_brute = _contient_flux(contenu, motifs_contenu)
+                if motifs_contenu is not expressions and sha256_fichier(chemin) != regle["sha256"]:
+                    raise ValueError("Fichier modifié pendant le contrôle")
             except (OSError, ValueError):
                 erreurs.append(f"{relatif} : lecture publique incomplète")
             else:
                 if fuite_brute:
-                    erreurs.append(f"{relatif} : nom ou identifiant privé dans la partie publique")
+                    categorie = (
+                        " après prise en compte de la collision attestée" if motifs_contenu is not expressions else ""
+                    )
+                    erreurs.append(f"{relatif} : nom ou identifiant privé dans la partie publique{categorie}")
             script = chemin.suffix in {".py", ".sh"} or nom == "Makefile" or os.access(chemin, os.X_OK)
             if chemin.suffix not in TEXTES and nom not in {"Makefile", ".gitignore"} and not script:
                 with chemin.open("rb") as flux:
