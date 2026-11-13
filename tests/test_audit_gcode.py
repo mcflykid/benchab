@@ -264,6 +264,18 @@ class Modal(unittest.TestCase):
         self.assertTrue(it.errors)
         self.assertTrue(any("M220" in e for e in it.errors))
 
+    def test_facteur_vitesse_unitaire_preserve_mesures_et_diagnostics(self):
+        """Mesure durée en s et avance en mm/min pour le facteur unitaire observé."""
+        mouvements = "M83\nG1 X10 E1 F600\n"
+        it, mouvement = self.parse(mouvements + "M220 S100\nG1 X20 E1")
+        self.assertEqual(it.errors, [])
+        self.assertEqual(mouvement[-1]["feed"], 600)
+        self.assertEqual(mouvement[-1]["duration_s"], 1)
+        for commande in ("M220", "M220 S100 T1", "M220 S200\nM220 S100"):
+            with self.subTest(commande=commande):
+                it, _ = self.parse(mouvements + commande + "\nG1 X20 E1")
+                self.assertTrue(any("M220" in erreur for erreur in it.errors))
+
     def test_B06_g92_malforme_invalide_sans_changer_etat(self):
         for command in ["G92 Xnan", "G92 Enan", "G92 X1 Enan", "G92 EInfinity", "G92 A1", "G92 X1 F600"]:
             with self.subTest(command=command):

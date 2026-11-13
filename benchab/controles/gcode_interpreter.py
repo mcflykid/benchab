@@ -389,6 +389,10 @@ class Interpreter:
 
     def _appliquer_mode(self, c, op, tail, vals):
         """Suit modes et repères en mm ; booléen de traitement, dette de rétraction conservée."""
+        if op == "M220" and vals == {"S": 100}:
+            # Klipper G-Codes : à 100 %, le facteur est unitaire. Le lecteur garde
+            # les diagnostics déjà émis pour tout facteur non modélisé (#290).
+            return True
         if op == "M82":
             self.relative_e = False
             return True

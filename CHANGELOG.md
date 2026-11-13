@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Le lecteur reconnaît le facteur de vitesse unitaire du G-code multi-matière et le contrôle 3MF affiche les champs protégés qui bloquent le tranchage (suite de #290).
+
 - Le contrôle de confidentialité accepte une exception d’alias attestée localement pour un contenu public précis (#288).
 
 - La lecture Cloud Anycubic évite le refus HTTP 403 de Workbench lié au User-Agent ajouté par Python (#52).
