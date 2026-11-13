@@ -8,6 +8,11 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Les paliers de densité suivent la surface d’un solide ou le voisinage d’une fixation extérieure (#83).
+- Le bilan de purge conditionnel accepte un plafond sourcé et l’observation de la tour indique le temps et la masse nominaux disponibles (#72).
+- Les contrôles d’affleurement, de couture et d’énumérations disposent d’un résumé lié au rapport complet. La vitrine peut produire un manifeste du corpus public (#35, #80).
+- Les compteurs d’entretien expliquent pourquoi leur verdict reste NON VÉRIFIÉ (#73).
+
 - Le vissage et les fentes d’interface proposent un résumé avec rapport privé. Le bilan des dépôts peut afficher tous ses groupes (#35).
 
 - La recette gyroïde compare la géométrie modélisée à deux références tranchées avec la même enveloppe (#87).
