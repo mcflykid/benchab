@@ -1023,3 +1023,14 @@ def test_restauration_refuse_octet_altere_apres_publication(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="(?i)copie publi|empreinte"):
         trancher.restaurer_noms(source, ["Nom restauré"], **({"destination": cible} if copie_neuve else {}))
     assert cible.read_bytes().endswith(b"natix")
+
+
+def test_normalisation_refuse_un_projet_sans_reglages_embarques(tmp_path):
+    """Un 3MF sans configuration projet reste intact et ne produit aucune copie."""
+    source, sortie = tmp_path / "source.3mf", tmp_path / "sortie.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config/>")
+    avant = source.read_bytes()
+    with pytest.raises(ValueError, match=r"configuration absents.*Metadata/project_settings\.config"):
+        trancher.normaliser(source, sortie, usage="temoin")
+    assert not sortie.exists() and source.read_bytes() == avant
