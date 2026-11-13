@@ -11,6 +11,7 @@ l’empreinte de la source.
 | Continuité, capacités, comparaison 3MF, purge, écarts Z des supports, rejeux G-code | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Entretien, consommation d’un retour, plan de réparation | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Débit U25, `surplombs-connexes` | `--resume --sortie RAPPORT.json` | Remplacer `--resume` par `--detail` |
+| Disposition réelle | `SOURCE.3mf PLACEMENT.json RAPPORT.json --resume` | Retirer `--resume` |
 | Affleurement | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Énumérations ASN | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Couches courtes | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |

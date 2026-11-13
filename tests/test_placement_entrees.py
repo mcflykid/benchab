@@ -4,6 +4,8 @@ import json
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 from benchab.controles import disposition_reelle as DR
@@ -97,6 +99,21 @@ class PlacementEntrees(unittest.TestCase):
         self.assertEqual(premier, second)
         self.assertTrue(premier["conforme"])
         self.assertEqual(source.read_bytes(), avant)
+
+    def test_resume_disposition_localise_l_ecart_sans_perdre_le_rapport(self):
+        """Le résumé annonce la première plaque dont le nombre d’objets diverge."""
+        source = self.enrich(self.archive())
+        placement = self.racine / "placement.json"
+        placement.write_text(json.dumps({"plates": [{"name": "Courte"}], "objects": []}))
+        rapport = self.racine / "rapport.json"
+        capture = StringIO()
+        with redirect_stdout(capture):
+            self.assertEqual(DR.main([str(source), str(placement), str(rapport), "--resume"]), 1)
+        court = json.loads(capture.getvalue())
+        complet = json.loads(rapport.read_bytes())
+        self.assertEqual(court["statut"], "FAIL")
+        self.assertEqual(court["premiere_plaque_en_ecart"], complet["plaques"][0])
+        self.assertFalse(complet["conforme"])
 
     def test_disposition_refuse_collision_avant_ecriture(self):
         source = self.enrich(self.archive())
