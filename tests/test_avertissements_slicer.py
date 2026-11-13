@@ -163,6 +163,36 @@ def test_type_client_inconnu_ne_qualifie_pas_origine(tmp_path):
     assert rapport["avertissements"][0]["origine"].startswith("NON VÉRIFIÉ")
 
 
+def test_reconnait_entete_client_anycubic_slicer_next(tmp_path):
+    """L’en-tête ASN qualifie l’origine sans confondre plusieurs déclarations."""
+    path = tmp_path / "asn.3mf"
+    _archive(path, '''<config><header><header_item key="X-ACNext-Client-Type" value="slicer"/>
+    <header_item key="X-ACNext-Client-Version" value="2.0.0.3 20260904033713"/></header>
+    <plate><metadata key="index" value="1"/><warning msg="Alerte ASN" level="1" error_code="asn_code"/></plate>
+    </config>''')
+
+    rapport = controler(path)
+
+    assert rapport["statut"] == "WARN"
+    assert rapport["producteur_declare"] == {
+        "famille": "Anycubic Slicer Next", "version": "2.0.0.3 20260904033713", "binaire_verifie": False,
+    }
+    assert rapport["avertissements"][0]["origine"] == "slicer (Metadata/slice_info.config)"
+
+
+def test_entetes_client_bbl_et_asn_melanges_restent_ambigus(tmp_path):
+    """Deux familles d’en-têtes contradictoires ne deviennent pas une origine certaine."""
+    path = tmp_path / "mixte.3mf"
+    _archive(path, '''<config><header><header_item key="X-BBL-Client-Type" value="slicer"/>
+    <header_item key="X-ACNext-Client-Type" value="slicer"/></header>
+    <plate><metadata key="index" value="1"/></plate></config>''')
+
+    rapport = controler(path)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert "origine du slicer" in rapport["raison"]
+
+
 def test_xml_hostile_est_non_verifie(tmp_path):
     """Le lecteur d’archive refuse DTD et entités externes avant analyse."""
     path = tmp_path / "hostile.3mf"

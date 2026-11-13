@@ -685,6 +685,9 @@ def main(argv=None):
             "REPONSE_MACHINE_INCOHERENTE",
             "IDENTITE_APPLICATION_ALTEREE",
             "TERMINAL_INTERACTIF_REQUIS",
+            "COPIE_SESSION_EXPLICITE_REQUISE",
+            "COMPTE_HORS_DEPOT_REQUIS",
+            "CONFIGURATION_COMPTE_REQUISE",
         }
         reason = (
             str(exc) if isinstance(exc, CloudErreur) and str(exc) in safe else "CLOUD_OU_CONFIGURATION_INDISPONIBLE"

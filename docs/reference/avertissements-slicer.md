@@ -12,7 +12,7 @@ AnycubicSlicerNext au commit
 [`6103ed8b511609658d00d0538cc7f0609cdb57da`](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/Format/bbs_3mf.cpp) :
 
 - la racine `<config>` contient un `<header>` et des `<plate>` ;
-- l’en-tête identifie l’origine par `<header_item key="X-BBL-Client-Type" value="slicer"/>` ;
+- l’en-tête identifie le type déclaré par `X-BBL-Client-Type` ou `X-ACNext-Client-Type` avec la valeur `slicer` ;
 - chaque `<plate>` porte l’index dans `<metadata key="index" value="1"/>` ;
 - chaque `<warning>` écrit par plaque porte `msg`, `level` et `error_code`.
 

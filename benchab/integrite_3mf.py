@@ -1,6 +1,8 @@
 """Différentiel exact des réglages, contrôlé après sérialisation avant toute livraison."""
 
 import hashlib
+import re
+from decimal import Decimal
 
 from benchab import reglages
 from benchab.archives_3mf import Archive3MF, decoder_xml
@@ -176,8 +178,29 @@ def difference(avant, apres):
     ]
 
 
-def verifier(source, destination, permis=()):
-    """Relit les archives et exige le plan exact de différences ; retourne PASS, lève sur FAIL, aucun fichier livré."""
+def _equivalence_moteur(ecart):
+    """Reconnaît uniquement une réécriture décimale exacte du débit natif en mm³/s."""
+    avant, apres = ecart["avant"], ecart["apres"]
+    return (
+        ecart["chemin"] == "projet/filament_max_volumetric_speed"
+        and isinstance(avant, list) and isinstance(apres, list)
+        and bool(avant) and len(avant) == len(apres)
+        and all(
+            isinstance(a, str) and isinstance(b, str)
+            and re.fullmatch(r"[0-9]{1,16}(?:[.][0-9]{1,16})?", a)
+            and re.fullmatch(r"[0-9]{1,16}(?:[.][0-9]{1,16})?", b)
+            and Decimal(a) == Decimal(b)
+            for a, b in zip(avant, apres)
+        )
+    )
+
+
+def verifier(source, destination, permis=(), *, relecture_moteur=False):
+    """Vérifie le plan d'écarts en unités natives et renvoie PASS ou lève sur FAIL, sans écrire.
+
+    En relecture moteur, isole les représentations équivalentes du débit en mm³/s.
+    Une différence explicitement déclarée reste comparée exactement au plan.
+    """
     avant, types_avant = instantane(source, avec_types=True)
     apres, types_apres = instantane(destination, avec_types=True)
     reel = difference(avant, apres)
@@ -195,9 +218,13 @@ def verifier(source, destination, permis=()):
     attendu = sorted(list(permis), key=lambda d: d["chemin"])
     if len({d["chemin"] for d in attendu}) != len(attendu):
         raise ValueError("Intégrité FAIL : déclarations de différences dupliquées")
-    if reel != attendu:
-        manquants = sorted({d["chemin"] for d in attendu} - {d["chemin"] for d in reel})
-        extras = sorted({d["chemin"] for d in reel} - {d["chemin"] for d in attendu})
+    equivalences = [
+        ecart for ecart in reel if relecture_moteur and ecart not in attendu and _equivalence_moteur(ecart)
+    ]
+    ecarts_metier = [ecart for ecart in reel if ecart not in equivalences]
+    if ecarts_metier != attendu:
+        manquants = sorted({d["chemin"] for d in attendu} - {d["chemin"] for d in ecarts_metier})
+        extras = sorted({d["chemin"] for d in ecarts_metier} - {d["chemin"] for d in attendu})
         raise ValueError(
             "Intégrité 3MF FAIL : différence non déclarée, valeur inattendue ou différence prévue absente ; "
             f"extras={extras}, absentes={manquants}"
@@ -205,6 +232,7 @@ def verifier(source, destination, permis=()):
     inconnus = sorted(chemin for chemin, definition in types_apres.items() if definition["type"] == "inconnu")
     return {
         "statut": "PASS", "differences": reel, "reouverture": True, "validation_physique": False,
+        **({"equivalences_numeriques": equivalences} if relecture_moteur else {}),
         "reglages_non_verifies": [{"chemin": chemin, "statut": "NON VÉRIFIÉ"} for chemin in inconnus],
         "portee": "PASS atteste les différences exactes, pas la sémantique des clés inconnues conservées.",
     }

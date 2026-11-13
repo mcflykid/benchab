@@ -42,3 +42,10 @@ premier dépassement établi avec le nom de l’objet, le filament, le maximum
 et le plafond en mm³/s. `--detail` affiche le rapport complet. Dans les deux
 cas le fichier JSON reste intégral et le code de retour est inchangé.
 Sans ces options, l’affichage historique est conservé.
+
+Le rapport U25 conserve le plafond embarqué et celui qui a servi au verdict.
+Pour chaque objet et outil, il situe le pic par ligne G-code, couche, hauteur et
+type de trajet, puis donne la longueur cumulée au-dessus du plafond embarqué
+et la longueur totale déposée. Des coordonnées XY et une extrusion E arrondies
+peuvent amplifier un pic sur un segment court. Les deux longueurs permettent de
+distinguer ce cas d’un dépassement réparti sur une part étendue du parcours.

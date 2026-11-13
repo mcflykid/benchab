@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from pathlib import Path
 from xml.etree.ElementTree import ParseError
@@ -49,11 +50,29 @@ def _extraire(racine):
     if any(enfant.tag not in _TAGS_CONFIG for enfant in racine):
         raisons.add("structure slice_info.config inconnue")
     entetes = racine.findall("header")
-    clients = [e.get("value") for h in entetes for e in h.findall("header_item")
-               if e.get("key") == "X-BBL-Client-Type"]
+    clients = [
+        (e.get("key"), e.get("value"))
+        for h in entetes
+        for e in h.findall("header_item")
+        if e.get("key") in {"X-BBL-Client-Type", "X-ACNext-Client-Type"}
+    ]
     # La valeur qualifie un type déclaré dans le format, pas l'identité du binaire (#109).
     origine = f"NON VÉRIFIÉ ({_MEMBRE})"
-    if len(entetes) == 1 and clients == ["slicer"] and all(e.tag == "header_item" for e in entetes[0]):
+    # ASN emploie un autre nom pour le même type déclaré ; plusieurs déclarations restent ambiguës.
+    producteur = {}
+    if (
+        len(entetes) == 1 and len(clients) == 1 and clients[0][1] == "slicer"
+        and all(e.tag == "header_item" for e in entetes[0])
+    ):
+        if clients[0][0] == "X-ACNext-Client-Type":
+            versions = [e.get("value") for e in entetes[0] if e.get("key") == "X-ACNext-Client-Version"]
+            version = versions[0] if len(versions) == 1 else None
+            # Une version inscrite dans un ZIP reste déclarative et bornée.
+            producteur["producteur_declare"] = {
+                "famille": "Anycubic Slicer Next",
+                "version": version if version and re.fullmatch(r"[0-9.]{1,24}(?: [0-9]{1,24})?", version) else None,
+                "binaire_verifie": False,
+            }
         origine = f"slicer ({_MEMBRE})"
     else:
         raisons.add("origine du slicer absente, ambiguë ou inconnue")
@@ -75,8 +94,8 @@ def _extraire(racine):
             if message is not None and code:
                 avertissements.append({"plaque": numero, "code": code, "message": message, "origine": origine})
     if raisons:
-        return _rapport("NON VÉRIFIÉ", avertissements, "; ".join(sorted(raisons)))
-    return _rapport("WARN" if avertissements else "PASS", avertissements)
+        return {**_rapport("NON VÉRIFIÉ", avertissements, "; ".join(sorted(raisons))), **producteur}
+    return {**_rapport("WARN" if avertissements else "PASS", avertissements), **producteur}
 
 
 def controler(chemin: str | Path, *, taille_max_xml: int = _MAX_XML) -> dict:

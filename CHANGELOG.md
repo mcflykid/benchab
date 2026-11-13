@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.31.0
+
+- L’import 3MF restitue les topologies avant et après soudure et protège les liaisons entre corps lors du placement
+  sur plusieurs plaques (#272, #273).
+- Le tranchage signale les refus d’intégrité et qualifie les réécritures décimales du débit. Les avertissements
+  Anycubic sont lus avec leur en-tête natif (#258, #261, #274).
+- U25 localise le pic par objet et outil, avec les seuils embarqué et explicite (#275).
+- Le contrôle d’affleurement calcule les jeux nominaux et produit une coupe à partir des cotes déclarées (#276).
+- La lecture Cloud expose les raisons de configuration publiables (#253).
+
 ## 1.30.1
 
 - Les réparations de vues écrivent leurs preuves sous `qualite/reparation-vues/` (#243).

@@ -86,6 +86,50 @@ def test_journal_survit_echec_et_delai_transmis(tmp_path, monkeypatch):
     assert rapport["journal_conserve"] == str(journal)
 
 
+def test_echec_tranchage_indique_rapport_prive_et_cause(tmp_path, monkeypatch):
+    """Le message d’échec donne les pistes locales sans révéler le contenu du rapport."""
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+    source = entree_3mf(tmp_path / "source.3mf", tops=("8",))
+
+    def echec(demande):
+        return {
+            "code": 1,
+            "modifications": [],
+            "diagnostic": {"cause": "ConfigOptionVector", "fonctions": ["fixture"]},
+        }
+
+    monkeypatch.setattr(trancher, "_executer", echec)
+    with pytest.raises(RuntimeError) as capture:
+        trancher.trancher_fichier(source, tmp_path / "prive/sorties", prive=tmp_path / "prive")
+
+    message = str(capture.value)
+    rapport = next((tmp_path / "prive/mesures/tranchages").glob("*.json"))
+    assert str(rapport) in message
+    assert "ConfigOptionVector" in message
+
+
+def test_refus_integrite_distingue_le_code_natif_et_indique_le_detail(tmp_path, monkeypatch):
+    """Un moteur réussi peut laisser une sortie refusée ; le message garde le champ et le dossier utiles."""
+    monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
+    source = entree_3mf(tmp_path / "source.3mf", tops=("8",))
+    prive = tmp_path / "prive"
+
+    def refus(demande):
+        return {
+            "code": 2, "code_processus": 0, "modifications": [],
+            "validation_sortie": {"statut": "FAIL", "detail": "Intégrité : projet/ace_t_box_vector"},
+            "incident": {"dossier": str(prive / "mesures/echecs/fixture")},
+        }
+
+    monkeypatch.setattr(trancher, "_executer", refus)
+    with pytest.raises(RuntimeError) as capture:
+        trancher.trancher_fichier(source, prive / "sorties", prive=prive)
+    message = str(capture.value)
+    assert "processus 0" in message and "sortie refusée par BENCHAB" in message
+    incident = next((prive / "mesures/echecs").iterdir())
+    assert "projet/ace_t_box_vector" in message and str(incident) in message
+
+
 def test_incident_bridge_archive_pile_et_ne_relance_pas(tmp_path, monkeypatch):
     monkeypatch.setattr(trancher, "ECHANGE", tmp_path / "echange")
     source = entree_3mf(tmp_path / "source.3mf", tops=("8",))

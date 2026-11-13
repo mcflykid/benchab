@@ -82,3 +82,36 @@ disposition en grille et les poses assemblées ; les extras sont masqués dans
 la grille. Sans dossier explicite, la recherche reste dans le privé (d’abord
 `output/stl`, puis `stl`, puis la racine courante privée). Les dimensions sont
 en mm déclarés. Aucun montage ou ajustement physique n’est validé par cette vue.
+
+## Affleurement nominal
+
+`benchab controle affleurement montage.json --coupe prive/mesures/montage.svg`
+compare des enveloppes prismatiques déclarées en mm. Le repère associe trois
+axes XYZ distincts à la longueur, la largeur et la profondeur de montage.
+
+```json
+{
+  "schema": 1,
+  "repere_montage": {"longueur": "x", "largeur": "y", "profondeur": "z"},
+  "languette_mm": [15, 4, 3],
+  "rainure_mm": [16, 4.2, 3],
+  "tolerance_affleurement_mm": 0.02
+}
+```
+
+Un désaffleurement positif indique une saillie, un désaffleurement négatif un
+retrait. Les jeux indiquent la différence totale entre les deux largeurs ou
+longueurs. Les résultats portent sur les cotes déclarées avec la languette
+en appui au fond. L’insertion réelle et l’affleurement imprimé restent à
+observer.
+
+## Premier diagnostic Cloud Anycubic
+
+Une copie de configuration explicitement fournie se vérifie avec
+`benchab machine cloud-lecture -- --inspecter-session --copie-session CHEMIN`.
+Pour le compte autonome déjà configuré, utiliser
+`benchab machine cloud-lecture -- --cloud --compte` pour lister les machines,
+puis ajouter `--notre-machine` pour une unique Kobra S1 ou `--machine ID`
+pour sélectionner une machine précise. La lecture rapporte les données ACE
+disponibles. Les raisons publiables indiquent notamment une copie manquante,
+une configuration de compte manquante ou un compte situé dans le dépôt.

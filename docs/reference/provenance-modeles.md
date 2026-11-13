@@ -30,3 +30,9 @@ que l’empreinte correspond. Une fiche partielle est NON VÉRIFIÉE. Ces statut
 sont indépendants du contrôle géométrique et ne vérifient ni l’identité du
 déclarant, ni la licence auprès de sa source. La frontière publique continue de
 refuser les modèles tiers, quelle que soit leur fiche.
+
+L’audit distingue aussi la topologie des indices de la source et celle obtenue
+après soudure des sommets coïncidents. Les alertes identifient la mesure qui les
+déclenche. `corps_exactement_superposes` liste les composants dont les triangles
+ont exactement les mêmes coordonnées ; il s’agit de corps géométriques, pas
+d’une déclaration de pièces imprimables.

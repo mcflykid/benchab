@@ -42,13 +42,17 @@ def analyser(path, overrides=None, attendus=None):
         # comporte un zéro initial (docs/reference/debit.md).
         gc = dict(plaques_gcode_archive(z))
         st = z.reglages()
-        caps = {str(i + 1): positive(v) for i, v in enumerate(st.get("filament_max_volumetric_speed", []))}
+        caps_embarques = {
+            str(i + 1): positive(v) for i, v in enumerate(st.get("filament_max_volumetric_speed", []))
+        }
+        caps = caps_embarques
         if overrides is not None:
             caps = {str(k): positive(v) for k, v in overrides.items()}
         si = z.xml("Metadata/slice_info.config")
         res = {
             "fichier": Path(path).name,
             "plafonds_mm3_s": caps,
+            "source_plafond_embarque": "3MF project_settings.filament_max_volumetric_speed",
             "source_plafonds": "--plafonds"
             if overrides is not None
             else "3MF project_settings.filament_max_volumetric_speed",
@@ -84,13 +88,18 @@ def analyser(path, overrides=None, attendus=None):
             k = int(md["index"])
             fil = [f.get("id") for f in plate.findall("filament")]
             errors = []
-            if not fil or len(set(fil)) != len(fil) or any(not i or not i.isdigit() or int(i) < 1 for i in fil):
+            if not fil or len(set(fil)) != len(fil) or any(
+                not i or not re.fullmatch(r"[0-9]+", i) or int(i) < 1 for i in fil
+            ):
                 errors.append("filaments déclarés absents ou invalides")
             cap = min((caps[i] for i in fil), default=None) if fil and all(caps.get(i) for i in fil) else None
             if cap is None:
                 errors.append("plafond absent ou invalide pour les filaments déclarés")
-            it = Interpreter(tool=int(fil[0]) - 1 if len(fil) == 1 else None)
+            it = Interpreter(tool=int(fil[0]) - 1 if len(fil) == 1 and not errors else None)
             samples = collections.defaultdict(list)
+            pics = {}
+            depassements_embarques = collections.Counter()
+            longueurs_embarquees = collections.Counter()
             g = lire_texte_gcode_3mf(path, gc[k], erreurs="strict", archive=z)
             declared = [o.get("name") for o in plate.findall("object") if o.get("skipped", "false") != "true"]
             definitions = re.findall(r"^EXCLUDE_OBJECT_DEFINE\s+NAME=(\S+)", g, re.M)
@@ -125,7 +134,19 @@ def analyser(path, overrides=None, attendus=None):
                         st, "filament_diameter", int(tool) - 1, lecteur="index_exact"
                     ) if tool is not None else None
                     q = debit.mesurer(m, diametre)["debit_mm3_s"]
-                    samples[identity(m["object"])].append((q, m["deposited_length"], tool))
+                    nom, longueur = identity(m["object"]), m["deposited_length"]
+                    samples[nom].append((q, longueur, tool))
+                    cle = (nom, tool)
+                    if debit.verdict(q, caps_embarques.get(tool)) == "FAIL":
+                        depassements_embarques[cle] += 1
+                        longueurs_embarquees[cle] += longueur
+                    if q is not None and (cle not in pics or q > pics[cle]["debit_mm3_s"]):
+                        # Un seul mouvement par outil et objet suffit à localiser le maximum sans gonfler le rapport.
+                        pics[cle] = {
+                            "debit_mm3_s": q, "ligne": m["line"], "couche_index": m["layer"],
+                            "z_mm": m["end"][2], "type_trajet": m["type"], "longueur_mm": longueur,
+                            "extrusion_mm": m["deposited"], "avance_mm_min": m["feed"],
+                        }
             missing = set(expected) - samples.keys()
             extra = samples.keys() - set(expected)
             if missing:
@@ -147,6 +168,15 @@ def analyser(path, overrides=None, attendus=None):
                         {
                             "filament": tool,
                             "plafond_mm3_s": limit,
+                            "plafond_embarque_mm3_s": caps_embarques.get(tool),
+                            "depassements_plafond_embarque": (
+                                depassements_embarques[name, tool] if caps_embarques.get(tool) is not None else None
+                            ),
+                            "longueur_hors_plafond_embarque_mm": (
+                                longueurs_embarquees[name, tool] if caps_embarques.get(tool) is not None else None
+                            ),
+                            "longueur_deposee_mm": sum(length for _, length in subset),
+                            "pic": pics.get((name, tool)),
                             "debit_p99": resultat["p99_mm3_s"],
                             "debit_max": resultat["maximum_mm3_s"],
                             "depassements": resultat["depassements"],

@@ -429,9 +429,11 @@ def _executer(demande):
                     for liaison in plan_origine["liaisons"]
                     if liaison["matrice_predite_texte"] != liaison["matrice_source_texte"]
                 ]
-                resultat["integrite_apres_restauration_matrices"] = integrite_3mf.verifier(entree, fichier)
+                resultat["integrite_apres_restauration_matrices"] = integrite_3mf.verifier(
+                    entree, fichier, relecture_moteur=True,
+                )
             else:
-                resultat["integrite_sortie_moteur"] = integrite_3mf.verifier(entree, fichier)
+                resultat["integrite_sortie_moteur"] = integrite_3mf.verifier(entree, fichier, relecture_moteur=True)
             # Garder la sortie native intacte ; seule la copie restaurée est livrée (#182).
             avec_noms = travail / "noms-restaures.3mf"
             resultat["restauration_noms"] = restaurer_noms(
@@ -651,7 +653,25 @@ def trancher_fichier(
             resultat["journal_conserve"] = str(journal)
         ecrire_json(Path(resultat["rapport"]), resultat)
         if resultat["code"] != 0 or not cible.is_file():
-            raise RuntimeError(f"Slicer en échec (code {resultat['code']}) ; consulter le rapport privé")
+            diagnostic = resultat.get("diagnostic", {})
+            cause = diagnostic.get("cause") if isinstance(diagnostic, dict) else None
+            # Le message donne la preuve privée utile, sans recopier des détails de diagnostic arbitraires.
+            cause = cause if isinstance(cause, str) and cause in CAUSES else "inconnue"
+            validation = resultat.get("validation_sortie", {})
+            natif = resultat.get("code_processus")
+            etape = "sortie refusée par BENCHAB" if natif == 0 else "échec du moteur ou de sa préparation"
+            detail = validation.get("detail") if natif == 0 and isinstance(validation, dict) else None
+            incident = resultat.get("incident")
+            dossier = incident.get("dossier") if isinstance(incident, dict) else None
+            message = (
+                f"Slicer en échec (code {resultat['code']}, processus {natif}) : {etape} ; "
+                f"rapport privé : {resultat['rapport']} ; cause : {cause}"
+            )
+            if detail:
+                message += f" ; détail : {detail}"
+            if dossier:
+                message += f" ; incident : {dossier}"
+            raise RuntimeError(message)
         if not sortie.is_file():
             raise RuntimeError("Slicer en échec : aucune sortie privée publiée.")
     return sortie, resultat

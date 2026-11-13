@@ -637,7 +637,7 @@ def restaurer(entree, natif, sortie_neuve, plan) -> dict:
     plan_valide = _verifier_plan_entree(source, plan)
     empreinte_natif_avant = _sha256(moteur, _MAX_ARCHIVE)
     _verifier_composants(source, moteur, plan_valide["liaisons"])
-    integrite_natif = integrite_3mf.verifier(source, moteur, plan_valide["permis"])
+    integrite_natif = integrite_3mf.verifier(source, moteur, plan_valide["permis"], relecture_moteur=True)
     nom_settings = "Metadata/model_settings.config"
     noms_natifs, sha_natif = _manifeste_zip(moteur)
     noms_source, _ = _manifeste_zip(source)
@@ -691,7 +691,7 @@ def restaurer(entree, natif, sortie_neuve, plan) -> dict:
             if not _matrices_egales(liaison["matrice_source"], liaison["matrice_predite"])
         ]
         integrite_restauration = integrite_3mf.verifier(moteur, temporaire, inverse)
-        integrite_finale = integrite_3mf.verifier(source, temporaire, ())
+        integrite_finale = integrite_3mf.verifier(source, temporaire, relecture_moteur=True)
         if integrite_finale["differences"]:
             raise ValueError("Écart de réglages résiduel après restauration")
         if _sha256(moteur, _MAX_ARCHIVE) != empreinte_natif_avant:
@@ -713,7 +713,7 @@ def restaurer(entree, natif, sortie_neuve, plan) -> dict:
             raise ValueError("Cible remplacée pendant la publication")
         if _sha256(source, _MAX_ARCHIVE) != plan_valide["source"]["sha256"]:
             raise ValueError("Entrée modifiée pendant la publication")
-        verification = integrite_3mf.verifier(source, sortie, ())
+        verification = integrite_3mf.verifier(source, sortie, relecture_moteur=True)
         if verification["differences"]:
             raise ValueError("Écart final après publication exclusive")
         inode_final = sortie.lstat()

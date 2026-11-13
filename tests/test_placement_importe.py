@@ -16,7 +16,7 @@ REL = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
 PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 
-def _modele(path, items, *, composant=False, unite="millimeter"):
+def _modele(path, items, *, composant=False, unite="millimeter", geometries=None):
     """Construit une source 3MF synthétique avec des objets et instances identifiables."""
     racine = ET.Element(f"{{{NS}}}model", unit=unite)
     ressources = ET.SubElement(racine, f"{{{NS}}}resources")
@@ -31,7 +31,7 @@ def _modele(path, items, *, composant=False, unite="millimeter"):
     else:
         for ident in sorted({item["objectid"] for item in items}):
             objet = ET.SubElement(ressources, f"{{{NS}}}object", id=ident, type="model", name=f"Objet {ident}")
-            _maillage(objet)
+            _maillage_geometrie(objet, (geometries or {}).get(ident))
     build = ET.SubElement(racine, f"{{{NS}}}build")
     for item in items:
         ET.SubElement(build, f"{{{NS}}}item", **item)
@@ -49,11 +49,26 @@ def _maillage(objet):
         ET.SubElement(faces, f"{{{NS}}}triangle", v1=str(a), v2=str(b), v3=str(c))
 
 
-def _source(path, *, items=None, composant=False, unite="millimeter"):
+def _maillage_geometrie(objet, geometrie=None):
+    """Écrit une géométrie synthétique en conservant ses sommets et faces indexés."""
+    if geometrie is None:
+        _maillage(objet)
+        return
+    mesh = ET.SubElement(objet, f"{{{NS}}}mesh")
+    sommets, faces = ET.SubElement(mesh, f"{{{NS}}}vertices"), ET.SubElement(mesh, f"{{{NS}}}triangles")
+    for x, y, z in geometrie.vertices:
+        ET.SubElement(sommets, f"{{{NS}}}vertex", x=str(float(x)), y=str(float(y)), z=str(float(z)))
+    for a, b, c in geometrie.faces:
+        ET.SubElement(faces, f"{{{NS}}}triangle", v1=str(int(a)), v2=str(int(b)), v3=str(int(c)))
+
+
+def _source(path, *, items=None, composant=False, unite="millimeter", geometries=None):
     """Écrit les seuls membres géométriques nécessaires à la lecture 3MF."""
     items = items or [{"objectid": "1", "transform": "1 0 0 0 1 0 0 0 1 5 6 0"}]
     with ZipFile(path, "w") as archive:
-        archive.writestr("3D/3dmodel.model", _modele(path, items, composant=composant, unite=unite))
+        archive.writestr(
+            "3D/3dmodel.model", _modele(path, items, composant=composant, unite=unite, geometries=geometries)
+        )
         archive.writestr(
             "_rels/.rels",
             f'<Relationships xmlns="{PKG_REL}"><Relationship Id="r0" Type="{REL}" '
@@ -177,6 +192,98 @@ def test_multi_plaque_exige_une_affectation_explicite_et_valide_les_liens(tmp_pa
     placement = valider_placement(rapport["placement"])
     assert [plaque["name"] for plaque in placement["plates"]] == ["Plaque A", "Plaque B"]
     assert [objet["plate"] for objet in placement["objects"]] == [1, 2]
+
+
+def test_lien_fonctionnel_interpenetrant_interdit_la_repartition_sur_deux_plaques(tmp_path):
+    import trimesh
+
+    silhouette = trimesh.creation.box(extents=(10, 10, 10))
+    languette = trimesh.creation.box(extents=(3, 2, 2))
+    languette.apply_translation((4.5, 4, 4))
+    socle = trimesh.creation.box(extents=(8, 8, 2))
+    socle.apply_translation((30, 1, 1))
+    source = _source(
+        tmp_path / "assemblage.3mf",
+        items=[
+            {"objectid": str(i), "transform": "1 0 0 0 1 0 0 0 1 0 0 0"}
+            for i in range(1, 4)
+        ],
+        geometries={"1": silhouette, "2": languette, "3": socle},
+    )
+    declaration = _declaration(
+        source,
+        [
+            {"build_item": 1, "plate": 1, "name": "Silhouette"},
+            {"build_item": 2, "plate": 2, "name": "Languette"},
+            {"build_item": 3, "plate": 1, "name": "Socle"},
+        ],
+        plaques=[{"index": 1, "name": "A"}, {"index": 2, "name": "B"}],
+    )
+    declaration["liens_fonctionnels"] = [{"build_items": [1, 2], "name": "Assemblage silhouette-languette"}]
+
+    rapport = generer(source, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "plusieurs plaques" in rapport["raisons"][0].lower()
+
+
+def test_lien_fonctionnel_consigne_zero_si_bornes_se_touchent_sans_intersection(tmp_path):
+    import trimesh
+
+    a = trimesh.creation.box(extents=(10, 10, 10))
+    b = trimesh.creation.box(extents=(10, 10, 10))
+    b.apply_translation((10, 0, 0))
+    source = _source(
+        tmp_path / "contact.3mf",
+        items=[
+            {"objectid": str(i), "transform": "1 0 0 0 1 0 0 0 1 0 0 0"}
+            for i in range(1, 3)
+        ],
+        geometries={"1": a, "2": b},
+    )
+    declaration = _declaration(source, [
+        {"build_item": 1, "plate": 1, "name": "Corps A"},
+        {"build_item": 2, "plate": 1, "name": "Corps B"},
+    ])
+    declaration["liens_fonctionnels"] = [{"build_items": [1, 2], "name": "Liaison déclarée"}]
+
+    rapport = generer(source, declaration)
+
+    assert rapport["statut"] == "PASS"
+    assert rapport["placement"]["liens_fonctionnels"][0]["intersections"][0]["volume_intersection_mm3"] == 0
+
+
+def test_lien_fonctionnel_declare_refuse_la_separation_meme_sans_intersection(tmp_path):
+    import trimesh
+
+    a = trimesh.creation.box(extents=(10, 10, 10))
+    b = trimesh.creation.box(extents=(10, 10, 10))
+    b.apply_translation((10, 0, 0))
+    source = _source(
+        tmp_path / "contact-separe.3mf",
+        items=[
+            {"objectid": str(i), "transform": "1 0 0 0 1 0 0 0 1 0 0 0"}
+            for i in range(1, 3)
+        ],
+        geometries={"1": a, "2": b},
+    )
+    declaration = _declaration(
+        source,
+        [
+            {"build_item": 1, "plate": 1, "name": "Corps A"},
+            {"build_item": 2, "plate": 2, "name": "Corps B"},
+        ],
+        plaques=[{"index": 1, "name": "A"}, {"index": 2, "name": "B"}],
+    )
+    declaration["liens_fonctionnels"] = [{"build_items": [1, 2], "name": "Liaison déclarée"}]
+
+    rapport = generer(source, declaration)
+
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["placement"] is None
+    assert "0 mm³" in rapport["raisons"][0]
+    assert "plusieurs plaques" in rapport["raisons"][0]
 
 
 def test_liaison_absente_donne_un_placement_indetermine_sans_origine_inventee(tmp_path):

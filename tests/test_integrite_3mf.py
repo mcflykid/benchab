@@ -281,3 +281,27 @@ def test_optimisation_ne_decompresse_pas_deux_fois(tmp_path, monkeypatch):
     source.write_bytes(source.read_bytes().replace(b"temoin CRC", b"temoin CRD", 1))
     with pytest.raises(BadZipFile, match="CRC"):
         optimisation.lire_3mf(source)
+
+
+@pytest.mark.parametrize(("apres", "motif"), [
+    ({"filament_max_volumetric_speed": ["10"]}, None),
+    ({"filament_max_volumetric_speed": ["11"]}, "filament_max_volumetric_speed"),
+    ({"filament_max_volumetric_speed": ["10"], "ace_t_box_vector": []}, "ace_t_box_vector"),
+    ({"filament_max_volumetric_speed": ["10", "10"]}, "filament_max_volumetric_speed"),
+])
+def test_recriture_native_du_debit(tmp_path, apres, motif):
+    """Qualifie la représentation décimale et conserve le refus des autres différences."""
+    source, destination = tmp_path / "source.3mf", tmp_path / "sortie.3mf"
+    for fichier, donnees in ((source, {"filament_max_volumetric_speed": ["10.0"]}), (destination, apres)):
+        with ZipFile(fichier, "w") as archive:
+            archive.writestr("Metadata/project_settings.config", json.dumps(donnees))
+    with pytest.raises(ValueError, match="Intégrité"):
+        integrite_3mf.verifier(source, destination)
+    if motif:
+        with pytest.raises(ValueError, match=motif):
+            integrite_3mf.verifier(source, destination, relecture_moteur=True)
+    else:
+        resultat = integrite_3mf.verifier(source, destination, relecture_moteur=True)
+        assert resultat["statut"] == "PASS"
+        assert resultat["equivalences_numeriques"][0]["avant"] == ["10.0"]
+        assert resultat["equivalences_numeriques"][0]["apres"] == ["10"]
