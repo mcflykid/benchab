@@ -28,6 +28,9 @@ utilise un délai de 2 s et `GIT_OPTIONAL_LOCKS=0`, sans créer de fichier de di
 La routine vérifie le [contrat de placement](placement.md) avant le premier
 contrôle ; une déclaration invalide donne une erreur localisée sans créer ses rapports.
 
+Le champ booléen facultatif `buse.trempee` indique si la buse montée est
+déclarée trempée. Sans cette indication, le rapport affiche « non déclarée ».
+
 Le contrôle d’envoi accepte en option le champ `buse.diametre_mm` (nombre en
 mm) dans la déclaration. Ce bloc active la comparaison avec le diamètre de
 buse typé du 3MF et, si les valeurs HRC sont présentes, la comparaison de

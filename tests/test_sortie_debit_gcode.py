@@ -122,6 +122,62 @@ def test_u25_localise_le_pic_et_garde_les_deux_plafonds(tmp_path):
     assert outil["pic"]["longueur_mm"] == 1
 
 
+def _archive_objets(tmp_path, noms, gcode, *, vase=False):
+    """Crée une plaque synthétique avec les noms et le réglage vase déclarés."""
+    from xml.etree import ElementTree as ET
+
+    racine = ET.Element("config")
+    plaque = ET.SubElement(racine, "plate")
+    ET.SubElement(plaque, "metadata", key="index", value="1")
+    ET.SubElement(plaque, "filament", id="1")
+    for nom in noms:
+        ET.SubElement(plaque, "object", name=nom)
+    source = tmp_path / "objets.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/slice_info.config", ET.tostring(racine))
+        archive.writestr("Metadata/project_settings.config", json.dumps({
+            "filament_diameter": ["1.75"], "filament_max_volumetric_speed": ["12"],
+            "spiral_mode": "1" if vase else "0",
+        }))
+        archive.writestr("Metadata/plate_1.gcode", "G90\nM83\nT0\n" + gcode)
+    return source
+
+
+def test_u25_rapproche_nom_moteur_avec_espaces_et_parentheses(tmp_path):
+    """La transformation native préserve le nom humain dans le rapport."""
+    source = _archive_objets(tmp_path, ["Pièce filetée (A)"],
+                            "EXCLUDE_OBJECT_START NAME=Pièce_filetée_A_id_0_copy_0\nG1 X10 E0.4 F900\n")
+    resultat = debit_gcode.analyser(source)
+    assert resultat["statut"] == "PASS"
+    assert resultat["plaques"][0]["objets"][0]["objet"] == "Pièce filetée (A)"
+
+
+def test_u25_ne_devine_pas_un_nom_moteur_ambigu(tmp_path):
+    """Deux noms produisant la même étiquette restent non vérifiés."""
+    source = _archive_objets(tmp_path, ["Pièce A", "Pièce_A"],
+                            "EXCLUDE_OBJECT_START NAME=Pièce_A_id_0_copy_0\nG1 X10 E0.4 F900\n")
+    assert debit_gcode.analyser(source)["statut"] == "NON VÉRIFIÉ"
+
+
+def test_u25_vase_mesure_objet_unique_sans_attribuer_la_purge(tmp_path):
+    """Le dépôt de la spirale est mesuré, la purge de démarrage est écartée."""
+    source = _archive_objets(
+        tmp_path, ["Coque vase"],
+        ";TYPE:Custom\nG1 X10 E10 F900\n;TYPE:Outer wall\nG1 X20 Z0.2 E0.4 F900\nG1 X30 Z0.3 E0.4 F900\n",
+        vase=True,
+    )
+    resultat = debit_gcode.analyser(source)
+    assert resultat["statut"] == "PASS"
+    assert 0 < resultat["plaques"][0]["objets"][0]["debit_max"] < 12
+
+
+def test_u25_vase_plusieurs_objets_sans_etiquette_reste_non_verifie(tmp_path):
+    """Le nombre de corps ne se déduit pas à partir de la spirale."""
+    source = _archive_objets(tmp_path, ["Coque", "Second corps"], ";TYPE:Outer wall\nG1 X10 Z0.2 E0.4 F900\n",
+                            vase=True)
+    assert debit_gcode.analyser(source)["statut"] == "NON VÉRIFIÉ"
+
+
 def test_u25_filament_unique_invalide_ecrit_un_rapport_structure(tmp_path, capsys):
     """Une déclaration de filament illisible rend un verdict lié à la plaque."""
     source = _archive(tmp_path, filament="x")

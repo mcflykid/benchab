@@ -92,3 +92,25 @@ Pour une source Git, le diagnostic exige l’URL, le type VCS, le commit exact
 et le sous-dossier déclarés par les [métadonnées d’origine Python](https://packaging.python.org/en/latest/specifications/direct-url-data-structure/).
 Un commit seul ne suffit pas. Un écart de version établi reste FAIL même si
 une autre partie de la provenance est inconnue.
+
+## Utiliser un worktree
+
+Depuis le worktree, indiquez le chemin absolu de l’atelier existant avec
+`BENCHAB_PRIVE`, puis lancez BENCHAB depuis ce checkout avec uv.
+
+```sh
+export BENCHAB_PRIVE=/chemin/vers/BENCHAB/prive
+uv run --locked benchab seance debut
+```
+
+Pour relire la version du code du worktree avec le Python du dépôt principal,
+placez le worktree en tête du chemin d’import.
+
+```sh
+PYTHONPATH="$PWD" /chemin/vers/BENCHAB/.venv/bin/python -m benchab.cli --version
+```
+
+Cette invocation partage les dépendances du dépôt principal. Pour les tests qui
+comparent la version du code aux métadonnées installées, utilisez l’environnement
+du worktree et actualisez le paquet avec
+`uv sync --locked --reinstall-package benchab` si les versions diffèrent.

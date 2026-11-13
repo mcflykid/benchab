@@ -74,3 +74,15 @@ def test_dictionnaire_type_la_buse_et_ses_unites():
     assert reglages.definition("required_nozzle_HRC")["unite"] == "HRC"
     assert reglages.verifier({"nozzle_diameter": ["0.4"]})[0]["statut"] == "PASS"
     assert reglages.verifier({"nozzle_diameter": ["0.4", "0.6"]})[0]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_envoi_buse_trempee_declaree_distincte_du_profil():
+    """Distingue une buse déclarée de l’absence d’information sur la buse montée."""
+    reglages_3mf = {"nozzle_diameter": ["0.4"], "nozzle_hrc": "0"}
+    sans = controle_buse.controler(reglages_3mf, {"buse": {"diametre_mm": 0.4}}, [])
+    avec = controle_buse.controler(
+        reglages_3mf, {"buse": {"diametre_mm": 0.4, "trempee": True}}, []
+    )
+    assert sans[0]["buse_montee"] == "non déclarée"
+    assert avec[0]["buse_montee"] == "trempée déclarée"
+    assert sans[0]["statut"] == avec[0]["statut"] == "PASS"

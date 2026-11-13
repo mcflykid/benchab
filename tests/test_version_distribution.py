@@ -17,7 +17,11 @@ def test_version_unique_partagee_par_paquet_distribution_et_cli(capsys):
     assert "version" not in projet
     assert "version" in projet["dynamic"]
     assert configuration["tool"]["hatch"]["version"]["path"] == "benchab/__init__.py"
-    assert importlib.metadata.version("benchab") == __version__
+    version_installee = importlib.metadata.version("benchab")
+    assert version_installee == __version__, (
+        f"Métadonnées BENCHAB {version_installee}, code {__version__}. "
+        "Depuis ce checkout, exécuter uv sync --locked --reinstall-package benchab."
+    )
     assert main(["--version"]) == 0
     assert capsys.readouterr().out.strip() == __version__
     readme = (racine / "README.md").read_text()

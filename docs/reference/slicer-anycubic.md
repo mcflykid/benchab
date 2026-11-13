@@ -37,6 +37,43 @@ qui change le G-code est interdite ; le nom documentaire des plaques est restaur
 ensuite. Une correction demandée de réglages produit une nouvelle préparation
 explicite, pas une réparation cachée du lanceur.
 
+## Portée du mode vase
+
+Dans Anycubic Slicer Next 2.0.0.3, `spiral_mode` s’applique à toute la plaque.
+Le [code public de la configuration de plaque](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.hpp#L1270-L1357)
+le déclare dans `PrintConfig`. Une surcharge d’objet ou de plage de hauteur ne
+permet donc pas de passer en vase au-dessus d’une base pleine dans la même
+pièce. [La normalisation du moteur](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/PrintConfig.cpp#L7062-L7075)
+force une seule ligne de paroi, zéro couche supérieure, zéro remplissage et
+désactive la rétraction aux changements de couche.
+
+- Imprimer séparément la base pleine et la coque en vase sur des plaques
+  distinctes permet de garder les deux procédés. L’assemblage ajoute un joint
+  dont l’ajustement reste à valider sur la pièce.
+- Imprimer la pièce entière en mode classique conserve la liberté de choisir
+  l’épaisseur. Une couture arrière près d’un biseau rend l’emplacement
+  prévisible. Une couture aléatoire disperse les marques.
+- Sur un relief, une couture alignée dans un creux marqué peut réduire sa
+  visibilité. Vérifier sa trajectoire dans l’aperçu avant de trancher la
+  comparaison sur une pièce.
+
+Avec une seule ligne de paroi, la largeur de ligne fixe l’épaisseur nominale.
+Elle influe sur la rigidité et la transmission de lumière. La matière, la
+géométrie et la qualité du dépôt influent aussi sur le résultat physique.
+
+## Avertissements pour un filament lumineux
+
+`the_actual_nozzle_hrc_smaller_than_the_required_nozzle_hrc` invite à comparer
+la dureté renseignée dans le profil machine à l’exigence renseignée par le
+profil filament. La déclaration de la buse montée et les valeurs embarquées
+restent visibles séparément dans le rapport d’envoi.
+
+`bed_temperature_too_high_than_filament` signale un risque selon la combinaison
+profil filament et température de plateau lue par le moteur. Pour le PLA Glow,
+comparer la surface choisie et les températures embarquées à la
+[fiche filament](filaments.md). Conserver le code natif et sa provenance dans le
+[rapport](avertissements-slicer.md).
+
 ## Lire le rapport de plantage
 
 | Fonction en tête de pile | Piste à examiner | Réponse du parcours |

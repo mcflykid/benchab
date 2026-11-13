@@ -118,3 +118,43 @@ def test_qualite_route_speciale_ne_mange_pas_le_deuxieme_separateur(monkeypatch,
     monkeypatch.setattr(module, "main", executer)
     assert main(["--prive", str(atelier_initialise), "qualite", "tout", "--", "--", "--", "preuve"]) == 4
     assert appels == [["--", "preuve"]]
+
+
+@pytest.mark.parametrize(
+    "route,module,option",
+    [
+        (["machine", "cloud-lecture"], "benchab.machine.cloud_lecture", "--inspecter-session"),
+        (["conception", "cad-engine"], "benchab.conception.cad_engine", "--sortie"),
+        (["fabrication", "preparation"], "benchab.fabrication.preparation", "--projet"),
+        (["controle", "debit-gcode"], "benchab.controles.debit_gcode", "--plafonds"),
+    ],
+)
+def test_option_initiale_deleguee_garde_ordre(route, module, option, monkeypatch, atelier_initialise):
+    """Une option métier initiale arrive au module, avec ses valeurs dans l'ordre."""
+    appels = []
+
+    def executer(arguments, **options):
+        appels.append(arguments)
+        return 0
+
+    monkeypatch.setattr(importlib.import_module(module), "main", executer)
+    argv = ["--prive", str(atelier_initialise), *route, option, "valeur", "--", "fin"]
+    assert main(argv) == 0
+    assert appels == [[option, "valeur", "--", "fin"]]
+
+
+@pytest.mark.parametrize(
+    "route,option",
+    [
+        (["machine", "cloud-lecture"], "--inspecter-session"),
+        (["machine", "session-compte"], "--configurer"),
+        (["conception", "cad-engine"], "--output-dir"),
+        (["references", "verifier"], "--rendus"),
+    ],
+)
+def test_aide_deleguee_sans_atelier(route, option, capsys):
+    """L'aide présente le module métier sans initialiser de base ni l'exécuter."""
+    assert main([*route, "--help"]) == 0
+    sortie = capsys.readouterr().out
+    assert "Guide des commandes" in sortie
+    assert option in sortie

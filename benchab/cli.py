@@ -969,6 +969,34 @@ def executer(arguments, base):
     return 0
 
 
+def _separer_route(parseur, argv):
+    """Repère la fin d’une route déléguée avant les options métier, sans les interpréter."""
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--prive":
+            i += 2
+        elif argv[i].startswith("--prive="):
+            i += 1
+        else:
+            break
+    courant = parseur
+    while i < len(argv):
+        sous = next((a for a in courant._actions if isinstance(a, argparse._SubParsersAction)), None)
+        if sous is None or argv[i] not in sous.choices:
+            break
+        courant = sous.choices[argv[i]]
+        i += 1
+    if not any(a.dest == "arguments" and a.nargs == argparse.REMAINDER for a in courant._actions):
+        return None
+    # La famille qualité déclare son action comme positionnel, devant les arguments métier.
+    action = next((a for a in courant._actions if a.dest == "action" and not a.option_strings), None)
+    if action is not None:
+        if i >= len(argv) or argv[i] not in action.choices:
+            return None
+        i += 1
+    return i
+
+
 def _aide_deleguee(arguments):
     """Affiche l'aide statique de la route ; code zéro, aucun module métier exécuté ni atelier ouvert."""
     courant = parser()
@@ -991,8 +1019,10 @@ def _aide_deleguee(arguments):
         dossier, nom = "organisation", "automatisation"
     else:
         dossier = {"imports": "imports3d", "references": "references_visuelles"}.get(groupe, groupe)
-        if groupe == "visualisation":
-            nom = {"photo": "rendu_photo", "inspection-scene": "inspection_scene"}.get(nom, nom)
+        if groupe in ROUTES_NAMESPACE:
+            nom = ROUTES_NAMESPACE[groupe].get("alias", {}).get(nom, nom)
+        if groupe == "qualite":
+            nom = nom if nom in {"tout", "hooks", "archives", "comparer-fabrication", "syntaxe-privee"} else "qualite"
     source = Path(__file__).parent / dossier / (nom.replace("-", "_") + ".py")
     if source.is_file():
         arbre = ast.parse(source.read_text(encoding="utf-8"))
@@ -1112,7 +1142,16 @@ def main(argv=None):
             _mesurer_refus(argv, commande, 1)
         return 1
     try:
-        arguments = parser().parse_args(argv)
+        parseur = parser()
+        fin_route = _separer_route(parseur, argv)
+        if fin_route is None:
+            arguments = parseur.parse_args(argv)
+        else:
+            arguments = parseur.parse_args(argv[:fin_route])
+            arguments.arguments = argv[fin_route:]
+            if arguments.commande == "qualite" and arguments.arguments[:1] == ["--"]:
+                # Le parseur historique consomme ce premier séparateur après l’action positionnelle.
+                arguments.arguments = arguments.arguments[1:]
     except SystemExit as arret:
         code = _code_arret(arret)
         if code and not diagnostic_seul:

@@ -7,6 +7,10 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 - L’écriture d’un 3MF canonique refuse un corps imprimé ouvert ou mal orienté et le nomme (#250).
 - Les producteurs concernés respectent l’atelier sélectionné et le temporaire natif (#257).
 - Un test garantit le rapport U25 par plaque lorsque l’identifiant du seul filament est invalide (#262).
+- U25 rapproche les noms d’objets du G-code et couvre le mode vase à objet unique (#249).
+- Les sous-commandes acceptent leurs options et affichent leurs aides métier (#252).
+- Le guide explique l’exécution depuis un worktree et le test de version indique comment réparer une installation en retard (#254, #255).
+- La documentation précise la portée du mode vase et le rapport distingue la déclaration de buse montée du profil Glow (#256, #270).
 
 ## 1.31.0
 
