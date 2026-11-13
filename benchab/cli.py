@@ -414,6 +414,7 @@ def parser():
         "retour",
         "envois-slicer",
         "tracer-3mf",
+        "vecteurs-machine",
         "remplacer-maillage",
     ):
         route = fabrication.add_parser(nom, add_help=False)
@@ -833,6 +834,10 @@ def executer(arguments, base):
             from benchab.fabrication.tracer_3mf import main as tracer
 
             return _deleguer(tracer, arguments.arguments, options={"base": base})
+        if arguments.action == "vecteurs-machine":
+            from benchab.fabrication.vecteurs_machine import main as vecteurs_machine
+
+            return _deleguer(vecteurs_machine, arguments.arguments, options={"base": base})
         if arguments.action == "remplacer-maillage":
             from benchab.fabrication.remplacement_maillage import main as remplacer_maillage
 
@@ -1143,7 +1148,8 @@ def main(argv=None):
     ) or any(
         (argv[i], argv[i + 1]) in {
             ("donnees", "releve-ace"),
-            ("fabrication", "remplacer-maillage"), ("conception", "gyroide-temoin"), ("conception", "variantes"),
+            ("fabrication", "remplacer-maillage"), ("fabrication", "vecteurs-machine"),
+            ("conception", "gyroide-temoin"), ("conception", "variantes"),
         }
         for i in range(len(argv) - 1)
     )

@@ -103,3 +103,15 @@ vecteur machine est court ou non résolu ne peut pas être modifiée ou complét
 en place, même si la cible a la longueur canonique. La sérialisation contrôle
 l'origine et la cible, y compris les mutations imbriquées. Elle ne change
 jamais une valeur d'impression pour rendre un fichier acceptable.
+
+### Compléter les vecteurs machine d’une archive
+
+`benchab fabrication vecteurs-machine PROJET.3mf` expose les longueurs et le
+plan de complément. Le plan ne retient que les vecteurs courts dont les deux
+replis documentés donnent la même valeur et dont le résultat entier correspond
+au profil fabricant résolu. Un écart ambigu reste NON VÉRIFIÉ.
+
+Ajouter `--sortie COPIE.3mf` crée une copie neuve lorsque toutes les différences
+sont qualifiées. La commande vérifie l’intégrité des réglages et les empreintes
+des autres membres. Elle accepte les projets avant tranchage et refuse les
+archives signées. Le profil installé et l’archive source sont préservés.

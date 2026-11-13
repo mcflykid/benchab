@@ -308,3 +308,30 @@ def test_retraction_changement_couche_sans_buse_reste_non_verifiee():
     with pytest.raises(ValueError, match="réindexation"):
         valeurs["retract_when_changing_layer"] = ["0"]
     assert valeurs["retract_when_changing_layer"] == ["1"]
+
+
+def test_message_cardinalite_identifie_les_vecteurs():
+    """Un refus de sérialisation précise les axes et les longueurs attendues."""
+    donnees = reglages.Reglages({
+        "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+        "machine_max_speed_x": ["600"],
+        "machine_max_speed_y": ["600"] * 4,
+    })
+    with pytest.raises(ValueError, match=r"machine_max_speed_x \(1/3\).*machine_max_speed_y \(4/3\)"):
+        reglages.encoder(donnees)
+
+
+def test_plan_vecteurs_machine_refuse_un_changement_de_repli():
+    """Complète les axes constants et conserve le refus si un consommateur verrait un autre mode."""
+    donnees = reglages.Reglages({
+        "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+        "machine_max_jerk_x": ["15"],
+        "machine_max_speed_x": ["600"],
+        "machine_max_speed_y": ["600", "300"],
+    })
+    lignes = {ligne["cle"]: ligne for ligne in reglages.plan_vecteurs_machine(donnees)}
+    assert lignes["machine_max_jerk_x"]["apres"] == ["15"] * 3
+    assert lignes["machine_max_jerk_x"]["statut"] == "PASS"
+    assert lignes["machine_max_speed_x"]["statut"] == "NON VÉRIFIÉ"
+    assert lignes["machine_max_speed_y"]["statut"] == "NON VÉRIFIÉ"
+    assert donnees["machine_max_jerk_x"] == ["15"]
