@@ -73,30 +73,77 @@ def charger(source, unites):
 
 
 def mesurer(mesh):
-    # STL stocke souvent trois sommets par triangle. Une copie soudée sert
-    # uniquement à lire la topologie ; le maillage exportable reste intact.
     """Mesure les dimensions en mm, les volumes en mm³ et les compteurs topologiques sans modifier le maillage."""
+    # STL stocke souvent trois sommets par triangle. La copie soudée reste une
+    # lecture secondaire : la topologie indexée de la source reste explicite.
+    source = mesh.copy()
     topo = mesh.copy()
     topo.merge_vertices()
     faces_valides = mesh.nondegenerate_faces()
+    corps_source = source.split(only_watertight=False)
+    corps_soudes = topo.split(only_watertight=False)
+    signatures = {}
+    for index, corps in enumerate(corps_source):
+        signature = _signature_corps(corps)
+        signatures.setdefault(signature, []).append(index)
+    superposes = [indices for indices in signatures.values() if len(indices) > 1]
+    topologie_source = _mesures_topologie(source, corps_source)
+    topologie_soudee = _mesures_topologie(topo, corps_soudes)
     return {
         "sommets": int(len(mesh.vertices)),
         "faces": int(len(mesh.faces)),
         "faces_degenerees": int((~faces_valides).sum()),
         "bornes_mm": mesh.bounds.tolist(),
         "dimensions_mm": mesh.extents.tolist(),
-        "corps_connectes": int(len(topo.split(only_watertight=False))),
+        "corps_connectes": int(len(corps_soudes)),
         "ferme_topologiquement": bool(topo.is_watertight),
         "orientation_coherente": bool(topo.is_winding_consistent),
         "volume_mm3": float(topo.volume) if topo.is_volume else None,
+        "topologie_source_indexee": topologie_source,
+        "topologie_apres_soudure": topologie_soudee,
+        "corps_exactement_superposes": superposes,
     }
+
+
+def _mesures_topologie(mesh, corps=None):
+    """Mesure une topologie sans modifier son maillage ; dimensions en mm, volumes en mm³."""
+    if corps is None:
+        corps = mesh.split(only_watertight=False)
+    return {
+        "sommets": int(len(mesh.vertices)),
+        "corps_connectes": int(len(corps)),
+        "ferme_topologiquement": bool(mesh.is_watertight),
+        "orientation_coherente": bool(mesh.is_winding_consistent),
+        "volume_mm3": float(mesh.volume) if mesh.is_volume else None,
+    }
+
+
+def _signature_corps(mesh):
+    """Produit une signature exacte des triangles géométriques d’un corps indexé."""
+    sommets = [tuple(float(valeur) for valeur in sommet) for sommet in mesh.vertices]
+    triangles = [tuple(sorted(sommets[indice] for indice in face)) for face in mesh.faces]
+    return tuple(sorted(triangles))
 
 
 def alertes(mesure):
     """Retourne les messages d’alerte applicables aux mesures de géométrie et de topologie."""
     problemes = []
+    sources = mesure.get("topologie_source_indexee")
+    superposes = mesure.get("corps_exactement_superposes", [])
     if not mesure["ferme_topologiquement"]:
-        problemes.append("Maillage ouvert ou non manifold.")
+        if sources and sources["ferme_topologiquement"] and superposes:
+            problemes.append(
+                "Topologie après soudure non manifold, contrairement à la topologie source indexée ; "
+                "des corps exactement superposés sont présents."
+            )
+        elif sources and sources["ferme_topologiquement"]:
+            problemes.append(
+                "Maillage ouvert ou non manifold après soudure ; la topologie source indexée est fermée."
+            )
+        else:
+            problemes.append(
+                "Maillage ouvert ou non manifold après soudure, également présent dans la topologie source indexée."
+            )
     if not mesure["orientation_coherente"]:
         problemes.append("Orientation des faces incohérente.")
     if mesure["faces_degenerees"]:

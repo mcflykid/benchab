@@ -98,3 +98,25 @@ def test_modes_avec_rapport_requis_refuses_avant_lecture(tmp_path, capsys):
     assert debit_gcode.main([str(source), "--resume"]) == 2
     erreur = capsys.readouterr().err
     assert "--sortie" in erreur and "absente.3mf" not in erreur
+
+
+def test_u25_localise_le_pic_et_garde_les_deux_plafonds(tmp_path):
+    """Un dépôt isolé dépasse le plafond embarqué, avec sa longueur et son rôle."""
+    source = tmp_path / "pics.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", json.dumps({
+            "filament_diameter": ["1.75"], "filament_max_volumetric_speed": ["10.2"],
+        }))
+        archive.writestr("Metadata/slice_info.config", '<config><plate><metadata key="index" value="1"/>'
+                         '<filament id="1"/><object name="témoin"/></plate></config>')
+        archive.writestr("Metadata/plate_1.gcode",
+                         "G90\nM83\nT0\n;LAYER_CHANGE\nG1 Z0.2\n;TYPE:Inner wall\n"
+                         "EXCLUDE_OBJECT_START NAME=témoin\nG1 X1 E0.488 F600\nG1 X21 E1 F600\n")
+    rapport = debit_gcode.analyser(source, overrides={"1": 12})
+    outil = rapport["plaques"][0]["objets"][0]["outils"][0]
+    assert rapport["statut"] == "PASS"
+    assert outil["plafond_embarque_mm3_s"] == 10.2
+    assert outil["depassements_plafond_embarque"] == 1
+    assert outil["longueur_hors_plafond_embarque_mm"] == 1
+    assert outil["pic"]["type_trajet"] == "Inner wall"
+    assert outil["pic"]["longueur_mm"] == 1

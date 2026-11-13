@@ -239,3 +239,11 @@ l’atelier privé avant l’affichage du statut, du SHA et des compteurs.
 `--json` est un alias de `--sortie`. Avec la destination seule, la commande
 écrit le rapport sans affichage. Une inspection réussie renvoie 0, un
 refus renvoie 2 avec son motif sur la sortie d’erreur.
+
+Lors de la relecture de sortie du moteur, le tranchage conserve dans
+`equivalences_numeriques` les différences de représentation décimale exacte
+de `filament_max_volumetric_speed` à cardinalité identique. Par exemple,
+`["10.0"]` et `["10"]` décrivent la même consigne en mm³/s. Les changements
+de valeur, les ajouts de champs inconnus comme `ace_t_box_vector` et les
+différences hors plan restent refusés. Le rapport de refus indique le champ
+en cause. Les autres opérations gardent la comparaison exacte.

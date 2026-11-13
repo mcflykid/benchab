@@ -45,12 +45,13 @@ CONTROLES_DIRECTS = {
     "supports-requis": "supports_requis",
     "appuis-gcode": "appuis_gcode",
     "assemblage": "assemblage",
+    "affleurement": "affleurement",
     "ecarts-profils-3mf": "ecarts_profils_3mf",
     "purge-changements": "purge_changements",
     "plages-z": "couverture_plages_z",
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
-    "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
+    "affleurement", "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
     "surplombs-connexes", "ponts-surplombs",
     "purge-changements",
 })

@@ -85,3 +85,20 @@ relation OPC interne du fichier `.model` source vers le même modèle cible.
 L’absence ou l’ambiguïté de ces relations produit `NON VÉRIFIÉ`. Le lecteur de
 scène générique conserve son comportement historique et n’utilise pas ces
 relations comme preuve d’identité.
+
+Pour empêcher la séparation manuelle d’une liaison, la déclaration peut aussi
+contenir `liens_fonctionnels`, une liste d’objets `{ "build_items": [1, 2],
+"name": "Silhouette et languette" }`. Chaque lien est lié au SHA de la
+déclaration et de la source. BENCHAB calcule l’intersection volumique des corps
+fermés avec l’opération géométrique Manifold ; des bornes qui se touchent ou se
+chevauchent ne constituent pas une preuve d’intersection positive. Le lien
+déclaré interdit à lui seul de répartir les objets liés sur plusieurs plaques,
+même si le volume mesuré vaut 0 mm³ ou reste NON VÉRIFIÉ. Sur une même plaque,
+le volume mesuré, y compris 0 mm³, est consigné à titre d’observation ; un calcul
+impossible reste NON VÉRIFIÉ. Le rapport distingue l’identité des objets
+déclarés et ces liaisons fonctionnelles. Le volume calculé ne prouve pas la
+tenue physique de la liaison.
+Les liens fonctionnels ne sont pas devinés depuis les seules coordonnées ou
+intersections du 3MF : une séparation non déclarée ne peut donc pas être
+signalée par cette garde. Cette limite évite de confondre des coordonnées
+locales qui se recouvrent sur des plaques indépendantes.

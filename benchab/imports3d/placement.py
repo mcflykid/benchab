@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import trimesh
 
 from benchab.chemins import sans_lien
 from benchab.controles.placement import valider as valider_placement
@@ -48,10 +49,11 @@ def _declaration(source):
 
 def _valider_declaration(declaration, empreinte_source):
     """Valide le repère et les liens explicites aux identifiants d’instance source."""
-    if not isinstance(declaration, dict) or set(declaration) != {
-        "schema", "source_sha256", "repere_xy", "plates", "objects"
-    }:
-        raise ValueError("La déclaration exige exactement schema, source_sha256, repere_xy, plates et objects.")
+    champs = {"schema", "source_sha256", "repere_xy", "plates", "objects"}
+    if not isinstance(declaration, dict):
+        raise ValueError("La déclaration exige schema, source_sha256, repere_xy, plates et objects.")
+    if set(declaration) - champs - {"liens_fonctionnels"} or not champs <= set(declaration):
+        raise ValueError("La déclaration exige schema, source_sha256, repere_xy, plates et objects.")
     if type(declaration["schema"]) is not int or declaration["schema"] != 1:
         raise ValueError("Schéma de déclaration 1 requis.")
     sha = declaration["source_sha256"]
@@ -89,6 +91,46 @@ def _valider_declaration(declaration, empreinte_source):
             raise ValueError("Identifiants d’instance et noms par plaque doivent être uniques.")
         identifiants.add(build_item)
         noms_objets.add((plaque, nom))
+    liens = declaration.get("liens_fonctionnels", [])
+    if not isinstance(liens, list):
+        raise ValueError("liens_fonctionnels doit être une liste explicite.")
+    paires, noms_liens = set(), set()
+    for lien in liens:
+        if not isinstance(lien, dict) or set(lien) != {"build_items", "name"}:
+            raise ValueError("Chaque lien fonctionnel exige exactement build_items et name.")
+        ids, nom = lien["build_items"], lien["name"]
+        if (
+            not isinstance(ids, list) or len(ids) < 2 or any(type(i) is not int or i not in identifiants for i in ids)
+            or len(set(ids)) != len(ids) or not isinstance(nom, str) or not nom.strip() or nom in noms_liens
+        ):
+            raise ValueError("Lien fonctionnel invalide : build_items distincts et nom explicite requis.")
+        paire = tuple(sorted(ids))
+        if paire in paires:
+            raise ValueError("Lien fonctionnel répété.")
+        paires.add(paire)
+        noms_liens.add(nom)
+
+
+def _volume_intersection(geometries_a, geometries_b):
+    """Mesure un volume d’intersection en mm³ ; un contact ou une bbox ne prouve pas un recouvrement."""
+    a = trimesh.util.concatenate([mesh.copy() for mesh in geometries_a])
+    b = trimesh.util.concatenate([mesh.copy() for mesh in geometries_b])
+    if not a.is_volume or not b.is_volume:
+        raise ValueError("Chevauchement NON VÉRIFIÉ : corps fermés et orientés requis pour le lien fonctionnel.")
+    bornes_bas = np.maximum(a.bounds[0], b.bounds[0])
+    bornes_haut = np.minimum(a.bounds[1], b.bounds[1])
+    if np.any(bornes_haut <= bornes_bas):
+        return 0.0
+    try:
+        intersection = trimesh.boolean.intersection([a, b], engine="manifold")
+        if intersection is None or intersection.is_empty:
+            return 0.0
+        volume = abs(float(intersection.volume))
+    except Exception as exc:
+        raise ValueError("Chevauchement NON VÉRIFIÉ : intersection géométrique impossible à calculer.") from exc
+    if not np.isfinite(volume):
+        raise ValueError("Chevauchement NON VÉRIFIÉ : volume d’intersection non fini.")
+    return volume
 
 
 def _rapport_nv(raison, empreinte=None, sha_declaration=None):
@@ -144,6 +186,40 @@ def generer(source, declaration):
         affectations = {objet["build_item"] for objet in donnees["objects"]}
         if affectations != set(par_build):
             raise ValueError("Liaison d’objet absente, en trop ou indisponible dans la source 3MF.")
+        par_objet_declare = {objet["build_item"]: objet for objet in donnees["objects"]}
+        liens_mesures = []
+        for lien in donnees.get("liens_fonctionnels", []):
+            ids = lien["build_items"]
+            reference = ids[0]
+            volumes = []
+            for autre in ids[1:]:
+                try:
+                    volume = _volume_intersection(
+                        [maillage for maillage, _ in par_build[reference]],
+                        [maillage for maillage, _ in par_build[autre]],
+                    )
+                except ValueError:
+                    volume = None
+                volumes.append({
+                    "build_items": [reference, autre],
+                    "volume_intersection_mm3": volume,
+                    "recouvrement": "NON VÉRIFIÉ" if volume is None else "MESURÉ",
+                })
+            plaques_liees = {par_objet_declare[i]["plate"] for i in ids}
+            if len(plaques_liees) != 1:
+                observations = [
+                    "intersection NON VÉRIFIÉE" if item["volume_intersection_mm3"] is None
+                    else f"intersection mesurée à {item['volume_intersection_mm3']:.6g} mm³"
+                    for item in volumes
+                ]
+                raise ValueError(
+                    f"Lien fonctionnel déclaré {lien['name']} réparti entre plusieurs plaques ; "
+                    + "; ".join(observations) + "."
+                )
+            liens_mesures.append({
+                "name": lien["name"], "build_items": ids, "plate": plaques_liees.pop(),
+                "intersections": volumes,
+            })
         placement = {
             "schema": 1,
             "source_sha256": empreinte,
@@ -156,6 +232,7 @@ def generer(source, declaration):
                 for plaque in donnees["plates"]
             ],
             "objects": [],
+            "liens_fonctionnels": liens_mesures,
         }
         for affectation in donnees["objects"]:
             geometries = par_build[affectation["build_item"]]

@@ -30,6 +30,44 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(report["avant"]["corps_connectes"], 1)
         self.assertTrue(report["avant"]["ferme_topologiquement"])
 
+    def test_audit_distingue_topologie_indexee_et_soudure_sur_corps_dupliques(self):
+        corps = trimesh.creation.box()
+        source = trimesh.util.concatenate([corps, corps.copy()])
+
+        mesure = outil.mesurer(source)
+        messages = outil.alertes(mesure)
+
+        self.assertTrue(mesure["topologie_source_indexee"]["ferme_topologiquement"])
+        self.assertFalse(mesure["topologie_apres_soudure"]["ferme_topologiquement"])
+        self.assertEqual(mesure["corps_exactement_superposes"], [[0, 1]])
+        self.assertTrue(any("topologie source indexée" in message.lower() for message in messages))
+        self.assertFalse(any("Maillage ouvert ou non manifold." == message for message in messages))
+
+    def test_audit_conserve_alerte_maillage_reellement_ouvert(self):
+        ouvert = trimesh.creation.box()
+        ouvert.update_faces(np.arange(len(ouvert.faces)) != 0)
+
+        mesure = outil.mesurer(ouvert)
+        messages = outil.alertes(mesure)
+
+        self.assertFalse(mesure["topologie_source_indexee"]["ferme_topologiquement"])
+        self.assertTrue(any("topologie source indexée" in message.lower() for message in messages))
+
+    def test_audit_attribue_a_la_soudure_le_contact_non_manifold_sans_doublon(self):
+        premier = trimesh.creation.box(extents=(2, 2, 2))
+        second = premier.copy()
+        second.apply_translation((2, 2, 0))
+        source = trimesh.util.concatenate([premier, second])
+
+        mesure = outil.mesurer(source)
+        messages = outil.alertes(mesure)
+
+        self.assertTrue(mesure["topologie_source_indexee"]["ferme_topologiquement"])
+        self.assertFalse(mesure["topologie_apres_soudure"]["ferme_topologiquement"])
+        self.assertEqual(mesure["corps_exactement_superposes"], [])
+        self.assertTrue(any("après soudure" in message for message in messages))
+        self.assertFalse(any("dans la topologie source indexée avant soudure" in message for message in messages))
+
     def test_scene_instances_transforms_applied(self):
         scene = trimesh.Scene()
         mesh = trimesh.creation.box(extents=(1, 1, 1))

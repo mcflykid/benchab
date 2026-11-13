@@ -395,6 +395,28 @@ class Lecture(unittest.TestCase):
                 self.assertEqual(C.main(["--instantane", str(p), "--machine", "42"]), 0)
             self.assertEqual(json.loads(stream.getvalue())["origine"], "INSTANTANE_LOCAL_NON_AUTHENTIFIE")
 
+    def test_cli_expose_les_causes_de_configuration_sans_detail_prive(self):
+        sorties = []
+        with patch.dict(os.environ, {}, clear=True):
+            for arguments, erreur in (
+                (["--cloud", "--session-slicer", "--machine", "42"], "COPIE_SESSION_EXPLICITE_REQUISE"),
+                (["--cloud", "--compte"], "CONFIGURATION_COMPTE_REQUISE"),
+                (["--cloud", "--compte"], "COMPTE_HORS_DEPOT_REQUIS"),
+            ):
+                sortie = io.StringIO()
+                with contextlib.redirect_stdout(sortie):
+                    if erreur == "COPIE_SESSION_EXPLICITE_REQUISE":
+                        code = C.main(arguments)
+                    else:
+                        with patch.object(C, "relever_avec_compte", side_effect=C.CloudErreur(erreur)):
+                            code = C.main(arguments)
+                self.assertEqual(code, 2)
+                contenu = sortie.getvalue()
+                self.assertIn(f'"raison": "{erreur}"', contenu)
+                self.assertNotIn("SECRET", contenu)
+                sorties.append(contenu)
+        self.assertEqual(len(sorties), 3)
+
     def test_liste_machines_route_champs_et_selection(self):
         rows = [
             {
