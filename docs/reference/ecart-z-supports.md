@@ -116,6 +116,25 @@ sont intacts. La variabilité observée ne suffit pas à en isoler la cause :
 la répétabilité du style reste NON VÉRIFIÉE (#208, suite de #89). Aucun
 choix de support ni verdict physique ne découle de cet essai.
 
+### Variabilité observée du style arborescent fin
+
+Avec le même coupon et le même binaire, `tree_slim` reste embarqué
+après tranchage. Face au témoin `organic`, seul `support_style` diffère
+dans les réglages avant et après tranchage.
+
+| Mesure du coupon | `organic` | `tree_slim`, essai 1 | `tree_slim`, essai 2 |
+| --- | ---: | ---: | ---: |
+| Segments `Support` | 20 019 | 15 203 | 15 514 |
+| Longueur `Support` | 7 087,421 mm | 3 464,342 mm | 3 560,624 mm |
+| Écart Z médian estimé | 0,200 mm | 0,735 mm | 0,735 mm |
+| Projection estimée | 177,5 mm² | 80,5 mm² | 79,0 mm² |
+| Temps et matière estimés | 990 s ; 3,28 g | 958 s ; 3,00 g | 959 s ; 3,02 g |
+
+Les deux copies `tree_slim` ont la même empreinte d’entrée. Leurs G-code
+et leurs dépôts diffèrent même après exclusion de la date : répétabilité
+NON VÉRIFIÉE sur ce coupon. La source et les 646 profils relus sont
+intacts. Cet essai ne qualifie ni le retrait ni le contact physique (#89).
+
 ### Comparer deux ou trois rejeux déjà publiés
 
 `benchab controle rejeux-gcode RECU1.json RECU2.json --plaque 1`
