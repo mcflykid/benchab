@@ -20,6 +20,7 @@ l’empreinte de la source.
 | Bilan des dépôts | `--sortie RAPPORT.json` | Ajouter `--detail` |
 | Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
 | Première couche | `--resume --json RAPPORT.json` | Remplacer `--resume` par `--detail` |
+| Carte des coutures | `--resume --sortie RAPPORT.json` | Lire le JSON complet |
 | Coutures | `--sortie DOSSIER_NEUF` | Ajouter `--detail` |
 | Contrôle complet | `--resume` | Retirer `--resume` ou lire le rapport déjà écrit |
 | Règles et opportunité de découpe | `--resume --sortie RAPPORT.json` | Lire le rapport écrit ou retirer `--resume` |
