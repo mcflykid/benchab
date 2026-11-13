@@ -529,13 +529,14 @@ def _fond_declare(config):
     return int(valeur) if isinstance(valeur, str) and re.fullmatch(r"[0-9]{1,6}", valeur) else None
 
 
-def _analyser_vase(texte, config):
+def _analyser_vase(texte, config, limites_filaments):
     """Mesure en mm une spirale à Z variable, avec largeur et couches de fond documentées."""
     lecteur = Interpreter(error_limit=50)
     derniere = None
     segments = morceaux = compte_largeurs = 0
     largeurs = None
     fonds = set()
+    flux = {}
     for ligne in texte.splitlines():
         if ligne.strip().startswith(";LAYER_CHANGE"):
             # Une largeur oubliée n'est pas déduite de la couche précédente.
@@ -545,6 +546,7 @@ def _analyser_vase(texte, config):
             if mouvement and mouvement["length"] > 0:
                 derniere = None
             continue
+        _mesurer_debit(mouvement, limites_filaments, flux, mouvement["feed"] / 60)
         if mouvement["type"] in {"Bottom surface", "Solid infill", "Internal solid infill"} and segments == 0:
             if mouvement["layer"] >= 0:
                 fonds.add(mouvement["layer"])
@@ -572,7 +574,7 @@ def _analyser_vase(texte, config):
         "segments_avec_largeur": compte_largeurs,
         "couches_fond_declarees": couches_fond, "couches_fond_observees": len(fonds),
         "absence_couture": "NON VÉRIFIÉ", "erreurs": lecteur.errors,
-    }
+    }, flux
 
 
 def _analyser_plaque(member, text, cfg, limites_filaments, report):
@@ -676,9 +678,9 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
     vase = "spiral_mode" in config and reglages.valeur_brute(config, "spiral_mode") == "1"
     for member, text in parts:
         if vase or _VASE.search(text):
-            diagnostic = _analyser_vase(text, config)
+            diagnostic, flux = _analyser_vase(text, config, limites_filaments)
             report["plaques"].append({"membre": member, "sha256": _sha(text.encode()), "vase": diagnostic,
-                                     "debit_strict_brut_par_outil": {}, "temps_couches_nominaux": []})
+                                     "debit_strict_brut_par_outil": flux, "temps_couches_nominaux": []})
             if diagnostic["statut"] == "NON VÉRIFIÉ":
                 report["couverture"]["erreurs"].append(member + " : largeur, fond ou continuité vase incomplets")
                 report["couverture"]["erreurs"].extend(diagnostic["erreurs"])

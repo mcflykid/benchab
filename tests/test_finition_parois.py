@@ -383,7 +383,9 @@ def test_diagnostic_vase_releve_une_spirale_continue(tmp_path):
             ";LAYER_CHANGE\n;Z:0.4\n;TYPE:Outer wall\n;WIDTH:0.45\n"
             "G1 X2 Z0.3 E0.1\nG1 X3 Z0.4 E0.1\n"
         ))
-    resultat = F.analyser(source, maitre=M)
+    resultat = F.analyser(source, maitre=M, limites_filaments={"1": {"diametre_mm": 1.75, "plafond_mm3_s": 1}})
+    assert resultat["plaques"][0]["debit_strict_brut_par_outil"]["1"]["statut"] == "FAIL"
+    assert resultat["statut"] == "FAIL"
     vase = resultat["plaques"][0]["vase"]
     assert vase["segments_deposes"] == 2
     assert vase["morceaux_contigus"] == 1
