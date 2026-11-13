@@ -371,3 +371,25 @@ class Finition(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_diagnostic_vase_releve_une_spirale_continue(tmp_path):
+    """Le fond et la largeur déclarés accompagnent le diagnostic du trajet nominal."""
+    source = tmp_path / "vase.3mf"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", '{"spiral_mode":"1","bottom_shell_layers":"1"}')
+        archive.writestr("Metadata/plate_1.gcode", (
+            "G90\nM83\nT0\n;LAYER_CHANGE\n;Z:0.2\n;TYPE:Bottom surface\nG1 Z0.2 F600\nG1 X1 E0.1\n"
+            ";LAYER_CHANGE\n;Z:0.4\n;TYPE:Outer wall\n;WIDTH:0.45\n"
+            "G1 X2 Z0.3 E0.1\nG1 X3 Z0.4 E0.1\n"
+        ))
+    resultat = F.analyser(source, maitre=M)
+    vase = resultat["plaques"][0]["vase"]
+    assert vase["segments_deposes"] == 2
+    assert vase["morceaux_contigus"] == 1
+    assert vase["largeur_ligne_mm"] == {"min": 0.45, "max": 0.45}
+    assert vase["couches_fond_declarees"] == vase["couches_fond_observees"] == 1
+    assert vase["absence_couture"] == "NON VÉRIFIÉ"
+    html = tmp_path / "vase.html"
+    F.rendre_html(resultat, html)
+    assert "Mode vase" in html.read_text()
