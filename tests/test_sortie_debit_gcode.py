@@ -6,7 +6,7 @@ from zipfile import ZipFile
 from benchab.controles import debit_gcode
 
 
-def _archive(tmp_path):
+def _archive(tmp_path, filament="1"):
     """Crée un 3MF tranché de test ; aucune impression ni profil réel."""
     source = tmp_path / "debit.3mf"
     with ZipFile(source, "w") as archive:
@@ -16,7 +16,7 @@ def _archive(tmp_path):
         )
         archive.writestr(
             "Metadata/slice_info.config",
-            '<config><plate><metadata key="index" value="1"/><filament id="1"/></plate></config>',
+            f'<config><plate><metadata key="index" value="1"/><filament id="{filament}"/></plate></config>',
         )
         archive.writestr("Metadata/plate_1.gcode", "G90\nM83\nT0\nG1 X10 E0.4 F900\n")
     return source
@@ -120,3 +120,16 @@ def test_u25_localise_le_pic_et_garde_les_deux_plafonds(tmp_path):
     assert outil["longueur_hors_plafond_embarque_mm"] == 1
     assert outil["pic"]["type_trajet"] == "Inner wall"
     assert outil["pic"]["longueur_mm"] == 1
+
+
+def test_u25_filament_unique_invalide_ecrit_un_rapport_structure(tmp_path, capsys):
+    """Une déclaration de filament illisible rend un verdict lié à la plaque."""
+    source = _archive(tmp_path, filament="x")
+    rapport = tmp_path / "rapport.json"
+    assert debit_gcode.main([str(source), "--sortie", str(rapport)]) == 2
+    capsys.readouterr()
+    resultat = json.loads(rapport.read_text())
+    assert resultat["statut"] == "FAIL"
+    plaque, = resultat["plaques"]
+    assert plaque["plaque"] == 1
+    assert "filaments déclarés absents ou invalides" in plaque["erreurs"]

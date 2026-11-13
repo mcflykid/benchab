@@ -184,7 +184,8 @@ def ecrire_3mf(plaques, settings, out, cli=False, *, nommer_source=False, canoni
     géométriques sont relus contre leurs octets prévus. Aucun profil installé ni maillage d’entrée n’est modifié.
     ``cli=True`` sélectionne le pas de 300 mm.
     ``canonique=True`` déclare la provenance du nouveau fichier nommé ``nom_source``
-    et ses métadonnées de plaque. Si source_3mf est fournie, chaque différence exacte
+    et ses métadonnées de plaque. Les corps imprimés doivent être des volumes étanches et orientés.
+    Si source_3mf est fournie, chaque différence exacte
     est planifiée avant sérialisation et vérifiée avant livraison ; rapport_integrite reçoit le détail.
     """
     maximum = min(30, int(charger()["slicer"]["plaques_max"]))
@@ -204,6 +205,16 @@ def ecrire_3mf(plaques, settings, out, cli=False, *, nommer_source=False, canoni
                         "aucune conversion silencieuse en corps imprimé n'est permise."
                     )
     if canonique:
+        for plaque in plaques:
+            for item in plaque["items"]:
+                corps = [(item["name"], item["mesh"])]
+                corps.extend((v["name"], v["mesh"]) for v in item.get("volumes", []) if v["subtype"] == "normal_part")
+                for nom, maillage in corps:
+                    if not maillage.is_volume:
+                        # Une soupe STL doit être réparée avant export (docs/reference/integrite-3mf.md).
+                        raise ValueError(
+                            f"Plaque {plaque['name']!r}, corps {nom!r} : volume étanche et orienté requis."
+                        )
         if not isinstance(nom_source, str) or Path(nom_source).name != nom_source or not nom_source.endswith(".3mf"):
             raise ValueError("Le producteur canonique exige le nom réel du nouveau 3MF source")
         couleurs = schema_reglages.valeur_brute(settings, "filament_colour")
@@ -686,10 +697,11 @@ def _ecarts_reglages_embarques(gcodes, attendu):
     return ecarts
 
 
-def nommer_plaques(path, noms):
+def nommer_plaques(path, noms, *, prive=None):
     """Restaure les noms d'un 3MF privé ; retourne PASS ou lève FAIL, sans toucher aux plaques protégées.
 
-    Entrées : chemin privé et noms (sans unité) ; sortie : bilan de réouverture. Aucun G-code ni réglage
+    Entrées : chemin, noms et racine privée optionnelle (sans unité). Sortie : bilan de réouverture.
+    Aucun G-code ni réglage
     d'impression n'est modifié (docs/reference/integrite-3mf.md).
     """
     import stat
@@ -697,7 +709,7 @@ def nommer_plaques(path, noms):
     from benchab.projets.protections import protections
     from benchab.qualite.ecritures import acquerir_verrou, ouvrir_verrou, sortie_privee
 
-    cible = sortie_privee(path, prive=Path(__file__).resolve().parents[2] / "prive")
+    cible = sortie_privee(path, prive=prive)
     if cible.is_symlink():
         raise ValueError("3MF lié refusé pour la restauration des noms.")
     parent_fd = os.open(cible.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)

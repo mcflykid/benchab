@@ -192,3 +192,26 @@ def test_ecrire_3mf_refuse_geometrie_modifiee_meme_avec_un_crc_valide(tmp_path, 
         anycubic.ecrire_3mf(_plaques(), {}, destination)
     assert destination.read_bytes() == contenu
     assert not list(tmp_path.glob(".existant.3mf.*.tmp"))
+
+
+@pytest.mark.parametrize("second_corps", [False, True])
+def test_producteur_canonique_refuse_un_corps_stl_non_cousu(tmp_path, second_corps):
+    """Refuse une soupe STL en nommant le corps et préserve la destination."""
+    plaques = _plaques()[:1]
+    item = plaques[0]["items"][0]
+    stl = tmp_path / "simulation.stl"
+    item["mesh"].export(stl)
+    soupe = trimesh.load_mesh(stl, process=False)
+    assert not soupe.is_watertight
+    nom = item["name"]
+    if second_corps:
+        nom = "Insert fixture"
+        item["volumes"] = [{"name": nom, "mesh": soupe, "subtype": "normal_part"}]
+    else:
+        item["mesh"] = soupe
+    cible = tmp_path / "sortie.3mf"
+    cible.write_bytes(b"archive existante")
+    with pytest.raises(ValueError, match=nom):
+        anycubic.ecrire_3mf(plaques, {"filament_colour": ["#000000"]}, cible,
+                            canonique=True, nom_source=cible.name)
+    assert cible.read_bytes() == b"archive existante"
