@@ -232,3 +232,27 @@ sont les seules observées dans les réglages avant et après tranchage.
 Cette comparaison établit la redistribution dans le G-code pour un
 budget nominal égal ; les masses estimées diffèrent de 2 %. Elle ne
 mesure pas un gain de rigidité à masse égale.
+
+### Comparaison à masse estimée égale
+
+Sur la même géométrie, les variantes uniformes à 40, 41 et 42 %
+donnent respectivement 2,50, 2,55 et 2,57 g. À **41 % uniforme**,
+le rapport de plaque et le G-code annoncent la même masse qu’avec
+les paliers, **2,55 g au centième de gramme**. Le G-code annonce
+839,97 mm de filament en uniforme et 840,27 mm avec les paliers ;
+l’égalité de masse est limitée à la précision publiée. La durée
+estimée passe de 407 à 411 s.
+
+| Boîte de mesure, depuis l’appui | Uniforme 41 % | Paliers | Écart |
+| --- | ---: | ---: | ---: |
+| 1 | 465,7 mm | 667,1 mm | +201,4 mm |
+| 2 | 466,6 mm | 527,1 mm | +60,5 mm |
+| 3 | 464,5 mm | 405,1 mm | −59,4 mm |
+| 4 | 466,9 mm | 227,3 mm | −239,6 mm |
+
+Les valeurs sont des longueurs d’axe des trajets `Sparse infill`
+dans les mêmes boîtes. Seules les quatre densités locales diffèrent
+avant et après tranchage. Les liaisons de placement et les maillages
+concordent. Le rejeu reproduit les mesures. Le résultat isole une
+redistribution du dépôt à masse estimée égale ; la rigidité et la
+masse réelles restent à mesurer (#83, #84).
