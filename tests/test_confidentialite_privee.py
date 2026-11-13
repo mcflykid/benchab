@@ -2,9 +2,11 @@
 
 import json
 import zipfile
+from hashlib import sha256
 
 from benchab.donnees.base import Base
 from benchab.qualite import frontiere
+from benchab.qualite.confidentialite import motifs
 from benchab.qualite.edition import verifier as publication
 from benchab.qualite.frontiere import verifier
 
@@ -125,6 +127,44 @@ def test_zip_hors_budget_et_archive_incomplete_echouent_avec_diagnostic_public(t
     (racine / "tronque.3mf").write_bytes(b"PK\x03\x04incomplet")
     erreurs = verifier(racine)
     assert any("tronque.3mf" in erreur and "archive ZIP illisible" in erreur for erreur in erreurs), erreurs
+
+
+def test_collision_attestee_limitee_au_contenu_et_a_son_empreinte(tmp_path):
+    """Une collision attestée épargne un texte précis, avec les noms et archives toujours contrôlés."""
+    racine = _racine_privee_fixture(tmp_path / "atelier")
+    prive = racine / "prive"
+    fichier = racine / "lexique.txt"
+    texte = "Alias Modèle Fictif"
+    fichier.write_text(texte)
+    assert any("lexique.txt" in erreur for erreur in verifier(racine))
+    motif, = [m for m in motifs(prive) if m.search(texte)]
+    fichier_exception = prive / "collisions-alias-publics.json"
+
+    def attester(chemin):
+        """Ajoute le motif fictif à la fiche de l’archive ou du texte choisi."""
+        fiche = json.loads(fichier_exception.read_text()) if fichier_exception.exists() else {}
+        fiche[chemin.name] = {
+            "sha256": sha256(chemin.read_bytes()).hexdigest(),
+            "motifs_sha256": [sha256(motif.pattern.encode()).hexdigest()],
+            "justification": "Homonyme public vérifié.",
+        }
+        fichier_exception.write_text(json.dumps(fiche))
+
+    attester(fichier)
+    assert verifier(racine) == []
+    fichier.write_text(texte + " modifié")
+    assert any("lexique.txt" in erreur for erreur in verifier(racine))
+    fichier.write_text(texte + " et Projet Secret Fixture")
+    assert verifier(racine)
+    attester(fichier)
+    assert verifier(racine)
+    fichier.write_text(texte)
+    attester(fichier)
+    archive = racine / "export.zip"
+    with zipfile.ZipFile(archive, "w") as flux:
+        flux.writestr("notes.txt", texte)
+    attester(archive)
+    assert any("membre d’archive" in erreur for erreur in verifier(racine))
 
 
 def test_index_refuse_atelier_prive_deplace_dans_le_depot(tmp_path):

@@ -62,3 +62,17 @@ détermine la base consultée, même si elle est séparée du dépôt contrôlé
 L’index Git est vérifié pour la racine privée effectivement résolue, ainsi
 que pour le préfixe historique `prive/`. Le parcours public ne lit aucun
 de ces sous-arbres. Une racine privée égale à la racine publique est refusée.
+
+### Homonymes du vocabulaire public
+
+Une collision vérifiée avec un alias peut être attestée dans le fichier privé
+`collisions-alias-publics.json`. Chaque entrée est indexée par le chemin public
+relatif et contient `sha256` (les octets publics vérifiés), `motifs_sha256`
+(les empreintes des motifs d’alias concernés) et une `justification` locale.
+Les empreintes de motif sont calculées sur la représentation UTF-8 du motif
+retourné par `benchab.qualite.confidentialite.motifs`, sans l’afficher.
+
+L’attestation concerne le contenu de ce fichier seulement. Une modification
+des octets réactive le contrôle complet. Les chemins, archives, noms et
+identifiants explicites, courriels et jetons passent leurs contrôles habituels.
+Un nom complet également déclaré comme alias reste protégé.
