@@ -136,3 +136,31 @@ def test_palier_refuse_un_maillage_converti_deplace_hors_tranche(monkeypatch):
     )
     assert not volumes and r["statut"] == "NON VÉRIFIÉ"
     assert "Sommet" in r["raison"]
+
+
+def test_paliers_au_voisinage_d_une_fixation_suivent_sa_surface():
+    """Les paliers partent d’une fixation extérieure et suivent sa surface courbe."""
+    from benchab.conception.decoupe.geometrie import solide
+    from benchab.conception.paliers_densite import modificateurs_autour_fixation
+
+    piece = trimesh.creation.box((10, 12, 12))
+    fixation = trimesh.creation.icosphere(subdivisions=1, radius=2).apply_translation([8, 0, 0])
+    paliers = [{"distance_mm": 2, "densite": "60%"}, {"distance_mm": 4, "densite": "35%"}]
+    zones, rapport = modificateurs_autour_fixation(piece, fixation, paliers)
+    assert rapport["statut"] == "PASS", rapport
+    assert rapport["effet_gcode"] == "NON VÉRIFIÉ"
+    premier, second = [solide(zone["mesh"]) for zone in zones]
+    assert (premier ^ second).volume() == pytest.approx(0, abs=1e-8)
+    assert zones[0]["mesh"].bounds[0, 0] == pytest.approx(4)
+    assert zones[1]["mesh"].bounds[0, 0] == pytest.approx(2)
+
+
+def test_fixation_dans_la_matiere_refuse_les_paliers():
+    """Le parcours d'une fixation séparée refuse une intersection initiale."""
+    from benchab.conception.paliers_densite import modificateurs_autour_fixation
+
+    piece = trimesh.creation.box((10, 12, 12))
+    fixation = trimesh.creation.icosphere(subdivisions=1, radius=2)
+    zones, rapport = modificateurs_autour_fixation(piece, fixation, [{"distance_mm": 2, "densite": "60%"}])
+    assert not zones and rapport["statut"] == "NON VÉRIFIÉ"
+    assert "chevauche" in rapport["raison"]

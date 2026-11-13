@@ -70,3 +70,15 @@ date de génération. Les 646 profils relus et l’archive de référence
 sont inchangés. Le résultat vaut pour ces boîtes et ce binaire ;
 les avertissements natifs de température du plateau et de dureté de
 buse ne sont pas levés. Aucun envoi ni essai de résistance n’a été fait.
+
+## Paliers autour d’une fixation
+
+`modificateurs_autour_fixation(piece, fixation, paliers)` mesure le voisinage
+d’une fixation extérieure maillée, placée dans le repère de la pièce.
+Chaque palier donne `distance_mm` et `densite`. Le noyau dilate le volume de
+la fixation par une boule polyédrique inscrite, coupe le résultat à la
+pièce et retire les zones déjà attribuées. Le rapport indique l’écart
+radial maximal de la boule à la distance demandée. Une fixation qui
+chevauche déjà la matière, une bande vide ou un échec du noyau empêche
+la production des modificateurs. L’effet dans le G-code et la tenue
+physique restent à qualifier pour ce parcours (#83).

@@ -219,3 +219,38 @@ def modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers, *
                 "raison": "Sommet d’un modificateur au-delà des plans de son palier",
             }
     return volumes, rapport
+
+
+def modificateurs_autour_fixation(piece, fixation, paliers, *, volume_min_mm3=0.1):
+    """Retourne des paliers autour d’une fixation maillée extérieure.
+
+    Les deux solides partagent le repère en mm. Les paliers déclarent une
+    distance en mm et une densité en %. PASS porte sur leur géométrie
+    disjointe dans la pièce, NON VÉRIFIÉ indique une opération incomplète.
+    La distance suit une boule polyédrique inscrite. Aucune entrée n’est
+    modifiée et aucun effet G-code ou comportement physique n’est déduit.
+    """
+    normalises = _valider_paliers(paliers, "distance_mm")
+    base, volume_base = _piece_et_volume(piece, volume_min_mm3)
+    obstacle, _ = _piece_et_volume(fixation, volume_min_mm3)
+    boule = mf.Manifold.sphere(1, _SEGMENTS_SPHERE)
+    if obstacle.num_tri() * boule.num_tri() > 1_000_000:
+        raise ValueError("Budget de dilatation dépassé : utiliser une fixation maillée plus simple")
+    intersection = base ^ obstacle
+    if intersection.status() != mf.Error.NoError or abs(intersection.volume()) > max(1e-9, volume_base * 1e-10):
+        return [], {
+            "statut": "NON VÉRIFIÉ", "raison": "La fixation chevauche la matière ou l’intersection est indéterminée.",
+            "effet_gcode": "NON VÉRIFIÉ", "validation_physique": False, "paliers": [],
+        }
+
+    # La boule inscrite borne l’extérieur de chaque bande de distance.
+    # Son écart radial maximal vient de la face la plus proche du centre.
+    maillage_boule = _vers_trimesh(boule)
+    inrayon = float(np.min(np.einsum("ij,ij->i", maillage_boule.triangles_center, maillage_boule.face_normals)))
+    return _assembler(
+        base, volume_base, normalises, lambda d: base ^ obstacle.minkowski_sum(boule.scale((d, d, d))),
+        prefixe="palier-fixation", nom_distance="distance", volume_min_mm3=volume_min_mm3,
+        details={"erreur_radiale_boule_max_mm": (1 - inrayon) * normalises[-1][0],
+                 "triangles_fixation": obstacle.num_tri()},
+        limite="Dilatation de la fixation maillée ; aucun effet G-code ni tenue physique établis.",
+    )
