@@ -198,3 +198,20 @@ la même échelle de couleur. Le gris indique un trajet indéterminé et le
 rapport indique la couverture. L’atténuation est une hypothèse à déclarer.
 Le modèle ignore diffusion, réflexion et émission du matériau luminescent.
 La validation physique reste NON VÉRIFIÉE.
+
+## Fente ou vide dans une interface
+
+`benchab controle fentes-interface PIECE.stl --zone-mm XMIN YMIN ZMIN XMAX YMAX ZMAX --axe x --largeur-ligne-mm 0.42 --pas-mm 0.10`
+cherche les intervalles vides entre deux parois sur un axe XY déclaré.
+Les coordonnées suivent le repère du STL en mm. Le seuil vaut deux largeurs
+de ligne. Le maillage fermé est échantillonné par coupes XY sur une grille
+bornée à trois millions de cellules. La commande rapporte les positions et
+l’étendue verticale des intervalles fins retenus.
+
+Une fente connectée à l’extérieur sur la grille produit WARN. Une cavité
+sans connexion échantillonnée produit FAIL si la zone est déclarée porteuse
+avec `--porteuse`. Une mesure proche du seuil, une ouverture détectée
+seulement en diagonale ou un budget dépassé donne NON VÉRIFIÉ. Une fente
+plus fine que le pas peut échapper au contrôle.
+Les options `--json` et `--coupe` enregistrent sous l’atelier privé le
+rapport et, si un vide est repéré, une coupe PNG au niveau du défaut.
