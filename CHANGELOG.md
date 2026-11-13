@@ -8,6 +8,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- La recette gyroïde compare la géométrie modélisée à deux références tranchées avec la même enveloppe (#87).
+
 - La greffe d’un filet femelle contrôle la source, le recouvrement et le profil du STL relu (#263).
 - La conception produit l’aperçu de la candidate et enregistre la décision avec ses empreintes (#259).
 
