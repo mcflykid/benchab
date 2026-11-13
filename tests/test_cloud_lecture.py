@@ -160,6 +160,15 @@ class Lecture(unittest.TestCase):
             )
         self.assertEqual(len(transport.requests), 1)
 
+    def test_transport_workbench_sans_user_agent_automatique(self):
+        """Prépare la requête HTTPS Workbench sans l’en-tête que le service refuse."""
+        client = C.CloudLecture("FIXTURE_ACCESS", "FIXTURE_APP", "FIXTURE_SIGN", "2.0")
+        opener = client._open.__self__
+        handler = next(h for h in opener.handlers if isinstance(h, urllib.request.HTTPSHandler))
+        requete = urllib.request.Request(C.API + "/v3/public/loginWithAccessToken", data=b"{}")
+        preparee = handler.https_request(requete)
+        self.assertFalse(preparee.has_header("User-agent"))
+
     def test_refus_http_auth_distingue_indisponibilite(self):
         req = urllib.request.Request(C.API + "/work/printer/getPrinters")
         for status in (401, 403):

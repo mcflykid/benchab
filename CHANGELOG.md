@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- La lecture Cloud Anycubic évite le refus HTTP 403 de Workbench lié au User-Agent ajouté par Python (#52).
+
 - Le tranchage d’une candidate de projet vérifie la décision visuelle et les empreintes de l’archive et de son aperçu (suite de #259).
 
 - Le registre privé vérifie la filiation, les preuves et les promotions des variantes (#268).

@@ -51,12 +51,16 @@ class SansRedirection(urllib.request.HTTPRedirectHandler):
         raise CloudErreur("REDIRECTION_REFUSEE")
 
 
-def _opener():
-    return urllib.request.build_opener(
+def _opener(*, workbench=False):
+    transport = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
         SansRedirection(),
         urllib.request.HTTPSHandler(context=ssl.create_default_context()),
-    ).open
+    )
+    if workbench:
+        # Workbench refuse le User-Agent ajouté par urllib au client Slicer (#52).
+        transport.addheaders = []
+    return transport.open
 
 
 def _octets(request, opener, maximum=LIMIT, *, auth_http=False):
@@ -380,7 +384,7 @@ class CloudLecture:
         self._secret = app_secret
         self._version = version
         self._transport_injecte = opener is not None
-        self._open = opener or _opener()
+        self._open = opener or _opener(workbench=True)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._token = None
 
