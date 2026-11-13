@@ -19,6 +19,8 @@ Choisir le guide selon le besoin :
   et [profils et procédés](docs/reference/profils-et-procedes.md).
 - Enregistrer une réussite ou un défaut : [retour d’impression](docs/guides/retour-impression.md).
 
+Relire l’aperçu et l’empreinte de la candidate avant les contrôles longs. Voir le cycle de projet.
+
 Un contrôle numérique ne valide pas le résultat physique. Avant un vote de
 préparation, appliquer la [relecture critique et le dixième homme](docs/reference/vote.md).
 L’envoi de commandes à une imprimante nécessite une demande explicite.

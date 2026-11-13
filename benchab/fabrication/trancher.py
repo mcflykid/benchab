@@ -608,12 +608,19 @@ def trancher(demande, *, prive=None, destination_finale=None):
 
 def trancher_fichier(
     source, dossier_sortie, nom=None, *, usage="impression", prive=None, timeout_s=1800, journal=None, attendu=None,
-    identifiants=None,
+    identifiants=None, validation_visuelle=None,
 ):
     """Prépare un 3MF (mm) avec catalogue et publie dans l’atelier choisi ou le temporaire système.
 
     Retourne la sortie et le rapport, sans modifier les profils installés.
+    En usage impression, une fiche de candidate fournie exige un aperçu validé
+    pour l’empreinte exacte avant de copier et trancher sa source.
     """
+    preuve_visuelle = None
+    if usage == "impression" and validation_visuelle is not None:
+        from benchab.projets.validation_apercu import verifier
+
+        preuve_visuelle = verifier(source, validation_visuelle, prive=prive)
     source = Path(source).resolve(strict=True)
     sortie = Path(dossier_sortie) / (nom or f"{source.stem}.gcode.3mf")
     if Path(nom or sortie.name).name != (nom or sortie.name):
@@ -629,6 +636,8 @@ def trancher_fichier(
         entree = Path(dossier) / "source.3mf"
         cible = Path(dossier) / "tranche.3mf"
         shutil.copy2(source, entree)
+        if preuve_visuelle is not None and sha256(entree) != preuve_visuelle["source_sha256"]:
+            raise ValueError("La source a changé après la validation de l’aperçu.")
         resultat = trancher(
             {
                 "source": str(entree),
@@ -641,6 +650,8 @@ def trancher_fichier(
             prive=prive,
             destination_finale=sortie,
         )
+        if preuve_visuelle is not None:
+            resultat["validation_visuelle"] = preuve_visuelle
         resultat["source_originale"] = str(source)
         resultat["destination_finale"] = str(sortie)
         if journal is not None:

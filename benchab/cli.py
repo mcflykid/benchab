@@ -380,6 +380,7 @@ def parser():
     tranchage.add_argument("fichier", type=Path)
     tranchage.add_argument("--sortie", type=Path)
     tranchage.add_argument("--nom")
+    tranchage.add_argument("--validation-visuelle", type=Path, help="Décision visuelle liée à la candidate")
     tranchage.add_argument("--usage", choices=["impression", "temoin"], default="impression")
     tranchage.add_argument(
         "--identifiants",
@@ -869,6 +870,7 @@ def executer(arguments, base):
             return _deleguer(gerer_envois_slicer, arguments.arguments, options={"prive": base.prive})
         from benchab.fabrication.trancher import trancher_fichier
 
+        options_apercu = {"validation_visuelle": arguments.validation_visuelle} if arguments.validation_visuelle else {}
         sortie, rapport = trancher_fichier(
             arguments.fichier,
             arguments.sortie or base.prive / "fabrication",
@@ -880,6 +882,7 @@ def executer(arguments, base):
                 if arguments.identifiants
                 else None
             ),
+            **options_apercu,
         )
         print(json.dumps({"sortie": str(sortie), "rapport": rapport}, ensure_ascii=False, indent=2))
     elif arguments.commande in ROUTES_NAMESPACE:
