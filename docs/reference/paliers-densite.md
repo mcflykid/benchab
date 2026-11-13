@@ -162,3 +162,26 @@ Mises passe de 2,10 MPa côté appui à 0,37 MPa dans le dernier quart.
 Le rapport présente cette variation sans en faire une borne d’erreur.
 Les STL de forme libre, d’autres conditions d’appui, l’anisotropie FDM
 et la tenue de pièces imprimées sont hors du domaine du coupon (#83, #84).
+
+### Raffinement de la console à paramètres inchangés
+
+La série ci-dessous utilise le même solveur et multiplie les divisions
+initiales (24, 4, 5) par un facteur entier sur chaque axe. Les trois
+derniers maillages ont été lancés hors du budget de la commande standard,
+dans une étude locale dédiée. Le budget de la commande reste inchangé.
+
+| Divisions X × Y × Z | Tétraèdres | Flèche en Z (valeur absolue) | Variation depuis le niveau précédent |
+| --- | ---: | ---: | ---: |
+| 24 × 4 × 5 | 2 880 | 0,835141 mm | — |
+| 48 × 8 × 10 | 23 040 | 1,021842 mm | 0,186701 mm |
+| 72 × 12 × 15 | 77 760 | 1,068153 mm | 0,046311 mm |
+| 96 × 16 × 20 | 184 320 | 1,085738 mm | 0,017585 mm |
+| 120 × 20 × 25 | 360 000 | 1,094195 mm | 0,008457 mm |
+
+Le dernier incrément représente 0,77 % de la flèche finale. Le maillage
+le plus fin donne une réaction verticale de 4 N et une contrainte moyenne
+de 2,154 MPa dans le quart encastré, contre 2,147 MPa au niveau précédent.
+Le résultat se stabilise numériquement sur cette série ; l’incrément
+n’est pas une borne d’erreur. La référence de poutre (1,111111 mm) ne
+résout pas le même problème tridimensionnel. Aucun seuil de densité ni
+validation physique n’est déduit de ce résultat (#83).
