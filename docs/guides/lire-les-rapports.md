@@ -14,6 +14,7 @@ l’empreinte de la source.
 | Couches courtes | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Paquet 3MF | `--resume --sortie RAPPORT.json` | Lire le JSON écrit ou retirer les deux options |
 | Vissage, fentes d’interface | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
+| Finition des parois | `analyser … --json RAPPORT.json` | Ajouter `--detail` |
 | Bilan des dépôts | `--sortie RAPPORT.json` | Ajouter `--detail` |
 | Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
 | Première couche | `--resume --json RAPPORT.json` | Remplacer `--resume` par `--detail` |
