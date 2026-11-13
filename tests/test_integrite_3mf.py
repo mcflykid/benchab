@@ -60,6 +60,23 @@ def test_diametre_de_buse_lisible_mais_pas_modifiable_meme_si_declare(tmp_path):
         integrite_3mf.verifier(avant, apres, permis)
 
 
+def test_refus_moteur_enumere_les_champs_proteges(tmp_path):
+    """Signale toutes les clés bloquantes et garde leurs valeurs hors du diagnostic."""
+    a, b = tmp_path / "avant.3mf", tmp_path / "apres.3mf"
+    for fichier, contenu in (
+        (a, {"nozzle_diameter": ["0.4"]}),
+        (b, {"nozzle_diameter": ["0.6"], "ace_t_box_vector": [], "magic_strings": ["opaque"]}),
+    ):
+        with ZipFile(fichier, "w") as archive:
+            archive.writestr("Metadata/project_settings.config", json.dumps(contenu))
+    with pytest.raises(ValueError) as refus:
+        integrite_3mf.verifier(a, b, relecture_moteur=True)
+    assert "ace_t_box_vector (type inconnu)" in str(refus.value)
+    assert "magic_strings (type inconnu)" in str(refus.value)
+    assert "nozzle_diameter (lecture seule)" in str(refus.value)
+    assert "opaque" not in str(refus.value)
+
+
 @pytest.mark.parametrize('role', ['projet', 'objet', 'partie', 'nom_forge'])
 def test_portee_matrice_reelle_pas_deduite_du_nom(tmp_path, role):
     """Seule la métadonnée de partie connue est déclarable ; un nom contenant /part/0 ne contourne rien."""

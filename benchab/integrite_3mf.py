@@ -204,6 +204,7 @@ def verifier(source, destination, permis=(), *, relecture_moteur=False):
     avant, types_avant = instantane(source, avec_types=True)
     apres, types_apres = instantane(destination, avec_types=True)
     reel = difference(avant, apres)
+    blocages = []
     for d in reel:
         definitions = [
             types[d["chemin"]]
@@ -212,9 +213,12 @@ def verifier(source, destination, permis=(), *, relecture_moteur=False):
         ]
         # Un réglage nouvellement documenté peut rester réservé à la lecture (#71).
         if any(definition.get("lecture_seule") for definition in definitions):
-            raise ValueError("Intégrité FAIL : réglage en lecture seule modifié, même déclaré : " + d["chemin"])
-        if any(definition["type"] == "inconnu" for definition in definitions):
-            raise ValueError("Intégrité FAIL : réglage de type inconnu modifié, même déclaré : " + d["chemin"])
+            blocages.append(d["chemin"] + " (lecture seule)")
+        elif any(definition["type"] == "inconnu" for definition in definitions):
+            blocages.append(d["chemin"] + " (type inconnu)")
+    if blocages:
+        # Les valeurs peuvent être privées. Rendre visibles toutes les clés du refus (#290).
+        raise ValueError("Intégrité FAIL : réglages protégés modifiés, même déclarés : " + ", ".join(blocages))
     attendu = sorted(list(permis), key=lambda d: d["chemin"])
     if len({d["chemin"] for d in attendu}) != len(attendu):
         raise ValueError("Intégrité FAIL : déclarations de différences dupliquées")
