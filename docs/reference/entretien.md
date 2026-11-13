@@ -81,3 +81,8 @@ d’abord le bilan complet, puis affiche le statut et le nombre de compteurs
 par verdict. Les événements, seuils, unités, identifiants et motifs détaillés
 restent dans le JSON privé. Le résumé garde le code de sortie habituel ;
 sans option, le bilan complet est affiché. La destination doit être neuve.
+
+Pour chaque compteur NON VÉRIFIÉ, `motifs_non_verifies` distingue
+une couverture incomplète, un seuil non qualifié, un entretien absent ou
+non qualifié et un historique invalide. Plusieurs motifs peuvent
+coexister dans le rapport complet.

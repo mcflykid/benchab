@@ -282,3 +282,18 @@ def test_couverture_locale_non_etablie_prime_sur_le_statut_global(variation):
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["compteurs"][0]["valeur"] is None
     assert rapport["compteurs"][0]["motif_couverture"]
+
+
+def test_compteurs_incomplets_expliquent_le_refus_et_priorisent_le_seuil():
+    """Le rapport distingue un seuil absent, une période incomplète et un service manquant."""
+    from benchab.entretien.bilan import calculer
+
+    donnees = _historique()
+    donnees["couverture"] = "INCOMPLETE"
+    donnees["evenements"].append(dict(donnees["evenements"][1], id="a-1", organe="axe"))
+    donnees["seuils"].append(dict(donnees["seuils"][0], organe="plateau"))
+    compteurs = {r["organe"]: r for r in calculer(donnees)["compteurs"]}
+    assert "SEUIL_NON_QUALIFIE" in compteurs["axe"]["motifs_non_verifies"]
+    assert "COUVERTURE_INCOMPLETE" in compteurs["extrudeur"]["motifs_non_verifies"]
+    assert "ENTRETIEN_ABSENT" in compteurs["plateau"]["motifs_non_verifies"]
+    assert all(r["valeur"] is None for r in compteurs.values())

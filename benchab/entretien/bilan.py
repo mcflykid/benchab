@@ -77,7 +77,8 @@ def calculer(donnees):
 
     `valeur` compte en g, h ou autre unité explicitement donnée ; les statuts
     `PASS`, `WARN` et `NON VÉRIFIÉ` décrivent uniquement le compteur déclaré,
-    jamais une usure ou une validation physique. Une période sourcée peut
+    jamais une usure ou une validation physique. Le rapport expose les
+    motifs de chaque compteur NON VÉRIFIÉ. Une période sourcée peut
     remplacer la couverture globale pour un compteur. Les entrées restent en mémoire.
     """
     if not isinstance(donnees, dict):
@@ -170,14 +171,17 @@ def calculer(donnees):
         if cle in couvertures_par_cle:
             # Une attestation locale invalide ne peut pas reprendre COMPLETE du fichier (#73).
             resultat.update(_couverture_locale(couvertures_par_cle[cle], date_service, usages_apres))
-        valide = (
-            seuil_valide
-            and cle not in conflits
-            and resultat["couverture"] == "COMPLETE"
-            and debut is not None
-            and all(_date(evenement.get("date")) is not None for evenement in evenements_cle)
-            and not erreurs
-        )
+        motifs = []
+        if not seuil_valide:
+            motifs.append("SEUIL_NON_QUALIFIE")
+        if cle in conflits or erreurs:
+            motifs.append("HISTORIQUE_INVALIDE")
+        if resultat["couverture"] != "COMPLETE":
+            motifs.append("COUVERTURE_INCOMPLETE")
+        if debut is None:
+            motifs.append("ENTRETIEN_ABSENT")
+        if not all(_date(evenement.get("date")) is not None for evenement in evenements_cle):
+            motifs.append("DATE_INVALIDE")
         cumul = Fraction(0)
         entretien = None
         if debut is not None:
@@ -195,12 +199,13 @@ def calculer(donnees):
                 resultat["sources_evenements"].append(
                     {cle: evenement_entretien[cle] for cle in ("id", "date", "source", "preuve")}
                 )
-            valide &= source_entretien
+            if not source_entretien:
+                motifs.append("ENTRETIEN_NON_QUALIFIE")
         if date_service is not None and any(
             evenement["id"] != ordre[debut]["id"] and _date(evenement.get("date")) == date_service
             for evenement in ordre
         ):
-            valide = False
+            motifs.append("ORDRE_ENTRETIEN_AMBIGU")
         for evenement in usages_apres:
             source_valide = (
                 isinstance(evenement.get("source"), str)
@@ -210,11 +215,10 @@ def calculer(donnees):
                 and _date(evenement.get("date")) is not None
                 and evenement.get("unite") == unite
             )
-            valide &= source_valide
             if evenement.get("type") == "usage":
-                if not _nombre(evenement.get("valeur")):
-                    valide = False
-                elif source_valide:
+                if not source_valide or not _nombre(evenement.get("valeur")):
+                    motifs.append("USAGE_NON_QUALIFIE")
+                else:
                     # Comparer les quantités décimales sans erreur d’addition binaire au seuil (#73).
                     cumul += Fraction(str(evenement["valeur"]))
                 resultat["sources_evenements"].append(
@@ -223,11 +227,11 @@ def calculer(donnees):
                     else {"id": evenement.get("id"), "date": evenement.get("date")}
                 )
             else:
-                valide = False
+                motifs.append("USAGE_NON_QUALIFIE")
 
         resultat["dernier_entretien"] = entretien
-        valide &= entretien is not None and not erreurs
-        if valide:
+        resultat["motifs_non_verifies"] = list(dict.fromkeys(motifs))
+        if not motifs:
             # Le verdict provient du cumul exact même si JSON ne peut pas l'afficher en flottant.
             resultat["statut"] = "WARN" if cumul >= Fraction(str(seuil["maximum"])) else "PASS"
             try:
