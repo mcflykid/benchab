@@ -135,6 +135,19 @@ et leurs dépôts diffèrent même après exclusion de la date : répétabilité
 NON VÉRIFIÉE sur ce coupon. La source et les 646 profils relus sont
 intacts. Cet essai ne qualifie ni le retrait ni le contact physique (#89).
 
+### Style arborescent hybride
+
+Sur le même coupon, deux tranchages indépendants avec `tree_hybrid`
+donnent le même G-code hors date. Seul `support_style` diffère du
+témoin `organic` dans les réglages, avant et après tranchage.
+Les segments `Support` passent de 20 019 à 855 et leur longueur
+totale de 7 087,421 à 7 246,577 mm. La médiane Z estimée passe
+de 0,200 à 0,180 mm et la projection de 177,5 à 146,0 mm².
+Le temps estimé passe de 990 à 969 s, avec une masse estimée de
+3,28 à 3,52 g. La source et les 646 profils relus sont intacts.
+La répétabilité numérique observée se limite à ce coupon et à
+ces deux rejeux ; la validation physique reste NON VÉRIFIÉE (#89).
+
 ### Comparer deux ou trois rejeux déjà publiés
 
 `benchab controle rejeux-gcode RECU1.json RECU2.json --plaque 1`
