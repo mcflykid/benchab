@@ -74,7 +74,7 @@ ROUTES_NAMESPACE = {
         "normalisation": "tirets_vers_underscore",
         "modules_prives": frozenset(
             {"trous", "eprouvette_trous", "vissage", "cad_engine", "fiche_cao", "filetage_nominal", "decoupe",
-             "registre_variantes", "greffer_interface", "apercu"}
+             "registre_variantes", "greffer_interface", "apercu", "contraintes_volumiques"}
         ),
     },
     "imports": {
@@ -447,6 +447,7 @@ def parser():
         "fiche-cao",
         "filetage-nominal",
         "greffer-interface",
+        "contraintes-volumiques",
         "apercu",
         "decoupe",
     ):

@@ -128,3 +128,37 @@ refuse toutefois la sortie de cette variante, dont le moteur réécrit
 avec la référence révèle aussi des différences de matrices et de
 métadonnées de projet. Ce rejeu ne qualifie pas cette modification
 d’archive pour la production et ne change pas le refus (#82).
+
+## Étude volumique des contraintes
+
+```sh
+benchab conception contraintes-volumiques -- \
+  --dimensions-mm 60 8 6 --force-n 0 0 -4 \
+  --young-mpa 1800 --poisson 0.3 --source-matiere "Témoin analytique" \
+  --divisions 24 4 5 --sortie prive/rapports/console.json
+```
+
+La commande résout l’élasticité linéaire isotrope sur un pavé plein.
+Le plateau déclaré est Z=0, l’appui bloque les trois déplacements sur
+X=0 et la force résultante déclarée est répartie uniformément sur X=L.
+Le solveur vérifie l’équilibre des forces et compare le maillage demandé
+au même maillage raffiné deux fois par axe. Il utilise les dépendances
+NumPy et SciPy déjà installées par BENCHAB.
+
+Le rapport donne le déplacement moyen de la face chargée, la réaction,
+la contrainte de von Mises moyennée par volume dans quatre bandes
+axiales, et leur variation entre maillages. Les bandes servent à
+localiser des zones à étudier. L’étude ne leur associe aucune densité.
+Le rapport distingue les déplacements et contraintes numériques de la
+validation physique, qui reste NON VÉRIFIÉE.
+
+En traction avec Poisson nul, un coupon de 30 × 8 × 6 mm sous 48 N et
+avec un module de 1 500 MPa retrouve 0,020 mm de déplacement et 1 MPa.
+En flexion, la commande ci-dessus donne −0,835 et −1,022 mm sur
+2 880 et 23 040 tétraèdres. La référence de poutre élancée donne −1,111 mm.
+Le maillage fin se rapproche de la référence, mais les deux maillages
+diffèrent encore de 0,187 mm en Z. Sur le maillage fin, la moyenne de von
+Mises passe de 2,10 MPa côté appui à 0,37 MPa dans le dernier quart.
+Le rapport présente cette variation sans en faire une borne d’erreur.
+Les STL de forme libre, d’autres conditions d’appui, l’anisotropie FDM
+et la tenue de pièces imprimées sont hors du domaine du coupon (#83, #84).
