@@ -9,6 +9,25 @@ import numpy as np
 from benchab.controles.colonnes_isolees import cases, controler
 
 
+def test_resume_colonnes_garde_le_motif_et_le_rapport(tmp_path, capsys):
+    """Un G-code sans dépôt ne doit pas devenir PASS après résumé."""
+    import json
+
+    from benchab.controles.colonnes_isolees import main
+
+    source = tmp_path / "vide.gcode"
+    source.write_text("G90\n")
+    rapport = tmp_path / "colonnes.json"
+    assert main([str(source), "--resume"]) == 2
+    capsys.readouterr()
+    assert main([str(source), "--json", str(rapport), "--resume"]) == 2
+    resume = json.loads(capsys.readouterr().out)
+    detail = json.loads(rapport.read_text())
+    assert resume["code"] == 2
+    assert resume["rapport"] == str(rapport)
+    assert resume["alertes"][0]["detail"] == next(iter(detail["plaques"].values()))["detail"]
+
+
 def cases_historique(segs, o, forme, pas):
     """Boucle d'origine (jusqu'au 28/10/2026), conservée comme référence d'équivalence de la version vectorisée."""
     m = np.zeros(forme, bool)

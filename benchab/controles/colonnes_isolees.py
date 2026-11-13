@@ -18,6 +18,7 @@ ne sont calculées.
 
 """
 
+import json
 import math
 import re
 import sys
@@ -266,7 +267,11 @@ def controler(
 
 
 def main(argv=None):
-    """Contrôle les colonnes en mm et retourne le code de contrôle, sans modifier le G-code."""
+    """Contrôle les colonnes en mm sans modifier le G-code.
+
+    Renvoie 0 (PASS), 1 (WARN), 2 (NON VÉRIFIÉ ou refus).
+    Un résumé exige le rapport JSON complet.
+    """
     a = list(sys.argv[1:] if argv is None else argv)
     if not a or a[0].startswith("--"):
         print(__doc__)
@@ -276,6 +281,10 @@ def main(argv=None):
         return float(a[a.index(n) + 1]) if n in a else d
 
     sortie = None
+    resume = "--resume" in a
+    if resume and "--json" not in a:
+        print("--resume exige --json pour conserver le rapport complet.", file=sys.stderr)
+        return 2
     if "--json" in a:
         try:
             index_json = a.index("--json")
@@ -299,7 +308,7 @@ def main(argv=None):
         )
         for k, g in gcodes(a[0])
     }
-    for k, r in res.items():
+    for k, r in (res.items() if not resume else ()):
         al = [s for s in r.get("series", []) if s["alerte"]]
         print(
             f"{r['statut']:5s} {k} : "
@@ -318,13 +327,26 @@ def main(argv=None):
         except (OSError, ValueError) as erreur:
             print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
             return 2
-    return (
+    code = (
         2
         if not res or any(r["statut"] == "NON VÉRIFIÉ" for r in res.values())
         else 1
         if any(r["statut"] == "WARN" for r in res.values())
         else 0
     )
+    if resume:
+        # Les séries complètes restent dans le JSON publié avant l’affichage (#35).
+        alertes = [{
+            "plaque": plaque, "statut": resultat["statut"],
+            "series_z_mm": [s["z_mm"] for s in resultat.get("series", []) if s["alerte"]],
+            **({"detail": resultat["detail"]} if "detail" in resultat else {}),
+        } for plaque, resultat in res.items() if resultat["statut"] != "PASS"]
+        print(json.dumps({
+            "code": code, "statut": ("PASS", "WARN", "NON VÉRIFIÉ")[code],
+            "rapport": str(sortie), "plaques": len(res), "alertes": alertes,
+            **({"raison": "Aucune plaque de G-code."} if not res else {}),
+        }, ensure_ascii=False))
+    return code
 
 
 if __name__ == "__main__":
