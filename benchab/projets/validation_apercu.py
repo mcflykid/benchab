@@ -8,6 +8,25 @@ from benchab.chemins import atelier_prive, sans_lien
 from benchab.qualite.empreintes import sha256_fichier
 
 
+def fiche_candidate(source, *, prive=None):
+    """Renvoie la fiche obligatoire d’une candidate de projet, sinon None.
+
+    Les chemins sont sans unité. FAIL si la fiche manque. Ne crée aucun fichier.
+    """
+    projets = atelier_prive(prive) / "projets"
+    chemin = Path(source).resolve()
+    if not chemin.is_relative_to(projets):
+        return None
+    segments = chemin.relative_to(projets).parts
+    if len(segments) < 3 or segments[1] != "candidats":
+        return None
+    # Le nom complet distingue les différentes archives dans un même dossier.
+    fiche = chemin.with_name(chemin.name + ".apercu.json")
+    if not fiche.is_file():
+        raise ValueError(f"Aperçu validé obligatoire. Créer {fiche.name} ou fournir --validation-visuelle.")
+    return fiche
+
+
 def verifier(source, fiche, *, prive=None):
     """Retourne PASS si la décision VALIDÉ et les deux SHA-256 sont concordants.
 
@@ -37,7 +56,7 @@ def verifier(source, fiche, *, prive=None):
     if len({source, fiche, apercu}) != 3:
         raise ValueError("Source, décision et aperçu doivent désigner trois fichiers distincts.")
     for fichier, attendu in ((source, valeur["source_sha256"]), (apercu, reference["sha256"])):
-        if (not isinstance(attendu, str) or not re.fullmatch(r"[0-9a-f]{64}", attendu)
+        if (not fichier.is_file() or not isinstance(attendu, str) or not re.fullmatch(r"[0-9a-f]{64}", attendu)
                 or sha256_fichier(fichier) != attendu):
             raise ValueError("Une empreinte de la source ou de l’aperçu a changé. Refaire et valider l’aperçu.")
     return {"statut": "PASS", "source_sha256": valeur["source_sha256"], "apercu_sha256": reference["sha256"]}

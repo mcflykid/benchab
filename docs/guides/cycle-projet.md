@@ -103,7 +103,8 @@ fiche JSON privée. Les champs sont `schema` (1), `decision`, `source_sha256`
 (archive 3MF à trancher) et `apercu` (objet `fichier` relatif à la fiche et
 `sha256`). Cette décision porte sur les octets relus.
 
-Passer la fiche avec `fabrication trancher --validation-visuelle FICHE.json`
-pour imposer sa vérification à la candidate. Une décision en attente, une
-empreinte périmée ou une source modifiée avant la copie arrête le tranchage.
-Les témoins peuvent être préparés sans décision visuelle.
+Pour un 3MF dans `projets/<projet>/candidats/`, placer la fiche à côté de
+l’archive (par exemple `plaques.3mf.apercu.json`) ou fournir
+`fabrication trancher --validation-visuelle FICHE.json`. Le tranchage en
+usage impression s’arrête si la fiche manque, si la décision est en attente
+ou si une empreinte a changé. Les témoins peuvent être préparés sans fiche.

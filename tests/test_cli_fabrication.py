@@ -28,21 +28,23 @@ def test_fabrication_cli_utilise_uniquement_lanceur_commun(tmp_path, monkeypatch
 
     appels = []
 
-    def fake(source, dossier, nom, *, usage, prive, identifiants):
-        appels.append((source, dossier, nom, usage, prive, identifiants))
+    def fake(source, dossier, nom, *, usage, prive, identifiants, validation_visuelle):
+        appels.append((source, dossier, nom, usage, prive, identifiants, validation_visuelle))
         return dossier / "fixture.3mf", {"code": 0}
 
     monkeypatch.setattr(trancher, "trancher_fichier", fake)
     prive = tmp_path / "prive"
     entree = tmp_path / "fixture.3mf"
     catalogue = tmp_path / "catalogue.json"
+    fiche = prive / "apercu.json"
     catalogue.write_text(json.dumps({"filaments": {"PLA": {"id": "profil-fixe"}}}))
     assert main([
         "--prive", str(prive), "fabrication", "trancher", str(entree), "--usage", "temoin",
         "--identifiants", str(catalogue),
+        "--validation-visuelle", str(fiche),
     ]) == 0
     capsys.readouterr()
-    assert appels == [(entree, prive / "fabrication", None, "temoin", prive, {"PLA": {"id": "profil-fixe"}})]
+    assert appels == [(entree, prive / "fabrication", None, "temoin", prive, {"PLA": {"id": "profil-fixe"}}, fiche)]
 def test_planning_rejoue_refuse_ecrasement_et_garde_le_code_mesure(tmp_path, atelier_initialise):
     """Vérifie planning rejoue refuse ecrasement et garde le code mesure.
 

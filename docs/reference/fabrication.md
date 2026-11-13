@@ -4,6 +4,10 @@
 uv run benchab fabrication trancher prive/projets/ma-piece/candidats/projet.3mf --sortie prive/projets/ma-piece/candidats/tranche-v01
 ```
 
+Préparer la fiche `projet.3mf.apercu.json` à côté de l’archive avant cette
+commande. Le [cycle de projet](../guides/cycle-projet.md#valider-laperçu-dune-candidate)
+décrit la décision et les empreintes attendues.
+
 Pour compléter des identifiants de filament permanents, passer un catalogue JSON
 privé avec `--identifiants CHEMIN` (objet racine `filaments`) ou définir
 `BENCHAB_IDENTIFIANTS_SLICER`. L’option explicite prime sur la variable

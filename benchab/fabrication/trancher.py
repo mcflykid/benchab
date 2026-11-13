@@ -613,14 +613,16 @@ def trancher_fichier(
     """Prépare un 3MF (mm) avec catalogue et publie dans l’atelier choisi ou le temporaire système.
 
     Retourne la sortie et le rapport, sans modifier les profils installés.
-    En usage impression, une fiche de candidate fournie exige un aperçu validé
-    pour l’empreinte exacte avant de copier et trancher sa source.
+    En usage impression, une source dans projets/<projet>/candidats exige PASS
+    pour son aperçu avant toute copie. Le témoin reste libre.
     """
     preuve_visuelle = None
-    if usage == "impression" and validation_visuelle is not None:
-        from benchab.projets.validation_apercu import verifier
+    if usage == "impression":
+        from benchab.projets.validation_apercu import fiche_candidate, verifier
 
-        preuve_visuelle = verifier(source, validation_visuelle, prive=prive)
+        fiche = validation_visuelle if validation_visuelle is not None else fiche_candidate(source, prive=prive)
+        if fiche is not None:
+            preuve_visuelle = verifier(source, fiche, prive=prive)
     source = Path(source).resolve(strict=True)
     sortie = Path(dossier_sortie) / (nom or f"{source.stem}.gcode.3mf")
     if Path(nom or sortie.name).name != (nom or sortie.name):
