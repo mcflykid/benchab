@@ -231,3 +231,11 @@ de 177,5 mm². Les estimations restent à 990 s et 3,28 g. La source,
 la référence tranchée et les 646 profils relus sont intacts.
 Ce coupon ne discrimine pas l’option. Il faut une géométrie comportant
 des régions dont le statut critique diffère pour qualifier son effet (#89).
+
+Sur le même coupon, la désactivation de `support_remove_small_overhang`
+(1 à 0) donne aussi deux G-code identiques hors date entre eux.
+La valeur est conservée et constitue la seule différence de réglage
+dans le 3MF tranché. Les trajets de support et d’interface, l’écart Z
+et les estimations restent identiques à ceux du témoin.
+La source et les 646 profils relus sont intacts. Il faut un témoin
+comportant des petits surplombs isolés pour qualifier l’effet (#89).
