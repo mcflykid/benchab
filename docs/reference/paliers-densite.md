@@ -221,3 +221,14 @@ pas une masse mesurée ni une comparaison à quantité de matière égale.
 Les seuils sont des valeurs d’essai. La rigidité avec ces paliers,
 les contraintes locales dans le remplissage et le gain mécanique
 restent NON VÉRIFIÉS (#83, #84).
+
+Un second témoin reçoit 40 % dans chacune des quatre bandes, soit la
+même densité nominale moyenne que la variante. En passant aux paliers,
+les quatre boîtes gagnent respectivement 200,2 et 63,3 mm d’axe de dépôt
+près de l’appui, puis perdent 60,3 et 232,0 mm vers le bout.
+Le trancheur estime 2,50 g et 402 s pour le témoin uniforme, contre
+2,55 g et 411 s avec les paliers. Les quatre différences de densité
+sont les seules observées dans les réglages avant et après tranchage.
+Cette comparaison établit la redistribution dans le G-code pour un
+budget nominal égal ; les masses estimées diffèrent de 2 %. Elle ne
+mesure pas un gain de rigidité à masse égale.
