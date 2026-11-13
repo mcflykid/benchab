@@ -239,3 +239,28 @@ dans le 3MF tranché. Les trajets de support et d’interface, l’écart Z
 et les estimations restent identiques à ceux du témoin.
 La source et les 646 profils relus sont intacts. Il faut un témoin
 comportant des petits surplombs isolés pour qualifier l’effet (#89).
+
+### Témoin à quatre surplombs isolés
+
+Le témoin dédié comporte quatre piliers séparés, avec des tablettes
+en porte-à-faux à 11,9 mm du plateau. Chaque zone est relue dans une
+boîte sous sa tablette, entre 8 et 12 mm de hauteur. Avec ASN 2.0.0.3
+et le style organique, seul `support_remove_small_overhang` change
+entre l’entrée et la sortie des variantes comparées.
+
+| Débord × largeur | Corps sans → avec filtre | Interface sans → avec filtre |
+| --- | ---: | ---: |
+| 1,4 × 2 mm | 143,3 → 0 mm | 6,8 → 0 mm |
+| 2,5 × 3 mm | 196,8 → 196,8 mm | 17,2 → 17,2 mm |
+| 4,5 × 5 mm | 316,2 → 331,9 mm | 42,0 → 42,0 mm |
+| 10 × 12 mm | 942,8 → 894,1 mm | 110,5 → 110,5 mm |
+
+Les mesures sont des longueurs d’axes déposés dans les boîtes, pas
+des volumes. Le filtre supprime le support sous le plus petit débord ;
+les trois autres gardent leur interface, avec des trajets du corps
+qui peuvent varier. Le temps et la masse de la plaque passent de
+959 s et 4,61 g à 936 s et 4,49 g. La médiane Z reste à 0,40 mm.
+Le rejeu filtré reproduit le G-code hors date. Les sources et les
+646 profils relus sont intacts. Les quatre tailles ne définissent
+pas un seuil universel et le comportement à l’impression reste
+NON VÉRIFIÉ (#89).
