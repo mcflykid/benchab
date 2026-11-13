@@ -46,3 +46,10 @@ programmée, en secondes. La masse nominale en grammes utilise la densité
 embarquée de l’outil exact. Une densité manquante laisse la masse totale
 NON VÉRIFIÉE et conserve le temps et le volume couverts. Le temps de changement
 complet, les déplacements hors dépôt et le temps réel restent séparés.
+
+`--plafond-mm3 VALEUR --source-plafond SOURCE` compare la somme conditionnelle
+de la matrice par plaque et pour l’archive entière au volume documenté. Le
+dépassement donne WARN (code 1). Un dépassement établi sur une plaque reste
+visible si le total de l’archive est indéterminé. Sans plafond, le sous-bilan
+du plafond reste NON VÉRIFIÉ et le verdict du calcul garde son code habituel.
+Le plafond saisi porte sur ce fichier et cette convention de calcul.

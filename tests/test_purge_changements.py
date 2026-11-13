@@ -223,3 +223,18 @@ def test_tour_temps_et_masse_nominale_par_outil(tmp_path, densites):
     else:
         assert mesure["masse_nominale_g"] is None
     assert mesure["temps_reel_s"] is None
+
+
+@pytest.mark.parametrize(("plafond", "statut"), [(None, "NON VÉRIFIÉ"), (12, "PASS"), (10, "WARN")])
+def test_plafond_de_purge_conditionnel(tmp_path, plafond, statut):
+    """Le plafond explicite qualifie la somme par plaque, avec sa provenance."""
+    source = tmp_path / "purge.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", json.dumps(_reglages()))
+        archive.writestr("Metadata/plate_1.gcode", "T0\nT1\n")
+    options = {} if plafond is None else {"plafond_mm3": plafond, "source_plafond": "Seuil du témoin"}
+    rapport = analyser(source, **options)
+    assert rapport["bilan_plafond"]["statut"] == statut
+    assert rapport["plaques"][0]["bilan_plafond"]["statut"] == statut
+    assert rapport["statut"] == ("WARN" if statut == "WARN" else "PASS")
+    assert rapport["purge_physique_mm3"] is None
