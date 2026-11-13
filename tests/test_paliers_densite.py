@@ -5,6 +5,30 @@ import pytest
 import trimesh
 
 
+def test_contraintes_stables_donnent_des_tranches_et_fusionnent_les_densites_voisines():
+    """Le témoin garde son repère et la même densité sur les quarts voisins fusionnés."""
+    from benchab.conception.paliers_densite import modificateurs_depuis_contraintes
+
+    etude = {
+        "schema": 1, "dimensions_xyz_mm": [60, 8, 6], "zones_axiales_mm": [0, 15, 30, 45, 60],
+        "maillages": [
+            {"divisions_xyz": [4, 2, 2], "von_mises_moyenne_par_zone_mpa": [2.0, 1.9, 0.9, 0.5]},
+            {"divisions_xyz": [8, 4, 4], "von_mises_moyenne_par_zone_mpa": [2.1, 2.0, 1.0, 0.55]},
+        ],
+    }
+    volumes, rapport = modificateurs_depuis_contraintes(etude, [(0, "20%"), (0.7, "35%"), (1.5, "60%")])
+    assert rapport["statut"] == "PASS" and rapport["validation_physique"] is False
+    assert rapport["effet_gcode"] == "NON VÉRIFIÉ"
+    assert [p["densite"] for p in rapport["paliers"]] == ["60%", "35%", "20%"]
+    assert [m["mesh"].bounds[:, 0].tolist() for m in volumes] == [[0, 30], [30, 45], [45, 60]]
+    assert rapport["densite_moyenne_ponderee_volume_pct"] == pytest.approx(43.75)
+
+    etude["maillages"][0]["von_mises_moyenne_par_zone_mpa"][2] = 0.69
+    volumes, rapport = modificateurs_depuis_contraintes(etude, [(0, "20%"), (0.7, "35%"), (1.5, "60%")])
+    assert volumes == [] and rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["zones_instables"] == [3]
+
+
 def _paliers():
     return [
         {"rayon_mm": 3, "densite": "65%"},

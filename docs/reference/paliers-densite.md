@@ -185,3 +185,39 @@ Le résultat se stabilise numériquement sur cette série ; l’incrément
 n’est pas une borne d’erreur. La référence de poutre (1,111111 mm) ne
 résout pas le même problème tridimensionnel. Aucun seuil de densité ni
 validation physique n’est déduit de ce résultat (#83).
+
+### Des contraintes aux densités : une hypothèse à comparer
+
+`modificateurs_depuis_contraintes(etude, seuils)` relit les quatre
+moyennes axiales de von Mises du coupon sur chacun des maillages.
+L’expérimentateur déclare les seuils en MPa et les densités en %.
+Une bande ne reçoit une densité que si toutes ses valeurs restent
+dans la même classe. Si une seule bande franchit un seuil entre
+deux maillages, aucune tranche n’est fournie. Les bandes adjacentes
+de même densité sont fusionnées. Les modificateurs restent bornés
+au coupon et disjoints en volume ; aucun STL arbitraire n’est associé
+au champ par ressemblance.
+
+Pour ce coupon, les seuils 0 / 0,7 / 1,2 / 1,8 MPa associés à
+20 / 35 / 45 / 60 % donnent les paliers ci-dessous. Un seuil alternatif
+à 0,95 MPa est franchi dans la troisième bande (0,862 à 0,965 MPa) :
+cette variante est refusée.
+
+| Bande depuis l’appui | Moyennes de von Mises sur les cinq maillages | Densité d’essai | Axe du remplissage à 20 % partout | Avec paliers |
+| --- | ---: | ---: | ---: | ---: |
+| 0–15 mm | 1,921–2,154 MPa | 60 % | 220,8 mm | 667,1 mm |
+| 15–30 mm | 1,426–1,579 MPa | 45 % | 233,2 mm | 527,1 mm |
+| 30–45 mm | 0,862–0,965 MPa | 35 % | 237,4 mm | 405,1 mm |
+| 45–60 mm | 0,333–0,380 MPa | 20 % | 227,3 mm | 227,3 mm |
+
+Anycubic Slicer Next 2.0.0.3 a produit les mêmes mesures sur deux
+tranchages hors ligne de la variante. Les mesures portent sur des
+boîtes intérieures aux bandes, pour le rôle `Sparse infill`.
+Les maillages et placements concordent entre variantes, et seuls
+les trois réglages de densité attendus diffèrent avant et après
+tranchage. Les 646 profils relus et la source sont intacts.
+La densité nominale pondérée par le volume monte à 40 % : ce n’est
+pas une masse mesurée ni une comparaison à quantité de matière égale.
+Les seuils sont des valeurs d’essai. La rigidité avec ces paliers,
+les contraintes locales dans le remplissage et le gain mécanique
+restent NON VÉRIFIÉS (#83, #84).

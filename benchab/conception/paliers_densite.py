@@ -221,6 +221,88 @@ def modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers, *
     return volumes, rapport
 
 
+def modificateurs_depuis_contraintes(etude, seuils, *, volume_min_mm3=0.1):
+    """Convertit les moyennes de von Mises d’un coupon plein en tranches expérimentales.
+
+    L’étude fournit les cotes et limites axiales en mm et au moins deux
+    maillages ordonnés. Les seuils explicites (MPa, % entier) sont choisis
+    pour l’étude. PASS couvre seulement la géométrie ; NON VÉRIFIÉ si
+    l’enveloppe observée change de classe. Aucun fichier ni réglage modifié.
+    """
+    if not isinstance(etude, dict) or etude.get("schema") != 1:
+        raise ValueError("Rapport de contraintes volumétriques de schéma 1 requis")
+    cotes = _vecteur(etude.get("dimensions_xyz_mm"), "Cotes du coupon")
+    if not np.all((0.5 <= cotes) & (cotes <= 1000)):
+        raise ValueError("Cotes hors domaine du coupon volumique")
+    longueur, largeur, hauteur = cotes.tolist()
+    limites = [longueur * i / 4 for i in range(5)]
+    if etude.get("zones_axiales_mm") != limites:
+        raise ValueError("Quatre zones axiales du coupon, dans son repère, requises")
+    if not isinstance(seuils, (list, tuple)) or not 1 <= len(seuils) <= _MAX_PALIERS:
+        raise ValueError("Déclarer de un à cinq couples seuil MPa et densité")
+    if any(not isinstance(s, (list, tuple)) or len(s) != 2 for s in seuils):
+        raise ValueError("Chaque seuil contient une contrainte en MPa et une densité")
+    bornes = [s[0] for s in seuils]
+    if (any(type(x) not in (float, int) or not math.isfinite(x) or x < 0 for x in bornes)
+            or bornes[0] != 0 or any(a >= b for a, b in zip(bornes, bornes[1:]))):
+        raise ValueError("Les seuils en MPa commencent à zéro et croissent strictement")
+    options = _valider_paliers(
+        [{"profondeur_mm": i, "densite": s[1]} for i, s in enumerate(seuils, 1)], "profondeur_mm",
+    )
+    densites = [reglages.valeur_brute(r, _CLE_DENSITE) for _, r in options]
+    if any(int(a[:-1]) >= int(b[:-1]) for a, b in zip(densites, densites[1:])):
+        raise ValueError("Les densités doivent croître strictement avec les seuils")
+    maillages = etude.get("maillages")
+    if not isinstance(maillages, list) or not 2 <= len(maillages) <= 12:
+        raise ValueError("Déclarer de deux à douze maillages du même problème")
+    divisions_avant = [0, 0, 0]
+    mesures = []
+    for maillage in maillages:
+        if not isinstance(maillage, dict):
+            raise ValueError("Maillage invalide")
+        divisions = maillage.get("divisions_xyz")
+        sigma = maillage.get("von_mises_moyenne_par_zone_mpa")
+        if (not isinstance(divisions, list) or len(divisions) != 3
+                or any(type(x) is not int or x < 2 or x <= a for x, a in zip(divisions, divisions_avant))
+                or not isinstance(sigma, list) or len(sigma) != 4
+                or any(type(x) not in (int, float) or not math.isfinite(x) or x < 0 for x in sigma)):
+            raise ValueError("Divisions croissantes et quatre contraintes finies en MPa requises")
+        divisions_avant = divisions
+        mesures.append(sigma)
+    zones = []
+    zones_instables = []
+    paliers = []
+    for i, valeurs in enumerate(zip(*mesures, strict=True)):
+        bas, haut = min(valeurs), max(valeurs)
+        choix = sum(haut >= seuil for seuil in bornes) - 1
+        # Un seuil traversé par les maillages rend la classe indéterminée (#83).
+        stable = sum(bas >= seuil for seuil in bornes) - 1 == choix
+        if not stable:
+            zones_instables.append(i + 1)
+        densite = densites[choix]
+        zones.append({"x_mm": limites[i:i + 2], "enveloppe_moyennes_mpa": [bas, haut],
+                      "densite": densite if stable else None})
+        if paliers and paliers[-1]["densite"] == densite:
+            paliers[-1]["profondeur_mm"] = limites[i + 1]
+        else:
+            paliers.append({"profondeur_mm": limites[i + 1], "densite": densite})
+    details = {"seuils_mpa_et_densites": list(zip(bornes, densites, strict=True)),
+               "zones": zones, "zones_instables": zones_instables, "validation_physique": False,
+               "effet_gcode": "NON VÉRIFIÉ", "loi_mecanique": "NON VÉRIFIÉ"}
+    if zones_instables:
+        return [], {**details, "statut": "NON VÉRIFIÉ", "raison": "Un seuil est franchi entre maillages"}
+    # Reconstruit uniquement le pavé étudié ; aucun rapprochement avec un STL arbitraire.
+    piece = trimesh.creation.box(cotes)
+    piece.apply_translation([longueur / 2, largeur / 2, hauteur / 2])
+    volumes, rapport = modificateurs_depuis_plan(piece, [0, 0, 0], [-1, 0, 0], paliers,
+                                                 volume_min_mm3=volume_min_mm3)
+    if not volumes:
+        return [], {**rapport, **details}
+    moyenne = math.fsum(int(p["densite"][:-1]) * p["volume_mesure_mm3"] for p in rapport["paliers"])
+    return volumes, {**rapport, **details,
+                     "densite_moyenne_ponderee_volume_pct": moyenne / rapport["volume_piece_mm3"]}
+
+
 def _boule_distance(corps):
     boule = mf.Manifold.sphere(1, _SEGMENTS_SPHERE)
     if corps.num_tri() * boule.num_tri() > 1_000_000:
