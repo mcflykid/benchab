@@ -40,3 +40,9 @@ incomplète, le total de cette observation reste NON VÉRIFIÉ ; les segments
 couverts restent détaillés par outil. Le code du bilan reste celui de la
 matrice. Cette observation ne mesure ni purge physique, ni dépôt par paire,
 ni effet d’un changement de réglage (#72).
+
+L’observation de la tour indique aussi le temps nominal de dépôt à l’avance
+programmée, en secondes. La masse nominale en grammes utilise la densité
+embarquée de l’outil exact. Une densité manquante laisse la masse totale
+NON VÉRIFIÉE et conserve le temps et le volume couverts. Le temps de changement
+complet, les déplacements hors dépôt et le temps réel restent séparés.

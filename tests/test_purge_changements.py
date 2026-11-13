@@ -172,7 +172,11 @@ def test_observer_tour_mesure_uniquement_les_depots_nominalement_etiquetes(tmp_p
     mesure = rapport["plaques"][0]["observation_tour"]
     assert mesure["statut"] == "PASS"
     assert mesure["outils"] == [
-        {"outil": 1, "segments": 1, "volume_nominal_mm3": pytest.approx(math.pi * (2.85 / 2)**2)},
+        {
+            "outil": 1, "segments": 1, "volume_nominal_mm3": pytest.approx(math.pi * (2.85 / 2)**2),
+            "temps_depot_nominal_s": pytest.approx(1 / 15),
+            "masse_nominale_g": None, "densite_embarquee_g_cm3": None,
+        },
     ]
     assert rapport["somme_conditionnelle_matrice"] == 12.0
     assert rapport["volume_gcode_attribue_mm3"] is None
@@ -197,3 +201,25 @@ def test_observer_tour_refuse_de_qualifier_une_couverture_incomplete(tmp_path, l
     mesure = analyser(source, observer_tour=True)["plaques"][0]["observation_tour"]
     assert mesure["statut"] == "NON VÉRIFIÉ"
     assert mesure["volume_nominal_mm3"] is None
+
+
+@pytest.mark.parametrize("densites", [[1.1, 1.25], [1.1]])
+def test_tour_temps_et_masse_nominale_par_outil(tmp_path, densites):
+    """Seule la densité embarquée de l’outil exact permet de calculer la masse."""
+    source = tmp_path / "tour.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", json.dumps({
+            **_reglages(), "filament_diameter": [1.75, 2], "filament_density": densites,
+        }))
+        archive.writestr("Metadata/plate_1.gcode", (
+            "G90\nM83\nT0\nG1 X1 F600\nT1\n;TYPE:Prime tower\nG1 X11 E2 F600\n"
+            ";TYPE:Outer wall\nG1 X21 E1 F600\n"
+        ))
+    mesure = analyser(source, observer_tour=True)["plaques"][0]["observation_tour"]
+    assert mesure["statut"] == "PASS"
+    assert mesure["temps_depot_nominal_s"] == pytest.approx(1.0)
+    if len(densites) == 2:
+        assert mesure["masse_nominale_g"] == pytest.approx(2 * 3.141592653589793 * 1.25 / 1000)
+    else:
+        assert mesure["masse_nominale_g"] is None
+    assert mesure["temps_reel_s"] is None
