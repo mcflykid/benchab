@@ -92,3 +92,19 @@ verrou est expiré ou absent, `benchab seance reprendre` conserve la séance
 et fournit un nouveau jeton. `benchab seance fin --forcer` consigne une
 fermeture explicite sans jeton. Les mesures d’une séance orpheline ne lui
 sont pas rattachées.
+
+### Valider l’aperçu d’une candidate
+
+Avant les contrôles longs, ouvrir la candidate en vue commune avec les pièces
+déclarées via `visualisation assemblage-dossier --declaration`. Utiliser les
+vues libre, basse et en coupe pour vérifier proportions et montage. Consigner
+la décision de l’utilisateur (`VALIDÉ`, `À AJUSTER` ou `EN ATTENTE`) dans une
+fiche JSON privée. Les champs sont `schema` (1), `decision`, `source_sha256`
+(archive 3MF à trancher) et `apercu` (objet `fichier` relatif à la fiche et
+`sha256`). Cette décision porte sur les octets relus.
+
+Pour un 3MF dans `projets/<projet>/candidats/`, placer la fiche à côté de
+l’archive (par exemple `plaques.3mf.apercu.json`) ou fournir
+`fabrication trancher --validation-visuelle FICHE.json`. Le tranchage en
+usage impression s’arrête si la fiche manque, si la décision est en attente
+ou si une empreinte a changé. Les témoins peuvent être préparés sans fiche.

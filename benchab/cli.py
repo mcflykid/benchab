@@ -380,6 +380,7 @@ def parser():
     tranchage.add_argument("fichier", type=Path)
     tranchage.add_argument("--sortie", type=Path)
     tranchage.add_argument("--nom")
+    tranchage.add_argument("--validation-visuelle", type=Path, help="Décision visuelle liée à la candidate")
     tranchage.add_argument("--usage", choices=["impression", "temoin"], default="impression")
     tranchage.add_argument(
         "--identifiants",
@@ -880,6 +881,7 @@ def executer(arguments, base):
                 if arguments.identifiants
                 else None
             ),
+            validation_visuelle=arguments.validation_visuelle,
         )
         print(json.dumps({"sortie": str(sortie), "rapport": rapport}, ensure_ascii=False, indent=2))
     elif arguments.commande in ROUTES_NAMESPACE:
