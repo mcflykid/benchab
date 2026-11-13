@@ -181,3 +181,20 @@ pour toute décision prise. Le champ facultatif `candidate` exige un
 aperçu identifié et une décision validée. Trois candidates peuvent
 figurer dans le registre. Le rapport liste les explorations abandonnées
 dont les exports dérivés peuvent être examinés.
+
+## Aperçu d’une coque allumée
+
+`benchab visualisation apercu-lampe COQUE.stl [VARIANTE.stl] --source-mm X Y Z
+--attenuation-mm-inv COEFFICIENT --sortie DOSSIER_NEUF` produit une carte
+déroulée et une vue 3/4 par coque, avec un rapport JSON privé. Les STL
+doivent être étanches, orientés et dans le même repère en mm. L’axe Z est
+vertical. L’option `--source-mm` peut être répétée pour échantillonner une
+source étendue. Chaque point a le même poids dans la puissance relative.
+
+Le modèle additionne la lumière directe de chaque source, avec une
+décroissance en carré inverse de la distance et une atténuation exponentielle
+selon la longueur traversée dans la matière. Les deux candidates partagent
+la même échelle de couleur. Le gris indique un trajet indéterminé et le
+rapport indique la couverture. L’atténuation est une hypothèse à déclarer.
+Le modèle ignore diffusion, réflexion et émission du matériau luminescent.
+La validation physique reste NON VÉRIFIÉE.

@@ -2,6 +2,10 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.33.0
+
+- L’aperçu d’une coque allumée compare la transmission directe estimée sur deux variantes à la même échelle (#271).
+
 ## 1.32.0
 
 - Le contrôle des premières couches couvre une plaque de 250 mm au pas de 0,10 mm et rapporte le pas utilisé (#287).
