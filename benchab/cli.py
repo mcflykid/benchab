@@ -24,6 +24,7 @@ SECRETS = {"--token", "--password", "--secret", "--api-key", "--access-token", "
 CONTROLES_DIRECTS = {
     "bilan-depots": "bilan_depots",
     "carte-coutures": "carte_coutures",
+    "surplombs-surface": "surplombs_surface",
     "reimpression": "reimpression",
     "decollement": "decollement",
     "plaques-interface": "plaques_interface",
@@ -53,7 +54,7 @@ CONTROLES_DIRECTS = {
     "plages-z": "couverture_plages_z",
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
-    "bilan-depots", "carte-coutures",
+    "bilan-depots", "carte-coutures", "surplombs-surface",
     "affleurement", "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
     "surplombs-connexes", "ponts-surplombs",
     "purge-changements",
@@ -181,6 +182,9 @@ def parser():
     commandes.add_parser("init", help="Initialise l'atelier privé sans écraser ses données")
     commandes.add_parser("etat", help="Compte les projets et préparations de l'atelier privé")
     donnees = commandes.add_parser("donnees").add_subparsers(dest="action", required=True)
+    donnees.add_parser("releve-ace", help="Conserve une estimation RFID et compare le besoin déclaré").add_argument(
+        "arguments", nargs=argparse.REMAINDER
+    )
     imputation = donnees.add_parser("imputer-bobine", help="Débite le stock depuis une pesée confirmée")
     imputation.add_argument("--retour", required=True)
     imputation.add_argument("--preuve-pesee", required=True, type=Path)
@@ -1134,6 +1138,7 @@ def main(argv=None):
         for i in range(len(argv) - 1)
     ) or any(
         (argv[i], argv[i + 1]) in {
+            ("donnees", "releve-ace"),
             ("fabrication", "remplacer-maillage"), ("conception", "gyroide-temoin"), ("conception", "variantes"),
         }
         for i in range(len(argv) - 1)
@@ -1165,6 +1170,10 @@ def main(argv=None):
         return 0
     if "--help" in argv or "-h" in argv:
         return _aide_deleguee(arguments)
+    if arguments.commande == "donnees" and arguments.action == "releve-ace":
+        from benchab.donnees.releve_ace import main as releve_ace
+
+        return _deleguer(releve_ace, arguments.arguments, options={"prive": arguments.prive})
     if arguments.commande == "controle" and arguments.controle == "plan-reparation":
         from benchab.qualite.ecritures import destination_rapport_optionnel, ecrire_json_neuf
         from benchab.qualite.plan_reparation import planifier, resumer

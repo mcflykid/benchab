@@ -4,6 +4,9 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Mesure du surplomb par zone selon le procédé déclaré (#266).
+- Le relevé RFID d’ACE estime le restant à partir de la masse nominale déclarée (#248).
+
 - Le bilan G-code répartit la matière et le temps nominal de dépôt par plaque, outil, objet, type de trajet et zone Z (#267).
 - La carte des coutures relève les départs de paroi par couche et compare leur dispersion en angle et altitude (#269).
 - La continuité de paroi en mode vase regroupe les dépôts selon les couches déclarées par le moteur (#249).

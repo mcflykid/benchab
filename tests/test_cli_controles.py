@@ -19,6 +19,7 @@ def test_controle_mesure_transmet_les_arguments_et_le_code(tmp_path, monkeypatch
             if nom in {
                 "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z", "surplombs-connexes",
                 "ponts-surplombs", "purge-changements", "affleurement", "bilan-depots", "carte-coutures",
+                "surplombs-surface",
             }
             else {}
         )
