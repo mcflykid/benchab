@@ -58,3 +58,25 @@ def test_configuration_incoherente_et_unites_non_declarees_refusees(tmp_path):
         A.collecter(dossier, prive=prive, unites="cm")
     with pytest.raises(ValueError, match="privé"):
         A.collecter(tmp_path, prive=prive, unites="mm")
+
+
+def test_apercu_candidat_refuse_stl_non_declare(tmp_path):
+    """Refuse un ancien maillage resté dans le dossier de la candidate."""
+    prive, dossier, _ = _fixture(tmp_path)
+    declaration = dossier.parent / "aperçu.json"
+    flux = {
+        "schema": 1,
+        "candidate": {"fichier": "Cube.stl", "sha256": A.sha256_fichier(dossier / "Cube.stl")},
+        "pieces": [],
+    }
+    declaration.write_text(json.dumps(flux))
+    ancien = dossier / "AncienneBague.stl"
+    trimesh.creation.box().export(ancien)
+    cible = prive / "apercu.html"
+    with pytest.raises(ValueError, match="non déclaré"):
+        A.creer(dossier, cible, prive=prive, unites="mm", declaration=declaration)
+    assert not cible.exists()
+    ancien.unlink()
+    _, rapport = A.creer(dossier, cible, prive=prive, unites="mm", declaration=declaration)
+    assert rapport["modeles"] == 1
+    assert flux["candidate"]["sha256"] in cible.read_text()

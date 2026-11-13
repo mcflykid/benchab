@@ -162,3 +162,11 @@ et la marge minimale sont facultatives et se déclarent ensemble. Une marge
 égale ou inférieure au seuil donne WARN. Le rapport conserve le relevé
 d’origine et marque l’incertitude NON VÉRIFIÉE. La pesée et le stock SQLite
 suivent le parcours distinct d’imputation.
+
+Pour un aperçu de candidate sans anciens maillages, ajouter
+`--declaration APERCU.json` à `visualisation assemblage-dossier`. La fiche
+contient `schema: 1`, un objet `candidate` et une liste `pieces` qui peut
+être vide. Chaque entrée donne le nom simple `fichier` du STL du dossier
+et son `sha256`. Un STL supplémentaire, un fichier manquant ou une
+empreinte différente bloque l’aperçu. La vue indique la provenance de
+chaque modèle et de ses instances.
