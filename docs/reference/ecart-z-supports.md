@@ -280,3 +280,23 @@ estimée passe de 64,0 à 56,25 mm². La plaque passe de 959 à
 copie reproduit le G-code hors date. Les sources et les 646 profils
 relus gardent leurs empreintes. La tenue des débords et le retrait
 du support restent à observer sur cette géométrie (#89).
+
+### Comparaison des deux options ensemble
+
+Les quatre variantes sont retranchées à partir du même témoin avec
+ASN 2.0.0.3. La relecture des 3MF confirme que seules les deux
+options étudiées diffèrent. Un débord est compté sans support lorsque
+sa boîte de mesure ne contient ni trajet de support ni trajet d’interface.
+
+| Options actives | Débords sans support dans les boîtes | Corps de support sur la plaque | Masse estimée | Durée estimée |
+| --- | --- | ---: | ---: | ---: |
+| Aucune | Aucun | 6 713,337 mm | 4,61 g | 959 s |
+| Petits surplombs | 1,4 × 2 mm | 5 519,369 mm | 4,49 g | 936 s |
+| Régions critiques | 1,4 × 2 et 2,5 × 3 mm | 4 360,789 mm | 4,37 g | 915 s |
+| Les deux | 1,4 × 2 et 2,5 × 3 mm | 4 360,789 mm | 4,37 g | 915 s |
+
+Avec les deux options, les commandes du G-code sont identiques à
+celles de la variante « régions critiques » seule. Après exclusion
+de l’horodatage, seul le commentaire du réglage des petits surplombs
+diffère. Le rejeu des deux options reproduit le G-code hors date.
+L’effet combiné est établi sur ce témoin et ce binaire (#89).
