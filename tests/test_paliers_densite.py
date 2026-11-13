@@ -138,10 +138,12 @@ def test_palier_refuse_un_maillage_converti_deplace_hors_tranche(monkeypatch):
     assert "Sommet" in r["raison"]
 
 
-def test_paliers_au_voisinage_d_une_fixation_suivent_sa_surface():
+def test_paliers_au_voisinage_d_une_fixation_suivent_sa_surface(tmp_path):
     """Les paliers partent d’une fixation extérieure et suivent sa surface courbe."""
     from benchab.conception.decoupe.geometrie import solide
     from benchab.conception.paliers_densite import modificateurs_autour_fixation
+    from benchab.fabrication.anycubic import ecrire_3mf, ranger
+    from benchab.integrite_3mf import instantane
 
     piece = trimesh.creation.box((10, 12, 12))
     fixation = trimesh.creation.icosphere(subdivisions=1, radius=2).apply_translation([8, 0, 0])
@@ -153,6 +155,12 @@ def test_paliers_au_voisinage_d_une_fixation_suivent_sa_surface():
     assert (premier ^ second).volume() == pytest.approx(0, abs=1e-8)
     assert zones[0]["mesh"].bounds[0, 0] == pytest.approx(4)
     assert zones[1]["mesh"].bounds[0, 0] == pytest.approx(2)
+    item = {"name": "Temoin", "mesh": piece, "w": 10, "h": 12, "extruder": 1, "volumes": zones}
+    ranger([item], 0, 1, 10.0, cli=True)
+    fichier = ecrire_3mf([{"name": "Plaque", "items": [item]}], {}, tmp_path / "fixation.3mf", cli=True)
+    reglages_relus = instantane(fichier)
+    assert [v for k, v in reglages_relus.items() if k.endswith("/sparse_infill_density")] == ["60%", "35%"]
+
 
 
 def test_fixation_dans_la_matiere_refuse_les_paliers():
