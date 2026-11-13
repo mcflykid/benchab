@@ -1,6 +1,7 @@
 """Collecte privée de STL et poses assembly.json ; une seule visionneuse autonome pour grille et assemblage."""
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -55,7 +56,7 @@ def _declaration_apercu(chemin, racine):
         autorises[fichier] = sha
     if chemin.read_bytes() != contenu:
         raise ValueError("Déclaration d’aperçu modifiée pendant la lecture.")
-    return chemin, autorises
+    return chemin, hashlib.sha256(contenu).hexdigest(), autorises
 
 
 def collecter(dossier=None, *, prive, unites, declaration=None):
@@ -82,8 +83,8 @@ def collecter(dossier=None, *, prive, unites, declaration=None):
     empreintes = {}
     autorises = None
     if declaration is not None:
-        fiche, autorises = _declaration_apercu(declaration, racine)
-        empreintes[fiche] = sha256_fichier(fiche)
+        fiche, sha_fiche, autorises = _declaration_apercu(declaration, racine)
+        empreintes[fiche] = sha_fiche
         if {p.name for p in fichiers} != set(autorises):
             raise ValueError("Maillage non déclaré présent ou fichier déclaré absent du dossier.")
     modeles = {}

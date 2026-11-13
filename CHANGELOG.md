@@ -4,6 +4,8 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## 1.32.0
 
+- Un aperçu de candidate identifie les maillages déclarés et refuse les fichiers étrangers (#260).
+
 - Mesure du surplomb par zone selon le procédé déclaré (#266).
 - Le relevé RFID d’ACE estime le restant à partir de la masse nominale déclarée (#248).
 
