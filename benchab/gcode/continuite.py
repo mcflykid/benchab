@@ -14,6 +14,7 @@ from collections import Counter
 from pathlib import Path
 from zipfile import BadZipFile
 
+from benchab import reglages
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter, axes_homing
 from benchab.gcode.geometrie_arc import point_debut_deposee_xyz
@@ -38,7 +39,7 @@ _Z_META = re.compile(r"^;\s*Z\s*:\s*(" + _NUMBER.pattern + r")\s*$", re.I)
 class _Etat:
     """Cumule les mesures par couche ; aucun état modal dupliqué ni commande machine."""
 
-    def __init__(self, intervalle_z_mm, longueur_micro_mm):
+    def __init__(self, intervalle_z_mm, longueur_micro_mm, mode_vase=False):
         """Initialise compteurs et lecteur borné ; longueurs en mm, 128 diagnostics au plus puis résumé."""
         self.lecteur = Interpreter(tool=0, error_limit=128)
         self.role = ""
@@ -51,6 +52,8 @@ class _Etat:
         self.stats = {}
         self.intervalle_z_mm = intervalle_z_mm
         self.longueur_micro_mm = longueur_micro_mm
+        self.mode_vase = mode_vase
+        self.tour_sans_repere = False
 
     def _couche_stats(self, z):
         """Renvoie les compteurs de la couche à Z en mm, sans réinterpréter les trajectoires."""
@@ -133,7 +136,17 @@ class _Etat:
         if self.role not in {"outer wall", "outerwall", "external perimeter"}:
             self.derniere_fin = None
             return
-        stats = self._couche_stats(round(z, 3))
+        if self.mode_vase:
+            # Le mouvement en spirale change de Z à chaque segment sans créer une nouvelle couche (#246).
+            if self.lecteur.layer < 0 or self.z_meta is None:
+                self.tour_sans_repere = True
+                self.incomplet = True
+                self.derniere_fin = None
+                return
+            cle = (self.lecteur.layer, round(self.z_meta, 3))
+        else:
+            cle = round(z, 3)
+        stats = self._couche_stats(cle)
         contigu = self.derniere_fin is not None and math.dist(self.derniere_fin, debut_depot) <= 0.02
         if not contigu:
             stats["morceaux"] += 1
@@ -195,12 +208,12 @@ def _options(intervalle_z_mm, seuils_absolus, longueur_micro_mm, reference):
 
 
 def _analyser_lignes(lignes, intervalle_z_mm=None, seuils_absolus=None, longueur_micro_mm=LONGUEUR_MICRO_MM,
-                     reference=None):
+                     reference=None, mode_vase=False):
     """Interprète les lignes partagées, en gardant O(couches) en mémoire."""
     intervalle_z_mm, seuils, longueur_micro_mm, relation_reference = _options(
         intervalle_z_mm, seuils_absolus, longueur_micro_mm, reference
     )
-    etat = _Etat(intervalle_z_mm, longueur_micro_mm)
+    etat = _Etat(intervalle_z_mm, longueur_micro_mm, mode_vase)
     for brut in lignes:
         etat.ligne(brut.decode("utf-8", "replace") if isinstance(brut, bytes) else brut)
 
@@ -208,7 +221,8 @@ def _analyser_lignes(lignes, intervalle_z_mm=None, seuils_absolus=None, longueur
     max_morceaux = 0
     max_fraction_micro = 0.0
     accelerations = Counter()
-    for z, stats in sorted(etat.stats.items()):
+    for cle, stats in sorted(etat.stats.items()):
+        z = cle[1] if mode_vase else cle
         fraction = stats["microsegments"] / stats["segments"] if stats["segments"] else 0.0
         max_morceaux = max(max_morceaux, stats["morceaux"])
         max_fraction_micro = max(max_fraction_micro, fraction)
@@ -228,7 +242,9 @@ def _analyser_lignes(lignes, intervalle_z_mm=None, seuils_absolus=None, longueur
     avertissements = []
     if etat.incomplet:
         statut = "NON VÉRIFIÉ"
-        if etat.homing_non_verifie:
+        if etat.tour_sans_repere:
+            avertissements.append("Mode vase : repères de couche ou d’altitude absents.")
+        elif etat.homing_non_verifie:
             avertissements.append("Segment d’extrusion immédiatement après G28 exclu.")
         else:
             avertissements.append("Commande d'extrusion ou mouvement non pris en charge ; couverture incomplète.")
@@ -255,6 +271,7 @@ def _analyser_lignes(lignes, intervalle_z_mm=None, seuils_absolus=None, longueur
         "longueur_micro_mm": longueur_micro_mm,
         "heuristiques": "WARN au-delà des seuils ; repères de triage, non normes fabricant ni prédiction physique.",
         "couches_analysees": len(couches),
+        "mode_vase": mode_vase,
         "max_morceaux_par_couche": max_morceaux,
         "max_fraction_microsegments": round(max_fraction_micro, 6),
         "acceleration_exterieure_configuree_mm_s2": accel_config,
@@ -277,6 +294,7 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
 
     Reçoit un G-code ou un 3MF et, si nécessaire, un numéro de plaque. Le
     cache lie les résultats à la version du lecteur et aux octets de la source.
+    Le mode vase d’un 3MF regroupe les incréments Z par couche déclarée.
     Un numéro ambigu est refusé ; aucune écriture ou validation physique.
     """
     intervalle, seuils, longueur, _relation = _options(
@@ -296,6 +314,11 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
 
     if Path(chemin).suffix.lower() == ".3mf":
         with Archive3MF(chemin) as archive:
+            if "Metadata/project_settings.config" in archive.noms():
+                config = archive.reglages()
+                options["mode_vase"] = (
+                    "spiral_mode" in config and reglages.valeur_brute(config, "spiral_mode") == "1"
+                )
             try:
                 membres = dict(plaques_gcode_archive(archive))
             except ValueError as erreur:

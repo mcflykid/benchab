@@ -377,3 +377,20 @@ def test_3mf_continuite_selectionne_nom_exact_et_refuse_les_alias(tmp_path):
         assert refus["statut"] == "NON VÉRIFIÉ"
         assert "ambigu" in refus["avertissements"][0].lower()
         assert "couches_analysees" not in refus
+
+
+def test_continuite_vase_groupe_les_increments_z_par_tour_declare(tmp_path):
+    """Les mouvements Z d’une même couche vase partagent le même dénominateur."""
+    source = tmp_path / "vase.3mf"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", '{"spiral_mode":"1"}')
+        archive.writestr(
+            "Metadata/plate_1.gcode",
+            "G90\nM83\n;LAYER_CHANGE\n;Z:0.4\n;TYPE:Outer wall\nG1 Z0.2 F600\n"
+            "G1 X1 Z0.25 E0.1\nG1 X1.1 Z0.3 E0.01\nG1 X2 Z0.4 E0.1\n",
+        )
+    rapport = controler(source)
+    (tour,) = rapport["couches"]
+    assert tour["segments"] == 3
+    assert tour["fraction_microsegments"] == pytest.approx(1 / 3, abs=1e-6)
+    assert tour["morceaux"] == 1
