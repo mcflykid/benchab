@@ -206,3 +206,15 @@ Les deux rejeux `snug` partent des mêmes octets et reproduisent le G-code
 du slicer restent présents. Une projection plus grande ne prouve ni un
 contact physique, ni un retrait plus facile. Le résultat ne s’étend pas à
 un autre type de support ou à une autre géométrie (#80, #89).
+
+### Style normal par défaut
+
+Sur le même coupon et le même binaire, deux rejeux indépendants avec
+`support_style=default` conservent cette valeur dans le 3MF tranché.
+Seul ce réglage diffère du témoin `grid` avant et après tranchage.
+Les deux rejeux concordent hors date et les trajets de support et
+d’interface mesurés sont identiques à ceux du témoin. La médiane Z
+reste à 0,18 mm, la projection à 121 mm² et les estimations à
+984 s et 3,64 g. La source et les 646 profils relus sont intacts.
+L’absence d’effet observé sur ce coupon ne démontre pas une
+équivalence générale entre `default` et `grid` (#80, #89).
