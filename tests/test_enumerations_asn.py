@@ -149,3 +149,19 @@ def test_commande_style_contextuel_est_facultative(tmp_path, monkeypatch, capsys
     nouveau = json.loads(capsys.readouterr().out)
     assert any(item["cle"] == "support_style" and item["statut"] == "PASS" for item in nouveau["controles"])
     assert source.read_bytes() == avant
+
+
+@pytest.mark.parametrize("valeur, activation, statut", [
+    ("50%", "1", "PASS"), ("100%", "1", "PASS"), ("100%", "0", "NON VÉRIFIÉ"),
+    ("75%", "1", "NON VÉRIFIÉ"),
+])
+def test_hauteur_combinee_reste_liee_aux_conditions(valeur, activation, statut):
+    """La hauteur n’est qualifiée qu’avec la combinaison et le profil observés."""
+    cle = "infill_combination_max_layer_height"
+    donnees = {
+        cle: valeur, "infill_combination": activation, "nozzle_diameter": ["0.4"],
+        "layer_height": "0.2", "sparse_infill_pattern": "gyroid", "sparse_infill_density": "20%",
+    }
+    resultats = reglages.verifier(donnees, identite_slicer=ASN, inclure_contextuelles=True)
+    lignes = [r for r in resultats if r.get("cle") == cle]
+    assert len(lignes) == 1 and lignes[0]["enumeration"]["statut"] == statut

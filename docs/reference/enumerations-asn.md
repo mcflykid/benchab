@@ -203,3 +203,9 @@ mm. Toute condition absente ou différente reste NON VÉRIFIÉE. Le verdict
 décrit la déclaration et l’observation sur le coupon ; il ne prédit pas
 les trajectoires d’une autre géométrie et ne valide pas le retrait.
 Sans l’option, l’ensemble historique des contrôles reste inchangé (#80, #89).
+
+La clé `infill_combination_max_layer_height` est aussi contextuelle. Les
+valeurs `50%` et `100%` sont reliées aux témoins lorsque la combinaison
+est active, avec la buse déclarée à 0,4 mm, une hauteur de couche déclarée
+de 0,2 mm et un gyroïde à 20 %. Une autre valeur ou des conditions
+différentes restent NON VÉRIFIÉES (#80, #81).

@@ -1,4 +1,4 @@
-# Paliers radiaux de densité
+# Paliers de densité
 
 `benchab.conception.paliers_densite.modificateurs_radiaux` prépare une première
 forme de champ de densité (#83).
@@ -80,8 +80,7 @@ la fixation par une boule polyédrique inscrite, coupe le résultat à la
 pièce et retire les zones déjà attribuées. Le rapport indique l’écart
 radial maximal de la boule à la distance demandée. Une fixation qui
 chevauche déjà la matière, une bande vide ou un échec du noyau empêche
-la production des modificateurs. L’effet dans le G-code et la tenue
-physique restent à qualifier pour ce parcours (#83).
+la production des modificateurs. Le résultat de tranchage ci-dessous couvre une fixation témoin (#83).
 
 `modificateurs_depuis_surface(piece, paliers)` répartit les densités en
 bandes internes depuis l’ensemble de la surface d’un solide fermé.
