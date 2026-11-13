@@ -15,7 +15,9 @@ import zipfile
 from pathlib import Path
 
 from benchab import reglages
+from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import WORDS, Interpreter
+from benchab.gcode.lecture import plaques_gcode_archive
 
 VERSION = "1.0"
 DEFAULTS = dict(
@@ -28,6 +30,8 @@ DEFAULTS = dict(
     pente_max_mm_s_par_mm=50.0,
 )
 MAX_BYTES = 64 * 1024 * 1024
+MAX_LIGNES_VASE = 12_000_000
+MAX_OCTETS_LIGNE_VASE = 64 * 1024
 OUTER = {"Outer wall", "Outer perimeter"}
 _VASE = re.compile(r"^\s*;\s*(spiral_mode|spiral_vase)\s*=\s*1\s*$", re.I | re.M)
 # Politique conservatrice du diagnostic : grammaire modale déléguée à Interpreter.
@@ -154,6 +158,10 @@ def _machine(maitre):
     return limites_configurees(charger_machine(maitre))
 
 
+class _BudgetLecture(ValueError):
+    """Signale un plafond de lecture atteint, sans qualifier la source."""
+
+
 def _octets(path):
     fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
     try:
@@ -161,7 +169,7 @@ def _octets(path):
         if not stat.S_ISREG(before.st_mode):
             raise ValueError("source non régulière refusée")
         if before.st_size > MAX_BYTES:
-            raise ValueError("source trop grande (>64 Mio)")
+            raise _BudgetLecture("source trop grande pour le diagnostic en mémoire (>64 Mio)")
         pieces = []
         total = 0
         while True:
@@ -171,7 +179,7 @@ def _octets(path):
             pieces.append(part)
             total += len(part)
             if total > MAX_BYTES:
-                raise ValueError("source trop grande (>64 Mio)")
+                raise _BudgetLecture("source trop grande pour le diagnostic en mémoire (>64 Mio)")
         after = os.fstat(fd)
         if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
             after.st_size,
@@ -194,7 +202,7 @@ def _lire(path):
             if len(names) != len(set(names)):
                 raise ValueError("membres archive dupliqués")
             if sum(i.file_size for i in infos) > 2 * MAX_BYTES:
-                raise ValueError("archive décompressée trop grande")
+                raise _BudgetLecture("archive décompressée trop grande pour le diagnostic en mémoire")
             members = [n for n in names if re.fullmatch(r"Metadata/plate_\d+\.gcode", n)]
             if not members:
                 raise ValueError("aucun G-code de plaque")
@@ -203,13 +211,13 @@ def _lire(path):
     return raw, [(path.name, raw.decode("utf-8"))], False
 
 
-def _rapport_initial(path, raw, cfg, machine):
+def _rapport_initial(path, empreinte, cfg, machine):
     """Prépare les champs communs du rapport sans lire ni modifier une source supplémentaire."""
     return {
         "schema_version": 1,
         "version": VERSION,
         "source": str(path.resolve()),
-        "source_sha256": _sha(raw),
+        "source_sha256": empreinte,
         "options": cfg,
         "statut": "PASS",
         "validation_physique": "NON VÉRIFIÉ",
@@ -529,15 +537,16 @@ def _fond_declare(config):
     return int(valeur) if isinstance(valeur, str) and re.fullmatch(r"[0-9]{1,6}", valeur) else None
 
 
-def _analyser_vase(texte, config, limites_filaments):
+def _analyser_vase(lignes, config, limites_filaments):
     """Mesure en mm une spirale à Z variable, avec largeur et couches de fond documentées."""
     lecteur = Interpreter(error_limit=50)
     derniere = None
     segments = morceaux = compte_largeurs = 0
     largeurs = None
-    fonds = set()
+    couches_fond_observees = 0
+    dernier_fond = -1
     flux = {}
-    for ligne in texte.splitlines():
+    for ligne in lignes:
         if ligne.strip().startswith(";LAYER_CHANGE"):
             # Une largeur oubliée n'est pas déduite de la couche précédente.
             lecteur.metadata.pop("WIDTH", None)
@@ -548,8 +557,10 @@ def _analyser_vase(texte, config, limites_filaments):
             continue
         _mesurer_debit(mouvement, limites_filaments, flux, mouvement["feed"] / 60)
         if mouvement["type"] in {"Bottom surface", "Solid infill", "Internal solid infill"} and segments == 0:
-            if mouvement["layer"] >= 0:
-                fonds.add(mouvement["layer"])
+            # L'interpréteur incrémente les couches : le dernier fond suffit en flux.
+            if mouvement["layer"] > dernier_fond:
+                couches_fond_observees += 1
+                dernier_fond = mouvement["layer"]
         debut = mouvement["deposition_start"]
         fin = mouvement["spatial_end"]
         if mouvement["type"] not in OUTER or debut is None or fin[2] <= debut[2] + 1e-9:
@@ -567,12 +578,13 @@ def _analyser_vase(texte, config, limites_filaments):
             )
     couches_fond = _fond_declare(config)
     couverture = not lecteur.errors and segments > 0 and segments == compte_largeurs and couches_fond is not None
-    statut = "NON VÉRIFIÉ" if not couverture else "WARN" if morceaux > 1 or len(fonds) != couches_fond else "PASS"
+    ecart = morceaux > 1 or couches_fond_observees != couches_fond
+    statut = "NON VÉRIFIÉ" if not couverture else "WARN" if ecart else "PASS"
     return {
         "statut": statut, "segments_deposes": segments, "morceaux_contigus": morceaux,
         "largeur_ligne_mm": {"min": largeurs[0], "max": largeurs[1]} if largeurs else None,
         "segments_avec_largeur": compte_largeurs,
-        "couches_fond_declarees": couches_fond, "couches_fond_observees": len(fonds),
+        "couches_fond_declarees": couches_fond, "couches_fond_observees": couches_fond_observees,
         "absence_couture": "NON VÉRIFIÉ", "erreurs": lecteur.errors,
     }, flux
 
@@ -650,6 +662,68 @@ def _finaliser_rapport(report):
     return report
 
 
+def _ajouter_vase(report, membre, empreinte, diagnostic, flux):
+    """Ajoute le diagnostic nominal et conserve les limites de couverture."""
+    report["plaques"].append({
+        "membre": membre, "sha256": empreinte, "vase": diagnostic,
+        "debit_strict_brut_par_outil": flux, "temps_couches_nominaux": [],
+    })
+    if diagnostic["statut"] == "NON VÉRIFIÉ":
+        report["couverture"]["erreurs"].append(membre + " : largeur, fond ou continuité vase incomplets")
+        report["couverture"]["erreurs"].extend(diagnostic["erreurs"])
+    elif diagnostic["statut"] == "WARN":
+        report["proposition"]["converge"] = False
+        report["couverture"]["avertissements"].append(membre + " : écart sur la spirale ou le fond")
+
+
+def _vase_en_flux(path, cfg, machine, limites_filaments, refus):
+    """Mesure un vase déclaré en flux borné, sans charger le maillage ni le G-code entier."""
+    if path.suffix.lower() != ".3mf":
+        raise refus
+    with Archive3MF(path) as archive:
+        config = archive.reglages() if "Metadata/project_settings.config" in archive.noms() else {}
+        if "spiral_mode" not in config or reglages.valeur_brute(config, "spiral_mode") != "1":
+            raise refus
+        plaques = plaques_gcode_archive(archive)
+        if not plaques:
+            raise ValueError("aucun G-code de plaque")
+        report = _rapport_initial(path, archive.sha256(), cfg, machine)
+        report["controle_capacites"] = {
+            "statut": "NON VÉRIFIÉ",
+            "raison": "Le diagnostic en flux couvre la spirale. Le contrôle de capacités complet reste à exécuter.",
+        }
+        report["limites"].append(
+            f"Vase en flux : {MAX_LIGNES_VASE} lignes au total, {MAX_OCTETS_LIGNE_VASE} octets par ligne."
+        )
+        lignes_lues = 0
+
+        def lire_lignes(flux, empreinte):
+            """Lit le G-code UTF-8 borné et calcule son empreinte octet par octet."""
+            nonlocal lignes_lues
+            while ligne := flux.readline(MAX_OCTETS_LIGNE_VASE + 1):
+                lignes_lues += 1
+                if len(ligne) > MAX_OCTETS_LIGNE_VASE:
+                    raise _BudgetLecture(
+                        f"lecture du G-code vase : budget de {MAX_OCTETS_LIGNE_VASE} octets par ligne dépassé"
+                    )
+                if lignes_lues > MAX_LIGNES_VASE:
+                    raise _BudgetLecture(f"lecture du G-code vase : budget global de {MAX_LIGNES_VASE} lignes dépassé")
+                empreinte.update(ligne)
+                yield ligne.decode("utf-8")
+
+        for _, membre in plaques:
+            empreinte = hashlib.sha256()
+            try:
+                with archive.ouvrir_flux(membre) as flux:
+                    diagnostic, debit = _analyser_vase(lire_lignes(flux, empreinte), config, limites_filaments)
+            except _BudgetLecture as erreur:
+                report["couverture"]["erreurs"].append(f"{membre} : {erreur}")
+                break
+            _ajouter_vase(report, membre, empreinte.hexdigest(), diagnostic, debit)
+        archive.verifier_source(path)
+    return _finaliser_rapport(report)
+
+
 def analyser(source, maitre=None, limites_filaments=None, options=None):
     """Analyse une source G-code/3MF ; positions mm, durées s et débits mm³/s.
 
@@ -664,11 +738,14 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
     ):
         raise ValueError("limites_filaments doit être un dictionnaire de déclarations")
     path = Path(source)
-    raw, parts, archive = _lire(path)
+    try:
+        raw, parts, archive = _lire(path)
+        if sum(len(text.splitlines()) for _, text in parts) > 200000:
+            raise _BudgetLecture("budget diagnostic en mémoire dépassé : 200000 lignes")
+    except _BudgetLecture as refus:
+        return _vase_en_flux(path, cfg, _machine(maitre), limites_filaments, refus)
     machine = _machine(maitre)
-    if sum(len(text.splitlines()) for _, text in parts) > 200000:
-        raise ValueError("budget diagnostic dépassé : 200000 lignes")
-    report = _rapport_initial(path, raw, cfg, machine)
+    report = _rapport_initial(path, _sha(raw), cfg, machine)
     report["controle_capacites"] = _controle_capacites(path, archive, machine, limites_filaments)
     config = {}
     if archive:
@@ -678,15 +755,8 @@ def analyser(source, maitre=None, limites_filaments=None, options=None):
     vase = "spiral_mode" in config and reglages.valeur_brute(config, "spiral_mode") == "1"
     for member, text in parts:
         if vase or _VASE.search(text):
-            diagnostic, flux = _analyser_vase(text, config, limites_filaments)
-            report["plaques"].append({"membre": member, "sha256": _sha(text.encode()), "vase": diagnostic,
-                                     "debit_strict_brut_par_outil": flux, "temps_couches_nominaux": []})
-            if diagnostic["statut"] == "NON VÉRIFIÉ":
-                report["couverture"]["erreurs"].append(member + " : largeur, fond ou continuité vase incomplets")
-                report["couverture"]["erreurs"].extend(diagnostic["erreurs"])
-            elif diagnostic["statut"] == "WARN":
-                report["proposition"]["converge"] = False
-                report["couverture"]["avertissements"].append(member + " : écart sur la spirale ou le fond")
+            diagnostic, flux = _analyser_vase(text.splitlines(), config, limites_filaments)
+            _ajouter_vase(report, member, _sha(text.encode()), diagnostic, flux)
         else:
             _analyser_plaque(member, text, cfg, limites_filaments, report)
     if _octets(path) != raw:
