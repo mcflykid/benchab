@@ -618,11 +618,9 @@ def trancher_fichier(
     """
     preuve_visuelle = None
     if usage == "impression":
-        from benchab.projets.validation_apercu import fiche_candidate, verifier
+        from benchab.projets.validation_apercu import verifier_candidate
 
-        fiche = validation_visuelle if validation_visuelle is not None else fiche_candidate(source, prive=prive)
-        if fiche is not None:
-            preuve_visuelle = verifier(source, fiche, prive=prive)
+        preuve_visuelle = verifier_candidate(source, prive=prive, fiche=validation_visuelle)
     source = Path(source).resolve(strict=True)
     sortie = Path(dossier_sortie) / (nom or f"{source.stem}.gcode.3mf")
     if Path(nom or sortie.name).name != (nom or sortie.name):

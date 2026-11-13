@@ -8,6 +8,12 @@ from benchab.chemins import atelier_prive, sans_lien
 from benchab.qualite.empreintes import sha256_fichier
 
 
+def fiche_laterale(source):
+    """Renvoie le chemin de décision associé au nom complet de la géométrie, sans écriture."""
+    chemin = Path(source)
+    return chemin.with_name(chemin.name + ".apercu.json")
+
+
 def fiche_candidate(source, *, prive=None):
     """Renvoie la fiche obligatoire d’une candidate de projet, sinon None.
 
@@ -21,7 +27,7 @@ def fiche_candidate(source, *, prive=None):
     if len(segments) < 3 or segments[1] != "candidats":
         return None
     # Le nom complet distingue les différentes archives dans un même dossier.
-    fiche = chemin.with_name(chemin.name + ".apercu.json")
+    fiche = fiche_laterale(chemin)
     if not fiche.is_file():
         raise ValueError(f"Aperçu validé obligatoire. Créer {fiche.name} ou fournir --validation-visuelle.")
     return fiche
@@ -60,3 +66,9 @@ def verifier(source, fiche, *, prive=None):
                 or sha256_fichier(fichier) != attendu):
             raise ValueError("Une empreinte de la source ou de l’aperçu a changé. Refaire et valider l’aperçu.")
     return {"statut": "PASS", "source_sha256": valeur["source_sha256"], "apercu_sha256": reference["sha256"]}
+
+
+def verifier_candidate(source, *, prive=None, fiche=None):
+    """Retourne le PASS visuel ou None hors candidat ; lève ValueError si la preuve requise manque."""
+    decision = fiche if fiche is not None else fiche_candidate(source, prive=prive)
+    return verifier(source, decision, prive=prive) if decision is not None else None

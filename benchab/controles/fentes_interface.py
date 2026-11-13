@@ -14,6 +14,7 @@ from shapely.ops import unary_union
 
 from benchab.chemins import atelier_prive, sans_lien
 from benchab.controles.couches_courtes import _sections_xy
+from benchab.projets.validation_apercu import verifier_candidate
 from benchab.qualite.ecritures import PublicationNeuve, destination_neuve
 from benchab.qualite.empreintes import sha256_fichier
 from benchab.qualite.statuts import code_statut
@@ -155,7 +156,10 @@ def main(argv=None, *, prive=None):
     source = sans_lien(args.stl, racine=racine, strict=True)
     if source.suffix.casefold() != ".stl" or not source.is_file() or source.stat().st_size > 64 * 1024 * 1024:
         raise ValueError("STL régulier de 64 Mio au plus requis.")
+    preuve = verifier_candidate(source, prive=racine)
     sha = sha256_fichier(source)
+    if preuve and preuve["source_sha256"] != sha:
+        raise ValueError("Maillage changé après sa validation visuelle.")
     rapport, image = mesurer(
         charger_maillage(source), [args.zone_mm[:3], args.zone_mm[3:]], axe=args.axe,
         largeur_ligne_mm=args.largeur_ligne_mm, pas_mm=args.pas_mm, porteuse=args.porteuse,

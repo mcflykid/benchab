@@ -63,3 +63,51 @@ def test_tranchage_candidate_refuse_approbation_en_attente_avant_le_moteur(tmp_p
     fiche.write_text('{"schema": 1, "decision": "EN ATTENTE", "source_sha256": "", "apercu": null}')
     with pytest.raises(ValueError, match="VALIDÉ"):
         trancher_fichier(source, tmp_path, prive=tmp_path, validation_visuelle=fiche)
+
+
+def test_apercu_exact_et_decision_explicite(tmp_path):
+    """L’aperçu charge le 3MF et seule une décision liée aux deux octets permet PASS."""
+    from zipfile import ZipFile
+
+    from benchab.conception import apercu
+
+    source = _candidat(tmp_path)
+    with ZipFile(source, "w") as archive:
+        archive.writestr("3D/3dmodel.model", """
+        <model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+          <resources><object id="1"><mesh>
+            <vertices><vertex x="0" y="0" z="0"/><vertex x="10" y="0" z="0"/>
+              <vertex x="0" y="6" z="0"/><vertex x="0" y="0" z="4"/></vertices>
+            <triangles><triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>
+              <triangle v1="1" v2="2" v3="3"/><triangle v1="2" v2="0" v3="3"/></triangles>
+          </mesh></object></resources>
+          <build><item objectid="1"/></build>
+        </model>""")
+    page = source.with_suffix(".html")
+    assert apercu.main(["produire", str(source), "--sortie", str(page)], prive=tmp_path) == 0
+    assert "Plan ⟂ X" in page.read_text()
+    assert sha256_fichier(source) in page.read_text()
+    with pytest.raises(ValueError, match="obligatoire"):
+        validation_apercu.fiche_candidate(source, prive=tmp_path)
+    assert apercu.main([
+        "decider", str(source), str(page), "--decision", "VALIDÉ",
+        "--source-sha256", sha256_fichier(source), "--apercu-sha256", sha256_fichier(page),
+    ], prive=tmp_path) == 0
+    assert validation_apercu.verifier_candidate(source, prive=tmp_path)["statut"] == "PASS"
+
+
+def test_course_candidate_refuse_avant_chargement(tmp_path, monkeypatch):
+    """Un des STL sous candidats déclenche le contrôle visuel avant d’ouvrir les maillages."""
+    from benchab.controles import course_vissage
+
+    male = _candidat(tmp_path).with_suffix(".stl")
+    femelle = tmp_path / "femelle.stl"
+    male.touch()
+    femelle.touch()
+    monkeypatch.setattr(course_vissage, "charger_maillage", lambda *_: pytest.fail("chargement prématuré"))
+    with pytest.raises(ValueError, match="Aperçu validé"):
+        course_vissage.main([
+            str(male), str(femelle), "--pas-mm", "1", "--sens", "droite", "--butee-mm", "0",
+            "--phase-deg", "0", "--course-mm", "1", "--increment-mm", "0.1",
+            "--zone-male-mm", "0", "1", "--zone-femelle-mm", "0", "1",
+        ], prive=tmp_path)

@@ -95,16 +95,33 @@ sont pas rattachées.
 
 ### Valider l’aperçu d’une candidate
 
-Avant les contrôles longs, ouvrir la candidate en vue commune avec les pièces
-déclarées via `visualisation assemblage-dossier --declaration`. Utiliser les
-vues libre, basse et en coupe pour vérifier proportions et montage. Consigner
-la décision de l’utilisateur (`VALIDÉ`, `À AJUSTER` ou `EN ATTENTE`) dans une
-fiche JSON privée. Les champs sont `schema` (1), `decision`, `source_sha256`
-(archive 3MF à trancher) et `apercu` (objet `fichier` relatif à la fiche et
-`sha256`). Cette décision porte sur les octets relus.
+Produire une vue interactive depuis la géométrie exacte de la candidate
+(STL en mm ou 3MF). Ajouter `--piece` pour chaque pièce déjà dans le
+même repère d’assemblage.
 
-Pour un 3MF dans `projets/<projet>/candidats/`, placer la fiche à côté de
-l’archive (par exemple `plaques.3mf.apercu.json`) ou fournir
-`fabrication trancher --validation-visuelle FICHE.json`. Le tranchage en
-usage impression s’arrête si la fiche manque, si la décision est en attente
-ou si une empreinte a changé. Les témoins peuvent être préparés sans fiche.
+```sh
+benchab conception apercu -- produire prive/candidate.3mf \
+  --sortie prive/apercu.html
+```
+
+Ouvrir la page hors ligne. La vue initiale est de trois quarts. La caméra
+peut tourner sous le modèle et le menu Coupe donne accès aux sections.
+Après examen, consigner la décision de l’utilisateur avec les deux
+empreintes affichées à la création de la page.
+
+```sh
+benchab conception apercu -- decider prive/candidate.3mf prive/apercu.html \
+  --decision VALIDÉ --source-sha256 SHA_SOURCE --apercu-sha256 SHA_APERCU
+```
+
+La production de la page laisse la décision EN ATTENTE. L’étape de
+décision écrit la fiche à côté de la source. Les valeurs possibles
+sont `VALIDÉ`, `À AJUSTER` et `EN ATTENTE`.
+
+Pour une source dans `projets/<projet>/candidats/`, la course de vissage,
+le contrôle de fentes et le tranchage en usage impression vérifient le
+statut et les deux empreintes avant calcul. Pour le tranchage, une fiche
+distincte peut être désignée avec `--validation-visuelle FICHE.json`.
+Les fichiers de témoins peuvent rester hors du dossier candidats et le
+tranchage en usage témoin reste libre. La décision porte sur l’intention
+visuelle. Les validations de montage et de tenue restent physiques.
