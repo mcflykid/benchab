@@ -221,6 +221,17 @@ def modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers, *
     return volumes, rapport
 
 
+def _boule_distance(corps):
+    boule = mf.Manifold.sphere(1, _SEGMENTS_SPHERE)
+    if corps.num_tri() * boule.num_tri() > 1_000_000:
+        raise ValueError("Budget de calcul de distance dépassé : utiliser un maillage plus simple")
+    # Le maillage inscrit borne l’écart à une boule de rayon exact.
+    # Son écart radial maximal vient de la face la plus proche du centre.
+    maillage_boule = _vers_trimesh(boule)
+    inrayon = float(np.min(np.einsum("ij,ij->i", maillage_boule.triangles_center, maillage_boule.face_normals)))
+    return boule, inrayon
+
+
 def modificateurs_autour_fixation(piece, fixation, paliers, *, volume_min_mm3=0.1):
     """Retourne des paliers autour d’une fixation maillée extérieure.
 
@@ -233,9 +244,7 @@ def modificateurs_autour_fixation(piece, fixation, paliers, *, volume_min_mm3=0.
     normalises = _valider_paliers(paliers, "distance_mm")
     base, volume_base = _piece_et_volume(piece, volume_min_mm3)
     obstacle, _ = _piece_et_volume(fixation, volume_min_mm3)
-    boule = mf.Manifold.sphere(1, _SEGMENTS_SPHERE)
-    if obstacle.num_tri() * boule.num_tri() > 1_000_000:
-        raise ValueError("Budget de dilatation dépassé : utiliser une fixation maillée plus simple")
+    boule, inrayon = _boule_distance(obstacle)
     intersection = base ^ obstacle
     if intersection.status() != mf.Error.NoError or abs(intersection.volume()) > max(1e-9, volume_base * 1e-10):
         return [], {
@@ -243,14 +252,37 @@ def modificateurs_autour_fixation(piece, fixation, paliers, *, volume_min_mm3=0.
             "effet_gcode": "NON VÉRIFIÉ", "validation_physique": False, "paliers": [],
         }
 
-    # La boule inscrite borne l’extérieur de chaque bande de distance.
-    # Son écart radial maximal vient de la face la plus proche du centre.
-    maillage_boule = _vers_trimesh(boule)
-    inrayon = float(np.min(np.einsum("ij,ij->i", maillage_boule.triangles_center, maillage_boule.face_normals)))
     return _assembler(
         base, volume_base, normalises, lambda d: base ^ obstacle.minkowski_sum(boule.scale((d, d, d))),
         prefixe="palier-fixation", nom_distance="distance", volume_min_mm3=volume_min_mm3,
         details={"erreur_radiale_boule_max_mm": (1 - inrayon) * normalises[-1][0],
                  "triangles_fixation": obstacle.num_tri()},
         limite="Dilatation de la fixation maillée ; aucun effet G-code ni tenue physique établis.",
+    )
+
+
+def modificateurs_depuis_surface(piece, paliers, *, volume_min_mm3=0.1):
+    """Retourne des bandes internes depuis la surface d’un solide fermé.
+
+    Les profondeurs sont en mm et les densités en %. PASS décrit les
+    volumes disjoints confinés à la pièce. NON VÉRIFIÉ indique un défaut
+    géométrique ou un palier vide. La distance suit une boule inscrite.
+    Aucun réglage, modèle source ou résultat physique n’est modifié.
+    """
+    normalises = _valider_paliers(paliers, "profondeur_mm")
+    base, volume_base = _piece_et_volume(piece, volume_min_mm3)
+    boule, inrayon = _boule_distance(base)
+
+    def couche_cumulee(profondeur):
+        coeur = base.minkowski_difference(boule.scale((profondeur,) * 3))
+        # Un cœur vide peut être normal ; un échec du noyau ne qualifie aucune bande.
+        if coeur.status() != mf.Error.NoError:
+            return coeur
+        return base - coeur
+
+    return _assembler(
+        base, volume_base, normalises, couche_cumulee,
+        prefixe="palier-surface", nom_distance="profondeur", volume_min_mm3=volume_min_mm3,
+        details={"erreur_radiale_boule_max_mm": (1 - inrayon) * normalises[-1][0]},
+        limite="Érosion de la pièce maillée ; aucun effet G-code ni tenue physique établis.",
     )

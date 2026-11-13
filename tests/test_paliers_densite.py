@@ -172,3 +172,17 @@ def test_fixation_dans_la_matiere_refuse_les_paliers():
     zones, rapport = modificateurs_autour_fixation(piece, fixation, [{"distance_mm": 2, "densite": "60%"}])
     assert not zones and rapport["statut"] == "NON VÉRIFIÉ"
     assert "chevauche" in rapport["raison"]
+
+
+def test_paliers_depuis_surface_mesurent_les_coquilles_interieures():
+    """Un bloc permet de calculer exactement les volumes à chaque profondeur."""
+    from benchab.conception.paliers_densite import modificateurs_depuis_surface
+
+    piece = trimesh.creation.box((10, 12, 14))
+    zones, rapport = modificateurs_depuis_surface(piece, [
+        {"profondeur_mm": 1, "densite": "60%"}, {"profondeur_mm": 2, "densite": "35%"},
+    ])
+    assert rapport["statut"] == "PASS", rapport
+    assert [z["mesh"].volume for z in zones] == pytest.approx([1680 - 960, 960 - 480])
+    assert rapport["volume_non_attribue_mm3"] == pytest.approx(480)
+    assert not rapport["validation_physique"]

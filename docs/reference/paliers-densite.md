@@ -82,3 +82,11 @@ radial maximal de la boule à la distance demandée. Une fixation qui
 chevauche déjà la matière, une bande vide ou un échec du noyau empêche
 la production des modificateurs. L’effet dans le G-code et la tenue
 physique restent à qualifier pour ce parcours (#83).
+
+`modificateurs_depuis_surface(piece, paliers)` répartit les densités en
+bandes internes depuis l’ensemble de la surface d’un solide fermé.
+Chaque palier déclare une `profondeur_mm` et une `densite`. L’érosion par
+une boule polyédrique conserve un cœur dont la différence avec le solide
+donne la bande cumulée. Le témoin rectangulaire vérifie les volumes à
+deux profondeurs avec des cotes analytiques. Le budget de calcul peut
+exiger un maillage plus simple.
