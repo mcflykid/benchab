@@ -86,7 +86,7 @@ ROUTES_NAMESPACE = {
         "alias": {"photo": "rendu_photo"},
         "modules_prives": frozenset({
             "maillage_avance", "rendu_photo", "inspection_scene", "assemblage_dossier",
-            "visionneuse", "serveur", "apercu_gcode", "commentaires", "retour_photo",
+            "visionneuse", "serveur", "apercu_gcode", "commentaires", "retour_photo", "apercu_lampe",
         }),
     },
     "machine": {
@@ -460,7 +460,7 @@ def parser():
         imports.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
     visualisation = commandes.add_parser("visualisation").add_subparsers(dest="action", required=True)
     for nom in ("photo", "retour-photo", "inspection-scene", "assemblage-dossier", "visionneuse", "serveur",
-                "apercu-gcode", "commentaires"):
+                "apercu-gcode", "apercu-lampe", "commentaires"):
         visualisation.add_parser(nom).add_argument("arguments", nargs=argparse.REMAINDER)
     references = commandes.add_parser("references").add_subparsers(dest="action", required=True)
     for nom in ("verifier", "analyser", "contours"):
