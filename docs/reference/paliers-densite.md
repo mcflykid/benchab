@@ -117,3 +117,15 @@ Le troisième cas montre que l’effet est local. Une densité plus élevée
 peut modifier le tracé au point de supprimer le passage dans une boîte
 étroite. Le verdict vaut pour la boîte et la géométrie mesurées. La tenue
 physique et le calcul volumique des contraintes restent à établir (#83).
+
+### Contrôle du champ Application
+
+Sur la variante surface à 60 %, remplacer uniquement le champ
+`Application` de l’entrée par `AnycubicSlicerNext-2.0.0.3` à la
+place de `BambuStudio-2.0.0.3` conserve les deux mesures locales
+(345,6 et 716,0 mm) dans les sorties du moteur. Le contrôle d’intégrité
+refuse toutefois la sortie de cette variante, dont le moteur réécrit
+`different_settings_to_system`. La comparaison de la sortie refusée
+avec la référence révèle aussi des différences de matrices et de
+métadonnées de projet. Ce rejeu ne qualifie pas cette modification
+d’archive pour la production et ne change pas le refus (#82).
