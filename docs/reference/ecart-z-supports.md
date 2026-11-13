@@ -218,3 +218,16 @@ reste à 0,18 mm, la projection à 121 mm² et les estimations à
 984 s et 3,64 g. La source et les 646 profils relus sont intacts.
 L’absence d’effet observé sur ce coupon ne démontre pas une
 équivalence générale entre `default` et `grid` (#80, #89).
+
+### Limitation aux régions critiques
+
+Sur le coupon à support organique et interface concentrique, deux
+tranchages de la copie avec `support_critical_regions_only=1`
+conservent la valeur. C’est la seule différence de réglage dans le 3MF
+de sortie par rapport à la référence à 0. Les deux rejeux concordent
+hors date et reproduisent les trajets de support de la référence :
+20 019 segments, 7 087,421 mm, écart Z médian de 0,20 mm et projection
+de 177,5 mm². Les estimations restent à 990 s et 3,28 g. La source,
+la référence tranchée et les 646 profils relus sont intacts.
+Ce coupon ne discrimine pas l’option. Il faut une géométrie comportant
+des régions dont le statut critique diffère pour qualifier son effet (#89).
