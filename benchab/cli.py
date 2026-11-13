@@ -50,6 +50,7 @@ CONTROLES_DIRECTS = {
     "assemblage": "assemblage",
     "affleurement": "affleurement",
     "fentes-interface": "fentes_interface",
+    "vissage": "course_vissage",
     "ecarts-profils-3mf": "ecarts_profils_3mf",
     "purge-changements": "purge_changements",
     "plages-z": "couverture_plages_z",
@@ -58,7 +59,7 @@ CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
     "bilan-depots", "carte-coutures", "surplombs-surface",
     "affleurement", "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
     "surplombs-connexes", "ponts-surplombs",
-    "purge-changements", "fentes-interface",
+    "purge-changements", "fentes-interface", "vissage",
 })
 
 # Les espaces homogènes gardent leur préfixe, leurs alias et leurs options en un seul endroit.
