@@ -143,3 +143,9 @@ La largeur absente, une lecture incomplète ou l’absence de spirale donnent
 NON VÉRIFIÉ. Plusieurs morceaux ou un écart dans le fond donnent WARN si
 la lecture est complète. L’absence de couture visible reste NON VÉRIFIÉE.
 La proposition de vitesse s’applique aux parois classiques.
+
+Si le parcours mémoire dépasse son budget et que le 3MF déclare le mode
+vase, les plaques sont lues en flux, à raison de 12 millions de lignes au
+total et 64 Kio par ligne. Le lecteur vérifie le CRC de chaque G-code lu
+jusqu’au bout. Une limite atteinte donne NON VÉRIFIÉ avec le membre et le
+budget concernés. Le contrôle complet des capacités machine reste à exécuter.

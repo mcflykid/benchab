@@ -80,10 +80,10 @@ orientations des supports, identifiants filaments, revue locale et vérification
 des réglages. Les études de couches variables et de remplissage localisé lisent
 les réglages via `reglages()` ; l’étude de remplissage associe les résultats aux
 membres G-code par numéro de plaque non ambigu et conserve le lecteur en flux.
-`finition_parois` analyse un instantané déjà borné à 64 Mio avec
-son parcours mémoire protégé ; `paquet_3mf` valide des octets fournis et garde
-son propre validateur mémoire borné. Les écritures ZIP en mode `w` ou `a` ne
-sont pas concernées.
+`finition_parois` conserve son parcours mémoire borné à 64 Mio et lit en flux
+les plaques des grandes archives déclarées en mode vase. `paquet_3mf` valide
+les octets fournis dans son propre parcours mémoire borné. Les écritures ZIP
+en mode `w` ou `a` ne sont pas concernées.
 
 La comparaison de reconstruction vérifie les CRC, y compris pour un membre
 présent d’un seul côté ou deux archives binaires identiques. Les suffixes
