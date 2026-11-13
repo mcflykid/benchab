@@ -300,3 +300,28 @@ celles de la variante « régions critiques » seule. Après exclusion
 de l’horodatage, seul le commentaire du réglage des petits surplombs
 diffère. Le rejeu des deux options reproduit le G-code hors date.
 L’effet combiné est établi sur ce témoin et ce binaire (#89).
+
+### Interface, jeu de première couche, expansion et angle
+
+Sur le témoin à quatre débords, avec ASN 2.0.0.3 et les deux filtres
+désactivés, chaque variante change un seul réglage. Il est conservé
+dans le 3MF tranché. Les deux tranchages de chaque variante concordent
+hors date. Les longueurs ci-dessous couvrent la plaque entière.
+
+| Style et changement | Corps de support avant → après | Interface avant → après | Masse et durée avant → après |
+| --- | ---: | ---: | --- |
+| Organique, couches supérieures d’interface de 2 à 0 | 6 713,337 → 6 566,221 mm | 176,478 → 0 mm | 4,61 → 4,58 g, 959 → 953 s |
+| Organique, jeu de première couche de 0,2 à 0,8 mm | 6 713,337 → 6 631,200 mm | 176,478 → 176,478 mm | 4,61 → 4,60 g, 959 → 957 s |
+| Organique, expansion de 0 à 1,5 mm | 6 713,337 → 6 713,337 mm | 176,478 → 176,478 mm | 4,61 g, 959 s |
+| Organique, angle seuil de 45 à 65° | 6 713,337 → 6 713,337 mm | 176,478 → 176,478 mm | 4,61 g, 959 s |
+| Grille normale, expansion de 0 à 1,5 mm | 7 985,513 → 11 218,070 mm | 1 035,312 → 1 035,312 mm | 5,02 → 5,41 g, 940 → 970 s |
+
+Le jeu ne modifie les trajets du corps que sur la première couche
+(Z=0,20 mm, 401 à 381 segments). Sans interface supérieure,
+la médiane Z estimée passe de 0,40 à 0,20 mm. Avec l’expansion en
+grille, elle reste à 0,18 mm et la projection à 67,25 mm².
+En organique, l’expansion et l’angle conservent les mêmes empreintes
+de trajets de support. Les dessous horizontaux de ce témoin ne
+discriminent pas les deux angles. Les sources et les 646 profils
+relus gardent leurs empreintes. La tenue et le retrait restent
+à mesurer (#89).
