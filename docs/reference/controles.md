@@ -87,6 +87,11 @@ donne le verdict et les intervalles Z des séries en alerte par plaque.
 Les détails des trajectoires restent dans le JSON complet. Le motif
 d’un contrôle non vérifié et son code 2 sont conservés (#35).
 
+`benchab controle decollement SOURCE --json RAPPORT.json --resume`
+donne la recommandation, son motif et le chemin du rapport complet.
+Un STL seul donne une estimation géométrique. Pour un projet, une
+bordure automatique peut rester NON VÉRIFIÉE avec le code historique 0.
+
 La routine lit uniquement les résultats du contrôle courant. Relancer la
 routine conserve les fichiers identiques et publie les fichiers différents
 dans un sous-dossier de rejeu neuf. Les anciennes preuves restent consultables.
