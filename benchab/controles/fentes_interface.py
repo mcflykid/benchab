@@ -141,7 +141,11 @@ def mesurer(mesh, zone_mm, *, axe, largeur_ligne_mm, pas_mm, porteuse=False):
 
 
 def main(argv=None, *, prive=None):
-    """Contrôle un STL privé et publie un rapport en mm avec une coupe PNG optionnelle."""
+    """Contrôle un STL privé en mm, avec résumé et coupe PNG optionnels.
+
+    Le résumé exige un JSON complet privé. Le code suit le verdict numérique ;
+    aucun maillage ni réglage d’impression n’est modifié.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stl", type=Path)
     parser.add_argument("--zone-mm", type=float, nargs=6, required=True)
@@ -150,9 +154,15 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--pas-mm", type=float, required=True)
     parser.add_argument("--porteuse", action="store_true")
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige --json")
     parser.add_argument("--coupe", type=Path)
     args = parser.parse_args(argv)
     racine = atelier_prive(prive)
+    if args.resume and args.json is None:
+        raise ValueError("--resume exige --json pour conserver le rapport complet.")
+    destinations = {}
+    if args.json is not None:
+        destinations["json"] = destination_neuve(args.json, prive=racine, temporaire=False)
     source = sans_lien(args.stl, racine=racine, strict=True)
     if source.suffix.casefold() != ".stl" or not source.is_file() or source.stat().st_size > 64 * 1024 * 1024:
         raise ValueError("STL régulier de 64 Mio au plus requis.")
@@ -167,9 +177,6 @@ def main(argv=None, *, prive=None):
     if sha256_fichier(source) != sha:
         raise ValueError("Maillage modifié pendant le contrôle.")
     rapport["source_sha256"] = sha
-    destinations = {}
-    if args.json is not None:
-        destinations["json"] = destination_neuve(args.json, prive=racine, temporaire=False)
     if args.coupe is not None and image is not None:
         destinations["coupe"] = destination_neuve(args.coupe, prive=racine, temporaire=False)
         rapport["coupe"] = destinations["coupe"].relative_to(racine).as_posix()
@@ -181,5 +188,19 @@ def main(argv=None, *, prive=None):
             if "coupe" in destinations:
                 image.save(publication.temporaire(destinations["coupe"]), format="PNG")
             publication.publier()
+    if args.resume:
+        affiche = {
+            "statut": rapport["statut"], "rapport": str(destinations["json"]),
+            "nombre_vides": len(rapport.get("vides", [])),
+        }
+        if "raison" in rapport:
+            affiche["raison"] = rapport["raison"]
+        if rapport.get("vides"):
+            principal = next(v for v in rapport["vides"] if v["statut"] == rapport["statut"])
+            affiche["position_mm"] = principal["position_mm"]
+            affiche["largeur_max_mm"] = principal["largeur_max_mm"]
+        if "coupe" in rapport:
+            affiche["coupe"] = rapport["coupe"]
+        texte = json.dumps(affiche, ensure_ascii=False, allow_nan=False)
     print(texte)
     return code_statut(rapport["statut"])

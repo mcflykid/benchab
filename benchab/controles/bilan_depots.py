@@ -100,11 +100,16 @@ def analyser(source, *, bornes_z=()):
 
 
 def main(argv=None, *, prive=None):
-    """Écrit le bilan JSON dans l’atelier ou le temporaire, sans écraser de fichier existant."""
+    """Écrit le bilan privé en mm, g et s, puis affiche un résumé ou le détail.
+
+    Le code conserve PASS ou NON VÉRIFIÉ. Les sources et sorties existantes
+    restent intactes.
+    """
     parseur = argparse.ArgumentParser(description=__doc__)
     parseur.add_argument("source", type=Path)
     parseur.add_argument("--borne-z", type=float, action="append", default=[])
     parseur.add_argument("--sortie", type=Path, required=True)
+    parseur.add_argument("--detail", action="store_true", help="Affiche le même JSON complet que le fichier")
     args = parseur.parse_args(argv)
     try:
         cible = destination_neuve(args.sortie, prive=prive)
@@ -112,6 +117,9 @@ def main(argv=None, *, prive=None):
         ecrire_json_neuf(cible, rapport, entrees=(args.source,))
     except (OSError, ValueError, KeyError) as erreur:
         parseur.error(str(erreur))
+    if args.detail:
+        print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))
+        return rapport["code"]
     temps = [r for r in rapport["groupes"] if r["temps_depot_nominal_s"] is not None]
     matiere = [r for r in rapport["groupes"] if r["matiere_g"] is not None]
     print(json.dumps(dict(

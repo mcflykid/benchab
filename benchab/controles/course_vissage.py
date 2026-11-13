@@ -121,7 +121,11 @@ def mesurer(
 
 
 def main(argv=None, *, prive=None):
-    """Contrôle des STL privés dans le même repère XY et enregistre le rapport."""
+    """Contrôle des STL privés en mm et affiche le rapport ou son résumé.
+
+    Le résumé exige un JSON complet privé. Le code suit le verdict numérique ;
+    aucun maillage ni réglage d’impression n’est modifié.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("male", type=Path)
     parser.add_argument("femelle", type=Path)
@@ -135,9 +139,14 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--zone-femelle-mm", type=float, nargs=2, required=True)
     parser.add_argument("--depassement-mm", type=float, default=0.2)
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige --json")
     args = vars(parser.parse_args(argv))
     racine = atelier_prive(prive)
     sortie = args.pop("json")
+    resume = args.pop("resume")
+    if resume and sortie is None:
+        raise ValueError("--resume exige --json pour conserver le rapport complet.")
+    cible = destination_neuve(sortie, prive=racine, temporaire=False) if sortie is not None else None
     fichiers = [sans_lien(args.pop(champ), racine=racine, strict=True) for champ in ("male", "femelle")]
     if any(f.suffix.casefold() != ".stl" or not f.is_file() or f.stat().st_size > 32 * 1024 * 1024 for f in fichiers):
         raise ValueError("STL réguliers de 32 Mio au plus requis.")
@@ -149,7 +158,15 @@ def main(argv=None, *, prive=None):
     if list(map(sha256_fichier, fichiers)) != empreintes:
         raise ValueError("Maillage modifié pendant le contrôle.")
     rapport["sources_sha256"] = dict(zip(("male", "femelle"), empreintes))
-    if sortie is not None:
-        ecrire_json_neuf(destination_neuve(sortie, prive=racine, temporaire=False), rapport)
-    print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))
+    if cible is not None:
+        ecrire_json_neuf(cible, rapport, entrees=fichiers)
+    affiche = rapport
+    if resume:
+        affiche = {"statut": rapport["statut"], "rapport": str(cible)}
+        if "raison" in rapport:
+            affiche["raison"] = rapport["raison"]
+        else:
+            affiche["pose_intersection_max"] = max(rapport["poses"], key=lambda pose: pose["intersection_mm3"])
+            affiche["jeu_radial_min_butee_mm"] = rapport["jeu_radial_min_butee_mm"]
+    print(json.dumps(affiche, ensure_ascii=False, allow_nan=False))
     return code_statut(rapport["statut"])

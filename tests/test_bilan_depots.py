@@ -43,3 +43,13 @@ def test_bilan_depots_densite_inconnue_conserve_millimetres_et_temps(tmp_path):
     assert resultat["statut"] == "NON VÉRIFIÉ"
     assert resultat["groupes"][0]["matiere_g"] is None
     assert resultat["groupes"][0]["filament_mm"] == 2
+
+
+def test_cli_detail_restitue_le_rapport_complet(tmp_path, capsys):
+    """Le détail conserve tous les groupes du JSON écrit et le même verdict."""
+    from benchab.controles.bilan_depots import main
+
+    source = _archive(tmp_path, densite=False)
+    sortie = tmp_path / "bilan.json"
+    assert main([str(source), "--sortie", str(sortie), "--detail"], prive=tmp_path) == 2
+    assert json.loads(capsys.readouterr().out) == json.loads(sortie.read_text())
