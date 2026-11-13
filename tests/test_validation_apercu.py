@@ -65,11 +65,11 @@ def test_tranchage_candidate_refuse_approbation_en_attente_avant_le_moteur(tmp_p
         trancher_fichier(source, tmp_path, prive=tmp_path, validation_visuelle=fiche)
 
 
-def test_apercu_exact_et_decision_explicite(tmp_path):
+def test_apercu_exact_et_decision_explicite(tmp_path, capsys):
     """L’aperçu charge le 3MF et seule une décision liée aux deux octets permet PASS."""
     from zipfile import ZipFile
 
-    from benchab.conception import apercu
+    from benchab.cli import main
 
     source = _candidat(tmp_path)
     with ZipFile(source, "w") as archive:
@@ -84,15 +84,31 @@ def test_apercu_exact_et_decision_explicite(tmp_path):
           <build><item objectid="1"/></build>
         </model>""")
     page = source.with_suffix(".html")
-    assert apercu.main(["produire", str(source), "--sortie", str(page)], prive=tmp_path) == 0
+    atelier = ["--prive", str(tmp_path)]
+    assert main([*atelier, "init"]) == 0
+    capsys.readouterr()
+    commande = [*atelier, "conception", "apercu", "--"]
+    assert main([*commande, "produire", str(source), "--sortie", str(page)]) == 0
+    proposition = json.loads(capsys.readouterr().out)
+    assert proposition["decision"] == "EN ATTENTE"
     assert "Plan ⟂ X" in page.read_text()
-    assert sha256_fichier(source) in page.read_text()
+    assert proposition["source_sha256"] == sha256_fichier(source)
     with pytest.raises(ValueError, match="obligatoire"):
         validation_apercu.fiche_candidate(source, prive=tmp_path)
-    assert apercu.main([
-        "decider", str(source), str(page), "--decision", "VALIDÉ",
-        "--source-sha256", sha256_fichier(source), "--apercu-sha256", sha256_fichier(page),
-    ], prive=tmp_path) == 0
+
+    autre = source.with_name("autre.3mf")
+    autre.write_bytes(source.read_bytes() + b"\n")
+    decision = [
+        "--source-sha256", proposition["source_sha256"], "--apercu-sha256", proposition["apercu_sha256"],
+    ]
+    assert main([*commande, "decider", str(autre), str(page), "--decision", "VALIDÉ", *decision]) == 2
+    assert not validation_apercu.fiche_laterale(autre).exists()
+
+    parametres = [*commande, "decider", str(source), str(page), *decision, "--decision"]
+    assert main([*parametres, "À AJUSTER"]) == 0
+    with pytest.raises(ValueError, match="VALIDÉ"):
+        validation_apercu.verifier_candidate(source, prive=tmp_path)
+    assert main([*parametres, "VALIDÉ"]) == 0
     assert validation_apercu.verifier_candidate(source, prive=tmp_path)["statut"] == "PASS"
 
 
