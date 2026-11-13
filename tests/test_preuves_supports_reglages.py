@@ -71,6 +71,34 @@ def test_reglages_protege_3mf_et_placement_et_ecrit_une_preuve_neuve(tmp_path):
     assert [p.read_bytes() for p in (source, placement)] == avant
 
 
+def test_resume_reglages_localise_un_objet_absent(tmp_path, capsys):
+    """Un objet absent reste non conforme et son motif reste disponible dans les deux sorties."""
+    source = tmp_path / "tranche.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", "{}")
+        archive.writestr("Metadata/plate_1.gcode", "M104 S205\n")
+    placement = tmp_path / "placement.json"
+    placement.write_text(json.dumps({
+        "plates": [{"name": "P1"}],
+        "objects": [{"name": "Pièce", "plate": 1, "xy": [0, 0], "size": [8, 8]}],
+    }))
+    complet, court = tmp_path / "complet.json", tmp_path / "court.json"
+    assert verifier_reglages.main([str(source), str(placement), str(complet)]) == 1
+    capsys.readouterr()
+    commande = [str(source), str(placement), str(court), "--resume"]
+    assert verifier_reglages.main(commande) == 1
+    resume = json.loads(capsys.readouterr().out)
+    assert resume["statut"] == "FAIL"
+    assert resume["alertes"] == [{
+        "plaque": "P1", "erreurs": [],
+        "objets": [{"objet": "Pièce", "erreur": "aucun dépôt identifié pour cet objet"}],
+    }]
+    assert resume["rapport"] == str(court)
+    assert json.loads(complet.read_text()) == json.loads(court.read_text())
+    assert verifier_reglages.main(commande) == 2
+    assert capsys.readouterr().out == ""
+
+
 def test_gcode_de_supports_protege_toutes_les_preuves_avant_publication(tmp_path):
     """Une plaque existante bloque le lot neuf sans toucher aux autres plaques."""
     source = tmp_path / "support.3mf"

@@ -77,6 +77,11 @@ un dossier neuf. Le renouvellement explicite de la revue locale avec
 `--appliquer` conserve les décisions humaines et refuse une sortie liée au
 tranchage, à la déclaration d’envoi ou à l’autre sortie.
 
+`benchab controle reglages TRANCHE PLACEMENT RAPPORT.json --resume`
+donne le verdict et indique les plaques et objets en écart. Les erreurs de
+lecture du G-code et les motifs déjà présents restent visibles ; le rapport
+complet et le code de sortie sont identiques au mode détaillé (#35).
+
 La routine lit uniquement les résultats du contrôle courant. Relancer la
 routine conserve les fichiers identiques et publie les fichiers différents
 dans un sous-dossier de rejeu neuf. Les anciennes preuves restent consultables.
