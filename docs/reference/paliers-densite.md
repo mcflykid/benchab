@@ -256,3 +256,19 @@ avant et après tranchage. Les liaisons de placement et les maillages
 concordent. Le rejeu reproduit les mesures. Le résultat isole une
 redistribution du dépôt à masse estimée égale ; la rigidité et la
 masse réelles restent à mesurer (#83, #84).
+
+### Protocole préparé pour comparer la rigidité
+
+Les deux archives du coupon de 60 × 8 × 6 mm à 2,55 g estimés
+servent à préparer la comparaison #84. La flexion trois points
+utilise une portée de 50 mm avec des appuis à X=5 et X=55 mm.
+La charge à X=20 mm rapproche le moment maximal de l’extrémité
+dense des paliers. Le même montage s’applique au témoin uniforme.
+Le montage diffère de l’encastrement utilisé dans la simulation #83.
+
+Après un pilote, la comparaison de la pente force–flèche en N/mm
+utilise la même plage linéaire réversible, deux cycles par pièce
+et au moins trois pièces indépendantes par variante. Relever la
+masse réelle de chaque pièce, les conditions de fabrication et la
+dispersion par variante avec les empreintes des archives.
+Les résultats physiques restent NON VÉRIFIÉS.
