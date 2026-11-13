@@ -170,3 +170,14 @@ contient `schema: 1`, un objet `candidate` et une liste `pieces` qui peut
 et son `sha256`. Un STL supplémentaire, un fichier manquant ou une
 empreinte différente bloque l’aperçu. La vue indique la provenance de
 chaque modèle et de ses instances.
+
+`benchab conception registre-variantes REGISTRE.json --sortie BILAN.json`
+vérifie la liste des explorations privées. Chaque entrée déclare un
+`id`, un `parent` déjà présent ou `null`, le `changement` demandé, une
+`source` paramétrée et un `apercu` éventuel. Les preuves comportent un
+`fichier` relatif au registre et son `sha256`. La `decision` vaut
+`EN ATTENTE`, `VALIDÉE`, `À AJUSTER` ou `ABANDONNÉE`, avec une `raison`
+pour toute décision prise. Le champ facultatif `candidate` exige un
+aperçu identifié et une décision validée. Trois candidates peuvent
+figurer dans le registre. Le rapport liste les explorations abandonnées
+dont les exports dérivés peuvent être examinés.

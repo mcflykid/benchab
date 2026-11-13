@@ -71,7 +71,8 @@ ROUTES_NAMESPACE = {
         "prefixe": "benchab.conception.",
         "normalisation": "tirets_vers_underscore",
         "modules_prives": frozenset(
-            {"trous", "eprouvette_trous", "vissage", "cad_engine", "fiche_cao", "filetage_nominal", "decoupe"}
+            {"trous", "eprouvette_trous", "vissage", "cad_engine", "fiche_cao", "filetage_nominal", "decoupe",
+             "registre_variantes"}
         ),
     },
     "imports": {
@@ -434,6 +435,7 @@ def parser():
         "eprouvette-trous",
         "assistant-projet",
         "variantes",
+        "registre-variantes",
         "capacites-locales",
         "dfam",
         "vissage",
