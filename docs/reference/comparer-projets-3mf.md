@@ -40,10 +40,30 @@ même StartPart. Le parent ne porte pas de matériau. La comparaison exige
 les mêmes identifiants, le même ordre des références, les mêmes coordonnées
 et facettes par feuille, et les mêmes translations de build et de composant.
 Avec plusieurs feuilles, les écarts nomment l’objet et la facette locale.
-Les références externes, imbriquées ou répétées, les objets sans référence
-et les extensions requises ne sont pas qualifiés.
+Les références imbriquées ou répétées, les objets sans référence et les
+extensions requises restent hors du sous-cas Core local.
 
-Dans ce sous-cas, les extensions ASN `paint_color` et Prusa
+Le sous-cas Production couvre une instance et un unique composant
+`p:path` vers une partie `.model` du même ZIP. Le chemin absolu doit être
+relié exactement une fois par la relation OPC de type 3D Model depuis le
+StartPart. La comparaison avec un maillage direct ou une autre feuille
+Production exige le même identifiant de feuille, la même unité, la même
+translation nette, les mêmes coordonnées et le même ordre de facettes.
+Le rapport conserve la partie OPC et l’identifiant du parent de chaque
+côté. Ce rapprochement porte sur les attributs littéraux de peinture ;
+les matériaux Core entre structures différentes restent hors de ce sous-cas.
+Les assemblages Production à plusieurs feuilles, les références imbriquées
+et les extensions requises inconnues restent NON VÉRIFIÉS. Voir
+[3MF Production, sections 3.1 à 3.3](https://github.com/3MFConsortium/spec_production/blob/master/3MF%20Production%20Extension.md#33-opc-relation-files).
+
+Sur le témoin PrusaSlicer 2.9.3, le réexport Prusa conserve les marques 4
+et 8 des facettes 1 et 2. Les deux réexports console OrcaSlicer 2.3.1,
+dont celui avec deux profils filament chargés, gardent la géométrie et
+la pose mais perdent les deux attributs de peinture. La conservation
+d’une palette complète et la conversion vers Anycubic restent NON VÉRIFIÉES
+sur ce témoin (#43).
+
+Dans les sous-cas qualifiés, les extensions ASN `paint_color` et Prusa
 `slic3rpe:mmu_segmentation` sont comparées comme attributs XML littéraux
 uniquement si les deux archives utilisent le même QName. Une propriété absente
 sur une facette est signalée `WARN`. Si le modèle et le dialecte unique sont

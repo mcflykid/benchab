@@ -14,12 +14,32 @@ from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree
 
 
-def decoder_xml(contenu, *, limite_octets, commentaires=False, instructions_traitement=False):
+class _ConstructeurXML(ElementTree.TreeBuilder):
+    """Recueille les namespaces déclarés pour la racine, avant les éventuels masquages."""
+
+    def __init__(self, *, commentaires, instructions_traitement):
+        super().__init__(insert_comments=commentaires, insert_pis=instructions_traitement)
+        self.namespaces = {}
+        self.racine_commencee = False
+
+    def start_ns(self, prefix, uri):
+        """Enregistre les déclarations en vigueur sur l’élément racine."""
+        if not self.racine_commencee:
+            self.namespaces[prefix] = uri
+
+    def start(self, tag, attrs):
+        """Ferme la collecte dès le premier élément et poursuit la construction XML."""
+        self.racine_commencee = True
+        return super().start(tag, attrs)
+
+
+def decoder_xml(contenu, *, limite_octets, commentaires=False, instructions_traitement=False, namespaces_racine=None):
     """Parse XML borné sans DTD/ENTITY ; conserve commentaires ou PI si demandé.
 
     Le texte est compté en octets UTF-8 ; une limite dépassée ou une déclaration
     interdite lève ValueError, une syntaxe invalide lève ParseError. Les options
-    ne normalisent pas les réglages ni ne modifient l’archive.
+    ne normalisent pas les réglages ni ne modifient l’archive. Un dictionnaire
+    namespaces_racine fourni reçoit les préfixes déclarés à la racine.
     """
     donnees = contenu.encode("utf-8") if isinstance(contenu, str) else contenu
     if len(donnees) > limite_octets:
@@ -27,6 +47,11 @@ def decoder_xml(contenu, *, limite_octets, commentaires=False, instructions_trai
     # UTF-16/32 intercale des NUL dans les déclarations ASCII, sans changer leurs mots.
     if re.search(rb"<!\s*(?:DOCTYPE|ENTITY)\b", donnees.replace(b"\x00", b""), re.IGNORECASE):
         raise ValueError("DOCTYPE et ENTITY sont interdits dans le XML 3MF")
+    if namespaces_racine is not None:
+        constructeur = _ConstructeurXML(commentaires=commentaires, instructions_traitement=instructions_traitement)
+        racine = ElementTree.fromstring(contenu, parser=ElementTree.XMLParser(target=constructeur))
+        namespaces_racine.update(constructeur.namespaces)
+        return racine
     if not commentaires and not instructions_traitement:
         return ElementTree.fromstring(contenu)
     constructeur = ElementTree.TreeBuilder(
@@ -322,8 +347,12 @@ class Archive3MF:
             if flux in self._flux_ouverts:
                 self._flux_ouverts.remove(flux)
 
-    def xml(self, membre, *, commentaires=False, instructions_traitement=False):
-        """Analyse XML borné, sans DTD/ENTITY ; conserve les lexèmes sur demande."""
+    def xml(self, membre, *, commentaires=False, instructions_traitement=False, namespaces_racine=None):
+        """Analyse XML borné en octets, sans DTD/ENTITY ni écriture.
+
+        Rend l’élément racine et collecte ses préfixes dans le dictionnaire
+        fourni sur demande. Les commentaires et instructions sont optionnels.
+        """
         if self._infos[membre].file_size > self.taille_max_xml:
             raise ValueError(f"budget XML dépassé : {membre}")
         donnees = self.lire(membre, limite_octets=self.taille_max_xml)
@@ -332,6 +361,7 @@ class Archive3MF:
             limite_octets=self.taille_max_xml,
             commentaires=commentaires,
             instructions_traitement=instructions_traitement,
+            namespaces_racine=namespaces_racine,
         )
 
     def reglages(self, membre="Metadata/project_settings.config"):
