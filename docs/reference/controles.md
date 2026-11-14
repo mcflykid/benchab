@@ -92,6 +92,11 @@ donne la recommandation, son motif et le chemin du rapport complet.
 Un STL seul donne une estimation géométrique. Pour un projet, une
 bordure automatique peut rester NON VÉRIFIÉE avec le code historique 0.
 
+`benchab controle ergots-faces DOSSIER --json RAPPORT.json --resume`
+localise les faces en alerte par paire de pièces et centre de contact.
+Le JSON complet conserve aussi les faces conformes et leurs mesures.
+Les codes de sortie sont identiques avec et sans résumé (#35).
+
 La routine lit uniquement les résultats du contrôle courant. Relancer la
 routine conserve les fichiers identiques et publie les fichiers différents
 dans un sous-dossier de rejeu neuf. Les anciennes preuves restent consultables.

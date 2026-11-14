@@ -33,6 +33,23 @@ def blocs(dossier, cles, gouttiere=False):
     b.export(Path(dossier) / "B.stl")
 
 
+def test_resume_ergots_localise_la_face_en_defaut(tmp_path, capsys):
+    """Le résumé conserve le refus, la localisation et le rapport intégral."""
+    blocs(tmp_path, [0])
+    detail = tmp_path / "detail.json"
+    rapport = tmp_path / "resume.json"
+    assert E.main([str(tmp_path), "--json", str(detail)]) == 1
+    capsys.readouterr()
+    assert E.main([str(tmp_path), "--resume"]) == 2
+    assert E.main([str(tmp_path), "--json", str(rapport), "--resume"]) == 1
+    court = json.loads(capsys.readouterr().out)
+    assert court["statut"] == "FAIL" and court["code"] == 1
+    assert court["points"] == [{"pieces": ["A", "B"], "centre": [-0.1, 0, 10],
+                                "ergots": 1, "statut": "FAIL"}]
+    assert court["rapport"] == str(rapport)
+    assert detail.read_bytes() == rapport.read_bytes()
+
+
 class Ergots(unittest.TestCase):
     def lancer(self, cles, gouttiere=False, ecarts=None):
         with tempfile.TemporaryDirectory() as d:

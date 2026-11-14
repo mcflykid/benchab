@@ -96,7 +96,11 @@ def compter(a, b, o, n, tris, prof=1.0):
 
 
 def main(a):
-    """Rapporte les zones d’ergots en mm², sans modifier la géométrie."""
+    """Rapporte les zones d’ergots en mm², sans modifier la géométrie.
+
+    Renvoie 1 sur FAIL, 2 sur refus et 0 pour les autres statuts.
+    Le résumé demande un JSON neuf qui conserve les mesures complètes.
+    """
     if not a or a[0].startswith("--"):
         print(__doc__)
         return 2
@@ -105,7 +109,10 @@ def main(a):
         return float(a[a.index(k) + 1]) if k in a else d
 
     sortie = None
+    resume = "--resume" in a
     try:
+        if resume and "--json" not in a:
+            raise ValueError("--resume exige --json pour conserver le rapport complet.")
         if "--json" in a:
             sortie = destination_neuve(a[a.index("--json") + 1])
     except (OSError, ValueError, IndexError) as erreur:
@@ -142,11 +149,12 @@ def main(a):
                         **({"ecart": ec} if ec else {}),
                     }
                 )
-                print(
-                    f"{st:5s} {x} / {y} : face de {aire} mm² en {np.round(o, 0).tolist()}, {k} ergot(s)"
-                    f"{' — écart : ' + ec if ec and st == 'WARN' else ''}"
-                )
-    if not res["faces"]:
+                if not resume:
+                    print(
+                        f"{st:5s} {x} / {y} : face de {aire} mm² en {np.round(o, 0).tolist()}, {k} ergot(s)"
+                        f"{' — écart : ' + ec if ec and st == 'WARN' else ''}"
+                    )
+    if not res["faces"] and not resume:
         print("NON APPLICABLE : aucune face de contact plane entre pièces")
     res["statut"] = (
         "FAIL"
@@ -163,7 +171,18 @@ def main(a):
         except (OSError, ValueError) as erreur:
             print("Sortie JSON refusée : " + str(erreur), file=sys.stderr)
             return 2
-    return 1 if res["statut"] == "FAIL" else 0
+    code = 1 if res["statut"] == "FAIL" else 0
+    if resume:
+        # Les coordonnées et l’écart arbitré localisent la face à revoir (#35).
+        points = [
+            {k: face[k] for k in ("pieces", "centre", "ergots", "statut", "ecart") if k in face}
+            for face in res["faces"] if face["statut"] != "PASS"
+        ]
+        print(json.dumps({
+            "statut": res["statut"], "code": code, "minimum": mini, "faces": len(res["faces"]),
+            "points": points, "rapport": str(sortie),
+        }, ensure_ascii=False))
+    return code
 
 
 if __name__ == "__main__":
