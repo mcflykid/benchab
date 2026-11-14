@@ -395,9 +395,15 @@ function afficherComparaisonAtelier() {
   }
   const reference = comparaisonAtelier.reference;
   const variants = comparaisonAtelier.variantes.filter(v => v.mesures && v.ecarts);
+  // Un gain global ne compense pas une régression d’appui sur une plaque.
+  const appuisNonAggraves = (avant, apres) => apres.parcours_sans_appui <= avant.parcours_sans_appui &&
+    (apres.portee_libre_max_mm ?? 0) <= (avant.portee_libre_max_mm ?? 0);
   const admissibles = variants.filter(v => v.mesures.debit === 'PASS' &&
     v.commandes_identiques === false && !v.pose &&
-    v.mesures.appuis?.parcours_sans_appui <= reference.appuis?.parcours_sans_appui);
+    v.mesures.appuis?.statut === 'PASS' && reference.appuis?.statut === 'PASS' &&
+    appuisNonAggraves(reference.appuis, v.mesures.appuis) &&
+    (v.mesures.appuis.par_plaque || []).every(p => reference.appuis.par_plaque?.some(r =>
+      r.plaque === p.plaque && appuisNonAggraves(r, p))));
   // Le parcours automatique ne recommande qu’une correction de vitesse contrôlée.
   const correction = variants.find(v => v.mesures.debit === 'PASS' && v.commandes_identiques === false &&
     Object.keys(v.reglages).length && Object.keys(v.reglages).every(k => k.endsWith('_speed')));
@@ -520,6 +526,15 @@ function afficherComparaisonAtelier() {
         if (ref.appuis.portee_libre_max_mm != null && m.appuis.portee_libre_max_mm != null) {
           ligne.textContent += ' Portée libre maximale : ' + nombre(ref.appuis.portee_libre_max_mm) +
             ' → ' + nombre(m.appuis.portee_libre_max_mm) + ' mm.';
+        }
+        if (m.appuis.par_plaque?.length) {
+          const details = m.appuis.par_plaque.flatMap(p => {
+            const avant = ref.appuis.par_plaque?.find(r => r.plaque === p.plaque);
+            return avant ? ['plaque ' + p.plaque + ' : ' + avant.parcours_sans_appui +
+              ' → ' + p.parcours_sans_appui + (appuisNonAggraves(avant, p) ? '' : ' (appuis dégradés)')] : [];
+          });
+          ligne.textContent += ' Par plaque : ' + details.join(' ; ') +
+            '. Superposition indisponible : repères non recalés.';
         }
       } else if (m.appuis) {
         ligne.textContent += ' Comparaison des appuis non vérifiée.';

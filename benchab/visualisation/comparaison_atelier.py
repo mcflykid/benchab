@@ -321,7 +321,7 @@ def _ecarts(reference, variante):
     }
 
 
-def _appuis(tranche, plaque):
+def _appuis(tranche, plaque, *, tracer=True):
     """Résume les appuis nominaux des petites plaques en mm, avec couverture explicite."""
     from benchab.controles import appuis_gcode
 
@@ -332,7 +332,10 @@ def _appuis(tranche, plaque):
         if archive.taille_membre(membre) > 8 * 1024 * 1024:
             return {"statut": "NON VÉRIFIÉ", "raison": "G-code décompressé hors budget d’appuis."}
         # Première plaque et outil sans décalage : repère commun avec la vue du 3MF.
-        superposition = plaque == 1 and reglages.extrudeur_unique_sans_decalage(archive.reglages())
+        superposition = (
+            tracer and plaque == 1 and "Metadata/project_settings.config" in archive.noms()
+            and reglages.extrudeur_unique_sans_decalage(archive.reglages())
+        )
     try:
         rapport = appuis_gcode.analyser_fichier(
             tranche, plaques=[plaque], arcs_planaires=True, types_cibles=appuis_gcode.PIECE,
@@ -350,6 +353,38 @@ def _appuis(tranche, plaque):
         ),
         "plaques": [plaque],
         "superposition": plaques[0].get("superposition") if len(plaques) == 1 and rapport["statut"] == "PASS" else None,
+    }
+
+
+def _appuis_selection(tranche, selection, *, annule=None):
+    """Compare les appuis nominaux par plaque (mm) avec un budget commun de 8 Mio."""
+    from benchab.visualisation.carte_risques import verifier_annulation
+
+    if len(selection) == 1:
+        return _appuis(tranche, selection[0])
+    with Archive3MF(tranche) as archive:
+        membres = dict(plaques_gcode_archive(archive))
+        if not selection or any(plaque not in membres for plaque in selection):
+            return {"statut": "NON VÉRIFIÉ", "raison": "Plaque absente."}
+        if sum(archive.taille_membre(membres[plaque]) for plaque in selection) > 8 * 1024 * 1024:
+            return {"statut": "NON VÉRIFIÉ", "raison": "G-code décompressé hors budget d’appuis."}
+    rapports = []
+    for plaque in selection:
+        verifier_annulation(annule)
+        rapport = _appuis(tranche, plaque, tracer=False)
+        # Les coordonnées G-code restent locales à chaque plaque ; la vue 3MF les
+        # dispose sur un plateau composite dont le recalage n’est pas attesté (#319).
+        rapports.append({"plaque": plaque, **{k: v for k, v in rapport.items() if k != "superposition"}})
+    resultat = {"plaques": selection, "par_plaque": rapports, "superposition": None}
+    if any(p["statut"] != "PASS" for p in rapports):
+        return {**resultat, "statut": "NON VÉRIFIÉ"}
+    return {
+        **resultat, "statut": "PASS",
+        "parcours_sans_appui": sum(p["parcours_sans_appui"] for p in rapports),
+        "portee_libre_max_mm": max(
+            (p["portee_libre_max_mm"] for p in rapports if p["portee_libre_max_mm"] is not None),
+            default=None,
+        ),
     }
 
 
@@ -425,10 +460,11 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
             reference["hauteurs_gcode"] = hauteurs_gcode(tranche)
         comparaison_supports = any({"enable_support", "support_type"} & changements.keys()
                                    for _, changements in essais)
-        if plaque_appuis is None and comparaison_supports and len(reference["plaques"]) == 1:
-            plaque_appuis = reference["plaques"][0]
-        if plaque_appuis is not None:
-            reference["appuis"] = _appuis(tranche, plaque_appuis)
+        selection_appuis = [plaque_appuis] if plaque_appuis is not None else (
+            reference["plaques"] if comparaison_supports else []
+        )
+        if selection_appuis:
+            reference["appuis"] = _appuis_selection(tranche, selection_appuis, annule=annule)
         variantes = []
         for i, (nom, changements) in enumerate(essais, 1):
             verifier_annulation(annule)
@@ -483,8 +519,8 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
                     mesures["hauteurs_variables_observees"] = h["distinctes"] >= 2 and (
                         h["distinctes"] > fixe["distinctes"] or h["min"] != fixe["min"] or h["max"] != fixe["max"]
                     )
-                if plaque_appuis is not None:
-                    mesures["appuis"] = _appuis(tranche, plaque_appuis)
+                if selection_appuis:
+                    mesures["appuis"] = _appuis_selection(tranche, selection_appuis, annule=annule)
                 if orientation is not None:
                     variante["autres_plaques"] = [
                         {"plaque": plaque, "commandes_identiques": commandes_variante.get(plaque) == empreinte}

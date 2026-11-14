@@ -138,6 +138,27 @@ def test_bibliotheque_archive_deux_versions_liees(tmp_path):
     assert (base / avant["id"] / "piece.stl").read_bytes() != (base / apres["id"] / "piece.stl").read_bytes()
 
 
+def test_appuis_multiplaque_ne_cachent_pas_un_defaut_local(tmp_path):
+    """Deux G-codes en repère local gardent leurs mesures sans fausse superposition."""
+    from zipfile import ZipFile
+
+    from benchab.visualisation.comparaison_atelier import _appuis_selection
+
+    chemin = tmp_path / "planches.3mf"
+    debut = "G90\nM83\n;LAYER_CHANGE\n;Z:0.2\n;TYPE:Inner wall\n;WIDTH:0.4\nG1 X0 Y0 Z0.2\nG1 X4 Y0 E0.2\n"
+    suite = ";LAYER_CHANGE\n;Z:0.4\n;TYPE:Inner wall\n;WIDTH:0.4\nG1 X0 Y{y} Z0.4\nG1 X4 Y{y} E0.2\n"
+    with ZipFile(chemin, "w") as archive:
+        archive.writestr("Metadata/plate_1.gcode", debut + suite.format(y=0))
+        archive.writestr("Metadata/plate_2.gcode", debut + suite.format(y=5))
+    rapport = _appuis_selection(chemin, [1, 2])
+    assert rapport["statut"] == "PASS"
+    assert [p["plaque"] for p in rapport["par_plaque"]] == [1, 2]
+    assert rapport["par_plaque"][0]["parcours_sans_appui"] == 0
+    assert rapport["par_plaque"][1]["parcours_sans_appui"] > 0
+    assert rapport["superposition"] is None
+    assert _appuis_selection(chemin, [1, 3])["statut"] == "NON VÉRIFIÉ"
+
+
 def test_comparaison_depuis_la_reference_exacte(tmp_path, monkeypatch):
     """Les écarts sont signés, et une plaque manquante invalide l’autre variante."""
     import hashlib

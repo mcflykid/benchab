@@ -2,8 +2,12 @@
 
 import argparse
 import json
+import os
+import re
+import stat
 from collections import Counter, defaultdict
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import urlencode
@@ -503,8 +507,90 @@ def accueil(root, projet=None):
         )
         if liens:
             liens = "<h2>Préparations conservées</h2><div class='actions'>" + liens + "</div>"
-    corps = corps.replace("__PREPARATIONS__", liens)
+    versions = json.dumps(historique_bibliotheque(root), ensure_ascii=True).replace("<", "\\u003c")
+    corps = corps.replace("__PREPARATIONS__", liens).replace("__VERSIONS_CONCEPTION__", versions)
     return document("Atelier de préparation", corps)
+
+
+def _lire_archive_conception(dossier, nom, limite):
+    """Lit un fichier régulier épinglé, au plus limite octets, sans suivre de lien."""
+    fd = os.open(nom, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dossier)
+    with os.fdopen(fd, "rb") as fichier:
+        info = os.fstat(fichier.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limite:
+            raise ValueError("Archive de conception hors budget ou irrégulière.")
+        donnees = fichier.read(limite + 1)
+        if len(donnees) != info.st_size:
+            raise ValueError("Archive de conception modifiée pendant la lecture.")
+        return donnees
+
+
+def _version_conception(base, identifiant, *, stl=False):
+    """Relit la fiche cotée (mm), et éventuellement les octets du STL liés par SHA."""
+    from benchab.visualisation.stockage_commentaires import ouvrir_dossier
+
+    if not re.fullmatch(r"[0-9a-f]{32}", identifiant):
+        raise ValueError("Version de conception invalide.")
+    dossier = ouvrir_dossier(base / identifiant)
+    try:
+        registre = json.loads(_lire_archive_conception(dossier, "registre.json", 1_048_576))
+        if not isinstance(registre, list) or not registre:
+            raise ValueError("Registre de conception invalide.")
+        ligne = registre[-1]
+        fiche = _lire_archive_conception(dossier, "cotes.json", 16_384)
+        if ligne["id"] != identifiant or ligne["source"] != {
+            "fichier": f"{identifiant}/cotes.json", "sha256": sha256(fiche).hexdigest(),
+        }:
+            raise ValueError("La fiche a changé depuis son archivage.")
+        cotes = json.loads(fiche)
+        modele = cotes["modele"]
+        if modele not in ("boite", "clip", "temoin"):
+            raise ValueError("Famille de conception inconnue.")
+        version = {
+            "id": identifiant, "modele": modele, "cote": str(cotes["cote_mm"]),
+            "jeu": str(cotes["jeu_nominal_mm"] if modele != "temoin" else 0.3),
+        }
+        if not stl:
+            return version, None
+        contenu = _lire_archive_conception(dossier, "piece.stl", MAX_EXPORT_NAVIGATEUR)
+        if sha256(contenu).hexdigest() != cotes["stl_sha256"]:
+            raise ValueError("Le STL a changé depuis son archivage.")
+        return version, contenu
+    finally:
+        os.close(dossier)
+
+
+def historique_bibliotheque(root):
+    """Liste les 12 dernières fiches privées lisibles, cotes en mm, sans écriture."""
+    from benchab.chemins import sans_lien
+
+    try:
+        base = sans_lien(Path(root) / "conceptions" / "bibliotheque", racine=root)
+        archives = sorted(
+            ((p.lstat().st_mtime_ns, p.name) for p in base.iterdir() if re.fullmatch(r"[0-9a-f]{32}", p.name)),
+            reverse=True,
+        )
+    except (OSError, ValueError):
+        return []
+    versions = []
+    for _, identifiant in archives[:100]:
+        try:
+            version, _ = _version_conception(base, identifiant)
+            versions.append(version)
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+        if len(versions) == 12:
+            break
+    return versions
+
+
+def stl_bibliotheque_archive(root, identifiant):
+    """Renvoie les octets du STL archivé en mm et sa famille, sans régénération ni écriture."""
+    from benchab.chemins import sans_lien
+
+    base = sans_lien(Path(root) / "conceptions" / "bibliotheque", racine=root)
+    version, contenu = _version_conception(base, identifiant, stl=True)
+    return contenu, version["modele"]
 
 
 def bibliotheque(modele, cote_mm, jeu_mm, *, format_stl=False, format_fiche=False):
@@ -516,12 +602,10 @@ def bibliotheque(modele, cote_mm, jeu_mm, *, format_stl=False, format_fiche=Fals
     pieces = generer(modele, cote_mm, jeu_mm)
     contenu = trimesh.util.concatenate(list(pieces.values())).export(file_type="stl")
     if format_fiche:
-        import hashlib
-
         rapport = {
             "schema": 1, "modele": modele, "cote_mm": cote_mm,
             "jeu_nominal_mm": jeu_mm if modele != "temoin" else None,
-            "stl_sha256": hashlib.sha256(contenu).hexdigest(),
+            "stl_sha256": sha256(contenu).hexdigest(),
             "pieces": [
                 {"nom": nom, "dimensions_mm": mesh.extents.tolist(), "volume_mm3": mesh.volume}
                 for nom, mesh in pieces.items()
@@ -545,7 +629,6 @@ def bibliotheque(modele, cote_mm, jeu_mm, *, format_stl=False, format_fiche=Fals
 
 def enregistrer_bibliotheque(root, modele, cote_mm, jeu_mm, parent=None):
     """Archive une exploration et sa filiation privée, avec STL et fiche cotée en mm."""
-    import re
     from uuid import uuid4
 
     from benchab.chemins import sans_lien
@@ -555,8 +638,6 @@ def enregistrer_bibliotheque(root, modele, cote_mm, jeu_mm, parent=None):
     fiche = bibliotheque(modele, cote_mm, jeu_mm, format_fiche=True)
     stl = bibliotheque(modele, cote_mm, jeu_mm, format_stl=True)
     donnees = json.loads(fiche)
-    from hashlib import sha256
-
     if sha256(stl).hexdigest() != donnees["stl_sha256"]:
         raise ValueError("La génération a changé entre la fiche et le STL.")
     identifiant = uuid4().hex
