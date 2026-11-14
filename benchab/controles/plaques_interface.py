@@ -16,6 +16,80 @@ from benchab.machine.configuration import charger as charger_configuration
 from benchab.qualite.statuts import code_statut
 
 
+class _FluxXMLSansDeclarations:
+    """Filtre les déclarations XML interdites dans un flux de modèle 3MF."""
+
+    def __init__(self, flux):
+        """Entrée : flux binaire séquentiel ; sortie : filtre avec recouvrement de 16 octets."""
+        self.flux = flux
+        self.recouvrement = b""
+
+    def read(self, taille=-1):
+        """Entrée : taille demandée en octets ; sortie : octets filtrés ou ValueError si DTD/ENTITY."""
+        bloc = self.flux.read(taille)
+        controle = (self.recouvrement + bloc).upper()
+        if b"<!DOCTYPE" in controle or b"<!ENTITY" in controle:
+            raise ValueError("déclaration DTD/ENTITY interdite dans le modèle 3MF")
+        self.recouvrement = controle[-16:]
+        return bloc
+
+
+def _lire_modele_flux(archive, nom, *, extraire_build=False):
+    """Lit les liens 3MF et sommets XYZ en mm, sans conserver les facettes ni modifier l’archive.
+
+    Entrées : archive ouverte, nom de membre et option build ; sortie : objets et liens de build.
+    Les triangles sont ignorés pour limiter la mémoire, sans changer le calcul des bornes U20.
+    """
+    objets = {}
+    items = []
+    racine_objet = None
+    identifiant = None
+    sommets = []
+    composants = []
+    pile = []
+
+    def local(element):
+        """Renvoie le nom XML local, indépendamment de l'espace de noms."""
+        return element.tag.rsplit("}", 1)[-1]
+
+    with archive.ouvrir_flux(nom) as flux:
+        parser = ET.iterparse(_FluxXMLSansDeclarations(flux), events=("start", "end"))
+        for evenement, element in parser:
+            tag = local(element)
+            if evenement == "start" and tag == "object":
+                racine_objet = element
+                identifiant = element.attrib["id"]
+                sommets, composants = [], []
+            if evenement == "start":
+                pile.append(element)
+            elif evenement == "end" and tag == "vertex" and racine_objet is not None:
+                sommets.append([element.attrib[axe] for axe in ("x", "y", "z")])
+            elif evenement == "end" and tag == "component" and racine_objet is not None:
+                cle = next((v for k, v in element.attrib.items() if k == "path" or k.endswith("}path")), "/" + nom)
+                composants.append((cle, element.attrib["objectid"], mat(element.get("transform"))))
+            elif evenement == "end" and tag == "object" and racine_objet is element:
+                if sommets:
+                    valeurs = np.asarray(sommets, dtype=float)
+                    if not np.isfinite(valeurs).all():
+                        raise ValueError("Coordonnées 3MF non finies")
+                    objets[identifiant] = ("mesh", valeurs)
+                elif composants:
+                    objets[identifiant] = ("components", composants)
+                else:
+                    objets[identifiant] = ("empty", None)
+                racine_objet, identifiant, sommets, composants = None, None, [], []
+            elif evenement == "end" and tag == "item" and extraire_build:
+                items.append((element.attrib["objectid"], mat(element.get("transform"))))
+            if evenement == "end":
+                # Retirer les enfants terminés évite que les triangles vides restent
+                # attachés à la racine pendant un grand XML exporté par un slicer.
+                if len(pile) > 1:
+                    pile[-2].remove(element)
+                element.clear()
+                pile.pop()
+    return objets, items
+
+
 def chemin(value):
     """Convertit une valeur en chemin absolu et harmonise l’alias macOS /var, sans lire le fichier."""
     path = Path(value).absolute()
@@ -52,7 +126,7 @@ def points(key, oid, matrice, meshes, composants):
 
 
 def analyser(fichier, *, pas=None, plateau=None, marge=None):
-    """Renvoie les limites de chaque objet sans modifier le 3MF."""
+    """Renvoie les limites XYZ en mm et un statut PASS/FAIL sans modifier le 3MF."""
     configuration = charger_configuration()
     placement = configuration.get("placement", {})
     pas = pas or (placement.get("pas_interface_mm"), placement.get("pas_cli_mm"))
@@ -70,10 +144,31 @@ def analyser(fichier, *, pas=None, plateau=None, marge=None):
         raise ValueError("Marge d'objet finie et positive ou nulle requise")
     fichier = chemin(fichier)
     try:
-        with Archive3MF(fichier) as archive:
+        with Archive3MF(fichier, taille_max_xml=512 * 1024 * 1024) as archive:
+            if archive.taille_membre("Metadata/model_settings.config") > Archive3MF.MAX_XML_OCTETS:
+                raise ValueError("budget XML dépassé : Metadata/model_settings.config")
             config = archive.xml("Metadata/model_settings.config")
-            modeles = {"/" + nom: archive.xml(nom)
-                       for nom in archive.noms() if nom.endswith(".model")}
+            noms_modeles = [nom for nom in archive.noms() if nom.endswith(".model")]
+            taille_modeles = sum(archive.taille_membre(nom) for nom in noms_modeles)
+            if taille_modeles > 512 * 1024 * 1024:
+                raise ValueError("budget XML cumulé des modèles dépassé")
+            modeles = {}
+            meshes, composants = {}, {}
+            items = {}
+            for nom in noms_modeles:
+                cle = "/" + nom
+                objets, liens = _lire_modele_flux(
+                    archive, nom, extraire_build=nom == "3D/3dmodel.model"
+                )
+                modeles[cle] = objets
+                for oid, (type_objet, contenu) in objets.items():
+                    if type_objet == "mesh":
+                        meshes[(cle, oid)] = contenu
+                    elif type_objet == "components":
+                        composants[(cle, oid)] = contenu
+                if nom == "3D/3dmodel.model":
+                    for oid, transformation in liens:
+                        items.setdefault(oid, []).append(transformation)
     except ET.ParseError as erreur:
         statut = "NON VÉRIFIÉ"
         return {
@@ -85,33 +180,9 @@ def analyser(fichier, *, pas=None, plateau=None, marge=None):
         for objet in config.findall("{*}object")
         for meta in objet.findall("{*}metadata[@key='name']")
     }
-    meshes = {}
-    composants = {}
-    for cle, racine in modeles.items():
-        for objet in racine.findall("{*}resources/{*}object"):
-            oid = objet.attrib["id"]
-            sommets = objet.findall("{*}mesh/{*}vertices/{*}vertex")
-            if sommets:
-                valeurs = np.array([[s.attrib[a] for a in ("x", "y", "z")] for s in sommets], dtype=float)
-                if not np.isfinite(valeurs).all():
-                    raise ValueError("Coordonnées 3MF non finies")
-                meshes[(cle, oid)] = valeurs
-            refs = objet.findall("{*}components/{*}component")
-            if refs:
-                composants[(cle, oid)] = [
-                    (
-                        next((v for k, v in ref.attrib.items() if k == "path" or k.endswith("}path")), cle),
-                        ref.attrib["objectid"],
-                        mat(ref.get("transform")),
-                    )
-                    for ref in refs
-                ]
-    modele = modeles["/3D/3dmodel.model"]
-    # Le Core 3MF donne l’identité aux items sans transform ; l’ordre XML
-    # des attributs n’a aucune signification (docs/reference/regles.md, U20).
-    items = {}
-    for item in modele.findall("{*}build/{*}item"):
-        items.setdefault(item.attrib["objectid"], []).append(mat(item.get("transform")))
+    if "/3D/3dmodel.model" not in modeles:
+        raise ValueError("modèle principal 3MF absent")
+    # Le Core 3MF donne l’identité aux items sans transform (docs/reference/regles.md, U20).
     plaques_xml = config.findall("{*}plate")
     colonnes = math.ceil(math.sqrt(len(plaques_xml)))
     rapports = []

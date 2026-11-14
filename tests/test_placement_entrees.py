@@ -70,6 +70,44 @@ class PlacementEntrees(unittest.TestCase):
             with self.subTest(coord=coord), self.assertRaises(ValueError):
                 PI.analyser(self.archive(coord))
 
+    def test_u20_lit_modele_externe_volumineux_en_flux_sans_facettes(self):
+        """Accepte un modèle externe >32 Mio tout en gardant le plafond des réglages."""
+        source = self.racine / "externe.3mf"
+        triangles = '<triangle v1="0" v2="1" v3="0"/>' * 1_100_000
+        principal = (
+            '<model><resources><object id="1"><components>'
+            '<component path="/3D/Objects/externe.model" objectid="9"/>'
+            '</components></object></resources><build><item objectid="1"/></build></model>'
+        )
+        externe = (
+            '<model><resources><object id="9"><mesh><vertices>'
+            '<vertex x="10" y="10" z="0"/><vertex x="20" y="20" z="10"/>'
+            '</vertices><triangles>' + triangles + '</triangles></mesh></object></resources></model>'
+        )
+        with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("3D/3dmodel.model", principal)
+            archive.writestr("3D/Objects/externe.model", externe)
+            archive.writestr(
+                "Metadata/model_settings.config",
+                '<config><plate><model_instance><metadata key="object_id" value="1"/>'
+                '</model_instance></plate></config>',
+            )
+        self.assertGreater(len(externe), 32 * 1024 * 1024)
+        self.assertTrue(PI.analyser(source)["conforme"])
+
+    def test_u20_refuse_dtd_dans_modele_en_flux(self):
+        """Le parseur en flux garde le refus des déclarations XML externes."""
+        source = self.archive()
+        temporaire = self.racine / "avec_dtd.3mf"
+        with zipfile.ZipFile(source) as original, zipfile.ZipFile(temporaire, "w") as cible:
+            for info in original.infolist():
+                contenu = original.read(info.filename)
+                if info.filename == "3D/3dmodel.model":
+                    contenu = b'<!DOCTYPE model [<!ENTITY x "10">]>' + contenu
+                cible.writestr(info, contenu)
+        with self.assertRaisesRegex(ValueError, "DTD/ENTITY interdite"):
+            PI.analyser(temporaire)
+
     def test_interface_valide_et_sortie_existante_preservee(self):
         source = self.archive()
         rapport = self.racine / "rapport.json"
