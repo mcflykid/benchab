@@ -160,3 +160,25 @@ def test_transition_etat_seulement_apres_retour_global_sans_travail(atelier, ens
     suivi = json.loads(row["donnees_json"])["suivi"]
     assert suivi["statut"] == attendu
     assert suivi["physique"]["resultat"] == ("defaut" if ensemble else "inconnu")
+
+
+def test_cli_conserve_une_duree_observee_sans_collecte_machine(atelier):
+    """La déclaration en secondes est conservée dans la preuve du retour."""
+    base, projet = atelier
+    args = ["--projet", str(projet), "--resultat", "arretee", "--preuve-retour", "Chronomètre",
+            "--duree-observee-s", "123.5"]
+    assert main(args, base=base) == 0
+    retour, = etat_projet(base, projet)["evenements"]
+    assert retour["duree_observee_s"] == 123.5
+    assert retour["resultat"] == "arretee"
+    assert main([*args[:-1], "nan"], base=base) == 2
+    assert etat_projet(base, projet)["evenements"] == [retour]
+
+
+@pytest.mark.parametrize("duree", [0, -1, True, "123", 10**1000])
+def test_retour_refuse_une_duree_non_positive_ou_non_numerique(atelier, duree):
+    """Une durée invalide ne produit aucune déclaration persistée."""
+    base, projet = atelier
+    with pytest.raises(ValueError, match="Durée observée"):
+        confirmer(base, projet, "reussie", "Chronomètre", duree_observee_s=duree)
+    assert not etat_projet(base, projet).get("evenements")

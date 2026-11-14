@@ -5,6 +5,7 @@ préparation n'est réécrite, aucun fichier supprimé, aucun envoi déduit d'un
 """
 
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,12 +79,20 @@ def confirmer(
     ensemble_complet=False,
     preuves=(),
     envois=(),
+    duree_observee_s=None,
 ):
-    """Enregistre un retour humain et sa portée, sans unité ; renvoie fait et conservation simulée.
+    """Enregistre un retour humain et sa durée facultative en secondes.
+
+    Renvoie le fait déclaré et la conservation simulée.
 
     Ne transforme jamais un résultat partiel en verdict global, ne modifie aucun fichier figé ni réglage.
     Sans préparation, conserve une capture privée neuve et son SHA-256 comme source contrôlable.
     """
+    if duree_observee_s is not None and (
+        type(duree_observee_s) not in (int, float) or not 0 < duree_observee_s <= 1e308
+        or not math.isfinite(duree_observee_s)
+    ):
+        raise ValueError("Durée observée positive et finie requise, en secondes.")
     projet = _projet(base, projet)
     if resultat not in RESULTATS or not isinstance(preuve, str) or not preuve.strip():
         raise ValueError("Résultat physique et preuve explicites requis.")
@@ -134,6 +143,9 @@ def confirmer(
         "limites": ([] if elements or ensemble_complet else ["Pièces et versions non identifiées"])
         + ([] if identifies else ["Fichier envoyé non identifiable"]),
     }
+    if duree_observee_s is not None:
+        # La valeur déclarée ne devient pas un temps slicer ni une mesure machine (#51).
+        evenement["duree_observee_s"] = duree_observee_s
     with base.transaction() as connexion:
         connexion.execute("BEGIN IMMEDIATE")
         suivi = etat_projet(base, projet)

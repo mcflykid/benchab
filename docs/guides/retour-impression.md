@@ -163,3 +163,11 @@ régénérabilité d'une recette et ne compte aucun gain accessible sans accord.
 Contrat de données et faits physiques déclarés en octobre–novembre 2026 :
 [données](../reference/donnees.md), [frontière publique/privée](../decisions/2026-11-04-frontiere-public-prive.md),
 [connaissances sourcées](../../benchab/reference/connaissances.jsonl).
+
+### Saisir une durée observée
+
+Avec `benchab fabrication retour`, l’option `--duree-observee-s` ajoute au
+résultat déclaré une durée positive en secondes. Indiquer dans
+`--preuve-retour` comment elle a été relevée, par exemple au chronomètre.
+Un retour déclaré comme interrompu garde ce statut. L’option laisse
+l’estimation du slicer intacte et ne consulte aucune machine (#51).
