@@ -31,8 +31,8 @@ attributs. Une translation pure du build est admissible si sa déclaration
 est strictement identique des deux côtés. Les neuf coefficients linéaires
 doivent former exactement l’identité et les trois translations être bornées
 à 10⁹ unités du modèle. Un placement différent, une rotation, une échelle,
-`p:path`, des objets sans correspondance, des relations OPC ambiguës ou
-des attributs d’extension inconnus restent `NON VÉRIFIÉS`.
+des objets sans correspondance, des relations OPC ambiguës ou des attributs
+d’extension inconnus restent `NON VÉRIFIÉS`.
 
 Un assemblage Core est aussi admissible si son unique parent de build
 référence une à seize feuilles maillées distinctes déjà définies dans le
@@ -72,7 +72,7 @@ les absences ou tous les ajouts littéraux sont rapportés en `WARN`. Les
 facettes permutées, un dialecte/QName différent, un modèle ambigu, des
 relations OPC mal formées, un chemin URI non interne ou une facette dégénérée
 donnent `NON VÉRIFIÉ`. Aucune valeur n’est décodée ou transcodée.
-Dans ces deux sous-cas, les groupes de matériaux de base Core
+Dans les sous-cas directs et locaux, les groupes de matériaux de base Core
 (`basematerials`) résolvent le matériau déclaré sur l’objet et chaque facette.
 Le rapport compare le nom littéral et la couleur sRGB d’affichage, avec
 alpha `FF` implicite quand il n’est pas écrit. Un changement d’identifiant
