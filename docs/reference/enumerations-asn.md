@@ -209,3 +209,20 @@ valeurs `50%` et `100%` sont reliées aux témoins lorsque la combinaison
 est active, avec la buse déclarée à 0,4 mm, une hauteur de couche déclarée
 de 0,2 mm et un gyroïde à 20 %. Une autre valeur ou des conditions
 différentes restent NON VÉRIFIÉES (#80, #81).
+
+### Direction du remplissage rectiligne
+
+Sur le témoin S et le binaire ASN 2.0.0.3 identifié ci-dessus, passer
+`infill_direction` de `45` à `75` change la seule clé entre les deux sorties.
+Les segments clairsemés déposés d’au moins 1 mm sont mesurés dans le repère
+du plateau, modulo 180° et à 0,1° près. À `45`, on observe 114 segments à 45°
+et 114 à 135°. À `75`, on observe 114 segments à 75° et 78 à 165°. Des
+segments à 0° et 90° restent présents dans les deux cas. Le rejeu à `75`
+retrouve les mêmes comptages. Le témoin source et les 646 profils relus
+gardent leurs empreintes.
+
+Les valeurs sont vérifiables avec `--contextuelles` pour le remplissage
+rectiligne à 20 %, une buse déclarée de 0,4 mm, une couche de 0,2 mm et
+des options de combinaison et d’alignement sur le modèle désactivées.
+Le résultat décrit les directions déposées sur ce témoin. L’alignement
+sur un effort de la pièce et sa tenue restent NON VÉRIFIÉS (#80).

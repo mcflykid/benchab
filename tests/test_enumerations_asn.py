@@ -165,3 +165,18 @@ def test_hauteur_combinee_reste_liee_aux_conditions(valeur, activation, statut):
     resultats = reglages.verifier(donnees, identite_slicer=ASN, inclure_contextuelles=True)
     lignes = [r for r in resultats if r.get("cle") == cle]
     assert len(lignes) == 1 and lignes[0]["enumeration"]["statut"] == statut
+
+
+@pytest.mark.parametrize(("valeur", "alignement", "statut"), [
+    ("45", "0", "PASS"), ("75", "0", "PASS"), ("75", "1", "NON VÉRIFIÉ"), ("60", "0", "NON VÉRIFIÉ"),
+])
+def test_direction_rectiligne_exige_le_repere_observe(valeur, alignement, statut):
+    """Les angles observés restent liés au profil et à la désactivation de l’alignement au modèle."""
+    donnees = {
+        "infill_direction": valeur, "align_infill_direction_to_model": alignement,
+        "nozzle_diameter": ["0.4"], "layer_height": "0.2",
+        "sparse_infill_pattern": "rectilinear", "sparse_infill_density": "20%", "infill_combination": "0",
+    }
+    resultats = reglages.verifier(donnees, identite_slicer=ASN, inclure_contextuelles=True)
+    ligne, = (r for r in resultats if r["cle"] == "infill_direction")
+    assert ligne["enumeration"]["statut"] == statut
