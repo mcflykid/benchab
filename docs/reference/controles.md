@@ -285,3 +285,10 @@ cercle compatible avec l’hypothèse d’un demi-pas de 0,0005 mm par champ.
 L’intervalle de longueur XY le plus large mesure 0,01450 mm. Le lecteur
 strict refuse toujours les mêmes 697 arcs de cette sonde. Ce résultat
 n’identifie pas le code du firmware et ne modifie aucun seuil.
+
+Sur ce même cylindre, 642 arcs sur 700 ont un cercle compatible avec un
+demi-pas de 0,00025 mm. Le total passe à 687 à 0,00035 mm, 696 à
+0,00040 mm et 700 à 0,00045 mm. Les 697 refus du lecteur strict sont
+identiques dans chaque rejeu. Ces points décrivent la sensibilité à
+l’hypothèse d’arrondi de ce témoin ; la précision du firmware reste
+NON VÉRIFIÉE (#134).
