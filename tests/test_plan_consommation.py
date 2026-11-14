@@ -656,6 +656,11 @@ class PlanConsommation(unittest.TestCase):
 
     def test_parcours_reel_envoi_et_retour_sans_sql_de_fixture(self):
         """Les APIs de préparation, d'envoi et de retour produisent un plan lisible."""
+        import contextlib
+        import io
+
+        from benchab.fabrication.retour import main
+
         temporaire = tempfile.TemporaryDirectory()
         self.addCleanup(temporaire.cleanup)
         atelier = Path(temporaire.name).resolve()
@@ -677,17 +682,27 @@ class PlanConsommation(unittest.TestCase):
         with zipfile.ZipFile(source, "w") as archive:
             archive.writestr("Metadata/project_settings.config", json.dumps({"filament_ids": ["f1", "f2"]}))
             archive.writestr("Metadata/plate_1.gcode", "; filament used [g] = 0, 12.5\n" + lignes.decode())
+            archive.writestr("Metadata/slice_info.config", b"""
+                <config><plate><metadata key="index" value="1"/>
+                <metadata key="prediction" value="100"/><metadata key="weight" value="12.5"/>
+                </plate></config>""")
         envoi = enregistrer_envoi(base, projet, "P01", source)
-        retour = confirmer(
-            base, projet, "reussie", "retour synthétique déclaré", preparation="P01",
-            ensemble_complet=True, envois=[envoi["fichier"]],
-        )
+        with contextlib.redirect_stdout(io.StringIO()) as affichage:
+            code = main([
+                "--projet", str(projet), "--id", "P01", "--resultat", "reussie",
+                "--preuve-retour", "retour synthétique déclaré", "--ensemble-complet",
+                "--envoi-identifie", envoi["fichier"], "--duree-observee-s", "125",
+            ], base=base)
+        self.assertEqual(code, 0)
+        retour = json.loads(affichage.getvalue())
 
         resultat = estimer_retour(base, retour["retour"]["id"])
 
         self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
         self.assertEqual(resultat["estimation"]["plaques"][0]["outils"][1]["grammes_estimes"], 12.5)
         self.assertIsNone(resultat["affectation_bobine"])
+        self.assertEqual(resultat["comparaison_duree"]["ecart_s"], 25)
+        self.assertEqual(resultat["comparaison_duree"]["gcode"], "Metadata/plate_1.gcode")
 
     def test_json_de_retour_a_cles_dupliquees_reste_non_verifie(self):
         """Une déclaration JSON ambiguë ne fournit aucune estimation."""
