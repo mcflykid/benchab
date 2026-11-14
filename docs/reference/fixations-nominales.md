@@ -131,3 +131,17 @@ hauteurs, ainsi que l’écart de volume dans la zone déclarée. Un PASS
 publie le STL et son rapport dans le dossier privé neuf. FAIL ou NON
 VÉRIFIÉ affiche le motif sans publier de STL. La tenue de la jonction
 et l’ajustement imprimé restent à qualifier séparément.
+
+### Périmètre de la qualification numérique
+
+La suite vérifie les profils nominaux métriques M6 × 1 et M8 × 1, les
+variantes sur mesure et le sens gauche, ainsi que les interférences et
+marges des logements. Elle contrôle le connecteur vis-écrou des deux
+côtés de la coupe et relit le 3MF exporté. Pour les deux familles de
+clips, elle vérifie la gorge, le réassemblage, la relecture du 3MF et
+la priorité d’un jeu déclaré dans les mêmes conditions.
+
+Les cotes et jeux conservent leur provenance. Les valeurs mesurées sur
+une autre famille ou une autre bobine ne sont pas transposées. Les
+observations d’ajustement, d’accès outil et de tenue viennent des
+projets réels et sont suivies dans #51 (#27).
