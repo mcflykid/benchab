@@ -50,6 +50,66 @@
           "outer wall/inner wall": {"statut": "PASS", "valeur_embarquee": "outer wall/inner wall"},
           "inner-outer-inner wall": {"statut": "PASS", "valeur_embarquee": "inner-outer-inner wall"}
         },
+        "locked_skin_infill_pattern": {
+          "rectilinear": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          },
+          "zigzag": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
+        },
+        "locked_skeleton_infill_pattern": {
+          "rectilinear": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          },
+          "zigzag": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
+        },
         "support_interface_pattern": {
           "auto": {"statut": "PASS", "valeur_embarquee": "auto"},
           "concentric": {"statut": "PASS", "valeur_embarquee": "concentric"}

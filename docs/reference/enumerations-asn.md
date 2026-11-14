@@ -226,3 +226,21 @@ rectiligne à 20 %, une buse déclarée de 0,4 mm, une couche de 0,2 mm et
 des options de combinaison et d’alignement sur le modèle désactivées.
 Le résultat décrit les directions déposées sur ce témoin. L’alignement
 sur un effort de la pièce et sa tenue restent NON VÉRIFIÉS (#80).
+
+### Options de peau et de squelette de lockedzag
+
+Sur le témoin S, garder le motif `lockedzag` à 20 %, sans combinaison du
+remplissage, avec le profil Kobra S1 de buse 0,4 mm et une couche de 0,2 mm.
+Dans ce contexte, quatre copies ajoutent séparément `rectilinear` ou
+`zigzag` pour `locked_skin_infill_pattern` ou
+`locked_skeleton_infill_pattern`. Le binaire ASN identifié ci-dessus termine
+avec le code 0 dans les quatre cas et garde `lockedzag`. Le champ ajouté
+disparaît dans chaque sortie ; l’intégrité BENCHAB refuse ces quatre sorties.
+
+Le témoin sans surcharge passe l’intégrité. Les cinq fichiers ont les
+mêmes empreintes de dépôts par rôle, dont 1 575 segments de remplissage
+clairsemé et 1 023 de plein interne. La lecture ne relève aucun diagnostic.
+Le témoin et les 646 profils vérifiés gardent leurs empreintes. Le catalogue
+signale l’omission uniquement pour le binaire et les réglages compagnons
+observés. L’effet de ces options dans d’autres conditions reste NON VÉRIFIÉ
+(#80).

@@ -48,6 +48,8 @@ def _enumeration_asn(cle, valeur, identite, donnees, *, inclure_contextuelles):
         }
     detail = ("Valeur conservée et effet observé." if observation["statut"] == "PASS"
               else "Valeur remplacée par le slicer ; le repli ne vaut pas acceptation.")
+    if observation["statut"] == "FAIL" and observation["valeur_embarquee"] is None:
+        detail = "Valeur absente du 3MF tranché dans les conditions observées."
     if conditions and observation["statut"] == "PASS":
         detail = "Valeur conservée et effet observé sur le témoin de preuve ; aucune généralisation."
     return {**copy.deepcopy(observation), "preuve": binaire["preuve"], "detail": detail}

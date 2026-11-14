@@ -2,6 +2,11 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.34.1
+
+- Le catalogue Anycubic signale la disparition des motifs de peau et de squelette dans le 3MF tranché avec `lockedzag` dans les conditions mesurées (#80).
+- La recette hors ligne des fiches CAO confirme dix constructions pour cinq pièces. La qualification des fixations couvre les filetages, logements, clips et le connecteur vis-écrou (#27, #32).
+
 ## 1.34.0
 
 - Deux directions de remplissage rectiligne sont qualifiées dans le contexte du témoin Anycubic (#80).

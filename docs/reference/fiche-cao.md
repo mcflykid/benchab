@@ -163,3 +163,18 @@ cas mixte, la poche borgne garde son fond. Huit anciennes fiches gardent
 leurs plans et scripts à l’octet près. Préparation médiane : 2,1 ms ;
 construction médiane : 35,9 ms sur le poste de recette. Aucun ajustement
 ni comportement de la pièce imprimée n’est vérifié (#32).
+
+### Rejeu du gabarit et périmètre validé
+
+Cinq fiches de référence, du bloc plein au bloc à quatre perçages, ont
+été reconstruites deux fois. Les dix STEP relus contiennent chacun un
+solide valide ; les dimensions et volumes concordent avec le calcul
+analytique. Pour chaque paire, le plan et le script gardent les mêmes
+empreintes malgré le changement de présentation du JSON. Sur le poste
+de rejeu, la préparation médiane a pris 3,8 ms et la construction
+26,7 ms. À chemins normalisés, le résumé occupe 74 octets et les
+rapports détaillés 591 à 973 octets.
+
+Ce périmètre couvre les bases, perçages, lamages, fraisages et poches
+décrits par le gabarit. Les exigences déclarées dans `hors_perimetre`
+restent NON VÉRIFIÉES et les opérations inconnues sont refusées (#32).
