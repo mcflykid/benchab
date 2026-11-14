@@ -98,6 +98,7 @@ def verifier(projet):
 def main(argv=None):
     """Vérifie un projet et publie facultativement le rapport complet hors du projet.
 
+    Le résumé conserve le premier écart et le chemin du rapport complet.
     Entrées : chemins sans unité. Codes 0 pour PASS, 1 pour FAIL et 2 pour
     les autres statuts. La publication laisse le projet contrôlé intact.
     """
@@ -128,6 +129,8 @@ def main(argv=None):
             resume["references_attendues"] = rapport["fichiers_verifies"]
         if "erreurs" in rapport:
             resume["erreurs"] = len(rapport["erreurs"])
+            if rapport["erreurs"]:
+                resume["premier_ecart"] = rapport["erreurs"][0]
         resume["rapport"] = str(sortie)
         print(json.dumps(resume, ensure_ascii=False, separators=(",", ":")))
     else:
