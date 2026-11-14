@@ -19,6 +19,7 @@ from benchab.qualite.coherence import (
     _empreinte_membre_export,
     _manifeste_export,
     _ouvrir_chaine_dossiers,
+    _ouvrir_membre_export,
     _verifier_chaine_dossiers,
     _verifier_membre_export,
 )
@@ -287,6 +288,16 @@ def _verifier_cible_finale(fd_export, nom, fd_stage, sha_attendu, taille_attendu
         os.close(fd)
 
 
+def verifier_copie(prive, preuve, sha256_preuve):
+    """Relit une preuve d’export et sa copie en octets, puis observe la cible.
+
+    Renvoie PASS pour l’identité de la copie. La cible peut être ABSENTE,
+    IDENTIQUE ou DIVERGENTE. Aucun verrou n’est créé, aucune reprise appliquée.
+    La décision d’appliquer exige ensuite la confrontation à SQLite et au manifeste.
+    """
+    return _reprendre(prive, preuve, sha256_preuve, lecture_seule=True)
+
+
 def appliquer(prive, preuve, sha256_preuve):
     """Applique une seule table absente depuis une preuve CANDIDAT épinglée.
 
@@ -296,6 +307,10 @@ def appliquer(prive, preuve, sha256_preuve):
     preuve ou suppression de la cible canonique. Le verrou cache/export.lock reste
     détenu pendant le snapshot, la sérialisation et la publication.
     """
+    return _reprendre(prive, preuve, sha256_preuve, lecture_seule=False)
+
+
+def _reprendre(prive, preuve, sha256_preuve, *, lecture_seule):
     racine = atelier_prive(prive)
     chemin_preuve = sortie_privee(Path(preuve).absolute(), prive=racine)
     if chemin_preuve.is_relative_to(racine / "export"):
@@ -328,6 +343,7 @@ def appliquer(prive, preuve, sha256_preuve):
             or donnees["schema"] != 1
             or donnees.get("statut") != "CANDIDAT"
             or donnees.get("applique") is not False
+            or not isinstance(table, str)
             or table not in TABLES
             or donnees.get("cible_canonique") != "export/" + str(table) + ".jsonl"
             or nom_table != str(table) + ".jsonl"
@@ -347,6 +363,38 @@ def appliquer(prive, preuve, sha256_preuve):
 
         fd_table, signature_table = _ouvrir_fichier_candidat(fd_candidat, nom_table, _MAX_OCTETS)
         try:
+            if lecture_seule:
+                digest, taille = _hachage_fd_borne(fd_table, _MAX_OCTETS)
+                if (digest, taille) != (sha_table, donnees["octets"]):
+                    raise ValueError("Les octets du JSONL diffèrent de la preuve CANDIDAT.")
+                nom_canonique = table + ".jsonl"
+                with _dossier_export(racine) as (fd_export, verifier_export):
+                    try:
+                        fd_canonique, signature_canonique = _ouvrir_membre_export(fd_export, nom_canonique)
+                    except FileNotFoundError:
+                        courant = None
+                        _absence(fd_export, nom_canonique)
+                    else:
+                        try:
+                            courant, _ = _hachage_fd_borne(fd_canonique, _MAX_OCTETS)
+                            if _signature_export(os.fstat(fd_canonique)) != signature_canonique:
+                                raise ValueError("L’export canonique a changé pendant sa lecture.")
+                            _verifier_membre_export(fd_export, nom_canonique, signature_canonique)
+                        finally:
+                            os.close(fd_canonique)
+                    verifier_export()
+                # Relire les deux membres et leur chemin après l’observation de la cible (#119).
+                if (_signature_export(os.fstat(fd_table)) != signature_table
+                        or _signature_export(os.stat(nom_table, dir_fd=fd_candidat, follow_symlinks=False))
+                        != signature_table
+                        or _lire_fichier_candidat(fd_candidat, nom_preuve, 100_000)
+                        != (preuve_octets, sha_reel_preuve, signature_preuve)):
+                    raise ValueError("La preuve ou le candidat a changé pendant la vérification.")
+                _verifier_chaine_dossiers(descripteurs_preuve, noms_preuve)
+                etat = "ABSENTE" if courant is None else "IDENTIQUE" if courant == sha_table else "DIVERGENTE"
+                return {"statut": "PASS", "applique": False, "table": table, "preuve_sha256": sha_reel_preuve,
+                        "copie_sha256": digest, "octets": taille, "cible": {"statut": etat, "sha256": courant},
+                        "compatibilite_sqlite_et_manifeste": "NON VÉRIFIÉ"}
             racine = atelier_prive(prive)
             base = sans_lien(racine / "benchab.sqlite", racine=racine, strict=True)
             signature_base = _signature_sqlite(base)

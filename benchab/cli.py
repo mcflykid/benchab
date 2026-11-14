@@ -235,6 +235,11 @@ def parser():
     )
     reprise_export.add_argument("--table", required=True, help="Table canonique BENCHAB à recopier")
     reprise_export.add_argument("--sortie", type=Path, required=True, help="Dossier neuf, hors export")
+    verifier_export = controle.add_parser(
+        "verifier-reprise-export", help="Relit une copie d’export préparée sans l’appliquer"
+    )
+    verifier_export.add_argument("--preuve", type=Path, required=True)
+    verifier_export.add_argument("--sha256-preuve", required=True)
     reprise_source = controle.add_parser(
         "preparer-reprise-source", help="Prépare une copie non appliquée d’un original identifié dans un tar"
     )
@@ -1258,14 +1263,18 @@ def main(argv=None):
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
-    if arguments.commande == "controle" and arguments.controle == "appliquer-reprise-export":
-        from benchab.qualite.reprise_export import appliquer
+    if arguments.commande == "controle" and arguments.controle in {
+        "appliquer-reprise-export", "verifier-reprise-export",
+    }:
+        from benchab.qualite.reprise_export import appliquer, verifier_copie
 
         # Un candidat fourni et son SHA exact sont requis ; aucune mesure ni Base() n’est ouverte.
         try:
-            rapport = appliquer(arguments.prive, arguments.preuve, arguments.sha256_preuve)
+            operation = appliquer if arguments.controle == "appliquer-reprise-export" else verifier_copie
+            rapport = operation(arguments.prive, arguments.preuve, arguments.sha256_preuve)
         except (OSError, ValueError, sqlite3.Error) as erreur:
-            print(f"BENCHAB : application de reprise refusée : {erreur}", file=sys.stderr)
+            prefixe = "application" if arguments.controle == "appliquer-reprise-export" else "vérification"
+            print(f"BENCHAB : {prefixe} de reprise refusée : {erreur}", file=sys.stderr)
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0

@@ -56,6 +56,32 @@ def test_preparation_restitue_les_octets_sans_appliquer(tmp_path, atelier):
         preparer(prive, "projets", sortie)
 
 
+def test_verifier_reprise_export_distingue_cible_et_copie(tmp_path, atelier, capsys):
+    """La relecture passive ne crée aucun fichier et distingue une cible modifiée."""
+    from benchab.cli import main
+    from benchab.qualite.reprise_export import preparer
+
+    prive, cible, attendu = atelier
+    sortie = tmp_path / "reprise"
+    preuve = preparer(prive, "projets", sortie)
+    cmd = ["--prive", str(prive), "controle", "verifier-reprise-export", "--preuve",
+           str(sortie / "preuve.json"), "--sha256-preuve", preuve["preuve_sha256"]]
+    for etat, contenu in (("ABSENTE", None), ("IDENTIQUE", attendu), ("DIVERGENTE", b"alteree")):
+        if contenu is not None:
+            cible.write_bytes(contenu)
+        avant = {p: p.read_bytes() for p in prive.rglob("*") if p.is_file()}
+        assert main(cmd) == 0
+        rapport = json.loads(capsys.readouterr().out)
+        assert rapport["cible"]["statut"] == etat
+        assert rapport["applique"] is False
+        assert rapport["compatibilite_sqlite_et_manifeste"] == "NON VÉRIFIÉ"
+        assert {p: p.read_bytes() for p in prive.rglob("*") if p.is_file()} == avant
+    (sortie / "projets.jsonl").write_bytes(b"copie alteree")
+    assert main(cmd) == 2
+    assert "octets du JSONL" in capsys.readouterr().err
+    assert cible.read_bytes() == b"alteree"
+
+
 def test_refus_si_manifeste_et_sqlite_divergent(tmp_path, atelier):
     """Une preuve attendue mais différente ne produit aucune copie publiable."""
     from benchab.qualite.reprise_export import preparer

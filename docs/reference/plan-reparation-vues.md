@@ -135,6 +135,12 @@ benchab --prive /chemin/atelier controle appliquer-reprise-export \
   --sha256-preuve SHA256_PREUVE_RENVOYE_PAR_LA_PREPARATION
 ```
 
+Avant l’application, `benchab controle verifier-reprise-export --preuve
+CHEMIN --sha256-preuve SHA` peut relire le candidat en lecture seule.
+Le PASS porte sur ses octets. La cible est observée séparément comme
+ABSENTE, IDENTIQUE ou DIVERGENTE. L’application vérifie ensuite le
+manifeste et le contenu canonique de SQLite.
+
 La preuve doit rester au statut `CANDIDAT`, désigner la table et le JSONL
 frère exacts, et déclarer le même SHA que le manifeste courant. Sous le verrou
 `cache/export.lock`, la commande relit les deux membres bornés, ouvre SQLite en
