@@ -1,0 +1,246 @@
+{
+  "schema": 1,
+  "cles": [
+    "sparse_infill_pattern",
+    "internal_solid_infill_pattern",
+    "top_surface_pattern",
+    "bottom_surface_pattern",
+    "alternate_extra_wall",
+    "wall_sequence",
+    "locked_skeleton_infill_pattern",
+    "locked_skin_infill_pattern",
+    "support_interface_pattern"
+  ],
+  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height", "infill_direction", "align_infill_direction_to_model", "skin_infill_density", "skeleton_infill_density"],
+  "binaires": {
+    "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d": {
+      "version": "2.0.0.3",
+      "preuve": "docs/reference/enumerations-asn.md",
+      "cas": {
+        "sparse_infill_pattern": {
+          "gyroid": {"statut": "PASS", "valeur_embarquee": "gyroid"},
+          "grid": {"statut": "PASS", "valeur_embarquee": "grid"},
+          "rectilinear": {"statut": "PASS", "valeur_embarquee": "rectilinear"},
+          "zigzag": {"statut": "PASS", "valeur_embarquee": "zigzag"},
+          "crosshatch": {"statut": "PASS", "valeur_embarquee": "crosshatch"},
+          "supportcubic": {"statut": "PASS", "valeur_embarquee": "supportcubic"},
+          "crosszag": {"statut": "PASS", "valeur_embarquee": "crosszag"},
+          "2dlattice": {"statut": "FAIL", "valeur_embarquee": "crosshatch"},
+          "zig-zag": {"statut": "FAIL", "valeur_embarquee": "zigzag"},
+          "benchab_fixture_inconnue": {"statut": "FAIL", "valeur_embarquee": "crosshatch"}
+        },
+        "internal_solid_infill_pattern": {
+          "rectilinear": {"statut": "PASS", "valeur_embarquee": "rectilinear"},
+          "monotonic": {"statut": "PASS", "valeur_embarquee": "monotonic"}
+        },
+        "top_surface_pattern": {
+          "monotonicline": {"statut": "PASS", "valeur_embarquee": "monotonicline"},
+          "rectilinear": {"statut": "PASS", "valeur_embarquee": "rectilinear"}
+        },
+        "bottom_surface_pattern": {
+          "monotonic": {"statut": "PASS", "valeur_embarquee": "monotonic"},
+          "rectilinear": {"statut": "PASS", "valeur_embarquee": "rectilinear"}
+        },
+        "alternate_extra_wall": {
+          "0": {"statut": "PASS", "valeur_embarquee": "0"},
+          "1": {"statut": "PASS", "valeur_embarquee": "1"}
+        },
+        "wall_sequence": {
+          "inner wall/outer wall": {"statut": "PASS", "valeur_embarquee": "inner wall/outer wall"},
+          "outer wall/inner wall": {"statut": "PASS", "valeur_embarquee": "outer wall/inner wall"},
+          "inner-outer-inner wall": {"statut": "PASS", "valeur_embarquee": "inner-outer-inner wall"}
+        },
+        "skin_infill_density": {
+          "55%": {
+            "statut": "PASS",
+            "valeur_embarquee": "55%",
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
+        },
+        "skeleton_infill_density": {
+          "8%": {
+            "statut": "PASS",
+            "valeur_embarquee": "8%",
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
+        },
+        "locked_skin_infill_pattern": {
+          "rectilinear": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          },
+          "zigzag": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
+        },
+        "locked_skeleton_infill_pattern": {
+          "rectilinear": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          },
+          "zigzag": {
+            "statut": "FAIL",
+            "valeur_embarquee": null,
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
+        },
+        "support_interface_pattern": {
+          "auto": {"statut": "PASS", "valeur_embarquee": "auto"},
+          "concentric": {"statut": "PASS", "valeur_embarquee": "concentric"}
+        },
+        "infill_combination_max_layer_height": {
+          "50%": {
+            "statut": "PASS", "valeur_embarquee": "50%",
+            "conditions": {
+              "infill_combination": "1",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "gyroid",
+              "sparse_infill_density": "20%"
+            }
+          },
+          "100%": {
+            "statut": "PASS", "valeur_embarquee": "100%",
+            "conditions": {
+              "infill_combination": "1",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "gyroid",
+              "sparse_infill_density": "20%"
+            }
+          }
+        },
+        "infill_direction": {
+          "45": {
+            "statut": "PASS", "valeur_embarquee": "45",
+            "conditions": {
+              "align_infill_direction_to_model": "0",
+              "infill_combination": "0",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "rectilinear",
+              "sparse_infill_density": "20%"
+            }
+          },
+          "75": {
+            "statut": "PASS", "valeur_embarquee": "75",
+            "conditions": {
+              "align_infill_direction_to_model": "0",
+              "infill_combination": "0",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "rectilinear",
+              "sparse_infill_density": "20%"
+            }
+          }
+        },
+        "align_infill_direction_to_model": {
+          "0": {
+            "statut": "PASS",
+            "valeur_embarquee": "0",
+            "conditions": {
+              "sparse_infill_pattern": "rectilinear",
+              "sparse_infill_density": "20%",
+              "infill_direction": "45",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle"
+            }
+          },
+          "1": {
+            "statut": "PASS",
+            "valeur_embarquee": "1",
+            "conditions": {
+              "sparse_infill_pattern": "rectilinear",
+              "sparse_infill_density": "20%",
+              "infill_direction": "45",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle"
+            }
+          }
+        },
+        "support_style": {
+          "grid": {
+            "statut": "PASS", "valeur_embarquee": "grid",
+            "conditions": {
+              "enable_support": "1",
+              "support_type": "normal(auto)",
+              "support_interface_pattern": "concentric",
+              "support_top_z_distance": "0.18"
+            }
+          },
+          "snug": {
+            "statut": "PASS", "valeur_embarquee": "snug",
+            "conditions": {
+              "enable_support": "1",
+              "support_type": "normal(auto)",
+              "support_interface_pattern": "concentric",
+              "support_top_z_distance": "0.18"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,170 @@
+"""Attribution nominale des axes de pont à un îlot horizontal déclaré."""
+
+import pytest
+
+from benchab.controles.ponts_surplombs import rapprocher
+
+TRIANGLES = [
+    [[0, 0, 4], [0, 4, 4], [8, 4, 4]],
+    [[0, 0, 4], [8, 4, 4], [8, 0, 4]],
+]
+
+
+def test_separe_le_recouvrement_xy_de_la_concordance_en_z():
+    """Les deux rôles coupent la même projection ; un seul rejoint le dessous déclaré."""
+    lignes = [
+        "G90", "M83", "G1 X8 Y12 Z7.2", ";LAYER_CHANGE", ";HEIGHT:0.2",
+        ";TYPE:Bridge", "G1 X20 E1 F1200",
+        "G1 X8 Y12 Z9.2", ";LAYER_CHANGE", ";HEIGHT:0.2",
+        ";TYPE:Internal Bridge", "G1 X20 E1 F1200",
+    ]
+
+    r = rapprocher(TRIANGLES, lignes, translation_mm=(10, 10, 3))
+
+    assert r["statut"] == "PASS"
+    assert r["altitude_ilot_mm"] == 7
+    assert r["projection_mm2"] == 32
+    assert r["roles"]["Bridge"]["longueur_projection_xy_mm"] == 8
+    assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 8
+    assert r["roles"]["Internal Bridge"]["longueur_projection_xy_mm"] == 8
+    assert r["roles"]["Internal Bridge"]["longueur_niveau_concordant_mm"] == 0
+    assert r["validation_physique"] is False
+
+
+def test_hauteur_ne_se_propage_pas_apres_changement_de_couche():
+    """Une hauteur annoncée pour une autre couche ne qualifie aucune attribution."""
+    lignes = [
+        "G90", "M83", ";LAYER_CHANGE", ";HEIGHT:0.2", "G1 X0 Y2 Z4.2",
+        ";LAYER_CHANGE", ";TYPE:Bridge", "G1 X8 E1",
+    ]
+
+    r = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0))
+
+    assert r["statut"] == "NON VÉRIFIÉ"
+    assert r["exclusions"]["hauteur_non_verifiee"] == 1
+    assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 0
+
+
+def test_refuse_une_projection_non_horizontale():
+    """Un îlot incliné n’est pas assimilé à un niveau plan."""
+    triangles = [[(0, 0, 4), (0, 4, 5), (8, 4, 4)]]
+    with pytest.raises(ValueError, match="horizontal"):
+        rapprocher(triangles, [], translation_mm=(0, 0, 0))
+
+
+def test_rotation_z_declaree_avant_translation():
+    """Un rectangle tourné de 90° occupe une autre zone XY et garde son altitude."""
+    lignes = [
+        "G90", "M83", "G1 X8 Y11 Z7.2", ";HEIGHT:0.2",
+        ";TYPE:Bridge", "G1 Y19 E1",
+    ]
+    deplacement = (10, 10, 3)
+    droit = rapprocher(TRIANGLES, lignes, translation_mm=deplacement)
+    tourne = rapprocher(TRIANGLES, lignes, translation_mm=deplacement, rotation_z_deg=90)
+    assert droit["association"] == "AUCUNE CONCORDANCE MESURÉE"
+    assert "rotation_z_declaree_deg" not in droit
+    assert tourne["association"] == "CONCORDANCE MESURÉE"
+    assert tourne["rotation_z_declaree_deg"] == 90
+    assert tourne["altitude_ilot_mm"] == 7
+    assert tourne["projection_mm2"] == 32
+    assert tourne["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 7
+
+
+@pytest.mark.parametrize("angle", [True, float("nan"), float("inf"), 361])
+def test_refuse_rotation_z_invalide(angle):
+    """Le repère déclaré exige un angle numérique fini en degrés."""
+    with pytest.raises(ValueError, match="Rotation Z"):
+        rapprocher(TRIANGLES, [], translation_mm=(0, 0, 0), rotation_z_deg=angle)
+
+
+def test_niveau_different_sans_nouvelle_hauteur_reste_non_verifie():
+    """Même sans marqueur de couche, un ancien HEIGHT ne couvre pas un autre niveau."""
+    lignes = [
+        "G90", "M83", "G1 X0 Y2 Z3.2", ";HEIGHT:0.2", ";TYPE:Outer wall", "G1 X8 E1",
+        "G1 X0 Y2 Z4.2", ";TYPE:Bridge", "G1 X8 E1",
+    ]
+    r = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0))
+    assert r["statut"] == "NON VÉRIFIÉ"
+    assert r["exclusions"]["hauteur_non_verifiee"] == 1
+    assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 0
+
+
+def test_cli_rattache_un_ilot_a_une_plaque_et_aux_deux_empreintes(tmp_path, capsys):
+    """Les empreintes exactes et le numéro déclaré empêchent de lire une archive différente."""
+    import hashlib
+    import json
+    from zipfile import ZipFile
+
+    import trimesh
+
+    from benchab.controles.ponts_surplombs import main
+
+    source, tranche = tmp_path / "modele.stl", tmp_path / "tranche.3mf"
+    piece = trimesh.creation.box((8, 4, 1))
+    piece.apply_translation((4, 2, 4.5))
+    source.write_bytes(piece.export(file_type="stl"))
+    with ZipFile(tranche, "w") as archive:
+        archive.writestr(
+            "Metadata/plate_2.gcode",
+            "G90\nM83\nEXCLUDE_OBJECT_START NAME=PieceA\nG1 X0 Y2 Z4.2\n;HEIGHT:0.2\n"
+            ";TYPE:Bridge\nG1 X8 E1\nEXCLUDE_OBJECT_END NAME=PieceA\n",
+        )
+    sha_stl, sha_tranche = [hashlib.sha256(p.read_bytes()).hexdigest() for p in (source, tranche)]
+    commande = [
+        str(source), str(tranche), "--unite-mm", "--ilot", "surplomb-001", "--plaque", "2",
+        "--translation-mm", "0", "0", "0", "--sha-stl", sha_stl,
+    ]
+    assert main([*commande, "--sha-3mf", sha_tranche]) == 0
+    r = json.loads(capsys.readouterr().out)
+    assert r["source_sha256"] == sha_stl and r["archive_sha256"] == sha_tranche
+    assert r["plaque"] == 2 and r["ilot"] == "surplomb-001"
+    assert r["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 8
+    assert main([*commande, "--sha-3mf", sha_tranche, "--rotation-z-deg", "0"]) == 0
+    assert json.loads(capsys.readouterr().out)["rotation_z_declaree_deg"] == 0
+    assert main([*commande, "--sha-3mf", sha_tranche, "--objet-id", "PieceA"]) == 0
+    assert json.loads(capsys.readouterr().out)["objet_id_declare"] == "PieceA"
+    assert main([*commande, "--sha-3mf", sha_tranche, "--objet-id", "piecea"]) == 2
+    assert json.loads(capsys.readouterr().out)["association"] == "NON VÉRIFIÉE"
+    assert main([*commande, "--sha-3mf", "0" * 64]) == 2
+    sortie = capsys.readouterr()
+    assert "empreinte" in sortie.err.lower() and not sortie.out
+
+
+@pytest.mark.parametrize("objet,attendu", [("PieceA", 8), ("PieceB", 2)])
+def test_isole_les_axes_de_pont_par_objet(objet, attendu):
+    """Deux objets à la même altitude et dans la même projection restent distincts."""
+    lignes = [
+        "G90", "M83", ";LAYER_CHANGE", ";HEIGHT:0.2", ";TYPE:Bridge",
+        "EXCLUDE_OBJECT_START NAME=PieceA", "G1 X0 Y2 Z4.2", "G1 X8 E1",
+        "EXCLUDE_OBJECT_END NAME=PieceA",
+        "EXCLUDE_OBJECT_START NAME=PieceB", "G1 X0 Y3", "G1 X2 E1",
+        "EXCLUDE_OBJECT_END NAME=PieceB",
+    ]
+    global_ = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0))
+    rapport = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0), objet_id=objet)
+    assert global_["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == 10
+    assert "objet_id_declare" not in global_
+    assert rapport["statut"] == "PASS"
+    assert rapport["objet_id_declare"] == objet
+    assert rapport["roles"]["Bridge"]["longueur_niveau_concordant_mm"] == attendu
+    assert rapport["segments_autre_objet"] == 1
+    assert rapport["validation_physique"] is False
+
+
+@pytest.mark.parametrize(
+    "fin,champ",
+    [
+        (["EXCLUDE_OBJECT_END NAME=PieceA", "G1 X0 Y3", "G1 X8 E1"], "objet_non_attribue"),
+        ([], "objet_non_clos"),
+    ],
+)
+def test_objet_sans_portee_complete_reste_non_verifie(fin, champ):
+    """Une portée d’objet absente ou ouverte ne donne pas une comparaison attribuée."""
+    lignes = [
+        "G90", "M83", ";HEIGHT:0.2", ";TYPE:Bridge",
+        "EXCLUDE_OBJECT_START NAME=PieceA", "G1 X0 Y2 Z4.2", "G1 X8 E1", *fin,
+    ]
+    rapport = rapprocher(TRIANGLES, lignes, translation_mm=(0, 0, 0), objet_id="PieceA")
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["association"] == "NON VÉRIFIÉE"
+    assert rapport["exclusions"][champ] == 1

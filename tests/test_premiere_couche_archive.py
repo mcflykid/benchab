@@ -1,0 +1,124 @@
+"""Qualifie le G-code de première couche sur un contexte 3MF commun."""
+
+import json
+from zipfile import ZipFile
+
+from benchab.controles import premiere_couche as PC
+
+
+def test_plaque_250_mm_garde_le_pas_de_01_mm():
+    """Contrôle toute une plaque étendue, avec un îlot isolé et une cavité recouverte."""
+    gcode = "\n".join([
+        "G90", "M83", ";LAYER_CHANGE", ";Z:0.2", ";TYPE:Outer wall",
+        "G0 X5 Y5 Z0.2 F600", "G1 X245 E1", "G1 Y245 E1",
+        "G0 X118 Y118", "G1 X122 E1", "G1 Y122 E1",
+        "G1 X118 E1", "G1 Y118 E1",
+        "G0 X160 Y80", "G1 X161 E0.1",
+        ";LAYER_CHANGE", ";Z:0.4", ";TYPE:Top surface", "G0 Z0.4",
+        *[cmd for i in range(11) for cmd in (f"G0 X118 Y{118.2 + i * 0.35:.2f}", "G1 X122 E0.2")],
+    ])
+    rapport = PC.controler(gcode, pas=0.1)
+    assert rapport["statut"] == "WARN"
+    assert rapport["grille"]["pas_mm"] == 0.1
+    assert rapport["grille"]["couverture"] == "complete"
+    assert {d["type"] for d in rapport["defauts"]} == {
+        "îlot minuscule", "creux d'une seule couche (recouvert dès la 2e)",
+    }
+    petit = PC.controler(gcode.replace("G1 X245 E1", "G1 X170 E1").replace("G1 Y245 E1", "G1 Y130 E1"))
+    assert rapport["defauts"] == petit["defauts"]
+    hors_budget = PC.controler(gcode, pas=0.05)
+    assert hors_budget["statut"] == "NON VÉRIFIÉ"
+    assert "0.05 mm" in hors_budget["detail"]
+
+GCODE = "M83\r\n;Z:.2\r\n;TYPE:Outer wall\r\nG1 X30 E1 F600"
+
+
+def test_une_ouverture_avec_identifiants_et_fins_de_ligne_conserves(tmp_path, monkeypatch):
+    """Deux plaques sont relues du même ZIP, dans l’ordre historique des membres."""
+    chemin = tmp_path / "deux.3mf"
+    with ZipFile(chemin, "w") as archive:
+        archive.writestr("Metadata/plate_2.gcode", "G90")
+        archive.writestr("Metadata/plate_010.gcode", GCODE)
+    ouvertures = []
+    init = ZipFile.__init__
+
+    def compter(self, *args, **kwargs):
+        ouvertures.append(1)
+        init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ZipFile, "__init__", compter)
+    assert list(PC.gcodes(chemin)) == [(10, GCODE), (2, "G90")]
+    assert ouvertures == [1]
+
+
+def test_alias_duplique_refuse_avant_la_publication(tmp_path, capsys):
+    """Deux graphies d’une plaque rendent le contrôle non vérifié et la source intacte."""
+    chemin = tmp_path / "alias.3mf"
+    sortie = tmp_path / "nouveau.json"
+    with ZipFile(chemin, "w") as archive:
+        archive.writestr("Metadata/plate_01.gcode", GCODE)
+        archive.writestr("Metadata/plate_1.gcode", GCODE)
+    source = chemin.read_bytes()
+    assert PC.main([str(chemin), "--json", str(sortie)]) == 2
+    message = capsys.readouterr().err
+    assert "NON VÉRIFIÉ" in message and "numéro de plaque dupliqué" in message
+    assert not sortie.exists()
+    assert chemin.read_bytes() == source
+
+
+def test_archive_invalide_ne_publie_pas_de_rapport(tmp_path, capsys):
+    """Une archive incomplète renvoie le diagnostic exact sans verdict de plaque."""
+    chemin = tmp_path / "incomplete.3mf"
+    chemin.write_bytes("Archive de test incomplète".encode("utf-8"))
+    sortie = tmp_path / "nouveau.json"
+    assert PC.main([str(chemin), "--json", str(sortie)]) == 2
+    message = capsys.readouterr().err
+    assert "NON VÉRIFIÉ" in message and "File is not a zip file" in message
+    assert not sortie.exists()
+
+
+def test_resume_borne_priorise_l_erreur_et_garde_le_rapport(tmp_path, monkeypatch, capsys):
+    """Le résumé signale une plaque invalide et garde tous les détails dans le rapport."""
+    source = tmp_path / "source.3mf"
+    source.write_bytes(b"source de test")
+    sortie = tmp_path / "rapport.json"
+    faits = {i: {"statut": "PASS", "defauts": []} for i in range(1, 8)}
+    long = "Ligne 32 : " + "a" * 1000
+    faits[6] = {"statut": "NON VÉRIFIÉ", "detail": long}
+    faits[7] = {"statut": "NON VÉRIFIÉ", "detail": "Ligne 27 : arc non qualifié"}
+    monkeypatch.setattr(PC, "gcodes", lambda _: list(faits.items()))
+    monkeypatch.setattr(PC, "controler", lambda g, *_: g)
+
+    assert PC.main([str(source), "--json", str(sortie), "--resume"]) == 2
+    resume = json.loads(capsys.readouterr().out)
+    rapport = json.loads(sortie.read_text())
+    assert resume["statut"] == "NON VÉRIFIÉ"
+    assert resume["rapport"] == str(sortie)
+    assert resume["plaques_omises"] == 2
+    assert list(resume["plaques"])[:2] == ["plaque 6", "plaque 7"]
+    assert resume["plaques"]["plaque 6"]["detail_tronque"] is True
+    assert resume["plaques"]["plaque 6"]["detail"] == long[:512]
+    assert rapport["plaques"]["plaque 6"]["detail"] == long
+    assert resume["plaques"]["plaque 7"]["detail"] == "Ligne 27 : arc non qualifié"
+    assert len(rapport["plaques"]) == 7
+
+
+def test_detail_est_le_rapport_et_exige_une_sortie(tmp_path, capsys):
+    """L’affichage complet est identique à la preuve publiée et ne l’écrase pas."""
+    source = tmp_path / "source.gcode"
+    source.write_text(GCODE, encoding="utf-8")
+    sortie = tmp_path / "rapport.json"
+    assert PC.main([str(source), "--detail"]) == 2
+    assert "--json" in capsys.readouterr().err
+    assert PC.main([str(source), "--json", str(sortie), "--detail"]) == 0
+    assert capsys.readouterr().out == sortie.read_text()
+
+
+def test_option_resume_ne_devient_pas_le_nom_du_rapport(tmp_path, monkeypatch, capsys):
+    """Une option ne remplace pas le chemin exigé et aucun fichier n’est créé."""
+    source = tmp_path / "source.gcode"
+    source.write_text(GCODE, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert PC.main([str(source), "--json", "--resume"]) == 2
+    assert "Chemin requis après --json" in capsys.readouterr().err
+    assert not (tmp_path / "--resume").exists()

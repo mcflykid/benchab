@@ -1,0 +1,11 @@
+name: Amélioration ou chantier
+description: Proposer une fonction, une refonte ou la qualification d'une autre machine
+labels: [amélioration]
+body:
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Besoin, effet voulu et critères d'acceptation
+      description: Décrire l'effet voulu plutôt qu'une parade technique.
+    validations:
+      required: true

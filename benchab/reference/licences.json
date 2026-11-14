@@ -1,0 +1,1367 @@
+{
+  "schema": 1,
+  "declarations_sha256": "33c11826ff496cc3c8ee842a4922a5c9ebd3dc9560331c85ca8deac4e3bc07aa",
+  "lock_sha256": "dca85e813b481c732f7e916de4ec06924bb88170ce647cc9a42f0df299359e64",
+  "python": [
+    {
+      "nom": "anytree",
+      "version": "2.13.0",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "anytree-2.13.0.dist-info/licenses/LICENSE",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+        }
+      ]
+    },
+    {
+      "nom": "ast-serialize",
+      "version": "0.13.1",
+      "licence": "MIT",
+      "source": "métadonnées et notices de la distribution installée ; groupe de vérification typage",
+      "preuves": [
+        {
+          "fichier": "ast_serialize-0.13.1.dist-info/licenses/LICENSE",
+          "sha256": "db90b8fd0ae1748117ab467680a5193bfd057a3119846cb53ee3b64f16577b3b"
+        },
+        {
+          "fichier": "ast_serialize-0.13.1.dist-info/licenses/crates/LICENSE",
+          "sha256": "2597d854122b77ddc71971564ca2350a37608575ce324adc5650a2b2051c8f18"
+        }
+      ]
+    },
+    {
+      "nom": "asttokens",
+      "version": "3.0.2",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "asttokens-3.0.2.dist-info/licenses/LICENSE",
+          "sha256": "62fb8a3a9621dc2388174caaabe9c2317b694bb9a1d46c98bcf5655b68f51be3"
+        }
+      ]
+    },
+    {
+      "nom": "bd-materials",
+      "version": "0.2.5",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "bd_materials-0.2.5.dist-info/licenses/LICENSE",
+          "sha256": "0ee0cca825feeb0595693bf556b2f0ed99a24aaa6ab52cea871ba6031cebdbbf"
+        }
+      ]
+    },
+    {
+      "nom": "benchab",
+      "version": "dynamique",
+      "licence": "GPL-3.0-or-later",
+      "source": "Licence du dépôt ; version dynamique depuis benchab/__init__.py",
+      "preuves": [
+        {
+          "fichier": "LICENSE",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        }
+      ]
+    },
+    {
+      "nom": "build123d",
+      "version": "0.13.0",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "build123d-0.13.0.dist-info/licenses/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "fichier": "build123d-0.13.0.dist-info/licenses/NOTICE",
+          "sha256": "7b7c0e58f119b8e17eba8faa015ab48dedd1131836d30c8a56fa6dbf56d22ce0"
+        }
+      ]
+    },
+    {
+      "nom": "cadgen",
+      "version": "0.8.4",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "cadgen-0.8.4.dist-info/licenses/LICENSE",
+          "sha256": "c11168234f932c4a39bb640571079e73b178b4459682a5507e5944ad723058b3"
+        }
+      ]
+    },
+    {
+      "nom": "cadquery-ocp-novtk",
+      "version": "8.0.1.1.0",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": []
+    },
+    {
+      "nom": "cadquery-ocp-proxy",
+      "version": "8.0.1.1.0",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": []
+    },
+    {
+      "nom": "certifi",
+      "version": "2026.10.23",
+      "licence": "MPL-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "certifi-2026.10.23.dist-info/licenses/LICENSE",
+          "sha256": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7"
+        }
+      ]
+    },
+    {
+      "nom": "cffi",
+      "version": "2.1.1",
+      "licence": "MIT-0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "cffi-2.1.1.dist-info/licenses/LICENSE",
+          "sha256": "5ba24ddc57067f9249add644c3afc41a5d6dc37e23433ef759d95df370b0af63"
+        }
+      ]
+    },
+    {
+      "nom": "charset-normalizer",
+      "version": "3.5.2",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "charset_normalizer-3.5.2.dist-info/licenses/LICENSE",
+          "sha256": "6d0d41bfe170ac6c7dc248c9a63e254d0fb45a60d50a8257d0af92c6e249b887"
+        }
+      ]
+    },
+    {
+      "nom": "cloudpickle",
+      "version": "3.1.2",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "cloudpickle-3.1.2.dist-info/licenses/LICENSE",
+          "sha256": "3029ea34173e9fdc233ad315dc6b100bd1ea71f529b1c1af97664a272fdc55f5"
+        }
+      ]
+    },
+    {
+      "nom": "colorama",
+      "version": "0.4.6",
+      "licence": "BSD-3-Clause",
+      "source": "https://raw.githubusercontent.com/tartley/colorama/0.4.6/LICENSE.txt",
+      "preuves": []
+    },
+    {
+      "nom": "contourpy",
+      "version": "1.4.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "contourpy-1.4.0.dist-info/licenses/LICENSE",
+          "sha256": "11401c428c7014a75728e8679f9c000aacf262015aaba65a760d41aa1130b3af"
+        }
+      ]
+    },
+    {
+      "nom": "cryptography",
+      "version": "50.0.2",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "cryptography-50.0.2.dist-info/licenses/LICENSE",
+          "sha256": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb"
+        },
+        {
+          "fichier": "cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE",
+          "sha256": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe"
+        },
+        {
+          "fichier": "cryptography-50.0.2.dist-info/licenses/LICENSE.BSD",
+          "sha256": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb"
+        }
+      ]
+    },
+    {
+      "nom": "cycler",
+      "version": "0.12.1",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "cycler-0.12.1.dist-info/LICENSE",
+          "sha256": "f1218143d766da3fea66f13396b7f15df46a83303f29bf96ba6e98eb4d42f408"
+        }
+      ]
+    },
+    {
+      "nom": "dataclasses-json",
+      "version": "0.6.7",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "dataclasses_json-0.6.7.dist-info/LICENSE",
+          "sha256": "52321b55695e8919b7c654b1e8083c57cf212b885f42871bd6c3cdd2dd267f0f"
+        }
+      ]
+    },
+    {
+      "nom": "deprecated",
+      "version": "3.0.1",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "deprecated-3.0.1.dist-info/licenses/LICENSE.md",
+          "sha256": "a210fe0b9e9f2c0123e873f5347e9091f51cfd12863aebbe8da71f24cf804fd2"
+        }
+      ]
+    },
+    {
+      "nom": "editables",
+      "version": "0.6",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "editables-0.6.dist-info/licenses/LICENSE.txt",
+          "sha256": "65f80d840245883efab92f8c70b60cb483d3b734fc95f208364ff69811d602c4"
+        }
+      ]
+    },
+    {
+      "nom": "executing",
+      "version": "2.3.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "executing-2.3.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "a476a2cb0ef4c41450340a577a28b91ac4c7f669136b2ee148047fabd5fc4181"
+        }
+      ]
+    },
+    {
+      "nom": "ezdxf",
+      "version": "1.4.5",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "ezdxf-1.4.5.dist-info/licenses/LICENSE",
+          "sha256": "db97ca426fc0d2b8124145de0f36181db73e6e713ce642d42fed2efc442edf19"
+        }
+      ]
+    },
+    {
+      "nom": "fonttools",
+      "version": "4.68.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "fonttools-4.68.0.dist-info/licenses/LICENSE",
+          "sha256": "6787208f83f659ccbc2223b2fde952ffa6f7e8aca62f1a8a2bf5bc51bb1b2383"
+        },
+        {
+          "fichier": "fonttools-4.68.0.dist-info/licenses/LICENSE.external",
+          "sha256": "94a83aaee0729a0f302d34acc4acecbd9d58366f262429075fe557e4a54b2e69"
+        }
+      ]
+    },
+    {
+      "nom": "greenlet",
+      "version": "3.5.6",
+      "licence": "MIT AND PSF-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "greenlet-3.5.6.dist-info/licenses/LICENSE",
+          "sha256": "769831d6e5dfaf2c20802faccff1fafb4c2025dd8f6253dfa47fcad59d4d0979"
+        },
+        {
+          "fichier": "greenlet-3.5.6.dist-info/licenses/LICENSE.PSF",
+          "sha256": "e5ff3c23c110e494cd7d736c10fd96d462457bafeca310840db6527298c7d46b"
+        }
+      ]
+    },
+    {
+      "nom": "hatchling",
+      "version": "1.33.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "hatchling-1.33.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "7f143a8127ad4873862d70854b5bd2abd0085aa73e64fd2b08704a3b9f5c07fc"
+        },
+        {
+          "fichier": "hatchling/licenses/__init__.py",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "fichier": "hatchling/licenses/supported.py",
+          "sha256": "641fb474d6916e23ea297f2b8d8ae20addad1c8f65e2852e7ca4445e73ed92e6"
+        }
+      ]
+    },
+    {
+      "nom": "idna",
+      "version": "3.20",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "idna-3.20.dist-info/licenses/LICENSE.md",
+          "sha256": "1a9a4f0e3d479a27240ddd59a9137a66ab4a0f9dfdc8ca6188cc0bfd85187f04"
+        }
+      ]
+    },
+    {
+      "nom": "iniconfig",
+      "version": "2.3.1",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "iniconfig-2.3.1.dist-info/licenses/LICENSE",
+          "sha256": "3409fa91f7ace557894632676656e32264fe5ef7581535725dc9a23774551bd4"
+        }
+      ]
+    },
+    {
+      "nom": "ipython",
+      "version": "9.18.1",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "ipython-9.18.1.dist-info/licenses/COPYING.rst",
+          "sha256": "8387aac32433e5b121c355aa9e6ce2b9a399da7edd59ab94b19d4f5326b1ced0"
+        },
+        {
+          "fichier": "ipython-9.18.1.dist-info/licenses/LICENSE",
+          "sha256": "e0e390748ed440ab893ca1f135a88a920aaf5409dbb90a5b427c75c5e51268fb"
+        }
+      ]
+    },
+    {
+      "nom": "ipython-pygments-lexers",
+      "version": "1.1.1",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "ipython_pygments_lexers-1.1.1.dist-info/LICENSE",
+          "sha256": "b1d0dbc0fa79774d34b8e2d0aec91d50d8caf05f7b40fc22c3010a4bd9ad2bf9"
+        }
+      ]
+    },
+    {
+      "nom": "jedi",
+      "version": "0.20.1",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "jedi-0.20.1.dist-info/LICENSE.txt",
+          "sha256": "78e60cd0b8f28694f30195482c33d76908d846b0d15278deb7332aa22ba8e412"
+        },
+        {
+          "fichier": "jedi/third_party/django-stubs/LICENSE.txt",
+          "sha256": "235e993965d399a25e7d493d25c8622f78718510884b9c051f1f1866b6f34e9d"
+        },
+        {
+          "fichier": "jedi/third_party/typeshed/LICENSE",
+          "sha256": "295f8538c94ae5c3043301cf7cff1c852dab6a786a8ddee471e061b40d5ecabe"
+        }
+      ]
+    },
+    {
+      "nom": "joblib",
+      "version": "1.6.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "joblib-1.6.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "42612911c1872c5e4b43f6ae0e8ee59467cd350332241cf72ce90640264fae6a"
+        }
+      ]
+    },
+    {
+      "nom": "kiwisolver",
+      "version": "1.5.1",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "kiwisolver-1.5.1.dist-info/licenses/LICENSE",
+          "sha256": "529c40e5f67f2f88904657a9f7879ae2f8dc76bc9bfef9cb10d988b48804ed61"
+        }
+      ]
+    },
+    {
+      "nom": "lib3mf",
+      "version": "2.5.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "lib3mf-2.5.0.dist-info/LICENSE",
+          "sha256": "34d8c9d9147e6550fa46f7f1184bf03bbf3e3495051b87695191525663b0fc58"
+        }
+      ]
+    },
+    {
+      "nom": "librt",
+      "version": "0.16.0",
+      "licence": "MIT",
+      "source": "métadonnées et notices de la distribution installée ; groupe de vérification typage",
+      "preuves": [
+        {
+          "fichier": "librt-0.16.0.dist-info/licenses/LICENSE",
+          "sha256": "88f9e379c684580053c58e75e296ca2eb243b6edcc6e5357f247310e96eeef8a"
+        }
+      ]
+    },
+    {
+      "nom": "manifold3d",
+      "version": "3.5.4",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "manifold3d-3.5.4.dist-info/licenses/AUTHORS",
+          "sha256": "074a43d4b1626a34a0a14a036d00100524dd463604b2570c4d76c7baa63608f3"
+        },
+        {
+          "fichier": "manifold3d-3.5.4.dist-info/licenses/LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ]
+    },
+    {
+      "nom": "mapbox-earcut",
+      "version": "2.1.0",
+      "licence": "ISC",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "mapbox_earcut-2.1.0.dist-info/licenses/LICENSE.md",
+          "sha256": "89ad38409121961753c5aa8863eceacd954183e9b3a7720d88be53fb1a3ecd87"
+        }
+      ]
+    },
+    {
+      "nom": "marshmallow",
+      "version": "3.26.2",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "marshmallow-3.26.2.dist-info/licenses/LICENSE",
+          "sha256": "906b5d9051e426144cb173ad911667b8ebd05a9c584c2c26c135b32a3ed12001"
+        }
+      ]
+    },
+    {
+      "nom": "matplotlib",
+      "version": "3.11.2",
+      "licence": "LicenseRef-Matplotlib",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "matplotlib-3.11.2.dist-info/LICENSE",
+          "sha256": "822e8e528147569a41975592aee19c11992ab667ba50451cd929031d5fc74491"
+        },
+        {
+          "fichier": "matplotlib/mpl-data/fonts/ttf/LICENSE_DEJAVU",
+          "sha256": "d75938dec098f06f0ac3c00853065d94f020be1c3c62ef1dc2975ba15b4d9b0e"
+        },
+        {
+          "fichier": "matplotlib/mpl-data/fonts/ttf/LICENSE_STIX",
+          "sha256": "bab3d31dfef07f483624f2f65f2711e76065b8e7273278b1c071ede1041c9959"
+        }
+      ]
+    },
+    {
+      "nom": "matplotlib-inline",
+      "version": "0.2.2",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "matplotlib_inline-0.2.2.dist-info/licenses/LICENSE",
+          "sha256": "8521b036c6448e0e0aa7213d4713b6fdee0f4c64c9f320450f77346bf5c0e8e4"
+        }
+      ]
+    },
+    {
+      "nom": "meshoptimizer",
+      "version": "0.2.30a0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": []
+    },
+    {
+      "nom": "mpmath",
+      "version": "1.3.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "mpmath-1.3.0.dist-info/LICENSE",
+          "sha256": "c26cae81da4508e5e249985777a33821f183223ebb74d7f8cfbf90fe7eef2fb7"
+        }
+      ]
+    },
+    {
+      "nom": "mypy",
+      "version": "2.4.1",
+      "licence": "MIT AND Apache-2.0",
+      "source": "métadonnées et notices de la distribution installée ; groupe de vérification typage",
+      "preuves": [
+        {
+          "fichier": "mypy-2.4.1.dist-info/licenses/LICENSE",
+          "sha256": "fdf1cd17f50e1305ed8cfd37467312d27a984648dba622cef70573b5512e4e1b"
+        },
+        {
+          "fichier": "mypy-2.4.1.dist-info/licenses/mypy/typeshed/LICENSE",
+          "sha256": "295f8538c94ae5c3043301cf7cff1c852dab6a786a8ddee471e061b40d5ecabe"
+        }
+      ]
+    },
+    {
+      "nom": "mypy-extensions",
+      "version": "1.2.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "mypy_extensions-1.2.0.dist-info/licenses/LICENSE",
+          "sha256": "a50450da1d53cd777b80ced77c58ff96abe0ccd879706bd142c3ec20e245f0b4"
+        }
+      ]
+    },
+    {
+      "nom": "narwhals",
+      "version": "2.28.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "narwhals-2.28.0.dist-info/licenses/LICENSE.md",
+          "sha256": "811445f30147b8f0c9d444c9025fd528f9532c54b7b83f6e2368473dc91cfdf0"
+        }
+      ]
+    },
+    {
+      "nom": "networkx",
+      "version": "3.7",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "networkx-3.7.dist-info/licenses/LICENSE.txt",
+          "sha256": "6025f323ea29dc2f0ee0abd9523bf910186f55b0e148e6ebf646c55566278e2e"
+        }
+      ]
+    },
+    {
+      "nom": "numpy",
+      "version": "2.5.4",
+      "licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/LICENSE.txt",
+          "sha256": "649a589ab31076e79e9ce62ba24eae9959598124176640dbc95f87bd10f34fcf"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/_core/include/numpy/libdivide/LICENSE.txt",
+          "sha256": "fbc539f47d0cf83bc61378080fb873d5c14630126cacbfe754035c3926daa5ec"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/_core/src/common/pythoncapi-compat/COPYING",
+          "sha256": "3f2c1ffa76383a55ae0aac01c9737cd70050dff63e1f026694fbe9d662573c98"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/_core/src/highway/LICENSE",
+          "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/_core/src/multiarray/dragon4_LICENSE.txt",
+          "sha256": "f7b14309e5f54e5022b26448eefd419988ada2aec01d3c1162d84a0ea8f21f2c"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/_core/src/npysort/x86-simd-sort/LICENSE.md",
+          "sha256": "211e7d737d6179a08f791ebb0a99897ce7cd2457410c542876d125576edfe910"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/_core/src/umath/svml/LICENSE",
+          "sha256": "c17011467b4fe6e20fbfbeda4df09e58c2bca5480a063e55735a4000a379aad9"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/fft/pocketfft/LICENSE.md",
+          "sha256": "a85ca13fdf90160b64a0698215868c13b74d835ad0a4e2ba44713b8c5058a056"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/linalg/lapack_lite/LICENSE.txt",
+          "sha256": "a14cc25e10d40a3aa705b7de2fb764a6535d8ee9b2db4e1724900585457dfd55"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/ma/LICENSE",
+          "sha256": "05f3b88351988ecfad10abe92c0c50e5875c6452d5009a0084cc291551ffcca6"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/random/LICENSE.md",
+          "sha256": "103166b62b80443afb9eb3488e052ea06be0cff566b908f199e561fde49af19f"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/random/src/distributions/LICENSE.md",
+          "sha256": "469778be8f33d54e1bcaab28c281cc472916d2d273f835e55bc487d30503face"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/random/src/mt19937/LICENSE.md",
+          "sha256": "0e111337b25494a773106695f0e799f642b8567aaacca4f116a74a8177179156"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md",
+          "sha256": "e7d4f4fb20358f314210a892ae17351e04993813646f697ec387385ca2a36918"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/random/src/philox/LICENSE.md",
+          "sha256": "6f5828a57223d4cc7f8ea505a2623e7b978b242752c1515e355f46ba2cec1800"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/random/src/sfc64/LICENSE.md",
+          "sha256": "9d4098846018319cd68e228ee6220361787f73bccbf00237a85e4fc9621b998f"
+        },
+        {
+          "fichier": "numpy-2.5.4.dist-info/licenses/numpy/random/src/splitmix64/LICENSE.md",
+          "sha256": "268b0ca06759d31ea3ca68dd35f20e877916e927b1c2a835e4592a3c4354b1f9"
+        },
+        {
+          "fichier": "numpy/_core/include/numpy/random/LICENSE.txt",
+          "sha256": "fbc539f47d0cf83bc61378080fb873d5c14630126cacbfe754035c3926daa5ec"
+        },
+        {
+          "fichier": "numpy/ma/LICENSE",
+          "sha256": "05f3b88351988ecfad10abe92c0c50e5875c6452d5009a0084cc291551ffcca6"
+        },
+        {
+          "fichier": "numpy/random/LICENSE.md",
+          "sha256": "103166b62b80443afb9eb3488e052ea06be0cff566b908f199e561fde49af19f"
+        }
+      ]
+    },
+    {
+      "nom": "ocp-gordon",
+      "version": "0.3.1",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "ocp_gordon-0.3.1.dist-info/licenses/LICENSE",
+          "sha256": "7bb09ea8b8d885a5012a8da97c3e8929130e0019f8c62e17bc4def88e9bd2594"
+        }
+      ]
+    },
+    {
+      "nom": "ocpsvg",
+      "version": "0.7.0",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "ocpsvg-0.7.0.dist-info/licenses/LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ]
+    },
+    {
+      "nom": "packaging",
+      "version": "26.3",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "packaging-26.3.dist-info/licenses/LICENSE",
+          "sha256": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48"
+        },
+        {
+          "fichier": "packaging-26.3.dist-info/licenses/LICENSE.APACHE",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "fichier": "packaging-26.3.dist-info/licenses/LICENSE.BSD",
+          "sha256": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5"
+        },
+        {
+          "fichier": "packaging/licenses/__init__.py",
+          "sha256": "590d12eee73ddbec53b4e9ee5bfc64d9cb3aacb4940e8ebcba260757ce56740b"
+        },
+        {
+          "fichier": "packaging/licenses/_spdx.py",
+          "sha256": "596ec35e2ca0ebcba9fd8343ff0a51625af548786257815f24b41f7e08613314"
+        }
+      ]
+    },
+    {
+      "nom": "parso",
+      "version": "0.8.7",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "parso-0.8.7.dist-info/LICENSE.txt",
+          "sha256": "fa67973073753d17624caf8684d5ee816d70c89d912c5bca7ca0f08e7b150edb"
+        }
+      ]
+    },
+    {
+      "nom": "pathspec",
+      "version": "1.1.1",
+      "licence": "MPL-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pathspec-1.1.1.dist-info/licenses/LICENSE",
+          "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+        }
+      ]
+    },
+    {
+      "nom": "pexpect",
+      "version": "4.9.0",
+      "licence": "ISC",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pexpect-4.9.0.dist-info/LICENSE",
+          "sha256": "4a483ae1c4dc738a6c8b73feb49074e1835da02ab5aa686f2675029906fa364d"
+        }
+      ]
+    },
+    {
+      "nom": "pillow",
+      "version": "13.0.0",
+      "licence": "MIT-CMU",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pillow-13.0.0.dist-info/licenses/LICENSE",
+          "sha256": "dda12a98c1979cf3d94df1cff45d27a4cb3f04a60c76f76902ac54cac03ec0ce"
+        }
+      ]
+    },
+    {
+      "nom": "platformdirs",
+      "version": "4.14.5",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "platformdirs-4.14.5.dist-info/licenses/LICENSE",
+          "sha256": "29e0fd62e929850e86eb28c3fdccf0cefdf4fa94879011cffb3d0d4bed6d4db6"
+        }
+      ]
+    },
+    {
+      "nom": "playwright",
+      "version": "1.64.1",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "playwright-1.64.1.dist-info/licenses/LICENSE",
+          "sha256": "7fab1461b41970ff376f1c9303a637076bfaaeb71cd12dd3a1c44aaf59a1a2b9"
+        },
+        {
+          "fichier": "playwright/driver/LICENSE",
+          "sha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+        },
+        {
+          "fichier": "playwright/driver/package/LICENSE",
+          "sha256": "45873d00a0dd243596deb4aa23b2493b3d1f0671921bf2538ea431d7380220eb"
+        },
+        {
+          "fichier": "playwright/driver/package/lib/serverRegistry.js.LICENSE",
+          "sha256": "3098a6efcbc11752cbdf6075fa65480f5470f78c8d981fab9c0796dc9a41cefe"
+        },
+        {
+          "fichier": "playwright/driver/package/lib/utilsBundle.js.LICENSE",
+          "sha256": "1362b7f413c08083af537384162ab69a323d019fe26e0a2cd78536fafd6b9cbf"
+        },
+        {
+          "fichier": "playwright/driver/package/lib/webp_codec.LICENSE",
+          "sha256": "995c7ee35aceb7666829b7a501ca89c0864e12b493c1174b155774ab1e03d831"
+        }
+      ]
+    },
+    {
+      "nom": "pluggy",
+      "version": "1.7.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pluggy-1.7.0.dist-info/licenses/LICENSE",
+          "sha256": "d6b65e6c213a5d0b577911d34d6e5949b9f59d76c238c5071a2f3fc16cfb2606"
+        }
+      ]
+    },
+    {
+      "nom": "prompt-toolkit",
+      "version": "3.0.53",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "prompt_toolkit-3.0.53.dist-info/licenses/AUTHORS.rst",
+          "sha256": "d3dc62c6bc8436658495ab89aea37511e7fa9391d282657239c9cfb80dbd42e5"
+        },
+        {
+          "fichier": "prompt_toolkit-3.0.53.dist-info/licenses/LICENSE",
+          "sha256": "303574d9bdd85c757d6025017942bf17baeedf2778f62bd7f425d07d880f4c4a"
+        }
+      ]
+    },
+    {
+      "nom": "psutil",
+      "version": "7.2.2",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "psutil-7.2.2.dist-info/LICENSE",
+          "sha256": "b89c063b3786e28e0c0a38f1931db61fed35e69dd2a2966fbecffee0f46c8d10"
+        }
+      ]
+    },
+    {
+      "nom": "ptyprocess",
+      "version": "0.7.0",
+      "licence": "ISC",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "ptyprocess-0.7.0.dist-info/LICENSE",
+          "sha256": "c822d385b1a73329846241799becf18690b5d44764c1bed69300b536a405030a"
+        }
+      ]
+    },
+    {
+      "nom": "pure-eval",
+      "version": "0.2.4",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pure_eval-0.2.4.dist-info/licenses/LICENSE.txt",
+          "sha256": "a476a2cb0ef4c41450340a577a28b91ac4c7f669136b2ee148047fabd5fc4181"
+        }
+      ]
+    },
+    {
+      "nom": "py-lib3mf",
+      "version": "2.5.0",
+      "licence": "Apache-2.0 AND BSD-2-Clause AND MIT AND Zlib",
+      "source": "https://raw.githubusercontent.com/jdegenstein/py-lib3mf/main/License.txt ; LICENSE-3RD-PARTY.txt (sources éditeur lues le 05/11/2026)",
+      "preuves": []
+    },
+    {
+      "nom": "pycparser",
+      "version": "3.12",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pycparser-3.12.dist-info/licenses/LICENSE",
+          "sha256": "0a9e78156ae8b96caf1b4f11ac2df424b83de29736f9e757630548a6272fdf90"
+        }
+      ]
+    },
+    {
+      "nom": "pyee",
+      "version": "14.0.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pyee-14.0.0.dist-info/licenses/LICENSE",
+          "sha256": "1ff556ca206b107f10e1c562ae454d3292e0296c3510eb90eb7f114caee32a66"
+        }
+      ]
+    },
+    {
+      "nom": "pygltflib",
+      "version": "1.16.5",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pygltflib-1.16.5.dist-info/licenses/LICENSE",
+          "sha256": "d8559cc854e956ee3e134756a93ba49c2fe8c2c9e5960d798ee2fdc4b8d33abc"
+        }
+      ]
+    },
+    {
+      "nom": "pygments",
+      "version": "2.21.0",
+      "licence": "BSD-2-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pygments-2.21.0.dist-info/licenses/AUTHORS",
+          "sha256": "71a83872ad82f57be692cf827e048e2cd51d45169cfa1ea3f28706d97a872c0f"
+        },
+        {
+          "fichier": "pygments-2.21.0.dist-info/licenses/LICENSE",
+          "sha256": "a9d66f1d526df02e29dce73436d34e56e8632f46c275bbdffc70569e882f9f17"
+        }
+      ]
+    },
+    {
+      "nom": "pymeshlab",
+      "version": "2025.7.post1",
+      "licence": "GPL-3.0-only",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pymeshlab-2025.7.post1.dist-info/licenses/LICENSE",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        }
+      ]
+    },
+    {
+      "nom": "pyparsing",
+      "version": "3.3.3",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pyparsing-3.3.3.dist-info/licenses/LICENSE",
+          "sha256": "a5425f9dc14ac74d4c5f0b679e941f2442e32cca7452a4418d5b1a49893ebe4e"
+        }
+      ]
+    },
+    {
+      "nom": "pypdf",
+      "version": "7.0.1",
+      "licence": "BSD-3-Clause",
+      "source": "notice du wheel pypdf 7.0.1 ; PyPI provenance vérifiée depuis py-pdf/pypdf",
+      "preuves": [
+        {
+          "fichier": "pypdf-7.0.1.dist-info/licenses/LICENSE",
+          "sha256": "a97ac230e5f33ef10a5367a850eb01f91f1a0b064e34742c7794d2294557f524"
+        }
+      ]
+    },
+    {
+      "nom": "pytest",
+      "version": "9.2.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "pytest-9.2.0.dist-info/licenses/LICENSE",
+          "sha256": "ca836a5f9ecca3b2f350230faa20a48fb8b145653b5568d784862df864706b9b"
+        }
+      ]
+    },
+    {
+      "nom": "python-dateutil",
+      "version": "4.0.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "python_dateutil-4.0.0.dist-info/licenses/AUTHORS.md",
+          "sha256": "56004c45a95e9ee5582ea60f9a7ee42179c8594c7b9c245bbfb4a3445b4af640"
+        },
+        {
+          "fichier": "python_dateutil-4.0.0.dist-info/licenses/LICENSE",
+          "sha256": "ba00f51a0d92823b5a1cde27d8b5b9d2321e67ed8da9bc163eff96d5e17e577e"
+        }
+      ]
+    },
+    {
+      "nom": "requests",
+      "version": "2.34.2",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "requests-2.34.2.dist-info/licenses/LICENSE",
+          "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b"
+        },
+        {
+          "fichier": "requests-2.34.2.dist-info/licenses/NOTICE",
+          "sha256": "f5110972dedad2b4e9d314518daf3b7d72d6e02e499acd802181de6f74571dcc"
+        }
+      ]
+    },
+    {
+      "nom": "rtree",
+      "version": "1.4.1",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "rtree-1.4.1.dist-info/licenses/LICENSE.txt",
+          "sha256": "2e3e6e756da9258484bdd0e81dcd57c9094a58ca23c37c79b14cc23eeb6b7b21"
+        }
+      ]
+    },
+    {
+      "nom": "ruff",
+      "version": "0.17.3",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "ruff-0.17.3.dist-info/licenses/LICENSE",
+          "sha256": "2597d854122b77ddc71971564ca2350a37608575ce324adc5650a2b2051c8f18"
+        }
+      ]
+    },
+    {
+      "nom": "scikit-learn",
+      "version": "1.9.1",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "scikit_learn-1.9.1.dist-info/licenses/COPYING",
+          "sha256": "fc8dc597df0e3f51da65e2a71021e7f92e0b481998ec572a53c03ac0441db040"
+        },
+        {
+          "fichier": "sklearn/externals/array_api_compat/LICENSE",
+          "sha256": "4ffd978e3fa18d058d98c66771cfea7ed634aaf7023cf9612b8b55eee9a8f0fe"
+        },
+        {
+          "fichier": "sklearn/externals/array_api_extra/LICENSE",
+          "sha256": "58494398fe147fdce76a68b2decd4c08ce3a1ea237b6d6785001c15f822c6ed6"
+        }
+      ]
+    },
+    {
+      "nom": "scipy",
+      "version": "1.18.1",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "scipy-1.18.1.dist-info/LICENSE.txt",
+          "sha256": "09a1b9e19573045b0784a181cc4bef677039d4f2111631c747bf72b7f19017d4"
+        },
+        {
+          "fichier": "scipy/_lib/_uarray/LICENSE",
+          "sha256": "c80c39b5fce06ba4897e14e0b0a88b54458334d951eb1361402ffad2cfb863b4"
+        },
+        {
+          "fichier": "scipy/fft/_duccfft/LICENSE.md",
+          "sha256": "c254b2b5fd30ae3c89d36ba061730563b9760fca04f1b746a1b2c3157da2c789"
+        },
+        {
+          "fichier": "scipy/integrate/LICENSE_DOP",
+          "sha256": "ed9bf58c6d74d3fad9d92d1d67d9bff8141d8ab60de784516b0711364fd43357"
+        },
+        {
+          "fichier": "scipy/spatial/qhull_src/COPYING_QHULL.txt",
+          "sha256": "106d55c931fd6a84822e5345d900273d059f1c27310d02567ccb313c5d18c55d"
+        }
+      ]
+    },
+    {
+      "nom": "shapely",
+      "version": "2.2.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "shapely-2.2.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "4a207eac9bf257ed286e1c6f0fce253d1abfdb134fc61ec855e37f5692a3f754"
+        },
+        {
+          "fichier": "shapely-2.2.0.dist-info/licenses/LICENSE_GEOS",
+          "sha256": "81d9aaf9ab7e3e6184568a70f27ee3e138d8d1e543b46dad5af88cff61cf1b36"
+        }
+      ]
+    },
+    {
+      "nom": "stack-data",
+      "version": "0.6.3",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "stack_data-0.6.3.dist-info/LICENSE.txt",
+          "sha256": "a476a2cb0ef4c41450340a577a28b91ac4c7f669136b2ee148047fabd5fc4181"
+        }
+      ]
+    },
+    {
+      "nom": "svgelements",
+      "version": "1.9.6",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "svgelements-1.9.6.dist-info/LICENSE",
+          "sha256": "897fa8febce28d8ba54db004219fde6e0ab95fdb92b54afe3c48277c1b2beebd"
+        }
+      ]
+    },
+    {
+      "nom": "svgpathtools",
+      "version": "1.8.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "svgpathtools-1.8.0.dist-info/LICENSE.txt",
+          "sha256": "e61b5f4e69dcb874e07ee26762113879ec326a7c98c75c9aa2c8ea5453b4e495"
+        }
+      ]
+    },
+    {
+      "nom": "svgwrite",
+      "version": "1.4.3",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "svgwrite-1.4.3.dist-info/LICENSE.TXT",
+          "sha256": "1813a7553de927e8865345b1051c36d741b70d0e9fcab2572df673a18f936629"
+        }
+      ]
+    },
+    {
+      "nom": "sympy",
+      "version": "1.14.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "sympy-1.14.0.dist-info/licenses/AUTHORS",
+          "sha256": "82b1038521b0696c63c90b31ed4a0a2c9c4c16871c648b157b07ca44b6f18f8d"
+        },
+        {
+          "fichier": "sympy-1.14.0.dist-info/licenses/LICENSE",
+          "sha256": "07a5e9819f727b4986ad2829c7a29a6320d42575f720eb24d71b7fef573a0286"
+        },
+        {
+          "fichier": "sympy/parsing/latex/LICENSE.txt",
+          "sha256": "007bc30a58fa40a996e772047120de4eaf31f5110e4f9c3b5f93fcdfbe2eaca1"
+        }
+      ]
+    },
+    {
+      "nom": "threadpoolctl",
+      "version": "3.7.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "threadpoolctl-3.7.0.dist-info/licenses/LICENSE",
+          "sha256": "81ac619075248b06e53660b652d10e485f4675f5d0ae0f97ea22370da1f7e23b"
+        }
+      ]
+    },
+    {
+      "nom": "threejs-materials",
+      "version": "1.2.5",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "threejs_materials-1.2.5.dist-info/licenses/LICENSE",
+          "sha256": "4f1bc75884276d6446f99e14132c32370b323c1f07dcee5da8e6d15856529c0b"
+        }
+      ]
+    },
+    {
+      "nom": "tomlkit",
+      "version": "0.15.2",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "tomlkit-0.15.2.dist-info/licenses/LICENSE",
+          "sha256": "f2f9b460ba719da6626add264d3782f275a4ff7aab677beda08b330911e23adb"
+        }
+      ]
+    },
+    {
+      "nom": "traitlets",
+      "version": "5.16.1",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "traitlets-5.16.1.dist-info/licenses/LICENSE",
+          "sha256": "2f51727d9063b54856773cb51388bdb79f2936ee4a1b692ef553d8c4201311ab"
+        }
+      ]
+    },
+    {
+      "nom": "trianglesolver",
+      "version": "1.2",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "trianglesolver-1.2.dist-info/LICENSE.txt",
+          "sha256": "837b3221d59cd9c31ad3685738b61f296b4ad9ce4f508051151e313d46dbcf27"
+        }
+      ]
+    },
+    {
+      "nom": "trimesh",
+      "version": "5.2.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "trimesh-5.2.0.dist-info/licenses/LICENSE.md",
+          "sha256": "fe27b5ef8710676cc85255da28a32f394e2ef3f4ce47075a1c732a9ea1d7bd03"
+        }
+      ]
+    },
+    {
+      "nom": "trove-classifiers",
+      "version": "2026.9.21.13",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "trove_classifiers-2026.9.21.13.dist-info/licenses/LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ]
+    },
+    {
+      "nom": "typing-extensions",
+      "version": "4.16.0",
+      "licence": "PSF-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "typing_extensions-4.16.0.dist-info/licenses/LICENSE",
+          "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+        }
+      ]
+    },
+    {
+      "nom": "typing-inspect",
+      "version": "0.9.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "typing_inspect-0.9.0.dist-info/LICENSE",
+          "sha256": "f9d3567d00ca2337f769fb28c553cc590213ecefed4ed599110c10ded2ea0117"
+        }
+      ]
+    },
+    {
+      "nom": "tzdata",
+      "version": "2026.6",
+      "licence": "Apache-2.0",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "tzdata-2026.6.dist-info/licenses/LICENSE",
+          "sha256": "df58f69ea88683035d720b5375bcef0cf5aeaa98a1d098d572e0992c378deb46"
+        },
+        {
+          "fichier": "tzdata-2026.6.dist-info/licenses/licenses/LICENSE_APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ]
+    },
+    {
+      "nom": "urllib3",
+      "version": "2.8.0",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "urllib3-2.8.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686"
+        }
+      ]
+    },
+    {
+      "nom": "wcwidth",
+      "version": "0.9.4",
+      "licence": "MIT",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "wcwidth-0.9.4.dist-info/licenses/LICENSE",
+          "sha256": "70b98a95a2144eb70af8017fa8c6d95ce247e40867436e8bc649e137fe13d21a"
+        }
+      ]
+    },
+    {
+      "nom": "webcolors",
+      "version": "24.8.0",
+      "licence": "BSD-3-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "webcolors-24.8.0.dist-info/LICENSE",
+          "sha256": "224bb9063d1204f687477a680fab945debff8cf717c629510c1d7083d9a7969a"
+        }
+      ]
+    },
+    {
+      "nom": "wrapt",
+      "version": "2.5.2",
+      "licence": "BSD-2-Clause",
+      "source": "métadonnées et licence de la distribution installée",
+      "preuves": [
+        {
+          "fichier": "wrapt-2.5.2.dist-info/licenses/LICENSE",
+          "sha256": "d4f66854a24dda2f2a5282912aedebe6b18186b86284510a433d78fadcd88e5d"
+        }
+      ]
+    }
+  ],
+  "integres": [
+    {
+      "fichier": "benchab/visualisation/vendor/three-0.160.0/LICENSE",
+      "licence": "MIT",
+      "sha256": "852e0e8699169bf9f6fdc6bda3e682d078dcbc738b5d33e74df594721bff271d"
+    },
+    {
+      "fichier": "benchab/tiers/text-to-cad-LICENSE.txt",
+      "licence": "MIT",
+      "sha256": "c11168234f932c4a39bb640571079e73b178b4459682a5507e5944ad723058b3"
+    },
+    {
+      "fichier": "benchab/tiers/modeling-LICENSE.txt",
+      "licence": "MIT",
+      "sha256": "f6b81424dc822e991ecdead0506e348881c24de61c6d54624b1d944fce7a764b"
+    }
+  ]
+}

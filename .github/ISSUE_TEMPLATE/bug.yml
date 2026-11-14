@@ -1,0 +1,33 @@
+name: Bug
+description: Signaler un comportement incorrect reproductible, sans donnée privée
+labels: [bug]
+body:
+  - type: textarea
+    id: constat
+    attributes:
+      label: Comportement observé et attendu
+      description: Statut obtenu (PASS, WARN, FAIL, NON VÉRIFIÉ) et statut attendu.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: BENCHAB, macOS, slicer, imprimante.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Commande et étapes de reproduction
+      description: Commande exacte. Aucun projet privé, modèle tiers, identifiant de compte ni chemin personnel.
+    validations:
+      required: true
+  - type: dropdown
+    id: nature
+    attributes:
+      label: Nature du constat
+      options:
+        - Contrôle numérique
+        - Observation à l'impression
+        - Lecture du code, non reproduit
+    validations:
+      required: true

@@ -1,0 +1,61 @@
+[machine]
+nom = "Anycubic Kobra S1 Combo"
+modeles_slicer = ["Anycubic Kobra S1", "Anycubic Kobra S1 Combo"]
+buse_mm = 0.4
+buse_matiere = "laiton"
+plateau = "PEI texturé"
+
+[placement]
+zone_min_mm = [10.0, 10.0]
+zone_max_mm = [240.0, 240.0]
+pas_interface_mm = 314.4
+pas_cli_mm = 300.0
+plateau_xy_mm = [250.0, 250.0]
+marge_objet_mm = 4.0
+plateau_xyz_mm = [250.0, 250.0, 250.0]
+zone_etude_mm = [230.0, 230.0, 240.0]
+
+[ace]
+nom = "ACE 2 Pro"
+
+[slicer]
+nom = "Anycubic Slicer Next"
+version_qualifiee = "2.0.0.3"
+executable = "/Applications/AnycubicSlicerNext.app/Contents/MacOS/AnycubicSlicerNext"
+# Binaire des sondes documentaires du 05/11/2026 ; autre empreinte = aucune restauration de matrice.
+# Voir docs/reference/integrite-3mf.md. Aucun réglage machine n'en est déduit.
+sha256_binaire_matrices_origine = "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d"
+plaques_max = 30
+
+[visionneuse]
+port = 8771
+
+[mouvement]
+mode_par_defaut = "standard"
+source = "AnycubicSlicerNext.app/Contents/Resources/profiles/Anycubic/machine/Anycubic Kobra S1 0.4 nozzle.json"
+date_releve = "2026-11-05"
+source_sha256 = "45686cb9f508c106db43c038390fbc0ea1aa73112cb7e49b9a925494df0dfefb"
+
+[mouvement.standard]
+vitesse_max_mm_s = { x = 600, y = 600, z = 15, e = 600 }
+acceleration_max_mm_s2 = { x = 20000, y = 20000, z = 1000, e = 20000 }
+jerk_max_mm_s = { x = 15, y = 15, z = 15, e = 15 }
+acceleration_extrusion_max_mm_s2 = 20000.0
+acceleration_retraction_max_mm_s2 = 20000.0
+acceleration_deplacement_max_mm_s2 = 20000.0
+
+[mouvement.silencieux]
+vitesse_max_mm_s = { x = 300, y = 300, z = 7.5, e = 300 }
+acceleration_max_mm_s2 = { x = 20000, y = 20000, z = 1000, e = 20000 }
+jerk_max_mm_s = { x = 15, y = 15, z = 15, e = 15 }
+acceleration_extrusion_max_mm_s2 = 20000.0
+acceleration_retraction_max_mm_s2 = 20000.0
+acceleration_deplacement_max_mm_s2 = 20000.0
+
+[mouvement.sport]
+vitesse_max_mm_s = { x = 780, y = 780, z = 19.5, e = 780 }
+acceleration_max_mm_s2 = { x = 20000, y = 20000, z = 1000, e = 20000 }
+jerk_max_mm_s = { x = 15, y = 15, z = 15, e = 15 }
+acceleration_extrusion_max_mm_s2 = 20000.0
+acceleration_retraction_max_mm_s2 = 20000.0
+acceleration_deplacement_max_mm_s2 = 20000.0

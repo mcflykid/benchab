@@ -1,0 +1,151 @@
+# Continuité de la paroi extérieure
+
+Le plan modal G17/G18/G19 est conservé entre les lignes. Seuls les arcs en
+G17 XY sont mesurés ; un arc dans un autre plan est refusé sans modifier la
+position, l’avance ou la dette de rétraction. Un retour explicite à G17 est
+reconnu. Le champ `deposition_start` vaut `None` pour un arc. La géométrie
+commune calcule le premier point réellement déposé sur le cercle exact, après
+la dette de rétraction, sans remplacer l’arc par une corde (suite #123).
+
+La commande accepte `--sortie prive/rapports/continuite.json` pour un export
+JSON neuf, identique au rapport affiché par défaut, avec chemin source, plaque
+et SHA-256. Avec `--sortie`, `--resume` affiche le verdict, les compteurs,
+les avertissements et le chemin du rapport détaillé, sans changer le code de
+sortie ni les données publiées (suite de #35).
+Une destination existante, une entrée ou une préparation figée ne sont jamais
+écrasées. `--bandes-z 5` ajoute une synthèse par bandes de 5 mm sans retirer
+les mesures par couche ni modifier le verdict. Les bandes couvrent la fenêtre Z
+explicite, sinon les hauteurs mesurées : `[min, max)`, dernière borne haute
+incluse. La dernière bande partielle et les bandes vides sont conservées ;
+une bande vide reste NON VÉRIFIÉE. Le budget est limité à 10 000 bandes.
+
+Ce contrôle mesure les trajectoires d’extrusion marquées `Outer wall` par le slicer. Il ne prédit pas la qualité physique.
+
+Pour chaque hauteur de couche, le rapport compte les morceaux continus, les segments extrudés et les segments de moins
+de 0,3 mm. Un déplacement sans dépôt, une rétraction ou un changement de rôle rompt la continuité. Les positions,
+l’extrusion absolue ou relative et les remises à zéro de l’extrudeur sont interprétées avant le comptage.
+Le lecteur commun suit l’axe E et sa dette de rétraction ; un changement d’outil coupe la continuité sans effacer
+cette dette. Tn est une identité numérique, sans limitation artificielle à T0–T3 et sans qualification du routage matériel.
+Les mouvements linéaires compacts valides et les alias G00/G01 sont mesurés. Le dialecte d’arc explicitement reconnu
+est limité à G17 XY, I/J relatifs au point de départ ou R signé, avec sens horaire G2 et antihoraire G3 ; les cercles
+complets exigent I/J. La longueur XY est calculée par rayon et angle, sans segments polygonaux ; une hélice Z ajoute
+sa course par la longueur euclidienne exacte. La durée nominale vaut longueur / F lorsque F est connu. Cette mesure
+géométrique ne valide ni l’interpolation du micrologiciel ni le trajet physique. G18/G19, I/J absolus, tours P,
+paramètres supplémentaires et géométries incohérentes restent `NON VÉRIFIÉ` et ne modifient pas l’état.
+Cette grammaire suit les arcs G17 à centres relatifs décrits par la documentation primaire
+[LinuxCNC G-code](https://www.linuxcnc.org/docs/html/gcode/g-code.html) ; elle ne revendique pas une compatibilité
+avec les autres firmwares.
+
+G92 XYZ redéfinit les coordonnées de commande sans déplacer le repère spatial continu. Dans l’API du lecteur, `xyz`
+garde les coordonnées commandées et `spatial_xyz` garde la trajectoire continue ; `start`, `end`, `spatial_start` et
+`spatial_end` décrivent cette dernière en mm. Les couches et la continuité sont calculées dans ce repère ; E et sa
+dette ne sont pas remis à zéro par G92 XYZ. Un G92 E ne change que le repère de l’extrudeur. Un format invalide
+reste `NON VÉRIFIÉ`.
+
+La continuité de paroi compte les arcs G17 à Z strictement constant uniquement
+quand le slicer les marque comme paroi extérieure. Elle utilise la longueur
+analytique et le premier point déposé calculé après la dette de rétraction ; le
+seuil historique de raccord de 0,02 mm reste inchangé. Les hélices, autres
+plans, rôles d’arc non reconnus et géométries incohérentes rendent la couverture
+NON VÉRIFIÉE. Les arcs n’établissent qu’une continuité numérique des trajectoires
+déclarées ; cela ne valide ni l’interpolation du firmware, ni l’adhésion ou la
+tenue physique. Le contrôle de première couche peut mesurer les dépôts G17 à
+Z constant avec `--arcs-planaires` ; sans cette option, ils restent NON
+VÉRIFIÉS. Aucun arc n’y est remplacé par sa corde.
+
+Le contrôle des capacités-machine calcule aussi l’enveloppe XYZ analytique de la portion déposée d’un arc G17 pour
+le verdict local `volume XYZ déposé`. Il inclut les extrema angulaires réellement parcourus et les deux extrémités Z
+d’une hélice ; le début est décalé selon la fraction de dépôt après rétraction. Les dépassements du volume déclaré
+au-delà de la tolérance donnent FAIL. Une tolérance numérique de 1e-6 mm est appliquée à ces bornes ; les coordonnées
+ou l’enveloppe hors de ±1 000 000 mm restent NON VÉRIFIÉES. La corde n’est jamais utilisée et le rayon déclaré par
+l’interpréteur n’est pas ajusté. Une métrique séparée rapporte les maxima X, Y et Z de la demande nominale à F
+constant, avec les extrema de tangente et la longueur XYZ pour une hélice. Elle couvre le déplacement entier des
+seuls arcs G17 reconnus, même avant reprise du dépôt. Les accélérations, les vitesses atteintes, les limites du
+firmware et les jonctions restent NON VÉRIFIÉES ; le verdict des capacités et U25 ne changent pas (#123).
+
+La revue des zones locales utilise l’enveloppe du dépôt G17 pour les ponts et
+parois en surplomb explicitement déclarés, en repère physique après G92. Elle
+ne mesure ni la portée libre ni le contact. Les arcs sans couche ou attribution
+d’objet vérifiée restent bloquants, comme les arcs d’autres rôles pour ce
+contrôle (suite de #123).
+
+Le rapport distingue l’accélération extérieure configurée de l’accélération `M204` observée pendant les dépôts.
+Une commande de mouvement non prise en charge rend la couverture incomplète : le résultat devient `NON VÉRIFIÉ`.
+
+Les seuils absolus par défaut déclenchent un `WARN` au-delà de 10 morceaux par couche, de 30 % de microsegments ou de
+4 000 mm/s². Ce sont des heuristiques de triage configurables, sans valeur de norme constructeur. Un dépassement
+appelle une inspection des couches et des réglages ; une impression réussie peut aussi dépasser ces seuils dans
+des zones détaillées ou très fragmentées.
+
+L’analyse couvre toute la hauteur par défaut. Une fenêtre Z est possible, mais ses bornes figurent dans le rapport :
+un résultat dans cette fenêtre ne vaut pas pour le reste de la pièce. Un 3MF à plusieurs plaques exige une sélection
+explicite de plaque pour une analyse isolée.
+
+Une référence doit déclarer sa relation : même source de modèle, seulement même machine et même filament, ou relation
+inconnue. Seule la première autorise une comparaison de géométrie. Une différence de trajectoires entre deux modèles
+distincts ne démontre pas une cause de défaut ; leur maillage peut contribuer à cette différence.
+
+Le lecteur travaille en flux. Les rapports sont mis en cache par empreinte SHA-256 du 3MF complet, membre G-code,
+options et version du lecteur. Modifier les seuils, la fenêtre ou le fichier invalide ce résultat. Le cache reste
+borné et les réponses retournées ne permettent pas de modifier les résultats conservés.
+Les mutations et comptes d’octets sont protégés contre les appels concurrents. Une même clé insérée deux fois
+ne réserve sa taille qu’une fois ; les lectures et analyses s’exécutent hors du verrou de cache.
+La continuité conserve au plus 128 diagnostics détaillés du lecteur, puis un message de dépassement explicite.
+
+
+## Mesures de dépôts dans une région 3D
+
+La mesure de remplissage localisé peut utiliser les arcs G17 XY qualifiés
+(#123). Elle calcule les intersections avec les six faces d’une boîte en mm
+sur la trajectoire analytique : angles pour X/Y et fraction de hauteur pour Z
+dans une hélice. La dette de rétraction déplace le début du dépôt le long de la
+courbe. Le repère physique reste distinct du repère de commande après G92.
+Les longueurs sont arrondies à 0,1 mm ; aucune corde n’est comptée. Les
+bornes, extrémités et enveloppes circulaires au-delà de ±1 000 000 mm sont refusées.
+
+Cette extension concerne les mesures par boîte. La continuité des parois
+extérieures suit les limites décrites plus haut ; les
+[appuis](couches-courtes.md) mesurent les arcs G17 planaires seulement avec
+`--arcs-planaires`, comme la première couche. Les autres plans et centres
+absolus ne sont pas qualifiés. Ces
+mesures sont numériques et ne valident pas une impression.
+
+Dans un 3MF, un numéro de plaque désigne un seul membre G-code. Un nom
+unique avec un zéro initial est lisible ; plusieurs graphies du même numéro
+donnent NON VÉRIFIÉ, même avec une plaque choisie explicitement. Le résultat
+en cache reste lié aux octets du 3MF et à l’archive effectivement ouverte (#178).
+
+## Périmètre vérifié de G17
+
+Le périmètre #123 couvre les arcs G17 à centre relatif qualifiés par le
+lecteur, y compris les arcs majeurs, les cercles complets, G92 et la dette
+de rétraction. Une hélice ne donne une mesure que dans les contrôles qui
+la modélisent explicitement : enveloppe XYZ, mesure par boîte et demande
+nominale par axe. Les options de première couche et d’appuis restent
+limitées aux arcs planaires à Z constant.
+
+Les mesures de cordons linéaires, de colonnes, de coutures, de finition,
+d’écart Z des supports, de disposition et de projection d’un pont vers
+un îlot ne remplacent pas un arc par sa corde. Une portion exclue reste
+signalée et les verdicts ne qualifient que la couverture établie. Un
+cercle complet à extrémités égales ne peut donc pas être ignoré comme
+un déplacement nul par le contrôle de disposition ou de colonnes.
+La précision des arcs natifs arrondis et le firmware restent suivis
+dans #134 ; U25 conserve le contrat de rayon exact.
+
+## Diagnostic de finition d’une paroi en vase
+
+`benchab controle finition-parois analyser TRANCHE.3mf` reconnaît le mode
+vase déclaré par le 3MF ou le G-code. Il compte les morceaux de dépôt
+contigus à Z croissant, relève la largeur documentée et compare le nombre de
+couches de fond déclarées aux couches portant un dépôt de fond observé.
+La largeur absente, une lecture incomplète ou l’absence de spirale donnent
+NON VÉRIFIÉ. Plusieurs morceaux ou un écart dans le fond donnent WARN si
+la lecture est complète. L’absence de couture visible reste NON VÉRIFIÉE.
+La proposition de vitesse s’applique aux parois classiques.
+
+Si le parcours mémoire dépasse son budget et que le 3MF déclare le mode
+vase, les plaques sont lues en flux, à raison de 12 millions de lignes au
+total et 64 Kio par ligne. Le lecteur vérifie le CRC de chaque G-code lu
+jusqu’au bout. Une limite atteinte donne NON VÉRIFIÉ avec le membre et le
+budget concernés. Le contrôle complet des capacités machine reste à exécuter.

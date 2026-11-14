@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITRE__</title><link rel="icon" href="data:,">
+<script>window.__erreursVisionneuse=[];addEventListener('error',e=>window.__erreursVisionneuse.push(e.message));addEventListener('unhandledrejection',e=>window.__erreursVisionneuse.push(String(e.reason)));</script>
+<style>
+/* Atelier d'inspection : grande vue 3D, commandes à droite (dessous sur téléphone). */
+:root {
+  --bg: #eef0f1; --panel: #ffffff; --fg: #1d2429; --muted: #5d6a72; --line: #cfd6da;
+  --accent: #17607d; --accent-soft: #e3edf5; --view: #dfe4e7; --warn: #9a3b1f;
+  /* Polices système pour rester autonome et sans accès réseau. */
+  --f-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --f-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171b; --panel: #1a2126; --fg: #e3e8eb; --muted: #93a1a9; --line: #2c363d;
+  --accent: #d6a454; --accent-soft: #3a2f1c; --view: #0d1215; --warn: #e08a68; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171b; --panel: #1a2126; --fg: #e3e8eb; --muted: #93a1a9; --line: #2c363d;
+  --accent: #d6a454; --accent-soft: #3a2f1c; --view: #0d1215; --warn: #e08a68; color-scheme: dark }
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-ui); font-size: 15px;
+  padding: 14px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); box-sizing: border-box; }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; height: 100%; }
+@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); height: auto; } #vue { height: 62vh; } }
+#vue { position: relative; background: var(--view); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; min-height: 360px; }
+#vue canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+/* Onglets de plaques au-dessus de la vue. */
+#plaques { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 3px; z-index: 3;
+  background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.12); max-width: calc(100% - 24px); overflow-x: auto; }
+#plaques button { border: 0; background: transparent; color: var(--fg); font: 500 13px var(--f-ui); padding: 6px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+#plaques button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+#plaques button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#resumePlaque { position: absolute; left: 12px; bottom: 44px; z-index: 3; max-width: min(520px, calc(100% - 24px)); font: 12.5px/1.4 var(--f-ui);
+  background: color-mix(in srgb, var(--panel) 85%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; color: var(--fg); }
+#etiquette { position: absolute; pointer-events: none; font: 500 12px var(--f-data); background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  padding: 3px 7px; border-radius: 4px; transform: translate(10px, -26px); white-space: nowrap; }
+#chargement { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font: 500 13px var(--f-data); text-align: center; padding: 20px; }
+.pied { position: absolute; left: 10px; bottom: 8px; right: 10px; font: 11px var(--f-data); color: var(--muted); pointer-events: none; }
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; min-width: 0; }
+h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.sous { color: var(--muted); font-size: 13px; margin: 4px 0 0; line-height: 1.4; }
+fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; min-width: 0; }
+legend { font-size: 11px; letter-spacing: .02em; font-weight:600; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.ligne { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.val { font: 500 13px var(--f-data); font-variant-numeric: tabular-nums; color: var(--accent); }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.etat { font: 12px var(--f-data); padding: 6px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--fg); line-height: 1.45; white-space: pre-line; }
+.boutons { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: 500 14px var(--f-ui); background: var(--accent); color: var(--panel); border: 0; border-radius: 4px; padding: 8px 12px; cursor: pointer; }
+button.sec { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cases { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 14px; }
+label.c { display: flex; align-items: center; gap: 6px; min-width: 0; }
+label.c span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+select { font: 14px var(--f-ui); background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 5px; max-width: 100%; }
+.fiche { font: 12px var(--f-data); line-height: 1.5; border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+.fiche b { font: 600 14px var(--f-ui); display: block; margin-bottom: 2px; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 0; }
+textarea { font: 13px var(--f-ui); width: 100%; box-sizing: border-box; min-height: 56px; border: 1px solid var(--line); border-radius: 4px; padding: 6px; background: var(--panel); color: var(--fg); resize: vertical; }
+.coms { display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.com { font-size: 12px; line-height: 1.4; border-left: 3px solid #d23c2e; padding: 2px 0 2px 8px; display: grid; gap: 2px; }
+.com b { font-weight: 600; }
+.com button { justify-self: start; font-size: 12px; padding: 2px 8px; }
+.reponse { font-size: 12px; color: var(--fg); background: var(--line); border-radius: 3px; padding: 3px 6px; }
+.cadre {height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px}
+.entete {display:flex;gap:24px;align-items:center;justify-content:space-between;padding:4px 8px}
+.entete a {color:var(--fg)}.entete p {margin:0;font-size:14px;color:var(--muted)}
+#diagnostic {white-space:pre-line;overflow-wrap:anywhere}
+#listePieces {display:grid;gap:4px;max-height:220px;overflow:auto}
+#listePieces button {text-align:left;background:transparent;color:var(--fg);border:1px solid var(--line)}
+#listePieces button[aria-pressed=true] {border-color:var(--accent);background:var(--accent-soft);font-weight:700}
+#listePieces button::after {content:attr(data-visibilite);float:right;font-size:12px;font-weight:400;margin-left:8px}
+aside a {color:var(--accent)}
+summary {cursor:pointer;font-size:14px;font-weight:600}details[open]>summary {margin-bottom:12px}
+#vue:focus-visible {outline:3px solid var(--accent);outline-offset:2px}
+.mesures-source {white-space:pre-line;overflow-wrap:anywhere;font:12px var(--f-ui);line-height:1.6}
+#panneauCouches {position:absolute;inset:0;z-index:40;background:#fff;display:flex;flex-direction:column;padding:12px;gap:10px}
+#panneauCouches[hidden] {display:none}
+#panneauCouches iframe {width:100%;flex:1;min-height:260px;border:1px solid var(--line)}
+@media(max-width:860px){.cadre{height:auto}.entete{align-items:flex-start;flex-direction:column;gap:8px}}
+ .cadre[hidden], #demarrage[hidden] {display:none}
+</style>
+</head>
+<body>
+<section id="demarrage" style="max-width:760px;margin:48px auto;padding:24px;font:16px/1.6 var(--f-ui)">
+<h1>Visionneuse BENCHAB</h1>
+<p>Cette page est un gabarit technique. Les vues produites par BENCHAB sont autonomes et contiennent leur géométrie.</p>
+<p>Pour examiner un autre modèle, générez une nouvelle vue depuis BENCHAB. Cette page ne charge pas de fichiers externes.</p><p id="infoDepot" role="status"></p>
+</section>
+<div class="cadre" hidden><header class="entete"><p id="contexte"></p></header><div class="app">
+  <div id="vue" tabindex="0" role="region" aria-label="Vue 3D ; flèches : tourner, plus et moins : zoom, R : vue initiale"><div id="chargement">Chargement de la géométrie…</div><div id="etiquette" hidden></div><nav id="plaques" hidden aria-label="Plaques d'impression"></nav><div id="resumePlaque" hidden></div>
+    <div class="pied">Glisser : tourner · molette : zoom · clic droit : déplacer · clic : sélectionner une pièce (en mode commentaire : poser un repère)</div>
+    <section id="panneauCouches" aria-label="Couches G-code" hidden><div class="boutons"><button id="fermerCouches">Revenir au modèle</button></div><p class="note" id="etatCouches" role="status"></p><iframe id="couchesFrame" title="Couches G-code conservées" sandbox="allow-scripts allow-downloads allow-same-origin"></iframe></section></div>
+  <aside>
+    <div><h1 id="titre"></h1><p class="sous" id="sousTitre"></p></div>
+    <fieldset><legend>Pièces</legend><div id="listePieces" aria-label="Pièces du projet"></div><p class="note" id="fidelite">Aperçu numérique ; précision de fabrication non vérifiée.</p></fieldset>
+    <details id="blocMesures"><summary>Mesures du maillage source</summary><div id="mesuresSource" class="fiche mesures-source">Sélectionner une pièce. Les dimensions de l’aperçu ne servent pas de cote de fabrication.</div></details>
+    <details id="blocComparaison"><summary>Comparer les géométries chargées</summary><label for="compareA">Source A</label><select id="compareA"></select><label for="compareB">Source B</label><select id="compareB"></select><button id="comparerGeometries" class="sec">Comparer ces sources</button><div id="comparaison" class="fiche mesures-source" aria-live="polite"></div></details>
+    <details id="blocAnomalies" open><summary>Risques calculés</summary><p class="note" id="resumeAnomalies"></p><label for="filtreRisques">Catégorie</label><select id="filtreRisques"><option value="">Toutes les catégories</option></select><div id="anomalies" class="coms"></div><div id="diagnostic" class="fiche mesures-source" hidden></div></details>
+    <details id="blocContacts" hidden><summary>Carte des ajustements</summary>
+      <p class="note">Jeux échantillonnés sur les géométries source, en mm. Positif : écart ; négatif : recouvrement. Aucune validation physique.</p>
+      <p class="note">Rouge : recouvrement ; orange : écart &lt; 0,15 ; jaune : écart &lt; 0,4 ; vert : au-delà. Couleurs indicatives, pas des jeux de conception validés.</p>
+      <div id="contactsListe" class="coms"></div><p id="etatContacts" role="status" class="note"></p>
+      <button id="fermerContacts" class="sec">Masquer les contacts</button>
+    </details>
+    <a id="couchesLien" hidden>Consulter les couches G-code enregistrées</a>
+    <button id="ouvrirCouches" class="sec" hidden>Afficher les couches ici</button><a id="paquetLien" hidden>Télécharger le paquet hors ligne</a>
+    <fieldset id="blocMeca" hidden>
+      <legend>Mécanisme</legend>
+      <select id="meca" aria-label="Mécanisme"></select>
+      <div class="ligne"><span id="mecaLib"></span><span class="val" id="mecaVal"></span></div>
+      <input id="pos" type="range" min="0" max="0" step="1" value="0" aria-label="Position du mécanisme">
+      <div class="etat" id="etat" hidden></div>
+      <div class="boutons"><button id="jouer">Jouer</button><button class="sec" id="base">État de base</button></div>
+    </fieldset>
+    <fieldset>
+      <legend>Inspection</legend>
+      <div class="ligne"><span>Vue éclatée</span><span class="val" id="vEcl">0 %</span></div>
+      <input id="eclate" type="range" min="0" max="1" step="0.01" value="0" aria-label="Vue éclatée">
+      <div class="ligne"><label for="coupe">Coupe</label>
+        <select id="coupe"><option value="">Aucune</option><option value="0">Plan ⟂ X</option><option value="1">Plan ⟂ Y</option><option value="2">Plan ⟂ Z</option></select></div>
+      <div id="blocCoupe" hidden>
+        <div class="ligne"><span>Position</span><span class="val" id="vCoupe"></span></div>
+        <input id="posCoupe" type="range" min="0" max="1" step="0.002" value="0.5" aria-label="Position de la coupe">
+        <label class="c"><input id="inverse" type="checkbox"> <span>Garder l'autre moitié</span></label>
+      </div>
+    </fieldset>
+    <fieldset id="blocSel">
+      <legend>Pièce sélectionnée</legend>
+      <div class="fiche" id="fiche">Cliquez sur une pièce.</div>
+      <div class="boutons"><button class="sec" id="isoler" disabled>Isoler</button><button class="sec" id="masquer" disabled>Masquer</button><button class="sec" id="tout">Tout afficher</button></div>
+      <label class="c"><input id="fantome" type="checkbox"> <span>Autres pièces transparentes</span></label>
+      <label class="c"><input id="aretes" type="checkbox"> <span>Arêtes vives</span></label>
+    </fieldset>
+    <details><summary>Commentaires</summary><fieldset>
+      <legend class="note">Observations sur la pièce</legend>
+      <label class="c"><input id="modeCom" type="checkbox"> <span>Mode commentaire : viser (point jaune) puis cliquer l’endroit exact</span></label>
+      <div id="blocNouveau" hidden><div class="note" id="cible"></div><textarea id="texteCom" placeholder="Ce qui pose problème à cet endroit…" aria-label="Texte du commentaire"></textarea>
+        <div class="boutons"><button id="ajouterCom">Enregistrer le commentaire</button><button class="sec" id="annulerCom">Annuler</button></div></div>
+      <div class="coms" id="listeCom"></div>
+      <div class="boutons"><button class="sec" id="copierCom">Copier pour la conversation</button><button class="sec" id="exporterCom">Exporter (.json)</button></div>
+      <p class="note" id="infoCom">Chargement des commentaires…</p>
+    </fieldset></details>
+    <fieldset>
+      <legend>Groupes visibles</legend>
+      <div class="cases" id="groupes"></div>
+    </fieldset>
+    <div class="boutons"><button class="sec" id="recadrer">Recadrer la vue</button><button class="sec" id="initiale">Vue initiale</button><button class="sec" id="image">Enregistrer l'image</button></div>
+    <button id="exporterGlb" class="sec" disabled>Télécharger les géométries source (.glb · m/Y)</button>
+    <p class="note">GLB en mètres, axe Y vertical. Export des géométries source de cet aperçu, parfois allégées. Poses, mécanismes, coupe et sélection ne sont pas exportés. Ce GLB n’est pas un fichier de fabrication validé.</p>
+    <p class="note" id="note"></p>
+    <details><summary>Provenance de la scène</summary><p class="note" id="source"></p></details>
+  </aside>
+</div></div>
+<script type="application/json" id="donnees">__DONNEES__</script>
+<script type="importmap">{"imports":{}}</script>
+<script type="module">
+const contenu = document.getElementById('donnees').textContent.trim();
+if (contenu !== ['__', 'DONNEES', '__'].join('')) {
+const D = JSON.parse(contenu);
+document.getElementById('demarrage').hidden = true;
+document.querySelector('.cadre').hidden = false;
+const THREE = await import('three');
+const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+const { toCreasedNormals } = await import('three/addons/utils/BufferGeometryUtils.js');
+const $ = id => document.getElementById(id);
+$('titre').textContent = D.titre; $('sousTitre').textContent = D.sous_titre; $('note').textContent = D.note;
+$('contexte').textContent = [D.source.version || 'Version non renseignée', 'État du projet : ' + (D.source.etat_projet || 'non vérifié'), 'Préparation courante : ' + (D.source.preparation_courante || 'non renseignée')].join(' — ');
+if (D.source.disposition) $('fidelite').textContent += ' ' + D.source.disposition;
+if (D.source.couches_url) { $('couchesLien').href = D.source.couches_url; $('couchesLien').hidden = false; }
+
+$('source').textContent = ['Généré le ' + D.genere_le, ...Object.entries(D.source).map(([k, v]) => k + ' : ' + v)].join(' · ');
+
+const vue = $('vue');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Tonalité ACES et environnement d'éclairage pour les reflets.
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+vue.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, D.taille / 500, D.taille * 20);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, .45));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); scene.add(sun); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0004; sun.shadow.normalBias = .02;
+{ const c = sun.shadow.camera, t = D.taille * .9; c.left = -t; c.right = t; c.top = t; c.bottom = -t; c.near = D.taille / 50; c.far = D.taille * 8; }
+const fill = new THREE.DirectionalLight(0xffffff, .5); scene.add(fill);
+
+// Repère du projet -> repère three (Y vertical). Axe haut Z : (x, y, z) -> (x, z, -y).
+const root = new THREE.Group(); root.matrixAutoUpdate = false;
+if (D.axe_haut === 'Z') root.matrix.set(1, 0, 0, 0,  0, 0, 1, 0,  0, -1, 0, 0,  0, 0, 0, 1);
+scene.add(root);
+const toWorld = v => new THREE.Vector3(...v).applyMatrix4(root.matrix);
+
+function theme() {
+  const t = document.documentElement.dataset.theme;
+  const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  scene.background = new THREE.Color(dark ? 0x0d1215 : 0xdfe4e7);
+}
+theme(); matchMedia('(prefers-color-scheme: dark)').addEventListener('change', theme);
+
+const centre = toWorld(D.centre);
+function recadrer(direction) {
+  const amortissement = controls.enableDamping; controls.enableDamping = false; controls.update();
+  // Cadre ce qui est visible, y compris les pièces éclatées, masquées ou isolées.
+  const b = new THREE.Box3(); root.updateMatrixWorld(true);
+  root.traverseVisible(o => { if (o.isMesh && o.userData.piece && !o.userData.anomalie) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); b.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)); } });
+  const c = b.isEmpty() ? centre : b.getCenter(new THREE.Vector3()), t = b.isEmpty() ? D.taille : b.getSize(new THREE.Vector3()).length();
+  const dir = toWorld(direction || D.vue_initiale).sub(toWorld([0, 0, 0])).normalize();
+  // Distance qui fait tenir la sphère englobante dans le plus petit des deux angles de vue.
+  const v = THREE.MathUtils.degToRad(camera.fov), h = 2 * Math.atan(Math.tan(v / 2) * camera.aspect);
+  camera.position.copy(c).addScaledVector(dir, (t / 2) / Math.sin(Math.min(v, h) / 2) * 1.08);
+  controls.target.copy(c); controls.update();
+  sun.position.copy(centre).add(new THREE.Vector3(.6, 1, .8).multiplyScalar(D.taille * 2));
+  sun.target.position.copy(centre); if (!sun.target.parent) scene.add(sun.target);
+  fill.position.copy(centre).add(new THREE.Vector3(-1, .2, -.8).multiplyScalar(D.taille * 2));
+  renderer.shadowMap.needsUpdate = true;
+  controls.enableDamping = amortissement;
+}
+
+const fromRows = a => new THREE.Matrix4().set(...a);
+const dec = (b64, T) => { const u = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); return new T(u.buffer); };
+const MECAS = D.mecanismes.map(m => ({ ...m, M: dec(m.matrices, Float32Array), H: m.cachees ? dec(m.cachees, Uint8Array) : null }));
+const HL = new THREE.MeshStandardMaterial({ color: 0xd6a454, roughness: .4, emissive: 0x3a2200, side: THREE.DoubleSide });
+
+const pieces = D.pieces.map((p, i) => ({ ...p, i, base: fromRows(p.matrice), cache: false, mesh: null }));
+const grpVisible = Object.fromEntries(D.groupes.map(g => [g.nom, g.visible]));
+let selection = null, survol = null, meca = MECAS.length ? 0 : -1;
+let nuageContacts = null;
+
+function poseCourante() {
+  const k = +$('pos').value, e = +$('eclate').value, out = pieces.map(p => ({ M: p.base, cache: !!p.base_cachee }));
+  if (meca >= 0) {
+    const m = MECAS[meca], n = m.pieces.length;
+    m.pieces.forEach((pi, j) => {
+      const o = (k * n + j) * 16; out[pi] = { M: fromRows(m.M.subarray(o, o + 16)), cache: m.H ? !!m.H[k * n + j] : false };
+    });
+  }
+  return out.map((o, i) => ({ M: e > 0 ? new THREE.Matrix4().makeTranslation(...pieces[i].eclate.map(v => v * e)).multiply(o.M) : o.M, cache: o.cache }));
+}
+
+function materiau(p) {
+  if (p === survol) return HL;
+  const ghost = $('fantome').checked && selection && p !== selection;
+  const op = D.modeles[p.modele].opacite ?? 1, tr = ghost || op < 1;
+  p.mesh.userData.mat.transparent = tr; p.mesh.userData.mat.opacity = ghost ? .12 : op; p.mesh.userData.mat.depthWrite = !tr;
+  // Maintient la sélection visible après le survol.
+  if (p.mesh.userData.mat.emissive) p.mesh.userData.mat.emissive.setHex(p === selection ? 0x5a3600 : 0x000000);
+  return p.mesh.userData.mat;
+}
+
+function maj() {
+  renderer.shadowMap.needsUpdate = true;
+  if (nuageContacts) nuageContacts.visible = +$('eclate').value === 0 && meca < 0;
+  const poses = poseCourante();
+  for (const p of pieces) {
+    if (!p.mesh) continue;
+    p.mesh.matrix.copy(poses[p.i].M);
+    p.mesh.visible = !p.cache && !poses[p.i].cache && grpVisible[p.groupe];
+    p.mesh.material = materiau(p);
+  }
+  $('vEcl').textContent = Math.round(+$('eclate').value * 100) + ' %';
+  if (meca >= 0) {
+    const m = MECAS[meca], k = +$('pos').value, v = m.valeurs[k];
+    $('mecaLib').textContent = m.libelle; $('mecaVal').textContent = (typeof v === 'number' ? +v.toFixed(2) : v) + (m.unite || '');
+    $('etat').hidden = !m.etats; if (m.etats) $('etat').textContent = m.etats[k];
+  }
+  for (const b of $('listePieces').children) {
+    const p = pieces[+b.dataset.index];
+    b.setAttribute('aria-pressed', String(p === selection));
+    b.dataset.visibilite = p.mesh?.visible ? 'Visible' : 'Masquée';
+  }
+  coupe();
+}
+
+function coupe() {
+  const ax = $('coupe').value; $('blocCoupe').hidden = ax === '';
+  if (ax === '') { renderer.clippingPlanes = []; return; }
+  const a = +ax, lo = D.bornes[0][a], hi = D.bornes[1][a], pos = lo + (hi - lo) * +$('posCoupe').value;
+  $('vCoupe').textContent = pos.toFixed(1) + ' mm';
+  const n = [0, 0, 0]; n[a] = $('inverse').checked ? 1 : -1;
+  const p = [0, 0, 0]; p[a] = pos;
+  const nw = toWorld(n).sub(toWorld([0, 0, 0])).normalize();
+  renderer.clippingPlanes = [new THREE.Plane().setFromNormalAndCoplanarPoint(nw, toWorld(p))];
+}
+
+function selectionner(p) { selection = p; fiche(p); maj(); }
+function fiche(p) {
+  if (typeof afficherMesures === 'function') afficherMesures(p);
+  if (!p) { $('fiche').textContent = 'Cliquez sur une pièce.'; $('isoler').disabled = $('masquer').disabled = true; return; }
+  const d = p.dimensions.map(v => v.toFixed(1)).join(' × ');
+  $('fiche').innerHTML = '';
+  const b = document.createElement('b'); b.textContent = p.nom.replaceAll('_', ' '); $('fiche').append(b);
+  for (const t of ['Modèle : ' + p.modele, 'Groupe : ' + p.groupe, 'Encombrement de l’aperçu : ' + d + ' mm', p.info].filter(Boolean)) { const s = document.createElement('div'); s.textContent = t; $('fiche').append(s); }
+  $('isoler').disabled = $('masquer').disabled = false;
+}
+
+// Interface : mécanismes, groupes.
+if (MECAS.length) {
+  $('blocMeca').hidden = false;
+  MECAS.forEach((m, i) => $('meca').append(new Option(m.libelle, i)));
+  $('meca').hidden = MECAS.length < 2;
+}
+function choisirMeca(i) { meca = i; const m = MECAS[i]; $('pos').max = m.valeurs.length - 1; $('pos').value = m.defaut || 0; maj(); }
+for (const g of D.groupes) {
+  const l = document.createElement('label'); l.className = 'c';
+  const c = document.createElement('input'); c.type = 'checkbox'; c.checked = g.visible;
+  c.addEventListener('input', () => { grpVisible[g.nom] = c.checked; maj(); });
+  const s = document.createElement('span'); s.textContent = g.nom; l.append(c, s); $('groupes').append(l);
+}
+$('meca').addEventListener('change', e => { anim = null; choisirMeca(+e.target.value); });
+for (const id of ['eclate', 'posCoupe', 'inverse', 'fantome']) $(id).addEventListener('input', maj);
+// Les poses grille/assemblage changent le centre visible ; les animations restent stables par défaut
+// (docs/reference/commandes.md, assemblage-dossier).
+$('pos').addEventListener('input', () => { maj(); if (MECAS[meca]?.recadrer) recadrer(); });
+$('coupe').addEventListener('change', maj);
+$('base').addEventListener('click', () => { anim = null; $('jouer').textContent = 'Jouer'; $('pos').value = MECAS[meca].defaut || 0; maj(); });
+$('isoler').addEventListener('click', () => { for (const p of pieces) p.cache = p !== selection; maj(); });
+$('masquer').addEventListener('click', () => { if (selection) { selection.cache = true; selection = null; fiche(null); maj(); } });
+$('tout').addEventListener('click', () => { for (const p of pieces) p.cache = false; maj(); });
+for (const p of pieces.filter(p => !p.base_cachee && p.cliquable !== false)) {
+  const b = document.createElement('button'); b.textContent = p.nom.replaceAll('_', ' '); b.dataset.index = p.i;
+  b.setAttribute('aria-pressed', 'false'); b.onclick = () => selectionner(p); $('listePieces').append(b);
+}
+function initiale() {
+  anim = null; $('jouer').textContent = 'Jouer'; selection = null; fiche(null);
+  for (const p of pieces) p.cache = false;
+  for (const g of D.groupes) grpVisible[g.nom] = g.visible;
+  for (const c of $('groupes').querySelectorAll('input')) c.checked = grpVisible[c.nextElementSibling.textContent];
+  $('eclate').value = 0; $('coupe').value = ''; $('fantome').checked = false;
+  if (MECAS.length) { meca = 0; $('meca').value = 0; $('pos').value = MECAS[0].defaut || 0; }
+  maj(); controls.reset(); recadrer();
+  for (const b of $('plaques').children) b.setAttribute('aria-pressed', String(b.dataset.k === '0'));
+  $('resumePlaque').hidden = true;
+}
+$('initiale').onclick = initiale;
+vue.addEventListener('keydown', ev => {
+  const v = camera.position.clone().sub(controls.target);
+  if (ev.key === 'r' || ev.key === 'R') initiale();
+  else if (ev.key === '+' || ev.key === '=') camera.position.copy(controls.target).add(v.multiplyScalar(.85));
+  else if (ev.key === '-') camera.position.copy(controls.target).add(v.multiplyScalar(1.15));
+  else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') camera.position.copy(controls.target).add(v.applyAxisAngle(new THREE.Vector3(0,1,0), ev.key === 'ArrowLeft' ? .1 : -.1));
+  else if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') camera.position.copy(controls.target).add(v.applyAxisAngle(new THREE.Vector3(1,0,0), ev.key === 'ArrowUp' ? .1 : -.1));
+  else return;
+  ev.preventDefault(); controls.update();
+});
+ $('recadrer').addEventListener('click', () => recadrer());
+// Enregistrement d'image : seulement en ouverture locale directe (une page intégrée dans un cadre n'a pas le droit de télécharger).
+try { if (window.self !== window.top) $('image').hidden = true; } catch (e) { $('image').hidden = true; }
+$('image').addEventListener('click', () => {
+  renderer.render(scene, camera);
+  const a = document.createElement('a'); a.download = D.titre.replace(/[^\w-]+/g, '-') + '.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click();
+});
+
+let anim = null;
+$('jouer').addEventListener('click', () => {
+  if (anim) { anim = null; $('jouer').textContent = 'Jouer'; return; }
+  const m = MECAS[meca]; if (+$('pos').value >= m.valeurs.length - 1) $('pos').value = 0;
+  anim = { t0: performance.now(), k0: +$('pos').value }; $('jouer').textContent = 'Pause';
+});
+function pasAnim(now) {
+  if (!anim) return;
+  const m = MECAS[meca], n = m.valeurs.length - 1;
+  const dur = matchMedia('(prefers-reduced-motion: reduce)').matches ? 2500 : Math.max(4000, n * 40);
+  const k = Math.min(n, Math.round(anim.k0 + (now - anim.t0) / dur * n));
+  if (k !== +$('pos').value) { $('pos').value = k; maj(); }
+  if (k >= n) { anim = null; $('jouer').textContent = 'Jouer'; }
+}
+
+// Survol et sélection (la coupe et les pièces masquées sont respectées).
+const ray = new THREE.Raycaster(), souris = new THREE.Vector2(), lab = $('etiquette');
+function viser(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  souris.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(souris, camera);
+  const ok = h => h.object.visible && h.object.userData.piece && h.object.userData.piece.mesh?.visible && h.object.userData.piece.cliquable !== false && renderer.clippingPlanes.every(pl => pl.distanceToPoint(h.point) >= 0)
+                  && !(($('fantome').checked && selection) && h.object.userData.piece !== selection);
+  const touches = ray.intersectObjects(root.children, true).filter(ok);
+  const h = touches.find(h => h.object.userData.anomalie) || touches[0];
+  return { p: h ? h.object.userData.piece : null, anomalie: h?.object.userData.anomalie, r, ev };
+}
+renderer.domElement.addEventListener('pointermove', ev => {
+  const { p, r } = viser(ev);
+  if (p !== survol) { const old = survol; survol = p; if (old) old.mesh.material = materiau(old); if (p) p.mesh.material = materiau(p); }
+  lab.hidden = !p; if (p) { lab.textContent = p.nom.replaceAll('_', ' '); lab.style.left = (ev.clientX - r.left) + 'px'; lab.style.top = (ev.clientY - r.top) + 'px'; }
+});
+let down = null;
+renderer.domElement.addEventListener('pointerdown', ev => { down = [ev.clientX, ev.clientY]; });
+renderer.domElement.addEventListener('pointerup', ev => {
+  if (!down || Math.hypot(ev.clientX - down[0], ev.clientY - down[1]) > 4) return;
+  if ($('modeCom').checked) { const h = viserPoint(ev); if (h) preparerCommentaire(h); return; }
+  const { p, anomalie } = viser(ev); selectionner(p); if (anomalie) montrerAnomalie(anomalie);
+});
+
+// Les commentaires restent attachés à la pièce et suivent l'éclaté et les mécanismes.
+const CLE = 'commentaires:' + D.titre + ':' + D.empreinte_glb;
+let coms = [], attente = null, serveur = false, supprimes = [];
+try { coms = JSON.parse(localStorage.getItem(CLE) || '[]'); } catch (e) { coms = []; }
+for (const c of (D.commentaires || [])) if (!coms.some(x => x.id === c.id)) coms.push({ ...c, importe: true });
+const etat = t => { $('infoCom').textContent = t; };
+async function synchroniser() {
+  try {
+    if (location.protocol === 'file:' || D.source.inspection_ephemere) throw 0;
+    const r = await fetch('/__commentaires?page=' + encodeURIComponent(location.pathname)); if (!r.ok) throw 0;
+    const d = await r.json(); serveur = true; supprimes = [...new Set([...supprimes, ...(d.supprimes || [])])]; coms = coms.filter(c => !supprimes.includes(c.id));
+    for (const c of (d.commentaires || [])) { const x = coms.find(y => y.id === c.id); if (!x) coms.push(c); else { x.reponses = c.reponses || x.reponses; x.statut = c.statut || x.statut; x.statut_date = c.statut_date || x.statut_date; } }
+    etat('Commentaires enregistrés dans le projet (commentaires.json, à côté de cette page) : l’assistant les lit directement.');
+    if (!synchroniser.minuteur) synchroniser.minuteur = setInterval(() => { if (!attente) synchroniser(); }, 20000);   // réponses de l'assistant
+  } catch (e) { serveur = false; etat('Commentaires conservés dans ce navigateur pour cette scène. Utiliser « Copier » ou « Exporter » pour les transmettre.'); }
+  dessinerCommentaires();
+}
+async function sauver() {
+  try { localStorage.setItem(CLE, JSON.stringify(coms.filter(c => !c.importe))); } catch (e) {}
+  if (!serveur) return;
+  try {
+    const r = await fetch('/__commentaires', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: exportJSON(true) });
+    const d = await r.json(); etat(r.ok ? d.nombre + ' commentaire(s) enregistré(s) dans ' + d.fichier : 'Échec d’enregistrement : ' + d.erreur);
+  } catch (e) { etat('Échec d’enregistrement dans le projet : commentaires gardés dans ce navigateur.'); }
+}
+function viserPoint(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  camera.updateMatrixWorld(); root.updateMatrixWorld(true);   // à jour même si l'onglet n'a pas encore été affiché
+  souris.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(souris, camera);
+  return ray.intersectObjects(root.children, false).find(h => h.object.visible && h.object.userData.piece && h.object.userData.piece.cliquable !== false && h.face && renderer.clippingPlanes.every(pl => pl.distanceToPoint(h.point) >= 0)) || null;
+}
+const fmt = v => v.map(x => +x.toFixed(1));
+const maintenantLocal = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, -1);
+const rayonPointe = D.taille / 320;
+function point(couleur, taille) {   // point de taille fixe à l'écran, centré exactement sur le point visé
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d');
+  x.strokeStyle = couleur; x.lineWidth = 7; x.beginPath(); x.arc(32, 32, 24, 0, 7); x.stroke(); x.fillStyle = couleur; x.beginPath(); x.arc(32, 32, 7, 0, 7); x.fill();
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, sizeAttenuation: false })); s.scale.setScalar(taille); s.renderOrder = 12; return s;
+}
+const viseur = point('#ffc400', .035); viseur.visible = false; scene.add(viseur);
+renderer.domElement.addEventListener('pointermove', ev => {
+  if (!$('modeCom').checked) { viseur.visible = false; return; }
+  const h = viserPoint(ev); viseur.visible = !!h; if (h) viseur.position.copy(h.point);
+});
+$('modeCom').addEventListener('change', () => { viseur.visible = false; renderer.domElement.style.cursor = $('modeCom').checked ? 'crosshair' : ''; });
+function preparerCommentaire(h) {
+  const p = h.object.userData.piece, local = h.object.worldToLocal(h.point.clone()), n = h.face.normal.clone().normalize();
+  const projet = local.clone().applyMatrix4(p.base), nProjet = n.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(p.base));
+  attente = { piece: p.nom, local: fmt(local.toArray()), normale: n.toArray().map(x => +x.toFixed(3)), point_mm: fmt(projet.toArray()), normale_projet: nProjet.toArray().map(x => +x.toFixed(3)) };
+  $('cible').textContent = 'Point visé : « ' + p.nom.replaceAll('_', ' ') + ' » en x ' + attente.point_mm.join(' ; ') + ' mm (repère du projet)';
+  $('blocNouveau').hidden = false; $('texteCom').focus();
+  dessinerCommentaires(attente);
+}
+function repere(n, c, provisoire) {
+  const g = new THREE.Group(), L = D.taille / 22, col = provisoire ? 0xffc400 : 0xd23c2e, nv = new THREE.Vector3(...(c.normale || [0, 0, 1]));
+  const pointe = new THREE.Mesh(new THREE.SphereGeometry(rayonPointe, 16, 12), new THREE.MeshBasicMaterial({ color: col, depthTest: false })); pointe.renderOrder = 10; g.add(pointe);
+  g.add(point(provisoire ? '#ffc400' : '#d23c2e', .022));
+  const tige = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), nv.clone().multiplyScalar(L)]), new THREE.LineBasicMaterial({ color: col, depthTest: false })); tige.renderOrder = 10; g.add(tige);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d');
+  x.fillStyle = provisoire ? '#e0a800' : '#d23c2e'; x.beginPath(); x.arc(32, 32, 28, 0, 7); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 30px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(n), 32, 34);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false })); s.renderOrder = 11; s.scale.setScalar(D.taille / 45); s.position.copy(nv.clone().multiplyScalar(L * 1.15)); g.add(s);
+  g.position.set(...c.local); g.userData.com = true; return g;
+}
+function viserCommentaire(c) {
+  const p = pieces.find(x => x.nom === c.piece); if (!p || !p.mesh) return;
+  p.mesh.updateMatrixWorld(true); const w = new THREE.Vector3(...c.local).applyMatrix4(p.mesh.matrixWorld);
+  const nw = new THREE.Vector3(...(c.normale || [0, 0, 1])).applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(p.mesh.matrixWorld));
+  controls.target.copy(w); camera.position.copy(w).addScaledVector(nw, D.taille * .45); controls.update();
+}
+function libererRepere(o) {
+  const geometries=new Set(), materiaux=new Set(), textures=new Set();
+  o.traverse(x=>{
+    if(x.geometry)geometries.add(x.geometry);
+    for(const m of (Array.isArray(x.material)?x.material:[x.material]).filter(Boolean)) {
+      materiaux.add(m);
+      for(const t of Object.values(m))if(t?.isTexture)textures.add(t);
+    }
+  });
+  for(const t of textures)t.dispose();
+  for(const m of materiaux)m.dispose();
+  for(const g of geometries)g.dispose();
+  o.removeFromParent();
+}
+function dessinerCommentaires(provisoire) {
+  for (const p of pieces) if (p.mesh) for (const o of [...p.mesh.children]) if (o.userData.com) libererRepere(o);
+  $('listeCom').innerHTML = '';
+  coms.forEach((c, i) => {
+    const p = pieces.find(x => x.nom === c.piece);
+    if (p && p.mesh) p.mesh.add(repere(i + 1, c, false));
+    const d = document.createElement('div'); d.className = 'com';
+    const t = document.createElement('b'); t.textContent = (i + 1) + '. ' + c.piece.replaceAll('_', ' ') + (c.importe ? ' (fichier)' : ''); d.append(t);
+    const pos = document.createElement('div'); pos.className = 'note'; pos.textContent = 'x ' + (c.point_mm || []).join(' ; ') + ' mm'; d.append(pos);
+    const x = document.createElement('div'); x.textContent = c.texte; d.append(x);
+    const st = document.createElement('div'); st.className = 'note'; st.textContent = 'Statut : ' + (c.statut || 'ouvert'); d.append(st);
+    for (const r of (c.reponses || [])) { const q = document.createElement('div'); q.className = 'reponse'; q.textContent = '↳ ' + (r.auteur || '?') + ' (' + (r.date || '') + ') : ' + r.texte; d.append(q); }
+    const bs = document.createElement('div'); bs.className = 'boutons';
+    if (!c.importe) {
+      const rep = document.createElement('button'); rep.className = 'sec'; rep.textContent = 'Répondre';
+      rep.addEventListener('click', () => { const t = prompt('Réponse au commentaire ' + (i + 1)); if (t && t.trim()) { (c.reponses ||= []).push({ auteur: 'utilisateur', date: maintenantLocal(), texte: t.trim() }); sauver(); dessinerCommentaires(); } });
+      const res = document.createElement('button'); res.className = 'sec'; res.textContent = (c.statut === 'résolu') ? 'Rouvrir' : 'Résolu';
+      res.addEventListener('click', () => { c.statut = c.statut === 'résolu' ? 'ouvert' : 'résolu'; c.statut_date = maintenantLocal(); sauver(); dessinerCommentaires(); });
+      bs.append(rep, res);
+    }
+    const v = document.createElement('button'); v.className = 'sec'; v.textContent = 'Voir'; v.addEventListener('click', () => viserCommentaire(c)); bs.append(v);
+    if (!c.importe) { const b = document.createElement('button'); b.className = 'sec'; b.textContent = 'Supprimer'; b.addEventListener('click', () => { supprimes.push(c.id); coms.splice(i, 1); sauver(); dessinerCommentaires(); }); bs.append(b); }
+    d.append(bs); $('listeCom').append(d);
+  });
+  if (provisoire) { const p = pieces.find(x => x.nom === provisoire.piece); if (p && p.mesh) p.mesh.add(repere(coms.length + 1, provisoire, true)); }
+}
+$('ajouterCom').addEventListener('click', () => {
+  const t = $('texteCom').value.trim(); if (!attente || !t) return;
+  coms.push({ id: Date.now().toString(36), date: maintenantLocal(), ...attente, texte: t, statut: 'ouvert', reponses: [] });
+  attente = null; $('texteCom').value = ''; $('blocNouveau').hidden = true; sauver(); dessinerCommentaires();
+});
+// Le parcours local cadre des vues répétables ; les images restent des observations (docs/guides/retour-impression.md).
+function preparerCapture(vue, axeCoupe = null) {
+  const directions = { iso: D.vue_initiale, face: [0, -1, 0], profil: [1, 0, 0], dessus: [0, 0, 1], dessous: [0, 0, -1] };
+  if (!Object.hasOwn(directions, vue) || ![null, 'x', 'y', 'z'].includes(axeCoupe)) throw Error('Vue ou axe de coupe inconnu');
+  recadrer(directions[vue]);
+  $('coupe').value = axeCoupe === null ? '' : String({ x: 0, y: 1, z: 2 }[axeCoupe]);
+  $('posCoupe').value = '0.5'; $('inverse').checked = false; maj();
+  controls.update(); renderer.render(scene, camera);
+  return { vue, axe_coupe: axeCoupe, coupes_actives: renderer.clippingPlanes.length };
+}
+// Accès de test et d'export privé ; aucune commande de transport ou de machine.
+window.visionneuse = { etat: () => ({camera:camera.position.toArray(), cible:controls.target.toArray(), selection:selection?.nom || null, projection:camera.projectionMatrix.toArray(), mondeInverse:camera.matrixWorldInverse.toArray(), coupes:renderer.clippingPlanes.length}), preparerCapture, pieces, viserPoint, preparerCommentaire, commentaires: () => coms, serveur: () => serveur, mecas: MECAS, poseCourante, groupes: grpVisible };
+$('annulerCom').addEventListener('click', () => { attente = null; $('blocNouveau').hidden = true; dessinerCommentaires(); });
+function exportJSON(pourServeur) { return JSON.stringify({ page: location.pathname, titre: D.titre, empreinte_glb: D.empreinte_glb, genere_le: D.genere_le, mis_a_jour: new Date().toLocaleString('sv-SE').slice(0, 16).replace(' ', 'T'), supprimes, commentaires: coms.filter(c => !c.importe).map(({ importe, ...c }) => c) }, null, pourServeur ? 0 : 1); }
+$('copierCom').addEventListener('click', async () => {
+  const txt = 'Commentaires sur « ' + D.titre + ' » :\n' + coms.map((c, i) => (i + 1) + '. ' + c.piece + ' @ ' + c.point_mm.join(' ; ') + ' mm : ' + c.texte).join('\n') + '\n\n' + exportJSON();
+  try { await navigator.clipboard.writeText(txt); etat(coms.length + ' commentaire(s) copié(s) : collez-les dans la conversation.'); }
+  catch (e) { $('texteCom').value = txt; $('blocNouveau').hidden = false; etat('Copie automatique refusée : sélectionnez le texte affiché et copiez-le.'); }
+});
+$('exporterCom').addEventListener('click', () => {
+  const a = document.createElement('a'); a.download = 'commentaires-' + D.titre.replace(/[^\w-]+/g, '-') + '.json';
+  a.href = URL.createObjectURL(new Blob([exportJSON()], { type: 'application/json' })); a.click();
+});
+
+// Géométrie : un maillage par modèle dans le GLB, partagé par toutes ses instances.
+// GLB compressé avec DecompressionStream pour réduire la taille de la page.
+function convertirGlbExport(bin, axeHaut='Z') {
+  const view=new DataView(bin);
+  if(bin.byteLength<20||view.getUint32(0,true)!==0x46546c67||view.getUint32(4,true)!==2||view.getUint32(8,true)!==bin.byteLength)throw Error('GLB source invalide');
+  const chunks=[];let offset=12;
+  while(offset<bin.byteLength) {
+    if(offset+8>bin.byteLength)throw Error('Bloc GLB incomplet');
+    const length=view.getUint32(offset,true),type=view.getUint32(offset+4,true);
+    if(length%4||offset+8+length>bin.byteLength)throw Error('Longueur GLB invalide');
+    chunks.push({type,raw:new Uint8Array(bin,offset,8+length),body:new Uint8Array(bin,offset+8,length)});offset+=8+length;
+  }
+  if(chunks[0]?.type!==0x4e4f534a||chunks.filter(c=>c.type===0x4e4f534a).length!==1)throw Error('Configuration GLB ambiguë');
+  const data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(chunks[0].body));
+  if(!Array.isArray(data.nodes)||!Array.isArray(data.scenes)||!['Y','Z'].includes(axeHaut))throw Error('Scènes ou axe GLB non reconnus');
+  const initialNodes=data.nodes.length,parents=new Map(),scale=.001;
+  const matrix=axeHaut==='Z'?[scale,0,0,0,0,0,-scale,0,0,scale,0,0,0,0,0,1]:[scale,0,0,0,0,scale,0,0,0,0,scale,0,0,0,0,1];
+  for(const scene of data.scenes) {
+    if(!scene||!Array.isArray(scene.nodes||[]))throw Error('Racines GLB non reconnues');
+    scene.nodes=(scene.nodes||[]).map(root=>{
+      if(!Number.isInteger(root)||root<0||root>=initialNodes)throw Error('Racine GLB invalide');
+      if(!parents.has(root)) {
+        parents.set(root,data.nodes.length);
+        data.nodes.push({name:'BENCHAB metres Y - '+root,matrix,children:[root]});
+      }
+      return parents.get(root);
+    });
+  }
+  const json=new TextEncoder().encode(JSON.stringify(data)),length=Math.ceil(json.length/4)*4;
+  const total=20+length+chunks.slice(1).reduce((n,c)=>n+c.raw.byteLength,0),out=new Uint8Array(total),header=new DataView(out.buffer);
+  header.setUint32(0,0x46546c67,true);header.setUint32(4,2,true);header.setUint32(8,total,true);
+  header.setUint32(12,length,true);header.setUint32(16,0x4e4f534a,true);out.fill(32,20,20+length);out.set(json,20);
+  offset=20+length;for(const chunk of chunks.slice(1)){out.set(chunk.raw,offset);offset+=chunk.raw.byteLength;}
+  return out.buffer;
+}
+let glbOriginal=null;
+function exporterApercuGLB() {
+  if(!glbOriginal)return;
+  const a=document.createElement('a'),url=URL.createObjectURL(glbOriginal);
+  a.download=D.titre.replace(/[^\w-]+/g,'-')+'-geometries-m-y.glb';a.href=url;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$('exporterGlb').onclick=exporterApercuGLB;
+const brut = Uint8Array.from(atob(D.glb), c => c.charCodeAt(0));
+(D.glb_gzip ? new Response(new Blob([brut]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : Promise.resolve(brut.buffer)).then(bin => {
+glbOriginal=new Blob([convertirGlbExport(bin,D.axe_haut)],{type:'model/gltf-binary'});
+return new GLTFLoader().parse(bin, '', gltf => {
+  const geo = {};
+  gltf.scene.traverse(o => { if (o.isMesh) { const n = o.name in D.modeles ? o.name : o.parent?.name; o.geometry.applyMatrix4(o.matrixWorld); let g = o.geometry; try { g = toCreasedNormals(g, Math.PI / 6); } catch (e) { if (!g.attributes.normal) g.computeVertexNormals(); } geo[n] = g; } });
+  for (const p of pieces) {
+    const g = geo[p.modele]; if (!g) continue;
+    const dm = D.modeles[p.modele], op = dm.opacite ?? 1;
+    const mat = new THREE.MeshStandardMaterial({ color: dm.couleur, roughness: .5, metalness: .02, envMapIntensity: .7, side: THREE.DoubleSide,
+      vertexColors: !!(dm.couleurs_sommets && g.attributes.color), transparent: op < 1, opacity: op, depthWrite: op >= 1 });
+    const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; m.castShadow = true; m.receiveShadow = true; m.userData = { piece: p, mat }; p.mesh = m; root.add(m);
+    if (dm.plateau) {   // Plateau d'impression mat, quadrillage de 10 et 50 mm, sans ombre portée.
+      mat.roughness = .92; mat.envMapIntensity = .35; m.castShadow = false;
+      const [w, h] = dm.plateau, haut = new THREE.Group(); haut.position.z = .52; m.add(haut);
+      for (const [pas, c, o] of [[10, 0x6b7680, .28], [50, 0x9aa6b0, .55]]) {
+        const pts = [];
+        for (let x = -w / 2; x <= w / 2 + 1e-6; x += pas) pts.push(x, -h / 2, 0, x, h / 2, 0);
+        for (let y = -h / 2; y <= h / 2 + 1e-6; y += pas) pts.push(-w / 2, y, 0, w / 2, y, 0);
+        const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+        haut.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: o })));
+      }
+      p.cliquable = false;
+    }
+    const ar = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: 0x1b1f22, transparent: true, opacity: .55 })); ar.visible = $('aretes')?.checked || false; m.add(ar); m.userData.aretes = ar;
+  }
+  $('chargement').hidden = true; $('exporterGlb').disabled=false;
+  if (meca >= 0) choisirMeca(0); else maj();
+  synchroniser(); ongletsPlaques();
+}, err => { $('chargement').textContent = 'La géométrie n’a pas pu être chargée (' + err + ').'; });
+}).catch(err => { $('chargement').textContent = 'Décompression impossible (' + err + ') : navigateur trop ancien ?'; });
+
+// Les onglets affichent les plaques avec leur plateau et leur cadrage dédiés.
+function ongletsPlaques() {
+  const i = MECAS.findIndex(m => m.id === 'impression'); if (i < 0) return;
+  const m = MECAS[i], nav = $('plaques'); nav.hidden = false;
+  const choisir = k => {
+    anim = null; if (meca !== i) { $('meca').value = i; choisirMeca(i); }
+    $('pos').value = k; $('eclate').value = 0; maj();
+    for (const b of nav.children) b.setAttribute('aria-pressed', String(+b.dataset.k === k));
+    const plaque = k > 0; $('resumePlaque').hidden = !plaque; if (plaque && m.etats) $('resumePlaque').textContent = m.etats[k];
+    recadrer(plaque ? (D.axe_haut === 'Z' ? [0, -1.25, 1] : [0, 1, 1.25]) : null);
+  };
+  m.valeurs.forEach((v, k) => { const b = document.createElement('button'); b.textContent = v; b.dataset.k = k; b.setAttribute('aria-pressed', 'false'); b.onclick = () => choisir(k); nav.append(b); });
+  nav.children[0].setAttribute('aria-pressed', 'true');
+  $('meca').addEventListener('change', () => { if (+$('meca').value !== i) { $('resumePlaque').hidden = true; for (const b of nav.children) b.setAttribute('aria-pressed', String(b.dataset.k === '0')); } });
+}
+
+// Carte des contacts : données sources liées par SHA, jamais mesurées sur le maillage allégé.
+const carteContacts = D.contacts;
+if (carteContacts) {
+  $('blocContacts').hidden = false;
+  $('etatContacts').textContent = carteContacts.couverture + ' — ' + carteContacts.statut;
+  const retirerNuage = () => {
+    if (nuageContacts) {
+      root.remove(nuageContacts); nuageContacts.geometry.dispose(); nuageContacts.material.dispose(); nuageContacts = null;
+    }
+  };
+  $('fermerContacts').onclick = () => { retirerNuage(); $('etatContacts').textContent = 'Contacts masqués.'; };
+  for (const ligne of carteContacts.contacts) {
+    const bouton = document.createElement('button');
+    bouton.textContent = ligne.a + ' ↔ ' + ligne.b + ' : ' + ligne.mm + ' mm' +
+      (ligne.press ? ' — recouvrement' : '') + (ligne.designed ? ' — contact voulu déclaré' : '');
+    bouton.onclick = () => {
+      initiale(); retirerNuage(); selection = null;
+      for (const p of pieces) p.cache = p.nom !== ligne.a && p.nom !== ligne.b;
+      maj();
+      const points = [], couleurs = [];
+      for (const [x,y,z,d] of ligne.patch) {
+        points.push(x,y,z);
+        const couleur = new THREE.Color(d < 0 ? '#ff4545' : d < .15 ? '#ff9b35' : d < .4 ? '#ffe34d' : '#5ce08b');
+        couleurs.push(couleur.r, couleur.g, couleur.b);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(couleurs, 3));
+      nuageContacts = new THREE.Points(geo, new THREE.PointsMaterial({size:5, sizeAttenuation:false, vertexColors:true, depthTest:false}));
+      nuageContacts.renderOrder = 14; root.add(nuageContacts); recadrer();
+      $('etatContacts').textContent = ligne.a + ' ↔ ' + ligne.b + ' : ' + ligne.patch.length +
+        ' échantillons affichés ; jeu extrême ' + ligne.mm + ' mm. Masqué pendant une animation ou une vue éclatée.';
+    };
+    $('contactsListe').append(bouton);
+  }
+}
+
+const diagnostics = D.diagnostics || [], anomalies = diagnostics.flatMap(d => d.anomalies || []);
+const libellesRisques = {surplomb_geometrique:'Surplomb potentiel',bord_ouvert:'Bord ouvert',arete_multiple:'Jonction de surfaces à vérifier',triangle_degenere:'Triangle sans aire',orientation_inversee:'Orientation du maillage à vérifier',petite_base_modele:'Petite base du modèle'};
+Object.assign(libellesRisques,{visee_degagee:'Visée dégagée',visee_obstruee:'Visée obstruée',visee_ambigue:'Visée ambiguë'});
+const couleursVisees=new Map([['visee_degagee',0x187260],['visee_obstruee',0xa83020],['visee_ambigue',0x8d530d]]);
+const nombre = n => new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3}).format(n);
+function afficherMesures(p) {
+  if (!p) { $('mesuresSource').textContent='Sélectionner une pièce pour consulter sa source.'; return; }
+  const d=diagnostics.find(d=>d.piece===p.nom), m=d?.mesures;
+  if (!m) { $('mesuresSource').textContent='Mesures source non fournies pour cette représentation. Ne pas déduire une cote de fabrication depuis l’aperçu.'; return; }
+  $('mesuresSource').textContent=[p.nom, 'Dimensions source : '+m.dimensions_source_mm.map(nombre).join(' × ')+' mm',
+    'Volume du maillage : '+(m.volume_maillage_mm3==null?'non vérifié':nombre(m.volume_maillage_mm3)+' mm³'),
+    'Faces source : '+nombre(m.faces_source), 'Topologie : '+(m.bords_ouverts==null?'non vérifiée (limite de taille)':m.bords_ouverts+' bords ouverts ; '+m.aretes_multiples+' jonctions multiples'),
+    'Base potentielle du repère source : '+(m.aire_base_modele_mm2==null?'non vérifiée':nombre(m.aire_base_modele_mm2)+' mm²'),
+    m.precision, 'Non vérifié : '+(d.non_verifie||[]).join(', '), 'Source : '+d.source, 'SHA-256 : '+d.sha256].join('\n');
+}
+const mesurables=diagnostics.filter(d=>d.mesures);
+for (const d of mesurables) for (const id of ['compareA','compareB']) $(id).append(new Option(d.piece,d.piece));
+if (mesurables.length>1) $('compareB').selectedIndex=1;
+function comparerSources() {
+  const a=mesurables.find(d=>d.piece===$('compareA').value), b=mesurables.find(d=>d.piece===$('compareB').value);
+  if (!a||!b) { $('comparaison').textContent='Deux géométries avec mesures source sont nécessaires.'; return; }
+  const va=a.mesures.volume_maillage_mm3, vb=b.mesures.volume_maillage_mm3;
+  $('comparaison').textContent=[a.piece+' → '+b.piece,
+    a.sha256===b.sha256?'Fichiers source identiques.':'Fichiers source différents.',
+    'Écart de dimensions : '+b.mesures.dimensions_source_mm.map((v,i)=>nombre(v-a.mesures.dimensions_source_mm[i])).join(' × ')+' mm',
+    'Écart de volume : '+(va==null||vb==null?'non vérifié':nombre(vb-va)+' mm³'),
+    'Repère des modèles, hors poses. Pas de correspondance de faces, jeu ou position de fabrication déduits.'].join('\n');
+}
+for (const id of ['compareA','compareB']) $(id).onchange=comparerSources;
+$('comparerGeometries').onclick=comparerSources;
+comparerSources();
+function montrerAnomalie(a) {
+  initiale();
+  const p = pieces.find(p => p.nom === a.piece);
+  if (!p?.mesh) return;
+  selectionner(p); p.cache = false; grpVisible[p.groupe] = true; maj();
+  p.mesh.updateMatrixWorld(true);
+  const w = new THREE.Vector3(...a.point_modele).applyMatrix4(p.mesh.matrixWorld);
+  const direction = new THREE.Vector3(...(a.normale_modele || [1,-1,1])).normalize().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(p.mesh.matrixWorld));
+  const contexte = a.normale_modele ? 0 : new THREE.Box3().setFromObject(p.mesh).getSize(new THREE.Vector3()).length();
+  controls.target.copy(w); camera.position.copy(w).addScaledVector(direction, Math.max(D.taille * .15, contexte*1.2, 10)); controls.update();
+  $('blocAnomalies').open = true;
+  for (const q of pieces) for (const o of q.mesh?.children || []) if (o.userData.anomalie) o.visible = o.userData.anomalie.id === a.id;
+  $('diagnostic').hidden = false; $('diagnostic').dataset.anomalie = a.id;
+  $('diagnostic').textContent = [libellesRisques[a.type]||a.type, 'Pièce : ' + a.piece, 'Source : ' + a.source, 'SHA-256 : ' + a.sha256,
+    'Mesure : ' + a.valeur.toFixed(4) + ' ; seuil : ' + a.seuil.toFixed(4), a.condition,
+    'Repère : ' + a.repere + ' ; point : ' + a.point_modele.map(x => x.toFixed(3)).join(', ') + ' mm', a.precision, a.limite].join('\n');
+}
+$('resumeAnomalies').textContent = diagnostics.length ? anomalies.length + ' zones localisées ; ' + diagnostics.reduce((n,d) => n + d.faces_detectees, 0) + ' faces en surplomb détectées. Sélection bornée par catégorie et pièce. Le repère choisi reste visible à travers la pièce. Les autres risques restent non vérifiés ; aucune absence d’alerte ne valide la fabrication.' : 'Aucun diagnostic géométrique fourni : risques non vérifiés.';
+if (D.source.visibilite_surplombs) {
+  $('blocAnomalies').querySelector('summary').textContent = 'Visées échantillonnées';
+  $('resumeAnomalies').textContent = D.source.visibilite_surplombs + '. Seuls les points calculés sont localisés.';
+}
+for (const type of [...new Set(anomalies.map(a=>a.type))]) $('filtreRisques').append(new Option(libellesRisques[type]||type,type));
+for (const a of anomalies) {
+  const b = document.createElement('button'); b.className = 'sec'; b.textContent = (a.etiquette || a.piece) + ' — '+(libellesRisques[a.type]||a.type); b.dataset.anomalie = a.id; b.dataset.type=a.type;
+  b.onclick = () => montrerAnomalie(a); $('anomalies').append(b);
+}
+$('filtreRisques').onchange=()=>{for(const b of $('anomalies').children)b.hidden=Boolean($('filtreRisques').value&&b.dataset.type!==$('filtreRisques').value);};
+let chargementCouches=null, generationCouches=0;
+function fermerCouches() {
+  generationCouches++;chargementCouches?.abort();chargementCouches=null;
+  $('couchesFrame').removeAttribute('srcdoc');$('couchesFrame').src='about:blank';$('panneauCouches').hidden=true;
+}
+$('fermerCouches').onclick=fermerCouches;
+if(D.source.couches_url) {
+  $('ouvrirCouches').hidden=false;
+  $('ouvrirCouches').onclick=async()=>{
+    fermerCouches();const generation=generationCouches;$('panneauCouches').hidden=false;
+    $('etatCouches').textContent='Chargement des couches conservées…';
+    try {
+      const url=new URL(D.source.couches_url,location.href);
+      if(location.protocol==='file:') {
+        if(D.source.couches_url.startsWith('/'))throw Error('Cette page autonome contient le modèle seul. Utiliser le paquet hors ligne pour les couches.');
+        $('couchesFrame').src=url.href;
+      } else {
+        if(url.origin!==location.origin)throw Error('Source de couches extérieure refusée.');
+        chargementCouches=new AbortController();const r=await fetch(url,{signal:chargementCouches.signal});
+        if(!r.ok)throw Error('Les couches ne sont pas disponibles pour cette source.');
+        let html=await r.text();if(generation!==generationCouches)return;
+        const csp='<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' \'self\' data: blob:; style-src \'unsafe-inline\'; img-src data: blob:; connect-src \'none\'">';
+        if(!/<head(?:\s[^>]*)?>/i.test(html))throw Error('Document de couches non reconnu.');
+        html=html.replace(/<head(?:\s[^>]*)?>/i,m=>m+csp);$('couchesFrame').srcdoc=html;
+      }
+      $('etatCouches').textContent='Couches du fichier indiqué. Correspondance avec la pose et les anomalies du modèle non vérifiée.';
+    } catch(e) { if(e.name!=='AbortError'&&generation===generationCouches)$('etatCouches').textContent=e.message; }
+  };
+}
+if(D.source.paquet_url&&location.protocol!=='file:') { $('paquetLien').href=D.source.paquet_url;$('paquetLien').hidden=false; }
+// Marqueurs rattachés au même repère local que le maillage ; pose et éclaté sont hérités.
+const poserAnomalies = () => {
+  if (!pieces.every(p => p.mesh)) { requestAnimationFrame(poserAnomalies); return; }
+  for (const a of anomalies) {
+    const p = pieces.find(p => p.nom === a.piece); if (!p) continue;
+    const marque = new THREE.Mesh(new THREE.SphereGeometry(Math.max(D.taille / 350, .3), 8, 6), new THREE.MeshBasicMaterial({color:couleursVisees.get(a.type) ?? 0xd84315,depthTest:false,depthWrite:false}));
+    marque.renderOrder = 10; marque.position.set(...a.point_modele); marque.userData.piece = p; marque.userData.anomalie = a; p.mesh.add(marque);
+  }
+};
+poserAnomalies();
+function resize() { const w = vue.clientWidth, h = vue.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+$('aretes').addEventListener('change', () => { for (const p of pieces) if (p.mesh?.userData.aretes) p.mesh.userData.aretes.visible = $('aretes').checked; });
+new ResizeObserver(resize).observe(vue); resize(); recadrer(); controls.saveState();
+if (!MECAS.some(m => m.id === 'impression')) { $('fidelite').textContent += ' Plaques indisponibles : aucun placement fourni.'; }
+__OUTIL_DECOUPE__
+renderer.setAnimationLoop(now => { pasAnim(now); controls.update(); if($('panneauCouches').hidden)renderer.render(scene, camera); });
+} else {
+ document.title = 'Ouvrir l’atelier Impression 3D';
+ for (const event of ['dragover', 'drop']) document.addEventListener(event, e => {e.preventDefault(); document.getElementById('infoDepot').textContent = 'Cette page ne charge pas de fichiers externes. Générez une nouvelle vue dans BENCHAB.';});
+}
+</script>
+</body>
+</html>
