@@ -191,3 +191,24 @@ mais aucun de ses axes n’est au niveau nominal du plafond. Sur le coupon
 de 224 mm² décrit plus haut, l’hypothèse reste NON VÉRIFIÉE : les deux bords
 entiers ne sont pas établis par cette géométrie. L’absence d’hypothèse
 n’interdit donc pas au slicer de générer des ponts.
+
+### Ailette détachable et hauteur de couche (#92)
+
+Sur le même coupon avec ailette et supports désactivés, trois
+hauteurs fixes ont été comparées dans Anycubic Slicer Next 2.0.0.3.
+Les deux nouvelles archives ne diffèrent de la référence que par
+`layer_height`. La comparaison relève le sommet des dépôts de l’ailette
+et le premier dépôt du coupon dont le ruban recoupe sa projection.
+L’écart nominal est calculé entre le dessous du dépôt du coupon et
+le dessus de l’ailette, à partir des commandes Z et de `HEIGHT`.
+
+| Hauteur fixe | Sommet de l’ailette | Premier dépôt en recouvrement | Écart nominal |
+| --- | ---: | ---: | ---: |
+| 0,16 mm | 14,76 mm | 15,24 mm | 0,32 mm |
+| 0,20 mm | 14,80 mm | 15,20 mm | 0,20 mm |
+| 0,24 mm | 14,84 mm | 15,32 mm | 0,24 mm |
+
+Le recouvrement nominal du premier dépôt est d’environ 37,3 mm²
+dans les trois cas. Les valeurs couvrent ce coupon et ces hauteurs
+fixes. La hauteur variable sur une même pièce et le retrait physique
+restent à qualifier.
