@@ -272,3 +272,14 @@ et au moins trois pièces indépendantes par variante. Relever la
 masse réelle de chaque pièce, les conditions de fabrication et la
 dispersion par variante avec les empreintes des archives.
 Les résultats physiques restent NON VÉRIFIÉS.
+
+### Périmètre numérique validé
+
+Les paliers depuis une surface, une face inclinée, une fixation et le
+champ de contraintes sont vérifiés sur des géométries synthétiques. Les
+tests contrôlent des volumes disjoints, leur confinement dans la pièce,
+le volume minimum et la relecture du 3MF. Le calcul de traction est
+comparé à la solution analytique et le raffinement de la console
+contrôle la stabilité des classes. La comparaison à masse estimée égale
+établit une redistribution du dépôt sur le coupon. Les observations
+mécaniques éventuelles rejoignent les retours des projets réels (#51).

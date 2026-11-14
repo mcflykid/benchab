@@ -97,3 +97,14 @@ source, et indiquer la période réellement couverte. Une durée d’impression
 interrompue peut renseigner l’usage si elle a été observée ; elle ne représente
 pas la durée attendue d’une impression complète. Les périodes sans relevé
 restent incomplètes. Le bilan se calcule à partir de ce fichier étayé (#51, #73).
+
+### Périmètre du bilan hors ligne
+
+Le bilan couvre les compteurs d’heures et de matière dès que le fichier
+déclare les événements, la période et le seuil applicable. Les tests
+vérifient la déduplication, les seuils atteints et les périodes
+incomplètes, y compris quand les compteurs n’ont pas la même couverture.
+Les repères fabricant restent documentés. Les relevés réellement
+disponibles rejoignent les retours de projets (#51), avec leur source
+et leur période. Toute période non renseignée garde son statut
+NON VÉRIFIÉ (#73).
