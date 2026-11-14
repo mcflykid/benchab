@@ -106,3 +106,20 @@ occupé environ 560 octets sur stdout, contre 97 141 octets pour le détail
 compact. Le JSON privé conserve le même contenu que le détail compact.
 Les archives ont gardé leurs empreintes ; la peinture des composants
 multiples est restée NON VÉRIFIÉE.
+
+### Réexport natif hors ligne avec placement automatique
+
+Sur le même parallélépipède peint Prusa, ASN 2.0.0.3 accepte le parcours
+`--arrange 1 --slice 0 --export-3mf` avec les profils machine et procédé
+fournis. Il passe de la pose (0, 0, 2) à (125, 125, 2) mm, conserve
+les huit sommets et les douze facettes dans leur ordre local et reporte
+les codes 4 et 8 dans `paint_color` sur les deux mêmes facettes. Le
+témoin Prusa n’embarque pas sa configuration de palette. Avec deux
+profils filament chargés, le 3MF ASN déclare deux identités mais une seule
+couleur. Le rapprochement des couleurs et réglages reste NON VÉRIFIÉ.
+
+Avec le placement automatique désactivé, la tentative de tranchage Prusa
+renvoie le code 206. Sur le témoin Orca, l’essai console avec placement
+automatique désactivé renvoie le code 139 et aucun 3MF. Les sources ont
+gardé leurs empreintes. Une sortie qui déplace la pièce ou possède une
+palette incomplète n’est pas un candidat de conversion sans perte (#43).

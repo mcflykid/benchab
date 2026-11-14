@@ -45,3 +45,15 @@ cette comparaison n’est pas qualifiée.
 Les longueurs sont calculées avec la tolérance déjà documentée de ±0,1 mm sur
 chaque écart affiché. La fonction ne lance pas le trancheur et ne modifie pas
 les 3MF, les profils ou le G-code.
+
+### Repère du coupon et effort déclaré
+
+Sur le coupon rectangulaire tourné de 30° de la
+[sonde d’alignement](enumerations-asn.md#alignement-sur-le-repère-de-la-pièce),
+un effort hypothétique le long de l’axe à 45° de la pièce se projette à
+75° sur le plateau. Les axes rectilignes déposés les plus proches sont à
+45° avec l’option désactivée (30° d’écart) et à 75° avec l’option activée
+(0° d’écart). Les deux axes de dépôt sont des directions non orientées,
+comparées modulo 180°. Avec un effort le long de la pièce, les deux axes
+alignés sont équidistants de 45°. La sonde n’attribue aucun axe privilégié
+dans ce cas et ne donne aucun verdict de résistance (#80).

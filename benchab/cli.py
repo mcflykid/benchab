@@ -94,6 +94,7 @@ ROUTES_NAMESPACE = {
     "machine": {
         "prefixe": "benchab.machine.",
         "normalisation": "tirets_vers_underscore",
+        "modules_prives": frozenset({"export_profil"}),
     },
     "references": {
         "prefixe": "benchab.references_visuelles.",
@@ -480,6 +481,7 @@ def parser():
     machine = commandes.add_parser("machine").add_subparsers(dest="action", required=True)
     for nom in (
         "profils-cibles",
+        "export-profil",
         "affectations-ace",
         "cloud-lecture",
         "telemetrie",

@@ -92,3 +92,24 @@ Relevés historiques SUNLU du 17/10, fiches filaments et étude numérique du
 25/10/2026 : [faits et limites](../../benchab/reference/connaissances.jsonl),
 [provenance par empreinte](../../benchab/reference/sources-savoir.jsonl).
 Le [cycle de projet](../guides/cycle-projet.md) décrit leur réutilisation.
+
+## Exporter un procédé utilisateur
+
+`benchab machine export-profil -- --parent PARENT.json --reglages DELTA.json
+--nom "Procédé local" --dossier prive/rapports` crée deux fichiers neufs,
+`Procédé local.json` et `Procédé local.info`. Le parent ASN doit être un
+procédé système explicite. Ses éventuels parents sont recherchés dans le
+même dossier. Le delta contient des réglages de procédé reconnus dans
+leurs unités natives. Les valeurs déjà héritées à l’identique sont omises.
+La fiche INFO laisse vides les identifiants de compte et de synchronisation.
+
+Pour vérifier le JSON hors ligne, utiliser le seul profil de procédé
+exporté dans `--load-settings` sur un 3MF témoin complet et un
+`--datadir` isolé. Le parent système et le fils ne doivent pas être fournis
+ensemble à cette option. Le slicer les compterait comme deux procédés.
+Cette recette ASN 2.0.0.3 a relu quatre parois et une couche de 0,2 mm dans
+le 3MF de sortie, avec une seule surcharge de parois et le parent intact.
+La commande BENCHAB ne copie rien dans les profils installés. Le chargement
+du JSON en console est vérifié. L’installation de la fiche INFO et
+l’import graphique restent NON VÉRIFIÉS. Le format de la fiche suit
+[la lecture et l’écriture des fichiers INFO chez Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/Preset.cpp#L394-L455).

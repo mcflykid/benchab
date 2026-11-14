@@ -115,3 +115,16 @@ Ajouter `--sortie COPIE.3mf` crée une copie neuve lorsque toutes les différenc
 sont qualifiées. La commande vérifie l’intégrité des réglages et les empreintes
 des autres membres. Elle accepte les projets avant tranchage et refuse les
 archives signées. Le profil installé et l’archive source sont préservés.
+
+### Bilan de la cohorte historique
+
+Les 32 chemins du lot historique sont retrouvés. Le fichier sans
+empreinte historique ne contient ni réglages ni G-code, et deux chemins
+désignent un même contenu. La lecture a relevé des cardinalités non
+canoniques dans les 31 archives contenant des réglages. Les 17 3MF
+tranchés couvrent 25 plaques : 16 archives satisfont le contrôle de
+commandes et une garde le FAIL M203 Z documenté ci-dessus. Les 32
+empreintes calculées avant et après lecture sont identiques. La
+filiation source du binaire et le comportement de son générateur sur
+les vecteurs courts ne sont pas établis. L’inventaire est terminé et
+l’interdiction d’écrire un vecteur court reste en place (#49).

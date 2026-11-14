@@ -181,3 +181,15 @@ Le résultat reste individuel. Les envois à plusieurs plaques, les durées
 absentes et les résultats de plaque sans correspondance ne donnent pas
 d’écart. L’imputation de matière garde son parcours de pesée et de
 confirmation explicites (#51).
+
+### Observer les prochains projets
+
+La durée d’un retour complet peut être rapprochée de son estimation pour
+une plaque identifiée. Une durée interrompue ou une affectation ambiguë
+reste exclue de cette comparaison. Une mesure isolée ne calibre pas un
+motif. Plusieurs retours comparables devront identifier le même procédé,
+la matière, le motif et la version du trancheur avant de calculer un
+écart par groupe. Aucun correctif de planning ne découle des témoins
+numériques. L’imputation de stock passe toujours par une
+[pesée et sa confirmation](../reference/plan-numerique-filament.md#appliquer-une-pesée-confirmée-au-stock).
+Cette procédure s’applique aux projets imprimés au fil de l’usage (#51).

@@ -275,3 +275,51 @@ projet tranché ne diffère. Les comptages restent de 1 027 segments de
 remplissage clairsemé et 1 021 segments de remplissage plein interne.
 L’essai ne distingue aucun effet sur cette géométrie. Un autre contour
 ou un seuil différent doit être évalué séparément (#80).
+
+### Densités et profondeur de Locked Zag
+
+Sur le coupon de 38 × 22 × 7 mm, le motif `lockedzag` est conservé à
+20 % sans combinaison des couches. Les densités de peau et de squelette
+sont essayées séparément. Les deux profondeurs sont essayées ensemble,
+puis les quatre valeurs sont combinées et rejouées.
+
+| Surcharge | Segments clairsemés | Masse et durée estimées |
+| --- | ---: | ---: |
+| Aucune | 3 552 | 3,97 g · 496 s |
+| Densité de peau à 55 % | 6 400 | 4,26 g · 505 s |
+| Densité de squelette à 8 % | 2 794 | 3,40 g · 478 s |
+| Profondeurs de peau à 3 mm et d’imbrication à 1,5 mm | 3 444 | 4,03 g · 502 s |
+| Densités et profondeurs combinées, deux passages | 5 432 | 3,96 g · 508 s |
+
+Chaque sortie ne diffère du témoin que par les réglages demandés. Les deux
+passages de la combinaison donnent la même empreinte de trajets
+clairsemés. L’interpréteur ne signale aucune erreur. La source et les
+646 profils relus gardent leurs empreintes.
+
+Les densités isolées sont qualifiées par `--contextuelles` pour ce binaire
+et les réglages compagnons du coupon. L’essai des profondeurs porte sur
+leur combinaison. Le comptage porte sur le rôle clairsemé entier. Le
+choix d’un motif propre à chaque zone reste soumis aux omissions
+documentées ci-dessus (#80).
+
+## Espacement de l’interface rectiligne
+
+Sur le coupon à porte-à-faux de la section « Interface de support », avec
+le même binaire, le style organique et deux couches d’interface, le passage
+de `support_interface_spacing` de 0,2 à 0,8 mm ne change qu’une clé projet.
+
+| Espacement | Segments d’interface | Longueur nominale | Masse et durée estimées |
+| --- | ---: | ---: | ---: |
+| 0,2 mm | 108 | 766,218 mm | 3,38 g · 995 s |
+| 0,8 mm, deux passages | 56 | 412,742 mm | 3,22 g · 980 s |
+
+Les deux passages à 0,8 mm donnent la même empreinte du rôle d’interface.
+Les trois G-codes sont lisibles sans diagnostic de l’interpréteur. Le coupon
+et les profils relus conservent leurs empreintes. La mesure qualifie les
+trajets du coupon. La facilité de retrait peut être renseignée par un futur
+retour de projet (#89, #51).
+
+Le corps du support change aussi sur ce coupon, de 7 815,511 à
+6 595,042 mm. La variation de longueur ne peut donc pas être attribuée
+à la seule interface. Une lecture séparée des deux rôles est nécessaire
+pour interpréter le bilan de masse et de durée.

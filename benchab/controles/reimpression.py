@@ -98,7 +98,7 @@ def verifier(projet):
 def main(argv=None):
     """Vérifie un projet et publie facultativement le rapport complet hors du projet.
 
-    Le résumé conserve le premier écart et le chemin du rapport complet.
+    Le résumé conserve le premier écart, le motif du statut hors couverture et le chemin du rapport complet.
     Entrées : chemins sans unité. Codes 0 pour PASS, 1 pour FAIL et 2 pour
     les autres statuts. La publication laisse le projet contrôlé intact.
     """
@@ -122,7 +122,7 @@ def main(argv=None):
         parser.error(str(erreur))
     if args.resume:
         resume = {
-            cle: rapport[cle] for cle in ("statut", "projet", "fichiers_historiques")
+            cle: rapport[cle] for cle in ("statut", "projet", "fichiers_historiques", "detail")
             if cle in rapport
         }
         if "fichiers_verifies" in rapport:

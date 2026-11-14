@@ -563,12 +563,10 @@ reste explicitement NON VÉRIFIÉ, et les anciens apprentissages sont conservés
 
 ## Études ultérieures
 
-#24 garde les pistes de deuxième imprimante, portabilité et rendu Metal. #44 suit
-l’état et la caméra en lecture seule. Leur présence dans la roadmap ne déclare
-ni une machine configurée ni une intégration déjà validée.
-
 Les projets, photos et preuves personnelles restent dans `prive/`.
-La lecture Cloud reste privilégiée ; aucun parcours LAN n’est prévu.
+Le travail sur les fichiers et les retours de projet se fait hors ligne,
+sans connexion à l’imprimante ou à l’ACE. Le rendu Metal a été observé sur
+M4. Le périmètre qualifié reste sur macOS.
 
 ## Version 1.29.0 — diagnostic et contrats publics
 
@@ -582,24 +580,17 @@ Le [CHANGELOG](CHANGELOG.md#1300--2026-11-12) décrit les rapports courts,
 la provenance des régressions, l’imputation de filament et la comparaison
 des surplombs par objet. Les issues #127, #234 et #236 sont closes.
 
-## Suite — issues ouvertes
+## 1.36.0 · qualifications hors ligne
 
-Le jalon 1.31.0 rassemble
-les travaux ouverts. Les critères des issues et les références d’origine
-restent applicables.
-
-| Ordre | Issues | Prochaine preuve |
-| --- | --- | --- |
-| P2 · moteur et réglages | #49, #80, #81, #82, #134 | Établir la provenance du binaire et les conditions de lecture des archives. Qualifier les valeurs avant les comparaisons de motifs, puis mesurer l’effet des modificateurs dans le G-code. Garder les refus stricts sur les arcs hors contrat. |
-| P2 · reprise | #119 | Rejouer les familles de reprise restantes sur des copies et lier chaque incident reproduit à ses cas de régression. |
-| P2 · supports et témoins | #89, #51 | Comparer les familles et l’écart Z numérique. Relever séparément résultat réel, ajustement et tenue sur les témoins physiques approuvés. |
-| P3 · atelier et fichiers | #19, #35, #43 | Mesurer le coût des transactions selon la taille avec contrôle des exports. Étendre les résumés et mesurer leurs lectures. Recetter la réouverture 3MF avec palette, facettes et réglages. |
-| P3 · conception | #27, #29, #32, #83, #93 | Rejouer les modèles, cotes, réassemblages, modificateurs et comparaisons par îlot. Mesurer les jeux et la tenue lorsqu’une validation physique est requise. |
-| P3 · machine et matière | #50, #52, #72, #73, #77 | Tester les gestes Safari, la lecture Cloud autorisée, l’attribution de la purge, les durées et les pesées. Rapprocher les relevés et les identités d’outil ou de bobine. |
-| P3 · essais physiques | #84, #90, #91, #92 | Consigner des mesures reproductibles de rigidité, de retrait, de marques, d’interface et d’ailettes. |
-| P4 · études | #85, #86, #87 | Mesurer l’orientation sous effort et les écarts de durée. Rejouer la géométrie et le tranchage du réseau gyroïde. |
-| P4 · décisions et accès | #24, #44, #45 | Définir les plateformes, équipements et exports à qualifier. Recetter la caméra en lecture seule et l’import manuel après décision. |
-
-Chaque recette précise sa source et son périmètre. Les observations
-physiques et les accès autorisés restent à établir sur les issues
-concernées.
+| Sujet | Périmètre documenté |
+| --- | --- |
+| #24 | Rendu Metal sur M4. La portabilité complète hors macOS est écartée du périmètre courant. |
+| #35 | Rapports de contrôle courts avec accès au JSON complet. Mesures répétées sur les témoins S/M/L. |
+| #43 | Deux marques Prusa retrouvées dans un réexport ASN. Déplacement du modèle et palette incomplète. Pas de conversion générale proposée. |
+| #45 | Export différentiel d’un procédé, validation du JSON en console. Import graphique et INFO non vérifiés. |
+| #49 | Cohorte de 32 archives retrouvée et empreintée. L’écart d’arrondi M203 est reproduit, le lien source-binaire reste non vérifié. |
+| #51 | Retours, comparaison de durée par plaque et imputation de pesée explicite. Les futures séries se constituent au fil des projets. |
+| #80 | Qualification native par binaire et témoin, avec les densités Locked Zag, l’alignement et la sonde de densité locale. |
+| #89 | Lecture de l’écart Z et comparaisons de familles et d’espacements de supports. Observations de retrait au fil des projets. |
+| #134 | Enveloppe mathématique conditionnelle des arcs et lecture stricte conservée. Interprétation firmware non vérifiée. |
+| #290 | Lecture comparative des outils, supports et purges. Les associations ambiguës restent refusées. |

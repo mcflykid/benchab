@@ -2,6 +2,16 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.36.0
+
+- Le catalogue qualifie les densités de peau et de squelette Locked Zag sur le binaire et le coupon testés. Les omissions des motifs spécialisés restent signalées (#80).
+- Le relevé numérique des supports documente l’espacement d’interface. Le bilan multi-matière sépare transitions, dépôts par rôle et volume conditionnel de la matrice avec maintien des refus ambigus (#89, #290).
+- La commande `machine export-profil` produit le delta d’un procédé Anycubic en JSON et INFO. Le JSON a été chargé hors ligne dans un profil isolé (#45).
+- La comparaison de durée indique le motif, les matières déclarées et la version ASN lorsqu’ils sont disponibles. Les observations d’usage restent attachées aux prochains projets (#51).
+- Le résumé de réimpression garde le motif de son statut. Les rapports de purge et d’écart Z ont été rejoués en modes court et détaillé sur les témoins S/M/L (#35).
+- Le rendu Cycles sur Metal est observé sur le M4. La portabilité complète reste hors du périmètre qualifié (#24).
+- Les limites du réexport d’un 3MF peint, la cohorte historique des vecteurs et l’enveloppe d’incertitude des arcs sont documentées (#43, #49, #134).
+
 ## 1.35.0
 
 - Le contrôle contextuel Anycubic qualifie l’alignement du remplissage rectiligne dans le repère de la pièce pour le coupon et le profil éprouvés (#80).

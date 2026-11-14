@@ -68,3 +68,22 @@ en présence d’une macro opaque.
 
 Ce résultat confirme la lecture des fichiers archivés. Le refus d’intégrité
 de ces sorties et le statut du routage physique sont conservés.
+
+Le rejeu par `controle bilan-depots` distingue la tour, les dépôts de
+remplissage et l’interface de support. Sur M02, l’interface est étiquetée
+outil 1 en G-code (filament 2 dans le bilan), soit 0,105 g pour 14,23 s
+nominales de dépôt. Le remplissage clairsemé est étiqueté outil 0, soit
+0,468 g et 57,21 s sur le groupe concerné. Pour la tour, les sous-totaux
+observés par outil sont 1 688,35 et 34,31 mm³. Ils représentent le dépôt
+étiqueté par rôle, sans attribution à la purge ou à une transition. M00
+et M02 donnent un écart Z minimum nominal de 0,20 mm avec une couverture
+partielle.
+
+Sur les dix cas de réécriture du témoin M02, dont les vecteurs renseignés
+dans les deux ordres, incomplets ou contradictoires et les essais de
+`filament_map` inversé, le démarrage et les commandes observées restent
+identiques au témoin. Deux transitions et les mêmes dépôts par rôle et
+outil sont relevés. Le contrôle numérique de débit de ce rejeu est PASS.
+Les mesures par rôle et l’absence d’effet visible sur ces commandes
+n’établissent aucune correspondance physique. Une réécriture ambiguë
+reste bloquante et les sorties restent des archives de diagnostic (#290).

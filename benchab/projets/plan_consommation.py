@@ -183,7 +183,7 @@ def estimer_retour_ro(prive: Path | str, connexion: sqlite3.Connection, retour_i
         return _nv(retour_id, f"source incomplète ou illisible : {type(erreur).__name__}")
 
 
-def _comparer_duree(retour, details):
+def _comparer_duree(retour, details, contexte_envoi=None):
     """Compare des secondes déclarées et estimées pour une seule plaque du retour complet."""
     if len(details) != 1:
         return None
@@ -191,10 +191,21 @@ def _comparer_duree(retour, details):
     estimee = details[0].get("duree_estimee_s")
     if any(type(v) not in (int, float) or not 0 < v <= sys.float_info.max for v in (observee, estimee)):
         return None
+    contexte_envoi = contexte_envoi or {}
+    matieres = contexte_envoi.get("filament_type")
+    qualifiees = isinstance(matieres, list) and bool(matieres) and all(
+        isinstance(matiere, str) and matiere.strip() for matiere in matieres
+    )
+    contexte = {
+        "motif_clairseme_projet": contexte_envoi.get("sparse_infill_pattern"),
+        "matieres_declarees_par_index": matieres if qualifiees else None,
+        "version_asn_declaree": details[0].get("version_asn_declaree"),
+    }
     # Un historique sans mesure exploitable ne reçoit aucune correction de planning (#51).
     return {
         "gcode": details[0]["gcode"], "duree_observee_s": observee, "duree_estimee_s": estimee,
         "ecart_s": observee - estimee, "nature": "DECLARATION_HUMAINE_ET_ESTIMATION_SLICER",
+        "contexte": contexte,
     }
 
 
@@ -293,7 +304,7 @@ def _estimer_retour(prive: Path, connexion: sqlite3.Connection, retour_id: str) 
                     for index, masse in enumerate(masses)
                 ],
             })
-        comparaison_duree = _comparer_duree(retour, details)
+        comparaison_duree = _comparer_duree(retour, details, rapport.get("reglages"))
         return {
             "schema": 1,
             "retour_id": retour_id,

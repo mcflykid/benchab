@@ -61,3 +61,21 @@ Sans étiquette d’objet, une plaque déclarée en mode vase avec un seul objet
 attendu est mesurée à partir des dépôts de la pièce, hors purge et bordure.
 Sans cette identité unique, la couverture demeure NON VÉRIFIÉE. Le contrôle
 de finition de la spirale est suivi dans le ticket #246.
+
+## Arcs I/J et précision d’écriture
+
+Sur le cylindre synthétique tranché avec le binaire ASN 2.0.0.3 identifié
+dans le [catalogue](enumerations-asn.md#binaire-observé), 697 des 700 arcs
+échouent à la lecture stricte du rayon. L’écart maximal des rayons
+calculés en entrée est de 0,001404 mm. Dans
+[le formateur publié par Anycubic](https://github.com/ANYCUBIC-3D/AnycubicSlicerNext/blob/6103ed8b511609658d00d0538cc7f0609cdb57da/src/libslic3r/GCodeWriter.hpp),
+les coordonnées et les décalages I/J sont écrits à trois décimales. Cette
+publication donne une hypothèse de demi-pas, sans identifier le binaire.
+
+`benchab.gcode.arcs_arrondis.intervalle_xy` calcule une enveloppe XY
+conditionnelle en mm à partir d’un demi-pas déclaré. Avec ±0,0005 mm
+par champ, les 700 arcs admettent un cercle géométrique compatible et
+l’intervalle de longueur le plus large vaut 0,014498 mm. Le calcul rejette
+les directions indéterminées et les balayages qui peuvent passer par
+0 ou 2π. U25 conserve son contrôle strict. La trajectoire du firmware
+et le débit sur les arcs refusés restent NON VÉRIFIÉS (#134).

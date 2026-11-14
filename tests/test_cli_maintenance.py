@@ -147,5 +147,22 @@ def test_resume_reimpression_sans_verrou_garde_le_code_2(tmp_path, capsys, ateli
         "--sortie", str(rapport), "--resume",
     ]) == 2
     resume = json.loads(capsys.readouterr().out)
-    assert resume == {"statut": "NON APPLICABLE", "projet": "fixture", "rapport": str(rapport)}
+    assert resume == {
+        "statut": "NON APPLICABLE", "projet": "fixture", "rapport": str(rapport),
+        "detail": "Aucun verrou de réimpression déclaré.",
+    }
     assert json.loads(rapport.read_bytes())["detail"] == "Aucun verrou de réimpression déclaré."
+
+
+def test_resume_reimpression_conserve_la_raison_sans_rapport_ouvert(tmp_path, capsys, atelier_initialise):
+    """Un verrou historique ou absent donne sa raison dans le résumé, sans seconde lecture."""
+    prive = tmp_path / "prive"
+    source = prive / "projets/fixture"
+    source.mkdir()
+    rapport = prive / "rapports/reimpression-raison.json"
+    assert main([
+        "--prive", str(prive), "controle", "reimpression", "--", "--projet", str(source),
+        "--sortie", str(rapport), "--resume",
+    ]) == 2
+    affiche = json.loads(capsys.readouterr().out)
+    assert affiche["detail"] == json.loads(rapport.read_bytes())["detail"]

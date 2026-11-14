@@ -219,3 +219,26 @@ def test_alignement_rectiligne_reste_lie_aux_conditions_observees():
     assert ligne(source, inclure_contextuelles=True)["enumeration"]["statut"] == "PASS"
     variante = {**source, "sparse_infill_pattern": "gyroid"}
     assert ligne(variante, inclure_contextuelles=True)["enumeration"]["statut"] == "NON VÉRIFIÉ"
+
+
+@pytest.mark.parametrize(("cle", "valeur"), [
+    ("skin_infill_density", "55%"),
+    ("skeleton_infill_density", "8%"),
+])
+def test_densites_lockedzag_reservees_au_contexte_observe(cle, valeur):
+    """Les deux densités qualifiées hors ligne gardent la contrainte du profil Locked Zag."""
+    donnees = {
+        cle: valeur,
+        "sparse_infill_pattern": "lockedzag", "sparse_infill_density": "20%",
+        "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle", "nozzle_diameter": ["0.4"],
+        "layer_height": "0.2", "infill_combination": "0",
+    }
+
+    def ligne(source, **options):
+        return next(r for r in reglages.verifier(source, identite_slicer=ASN, **options) if r["cle"] == cle)
+
+    assert "enumeration" not in ligne(donnees)
+    assert ligne(donnees, inclure_contextuelles=True)["enumeration"]["statut"] == "PASS"
+    for variante in ({cle: "14%"}, {"sparse_infill_pattern": "crosszag"}, {"layer_height": "0.24"}):
+        resultat = ligne({**donnees, **variante}, inclure_contextuelles=True)
+        assert resultat["enumeration"]["statut"] == "NON VÉRIFIÉ"

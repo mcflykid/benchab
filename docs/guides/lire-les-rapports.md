@@ -61,3 +61,11 @@ ce plugin facultatif peut limiter ce qui est remonté dans le contexte.
 Il n’est pas requis par BENCHAB et ne remplace pas le rapport complet.
 Pour un rapport privé, transmettez seulement les champs nécessaires au
 contexte de travail et gardez le JSON brut dans l’atelier (#35).
+
+Sur une nouvelle lecture des témoins S/M/L, les résumés de purge ont pris
+291–292 octets contre 1 443 en mode détaillé. L’écart Z des supports a
+pris 259–260 octets contre 687. Chaque résumé a été rejoué une seconde fois.
+Pour les six comparaisons, les trois rapports enregistrés étaient identiques
+et les codes de sortie concordaient à chaque passage. Un motif de verrou
+inactif ou absent est aussi visible dans le résumé de
+`controle reimpression --projet PROJET --resume --sortie RAPPORT.json` (#35).

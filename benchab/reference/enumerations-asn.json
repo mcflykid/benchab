@@ -11,7 +11,7 @@
     "locked_skin_infill_pattern",
     "support_interface_pattern"
   ],
-  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height", "infill_direction", "align_infill_direction_to_model"],
+  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height", "infill_direction", "align_infill_direction_to_model", "skin_infill_density", "skeleton_infill_density"],
   "binaires": {
     "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d": {
       "version": "2.0.0.3",
@@ -49,6 +49,34 @@
           "inner wall/outer wall": {"statut": "PASS", "valeur_embarquee": "inner wall/outer wall"},
           "outer wall/inner wall": {"statut": "PASS", "valeur_embarquee": "outer wall/inner wall"},
           "inner-outer-inner wall": {"statut": "PASS", "valeur_embarquee": "inner-outer-inner wall"}
+        },
+        "skin_infill_density": {
+          "55%": {
+            "statut": "PASS",
+            "valeur_embarquee": "55%",
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
+        },
+        "skeleton_infill_density": {
+          "8%": {
+            "statut": "PASS",
+            "valeur_embarquee": "8%",
+            "conditions": {
+              "sparse_infill_pattern": "lockedzag",
+              "sparse_infill_density": "20%",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "infill_combination": "0"
+            }
+          }
         },
         "locked_skin_infill_pattern": {
           "rectilinear": {
