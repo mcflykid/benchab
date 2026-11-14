@@ -51,6 +51,9 @@ class Interpreter:
         self.kind = None
         self.object = None
         self.errors = []
+        # Compte chaque diagnostic, même dédoublonné ou hors budget : `errors`
+        # ne grandit pas toujours, ce compteur signale une erreur sur la ligne courante.
+        self.error_count = 0
         self.last_event: dict[str, object] | None = None
         self.line_number = 0
         self.layer = -1
@@ -58,7 +61,11 @@ class Interpreter:
         self.dialect = "Anycubic/Orca nominal, modes XYZ et E indépendants"
 
     def error(self, message):
-        """Enregistre une couverture non vérifiée ; borne facultative des diagnostics, aucune unité."""
+        """Enregistre une couverture non vérifiée ; borne facultative des diagnostics, aucune unité.
+
+        `error_count` augmente à chaque appel ; `errors` ne garde que les messages distincts dans le budget.
+        """
+        self.error_count += 1
         if self.error_limit is not None:
             message = message[:1024]
         if message in self.errors:

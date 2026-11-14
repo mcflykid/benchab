@@ -2,6 +2,11 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.36.1
+
+- Le contrôle de continuité des parois ne rompt plus la continuité qu’à la ligne qui produit une erreur ; les segments suivants ne sont plus comptés comme des morceaux distincts (#306).
+- Un G-code brut en mode vase est regroupé par couche déclarée, comme le même tranchage dans un 3MF ; deux valeurs contradictoires de `spiral_mode` laissent le contrôle NON VÉRIFIÉ (#307).
+
 ## 1.36.0
 
 - Le catalogue qualifie les densités de peau et de squelette Locked Zag sur le binaire et le coupon testés. Les omissions des motifs spécialisés restent signalées (#80).

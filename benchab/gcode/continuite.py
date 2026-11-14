@@ -34,6 +34,29 @@ RELATIONS_REFERENCE = {
 _NUMBER = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)")
 _CONFIG = re.compile(r"^;\s*outer_wall_acceleration\s*=\s*(" + _NUMBER.pattern + r")\s*$", re.I)
 _Z_META = re.compile(r"^;\s*Z\s*:\s*(" + _NUMBER.pattern + r")\s*$", re.I)
+_SPIRAL = re.compile(r"^;\s*spiral_mode\s*=\s*(.*?)\s*$")
+
+
+def _mode_vase_gcode(chemin):
+    """Lit `spiral_mode` dans le bloc de configuration d'un G-code brut ; booléen, sans écriture.
+
+    Le slicer écrit ce bloc en fin de fichier : une prélecture est nécessaire avant
+    l'analyse en flux. La valeur passe par le dictionnaire typé (AGENTS.md).
+    Lève ValueError (NON VÉRIFIÉ) si deux valeurs différentes sont déclarées.
+    """
+    valeurs = set()
+    with Path(chemin).open("r", encoding="utf-8", errors="replace") as entree:
+        for ligne in entree:
+            # Filtre bon marché avant l'expression : seules les lignes de commentaire comptent.
+            if ligne.startswith(";") and "spiral_mode" in ligne:
+                trouve = _SPIRAL.match(ligne.strip())
+                if trouve:
+                    valeurs.add(trouve.group(1))
+    if len(valeurs) > 1:
+        raise ValueError("spiral_mode déclaré avec des valeurs contradictoires")
+    if not valeurs:
+        return False
+    return reglages.valeur_brute({"spiral_mode": valeurs.pop()}, "spiral_mode") == "1"
 
 
 class _Etat:
@@ -92,10 +115,13 @@ class _Etat:
         if ligne.upper().startswith(";TYPE:"):
             self.role = ligne[6:].strip().lower()
         ancien_outil = self.lecteur.tool
+        erreurs_avant = self.lecteur.error_count
         mouvement = self.lecteur.feed_line(ligne)
         evenement = self.lecteur.last_event or {}
         self._evenement(evenement, ancien_outil)
-        if self.lecteur.errors:
+        # Seule une erreur de cette ligne rompt la continuité : la liste `errors`
+        # est cumulative et transformerait chaque segment suivant en morceau.
+        if self.lecteur.error_count != erreurs_avant:
             self.incomplet = True
             self.derniere_fin = None
         if mouvement is None:
@@ -294,7 +320,8 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
 
     Reçoit un G-code ou un 3MF et, si nécessaire, un numéro de plaque. Le
     cache lie les résultats à la version du lecteur et aux octets de la source.
-    Le mode vase d’un 3MF regroupe les incréments Z par couche déclarée.
+    Le mode vase (réglages du 3MF ou bloc de configuration du G-code brut)
+    regroupe les incréments Z par couche déclarée.
     Un numéro ambigu est refusé ; aucune écriture ou validation physique.
     """
     intervalle, seuils, longueur, _relation = _options(
@@ -338,6 +365,9 @@ def analyser(chemin, plaque=None, intervalle_z_mm=None, seuils_absolus=None, lon
             return analyser_membre_gcode_3mf(
                 chemin, next(iter(membres.values())), options, calculer, version=version, archive=archive,
             )
+    # Même regroupement par couche déclarée qu'un 3MF en mode vase (#246) : sans
+    # lui, chaque incrément Z d'une spirale deviendrait une couche distincte.
+    options["mode_vase"] = _mode_vase_gcode(chemin)
     entree = Path(chemin).open("r", encoding="utf-8", errors="replace")
     try:
         return calculer(entree)

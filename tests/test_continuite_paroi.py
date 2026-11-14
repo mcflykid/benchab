@@ -394,3 +394,37 @@ def test_continuite_vase_groupe_les_increments_z_par_tour_declare(tmp_path):
     assert tour["segments"] == 3
     assert tour["fraction_microsegments"] == pytest.approx(1 / 3, abs=1e-6)
     assert tour["morceaux"] == 1
+
+
+def test_erreur_isolee_ne_fragmente_pas_les_segments_suivants(tmp_path):
+    """Une ligne refusée rompt la continuité une fois, pas pour toute la suite du fichier."""
+    contenu = (
+        "G90\nM83\n;Z:0.2\n;TYPE:Outer wall\nG0 X0 Y0 Z0.2\nG1 X10 E0.5 F600\n"
+        "G1X?E1\nG1 X20 E0.5\nG1 X30 E0.5\nG1 X40 E0.5\n"
+    )
+    rapport = controler(ecrire_gcode(tmp_path / "erreur.gcode", contenu))
+    assert rapport["statut"] == "NON VÉRIFIÉ"
+    (couche,) = rapport["couches"]
+    assert couche["segments"] == 4
+    # Le premier segment, puis la reprise après la ligne refusée : deux morceaux.
+    assert couche["morceaux"] == 2
+
+
+def test_continuite_vase_gcode_brut_lit_le_bloc_de_configuration(tmp_path):
+    """Un G-code brut en spirale est regroupé comme le même tranchage dans un 3MF."""
+    corps = (
+        "G90\nM83\n;LAYER_CHANGE\n;Z:0.4\n;TYPE:Outer wall\nG1 Z0.2 F600\n"
+        "G1 X1 Z0.25 E0.1\nG1 X1.1 Z0.3 E0.01\nG1 X2 Z0.4 E0.1\n"
+    )
+    vase = controler(ecrire_gcode(tmp_path / "vase.gcode", corps + "; CONFIG_BLOCK_START\n; spiral_mode = 1\n"))
+    assert vase["mode_vase"] is True
+    (tour,) = vase["couches"]
+    assert tour["segments"] == 3
+    assert tour["morceaux"] == 1
+    normal = controler(ecrire_gcode(tmp_path / "normal.gcode", corps + "; spiral_mode = 0\n"))
+    assert normal["mode_vase"] is False
+    assert normal["couches_analysees"] == 3
+    contradictoire = controler(
+        ecrire_gcode(tmp_path / "contradictoire.gcode", corps + "; spiral_mode = 0\n; spiral_mode = 1\n")
+    )
+    assert contradictoire["statut"] == "NON VÉRIFIÉ"
