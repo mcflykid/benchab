@@ -39,6 +39,10 @@ identifiant, son nom, son run, sa révision, sa taille et son SHA-256.
 La requête vise `/repos/{OWNER}/{REPO}/actions/artifacts/{ID_ARTEFACT}`.
 Si les octets JUnit concordent, `ci_github.preuve_cas` rapporte le résultat
 des cas de cette tentative avec le statut `ARTEFACT JUNIT CI VÉRIFIÉ`.
+
+Seuls les éléments de cas directement rattachés à une suite JUnit sont
+lus comme résultats. Une balise de cas dans les métadonnées ou ailleurs
+dans le document laisse le cas attendu manquant (#119).
 Un artefact absent, expiré ou différent reste NON VÉRIFIÉ. Cette option
 ne télécharge aucun fichier et ne modifie pas le statut de l’exécution locale.
 
