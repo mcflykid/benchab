@@ -367,3 +367,16 @@ dans la fenêtre de la cavité. Le rapport d’écart devient NON MESURABLE,
 car aucun écart n’est observable. La masse et la durée estimées
 passent de 6,88 à 4,72 g et de 1 261 à 1 156 s. Les deux G-code
 de la variante concordent hors date (#89).
+
+### Motif de base avec un support organique
+
+Sur le coupon à pilier et tablette de l’étude d’interface, deux variantes
+`support_base_pattern=rectilinear` conservent cette valeur. Seule cette clé
+diffère de la référence `default` dans les réglages projet. Avec le support
+organique et l’interface concentrique, les deux variantes et la référence
+donnent les mêmes empreintes de dépôt par rôle, soit 20 019 segments de
+support et 64 d’interface. L’écart Z médian reste de 0,20 mm. Le slicer
+estime 990 s et 3,28 g dans les trois cas. Le coupon, la référence et les
+646 profils vérifiés gardent leurs empreintes. Aucun effet du changement
+n’a été observé sur ce coupon ; les autres géométries et types de support
+restent NON VÉRIFIÉS (#89).

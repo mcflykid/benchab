@@ -373,18 +373,20 @@ def _rapport_junit(donnees, cas_attendus):
         racine = decoder_xml(donnees, limite_octets=_MAX_JUNIT)
     except ParseError as erreur:
         raise ValueError("XML JUnit invalide.") from erreur
-    if racine.tag.rsplit("}", 1)[-1] not in {"testsuite", "testsuites"}:
+    prefixe, separateur, nom = racine.tag.rpartition("}")
+    espace = prefixe + separateur
+    if nom not in {"testsuite", "testsuites"}:
         raise ValueError("Racine XML JUnit testsuite ou testsuites requise.")
     attendus = {_identite_cas(cas): cas for cas in cas_attendus}
     rencontres = {}
-    # Seuls les cas directement déclarés par une suite comptent comme résultats JUnit (#119).
+    # Le namespace de la racine délimite les résultats et leurs états (#119).
     suites = [racine]
     for suite in suites:
-        suites.extend(enfant for enfant in suite if enfant.tag.rsplit("}", 1)[-1] == "testsuite")
-        if suite.tag.rsplit("}", 1)[-1] != "testsuite":
+        suites.extend(enfant for enfant in suite if enfant.tag == espace + "testsuite")
+        if suite.tag != espace + "testsuite":
             continue
         for element in suite:
-            if element.tag.rsplit("}", 1)[-1] != "testcase":
+            if element.tag != espace + "testcase":
                 continue
             identite = (element.get("file"), element.get("classname"), element.get("name"))
             if not all(isinstance(partie, str) and partie for partie in identite):
@@ -399,10 +401,10 @@ def _rapport_junit(donnees, cas_attendus):
         if element is None:
             manquants.append(dict(zip(("chemin", "classe", "nom"), identite, strict=True)))
         elif any(
-            enfant.tag.rsplit("}", 1)[-1] in {"failure", "error"} for enfant in element
+            enfant.tag in {espace + "failure", espace + "error"} for enfant in element
         ):
             echecs.append(dict(zip(("chemin", "classe", "nom"), identite, strict=True)))
-        elif any(enfant.tag.rsplit("}", 1)[-1] == "skipped" for enfant in element):
+        elif any(enfant.tag == espace + "skipped" for enfant in element):
             ignores.append(dict(zip(("chemin", "classe", "nom"), identite, strict=True)))
     statut = (
         "CONTENU RAPPORTÉ : CAS MANQUANT" if manquants else

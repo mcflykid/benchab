@@ -11,7 +11,7 @@
     "locked_skin_infill_pattern",
     "support_interface_pattern"
   ],
-  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height"],
+  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height", "infill_direction"],
   "binaires": {
     "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d": {
       "version": "2.0.0.3",
@@ -72,6 +72,30 @@
               "nozzle_diameter": ["0.4"],
               "layer_height": "0.2",
               "sparse_infill_pattern": "gyroid",
+              "sparse_infill_density": "20%"
+            }
+          }
+        },
+        "infill_direction": {
+          "45": {
+            "statut": "PASS", "valeur_embarquee": "45",
+            "conditions": {
+              "align_infill_direction_to_model": "0",
+              "infill_combination": "0",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "rectilinear",
+              "sparse_infill_density": "20%"
+            }
+          },
+          "75": {
+            "statut": "PASS", "valeur_embarquee": "75",
+            "conditions": {
+              "align_infill_direction_to_model": "0",
+              "infill_combination": "0",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "rectilinear",
               "sparse_infill_density": "20%"
             }
           }

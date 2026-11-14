@@ -115,7 +115,8 @@ def test_resume_reimpression_conserve_les_ecarts_et_le_projet(tmp_path, capsys, 
     court = capsys.readouterr().out
     assert len(court.encode()) < len(detail.encode())
     assert json.loads(court) == {
-        "statut": "FAIL", "projet": "fixture", "references_attendues": 12, "erreurs": 13, "rapport": str(rapport),
+        "statut": "FAIL", "projet": "fixture", "references_attendues": 12, "erreurs": 13,
+        "premier_ecart": "Fichier absent : note-0.txt", "rapport": str(rapport),
     }
     assert json.loads(rapport.read_bytes()) == resultat
     avant = rapport.read_bytes()

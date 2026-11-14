@@ -87,3 +87,13 @@ Pour chaque compteur NON VÉRIFIÉ, `motifs_non_verifies` distingue
 une couverture incomplète, un seuil non qualifié, un entretien absent ou
 non qualifié et un historique invalide. Plusieurs motifs peuvent
 coexister dans le rapport complet.
+
+### Historique issu des projets
+
+Une durée saisie dans un retour de projet est une déclaration humaine. Pour
+la reporter dans un historique d’entretien, convertir les secondes en heures
+si le seuil utilise des heures, garder l’identifiant du retour, la date et la
+source, et indiquer la période réellement couverte. Une durée d’impression
+interrompue peut renseigner l’usage si elle a été observée ; elle ne représente
+pas la durée attendue d’une impression complète. Les périodes sans relevé
+restent incomplètes. Le bilan se calcule à partir de ce fichier étayé (#51, #73).

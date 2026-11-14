@@ -55,3 +55,16 @@ dépassement donne WARN (code 1). Un dépassement établi sur une plaque reste
 visible si le total de l’archive est indéterminé. Sans plafond, le sous-bilan
 du plafond reste NON VÉRIFIÉ et le verdict du calcul garde son code habituel.
 Le plafond saisi porte sur ce fichier et cette convention de calcul.
+
+### Relecture des sorties natives d’interface multi-matière
+
+Les deux sorties ASN refusées par l’intégrité 3MF restent exploitables pour
+une lecture ciblée de la matrice et des transitions (#290). Sur M00, le
+rapport trouve deux slots déclarés et zéro transition. Sur M02, il relève
+un changement 0 → 1 et un changement 1 → 0, associés à 209 et 167 mm³
+dans la matrice, soit 376 mm³ sous la convention de calcul. L’observation
+de la tour garde ses valeurs partielles par outil et son total NON VÉRIFIÉ
+en présence d’une macro opaque.
+
+Ce résultat confirme la lecture des fichiers archivés. Le refus d’intégrité
+de ces sorties et le statut du routage physique sont conservés.

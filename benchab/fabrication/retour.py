@@ -191,7 +191,7 @@ def journal(projet, ident, fiche, *, prive):
 def main(argv=None, *, base=None):
     """Enregistre un retour dans la base existante.
 
-    Conserve les faits et statuts déclarés. Le retour contient seulement les preuves fournies.
+    Conserve les faits, statuts et la durée observée en secondes, si elle est déclarée.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prive", type=Path)
@@ -202,6 +202,7 @@ def main(argv=None, *, base=None):
     parser.add_argument("--fichier", action="append", type=Path, default=[])
     parser.add_argument("--resultat")
     parser.add_argument("--preuve-retour")
+    parser.add_argument("--duree-observee-s", type=float, help="Durée rapportée en secondes avec --resultat")
     parser.add_argument("--reference-imprimee", action="append", default=[])
     parser.add_argument("--remplace-reference", action="append", default=[])
     parser.add_argument("--ensemble-complet", action="store_true")
@@ -216,6 +217,8 @@ def main(argv=None, *, base=None):
         projet = projet.resolve(strict=True)
         if not projet.is_relative_to(base.prive.resolve()):
             raise ValueError("Projet hors de base.prive")
+        if arguments.duree_observee_s is not None and not arguments.resultat:
+            raise ValueError("--duree-observee-s exige --resultat.")
         if arguments.resultat:
             from benchab.projets.retours import confirmer
 
@@ -228,6 +231,7 @@ def main(argv=None, *, base=None):
                 arguments.id,
                 arguments.remplace_reference,
                 ensemble_complet=arguments.ensemble_complet,
+                duree_observee_s=arguments.duree_observee_s,
             )
             print(json.dumps(resultat, ensure_ascii=False, indent=2))
             return 0
