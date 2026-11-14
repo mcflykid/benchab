@@ -61,10 +61,14 @@ def _instantane_config(projet, root, plages_couches, avec_types):
                 raise ValueError("Intégrité : attribut de volume ambigu")
             etat[p] = noeud.attrib["subtype"]
             types[p] = reglages.definition("subtype", valeur=etat[p], portee="structure_part")
+        sans_cle = []
         for meta in noeud.findall("metadata"):
             cle = meta.get("key")
             if cle is None:
-                raise ValueError("Intégrité : clé de métadonnée absente")
+                # Ce format non typé est conservé à l’octet logique près.
+                # Le classer inconnu bloque toute transformation de son compteur ou contenu.
+                sans_cle.append(_structure(meta, {}))
+                continue
             p = chemin_noeud + "/" + cle
             if p in etat:
                 raise ValueError("Intégrité : clé ambiguë ou dupliquée")
@@ -72,6 +76,12 @@ def _instantane_config(projet, root, plages_couches, avec_types):
             types[p] = reglages.definition(
                 cle, valeur=etat[p], portee="origine_part" if partie else "reglage"
             )
+        if sans_cle:
+            p = chemin_noeud + "/metadata_sans_cle"
+            if p in etat:
+                raise ValueError("Intégrité : métadonnées sans clé ambiguës")
+            etat[p] = sans_cle
+            types[p] = {"type": "inconnu", "longueur": None}
         for index, part in enumerate(noeud.findall("part")):
             lire(part, chemin_noeud + "/part/" + str(index), partie=True)
 
