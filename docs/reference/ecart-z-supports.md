@@ -338,3 +338,24 @@ et celle à 73,58° reste sans dépôt de support. La plaque passe de
 reste à 0,40 mm. Seul l’angle seuil diffère dans les réglages
 avant et après tranchage. Le rejeu concorde hors date et les sources
 et les 646 profils relus gardent leurs empreintes (#89).
+
+### Écart Z inférieur au-dessus d’une surface de la pièce
+
+Un témoin en C place un support normal en grille dans la cavité
+entre une semelle et un toit. Dans une fenêtre à l’intérieur de la
+semelle, les trajets du dessus de la pièce sont à Z=4,00 mm.
+On relève le premier dépôt de l’interface basse dans cette même
+fenêtre, puis on retranche sa hauteur déclarée de 0,20 mm pour
+obtenir l’altitude nominale de son dessous.
+
+| Consigne Z inférieure | Premier dépôt d’interface | Dessous nominal | Écart à la semelle |
+| --- | ---: | ---: | ---: |
+| 0,20 mm | 4,40 mm | 4,20 mm | 0,20 mm |
+| 0,60 mm, deux tranchages | 4,80 mm | 4,60 mm | 0,60 mm |
+
+Le dernier dépôt de l’interface haute reste à Z=17,82 mm. Les
+estimations passent de 6,88 à 6,85 g et de 1 261 à 1 260 s.
+Avec ASN 2.0.0.3, seule la consigne inférieure diffère dans les
+réglages avant et après tranchage. Le rejeu concorde hors date.
+La source et les 646 profils contrôlés gardent leurs empreintes.
+Le retrait et les marques sur la semelle restent à observer (#89).
