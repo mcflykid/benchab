@@ -89,8 +89,7 @@ def confirmer(
     Sans préparation, conserve une capture privée neuve et son SHA-256 comme source contrôlable.
     """
     if duree_observee_s is not None and (
-        type(duree_observee_s) not in (int, float) or not 0 < duree_observee_s <= 1e308
-        or not math.isfinite(duree_observee_s)
+        type(duree_observee_s) not in (int, float) or not 0 < duree_observee_s < math.inf
     ):
         raise ValueError("Durée observée positive et finie requise, en secondes.")
     projet = _projet(base, projet)

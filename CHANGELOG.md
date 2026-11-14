@@ -2,6 +2,14 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.34.0
+
+- Deux directions de remplissage rectiligne sont qualifiées dans le contexte du témoin Anycubic (#80).
+- Le retour de projet peut conserver une durée observée en secondes. La documentation précise son usage dans l’historique d’entretien (#51, #73).
+- Le résumé de réimpression indique le premier écart et renvoie au rapport complet (#35).
+- Les preuves JUnit interprètent les résultats dans le namespace déclaré par la racine du rapport (#119).
+- Les résultats hors ligne documentent le motif de base organique et la purge conditionnelle des sorties multi-matière (#89, #290).
+
 ## 1.33.0
 
 - L’aperçu d’une coque allumée compare la transmission directe estimée sur deux variantes à la même échelle (#271).
