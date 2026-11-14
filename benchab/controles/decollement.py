@@ -179,14 +179,21 @@ def _entrees_controle(fichiers, placement=None, candidats=None):
 
 
 def main(argv=None):
-    """Rapporte le risque de décollement géométrique, sans validation physique."""
+    """Rapporte le risque de décollement géométrique, sans validation physique.
+
+    Renvoie 0 sans alerte bloquante, 1 sur WARN et 2 en cas de refus.
+    Le résumé exige un rapport JSON neuf qui conserve les mesures en mm et mm².
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fichiers", nargs="+", type=Path)
     parser.add_argument("--placement", type=Path)
     parser.add_argument("--candidats", type=Path)
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--resume", action="store_true", help="Afficher les points à examiner avec --json")
     args = parser.parse_args(argv)
     try:
+        if args.resume and args.json is None:
+            raise ValueError("--resume exige --json pour conserver le rapport complet.")
         sortie = destination_neuve(args.json) if args.json else None
         entrees = (
             _entrees_controle(args.fichiers, placement=args.placement, candidats=args.candidats)
@@ -198,6 +205,20 @@ def main(argv=None):
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
         print("Contrôle refusé : " + str(error), file=sys.stderr)
         return 2
+    if args.resume:
+        # Le code historique tolère les réglages auto, dont le statut reste visible (#35).
+        statuts = {r.get("statut", "ESTIMATION") for r in resultats.values()}
+        statut = next((s for s in ("WARN", "NON VÉRIFIÉ", "ESTIMATION") if s in statuts), "PASS")
+        if not resultats:
+            statut = "NON VÉRIFIÉ"
+        points = [
+            {"objet": nom, **{k: r[k] for k in ("statut", "recommandation", "raison", "detail") if k in r}}
+            for nom, r in resultats.items()
+            if r.get("statut") != "PASS" or r["recommandation"] != "aucune"
+        ]
+        print(json.dumps({"statut": statut, "code": code, "objets": len(resultats),
+                          "rapport": str(sortie), "points": points}, ensure_ascii=False))
+        return code
     for k, r in resultats.items():
         print(
             f"{r.get('statut', '-'):11s} {k} : {r['recommandation']} ({r['raison']})"

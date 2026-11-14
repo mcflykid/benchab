@@ -5,6 +5,30 @@ import pytest
 import trimesh
 
 
+def test_contraintes_stables_donnent_des_tranches_et_fusionnent_les_densites_voisines():
+    """Le témoin garde son repère et la même densité sur les quarts voisins fusionnés."""
+    from benchab.conception.paliers_densite import modificateurs_depuis_contraintes
+
+    etude = {
+        "schema": 1, "dimensions_xyz_mm": [60, 8, 6], "zones_axiales_mm": [0, 15, 30, 45, 60],
+        "maillages": [
+            {"divisions_xyz": [4, 2, 2], "von_mises_moyenne_par_zone_mpa": [2.0, 1.9, 0.9, 0.5]},
+            {"divisions_xyz": [8, 4, 4], "von_mises_moyenne_par_zone_mpa": [2.1, 2.0, 1.0, 0.55]},
+        ],
+    }
+    volumes, rapport = modificateurs_depuis_contraintes(etude, [(0, "20%"), (0.7, "35%"), (1.5, "60%")])
+    assert rapport["statut"] == "PASS" and rapport["validation_physique"] is False
+    assert rapport["effet_gcode"] == "NON VÉRIFIÉ"
+    assert [p["densite"] for p in rapport["paliers"]] == ["60%", "35%", "20%"]
+    assert [m["mesh"].bounds[:, 0].tolist() for m in volumes] == [[0, 30], [30, 45], [45, 60]]
+    assert rapport["densite_moyenne_ponderee_volume_pct"] == pytest.approx(43.75)
+
+    etude["maillages"][0]["von_mises_moyenne_par_zone_mpa"][2] = 0.69
+    volumes, rapport = modificateurs_depuis_contraintes(etude, [(0, "20%"), (0.7, "35%"), (1.5, "60%")])
+    assert volumes == [] and rapport["statut"] == "NON VÉRIFIÉ"
+    assert rapport["zones_instables"] == [3]
+
+
 def _paliers():
     return [
         {"rayon_mm": 3, "densite": "65%"},
@@ -136,3 +160,53 @@ def test_palier_refuse_un_maillage_converti_deplace_hors_tranche(monkeypatch):
     )
     assert not volumes and r["statut"] == "NON VÉRIFIÉ"
     assert "Sommet" in r["raison"]
+
+
+def test_paliers_au_voisinage_d_une_fixation_suivent_sa_surface(tmp_path):
+    """Les paliers partent d’une fixation extérieure et suivent sa surface courbe."""
+    from benchab.conception.decoupe.geometrie import solide
+    from benchab.conception.paliers_densite import modificateurs_autour_fixation
+    from benchab.fabrication.anycubic import ecrire_3mf, ranger
+    from benchab.integrite_3mf import instantane
+
+    piece = trimesh.creation.box((10, 12, 12))
+    fixation = trimesh.creation.icosphere(subdivisions=1, radius=2).apply_translation([8, 0, 0])
+    paliers = [{"distance_mm": 2, "densite": "60%"}, {"distance_mm": 4, "densite": "35%"}]
+    zones, rapport = modificateurs_autour_fixation(piece, fixation, paliers)
+    assert rapport["statut"] == "PASS", rapport
+    assert rapport["effet_gcode"] == "NON VÉRIFIÉ"
+    premier, second = [solide(zone["mesh"]) for zone in zones]
+    assert (premier ^ second).volume() == pytest.approx(0, abs=1e-8)
+    assert zones[0]["mesh"].bounds[0, 0] == pytest.approx(4)
+    assert zones[1]["mesh"].bounds[0, 0] == pytest.approx(2)
+    item = {"name": "Temoin", "mesh": piece, "w": 10, "h": 12, "extruder": 1, "volumes": zones}
+    ranger([item], 0, 1, 10.0, cli=True)
+    fichier = ecrire_3mf([{"name": "Plaque", "items": [item]}], {}, tmp_path / "fixation.3mf", cli=True)
+    reglages_relus = instantane(fichier)
+    assert [v for k, v in reglages_relus.items() if k.endswith("/sparse_infill_density")] == ["60%", "35%"]
+
+
+
+def test_fixation_dans_la_matiere_refuse_les_paliers():
+    """Le parcours d'une fixation séparée refuse une intersection initiale."""
+    from benchab.conception.paliers_densite import modificateurs_autour_fixation
+
+    piece = trimesh.creation.box((10, 12, 12))
+    fixation = trimesh.creation.icosphere(subdivisions=1, radius=2)
+    zones, rapport = modificateurs_autour_fixation(piece, fixation, [{"distance_mm": 2, "densite": "60%"}])
+    assert not zones and rapport["statut"] == "NON VÉRIFIÉ"
+    assert "chevauche" in rapport["raison"]
+
+
+def test_paliers_depuis_surface_mesurent_les_coquilles_interieures():
+    """Un bloc permet de calculer exactement les volumes à chaque profondeur."""
+    from benchab.conception.paliers_densite import modificateurs_depuis_surface
+
+    piece = trimesh.creation.box((10, 12, 14))
+    zones, rapport = modificateurs_depuis_surface(piece, [
+        {"profondeur_mm": 1, "densite": "60%"}, {"profondeur_mm": 2, "densite": "35%"},
+    ])
+    assert rapport["statut"] == "PASS", rapport
+    assert [z["mesh"].volume for z in zones] == pytest.approx([1680 - 960, 960 - 480])
+    assert rapport["volume_non_attribue_mm3"] == pytest.approx(480)
+    assert not rapport["validation_physique"]

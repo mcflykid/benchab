@@ -11,7 +11,7 @@
     "locked_skin_infill_pattern",
     "support_interface_pattern"
   ],
-  "cles_contextuelles": ["support_style"],
+  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height"],
   "binaires": {
     "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d": {
       "version": "2.0.0.3",
@@ -53,6 +53,28 @@
         "support_interface_pattern": {
           "auto": {"statut": "PASS", "valeur_embarquee": "auto"},
           "concentric": {"statut": "PASS", "valeur_embarquee": "concentric"}
+        },
+        "infill_combination_max_layer_height": {
+          "50%": {
+            "statut": "PASS", "valeur_embarquee": "50%",
+            "conditions": {
+              "infill_combination": "1",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "gyroid",
+              "sparse_infill_density": "20%"
+            }
+          },
+          "100%": {
+            "statut": "PASS", "valeur_embarquee": "100%",
+            "conditions": {
+              "infill_combination": "1",
+              "nozzle_diameter": ["0.4"],
+              "layer_height": "0.2",
+              "sparse_infill_pattern": "gyroid",
+              "sparse_infill_density": "20%"
+            }
+          }
         },
         "support_style": {
           "grid": {

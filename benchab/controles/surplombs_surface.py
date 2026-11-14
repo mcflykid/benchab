@@ -85,6 +85,8 @@ def analyser(maillage, zones):
             )
             if hauteur is not None:
                 ligne["decalage_max_mm"] = hauteur * math.tan(math.radians(maximum)) if maximum < 90 else None
+        else:
+            ligne["raison"] = "Aucune face descendante dans la zone."
         rapports.append(ligne)
     statuts = {r["statut"] for r in rapports}
     statut = "NON VÉRIFIÉ" if "NON VÉRIFIÉ" in statuts else "WARN" if "WARN" in statuts else "PASS"
@@ -98,6 +100,7 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--zones", type=Path, required=True)
     parser.add_argument("--unite-mm", action="store_true", required=True)
     parser.add_argument("--sortie", type=Path, required=True)
+    parser.add_argument("--detail", action="store_true")
     args = parser.parse_args(argv)
     try:
         destination = destination_neuve(args.sortie, prive=prive)
@@ -112,5 +115,15 @@ def main(argv=None, *, prive=None):
         ecrire_json_neuf(destination, rapport, entrees=(args.source, args.zones))
     except (OSError, ValueError, TypeError) as erreur:
         parser.error(str(erreur))
-    print(json.dumps({"statut": rapport["statut"], "rapport": str(destination)}, ensure_ascii=False))
+    # Les zones et les mesures restent dans le JSON complet (#35).
+    affiche = rapport
+    if not args.detail:
+        points = [
+            {k: zone[k] for k in ("nom", "statut", "angle_max_deg", "seuil_deg",
+                                  "position_max_xyz_mm", "raison") if k in zone}
+            for zone in rapport["zones"] if zone["statut"] != "PASS"
+        ]
+        affiche = {"statut": rapport["statut"], "code": rapport["code"],
+                   "rapport": str(destination), "points": points}
+    print(json.dumps(affiche, ensure_ascii=False))
     return rapport["code"]

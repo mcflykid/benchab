@@ -49,6 +49,12 @@ def normaliser(source, destination, usage="impression", identifiants=None, *, co
     with Archive3MF(source, taille_max_xml=_BUDGET_XML_OCTETS) as entree:
         noms = entree.noms()
         membre_modele = "Metadata/model_settings.config"
+        membre_reglages = "Metadata/project_settings.config"
+        absents = [membre for membre in (membre_modele, membre_reglages) if membre not in noms]
+        if absents:
+            raise ValueError(
+                "Tranchage refusé : membres de configuration absents du 3MF : " + ", ".join(absents)
+            )
         if entree.taille_membre(membre_modele) > _BUDGET_XML_OCTETS:
             raise ValueError(f"budget XML dépassé : {membre_modele}")
         modele_brut = entree.lire(membre_modele, limite_octets=_BUDGET_XML_OCTETS)
@@ -80,7 +86,6 @@ def normaliser(source, destination, usage="impression", identifiants=None, *, co
                             "reglage_impression_modifie": False,
                         }
                     )
-        membre_reglages = "Metadata/project_settings.config"
         if entree.taille_membre(membre_reglages) > _BUDGET_XML_OCTETS:
             raise ValueError(f"budget réglages dépassé : {membre_reglages}")
         reglages_brut = entree.lire(membre_reglages, limite_octets=_BUDGET_XML_OCTETS)

@@ -90,29 +90,36 @@ def destination_rapport_optionnel(sortie, *, resume, nom, prive=None):
 
 def verifier_references_durables(valeur, prive, *, champ=None):
     """Refuse les chemins durables hors atelier, sans transformer les citations de provenance."""
+    for chemin in chemins_references_durables(valeur, prive, champ=champ):
+        sortie_durable(chemin, prive=prive)
+
+
+def chemins_references_durables(valeur, prive, *, champ=None):
+    """Rend les chemins à contrôler dans une valeur décodée, sans unité.
+
+    Le contexte de champ vient de l'objet JSON parent. Aucun fichier n'est
+    ouvert ou modifié ; la validation est à faire avec sortie_durable.
+    """
     if isinstance(valeur, dict):
         for cle, item in valeur.items():
-            verifier_references_durables(cle, prive)
-            verifier_references_durables(item, prive, champ=cle)
+            yield from chemins_references_durables(cle, prive)
+            yield from chemins_references_durables(item, prive, champ=cle)
     elif isinstance(valeur, (tuple, list)):
         for item in valeur:
-            verifier_references_durables(item, prive, champ=champ)
+            yield from chemins_references_durables(item, prive, champ=champ)
     elif isinstance(valeur, str):
         champs = {"fichier", "chemin", "rapport", "manifeste", "envoi_markdown"}
         # Les textes relatifs ordinaires ne désignent pas une destination durable
-        # (docs/reference/donnees.md). Les champs de chemin et toutes les valeurs
-        # absolues gardent la vérification complète.
+        # (docs/reference/donnees.md).
         if not os.path.isabs(valeur) and champ not in champs:
             return
         chemin = Path(valeur)
         temporaire = valeur.startswith(("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"))
         temporaire |= chemin.is_absolute() and chemin.is_relative_to(tempfile.gettempdir())
         if chemin.is_absolute() and (temporaire or champ in champs):
-            # Même sous le temporaire, un atelier de test possède sa racine
-            # de confiance (docs/reference/donnees.md).
-            sortie_durable(chemin, prive=prive)
+            yield chemin
         elif champ in champs and ".." in chemin.parts:
-            sortie_durable(Path(prive) / chemin, prive=prive)
+            yield Path(prive) / chemin
 
 
 def ouvrir_verrou(nom, directory):

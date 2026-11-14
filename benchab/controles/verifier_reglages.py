@@ -2,7 +2,7 @@
 
 Le contrôle porte sur la bordure, le lissage, la vitesse de paroi extérieure,
 la couture côté arrière du plateau, la hauteur de couche et la température.
-Commande : python -I verifier_reglages.py <3mf_tranche> <placement.json> <sortie.json>
+Commande : benchab controle reglages <3mf_tranche> <placement.json> <sortie.json> [--resume]
 """
 
 import collections
@@ -18,6 +18,19 @@ from benchab.gcode.lecture import lire_texte_gcode_3mf
 from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 
 
+def _resume(rapport, sortie):
+    alertes = []
+    for plaque in rapport["plaques"]:
+        objets = [{"objet": o["objet"], **({"erreur": o["erreur"]} if "erreur" in o else {})}
+                  for o in plaque["objets"] if not o["conforme"]]
+        if objets or plaque["erreurs"] or not plaque["objets"]:
+            erreurs = plaque["erreurs"] or ([] if plaque["objets"] else ["aucun objet contrôlé"])
+            alertes.append({"plaque": plaque["plaque"], "erreurs": erreurs, "objets": objets})
+    return {"statut": "PASS" if rapport["tout_conforme"] else "FAIL", "plaques": len(rapport["plaques"]),
+            "alertes": alertes, "rapport": str(sortie),
+            **({"raison": "aucune plaque déclarée"} if not rapport["plaques"] else {})}
+
+
 def main(argv):
     """Vérifie les réglages par objet dans un fichier tranché.
 
@@ -25,9 +38,11 @@ def main(argv):
     natives (mm, s, °C, %) lus via le dictionnaire typé ; aucun réglage inconnu transformé.
 
     Entrées : archive, placement et rapport neuf ; retour 0 conforme, 1 non conforme ou 2 refus.
+    Avec --resume, affiche les alertes et le chemin du rapport complet (inchangé).
     Les consignes thermiques sont informatives et ne changent pas le verdict global.
     """
-    if len(argv) != 3:
+    resume = len(argv) == 4 and argv[3] == "--resume"
+    if len(argv) != 3 and not resume:
         print(__doc__)
         return 2
     TMF, chemin_placement = Path(argv[0]), Path(argv[1])
@@ -185,6 +200,9 @@ def main(argv):
             )
         plaque["erreurs"] = it.errors
         res["plaques"].append(plaque)
+        if resume:
+            # L’affichage ne doit annoncer un rapport qu’une fois celui-ci enregistré (#35).
+            continue
         print(pl["name"], plaque["hauteurs_de_couche"], plaque["temperatures_buse"])
         for o in plaque["objets"]:
             if o["voulu"] or not o["conforme"]:
@@ -211,7 +229,10 @@ def main(argv):
     except (OSError, ValueError) as erreur:
         print(f"Rapport refusé : {erreur}", file=sys.stderr)
         return 2
-    print("tout conforme", res["tout_conforme"])
+    if resume:
+        print(json.dumps(_resume(res, OUT), ensure_ascii=False))
+    else:
+        print("tout conforme", res["tout_conforme"])
 
     return 0 if res["tout_conforme"] else 1
 

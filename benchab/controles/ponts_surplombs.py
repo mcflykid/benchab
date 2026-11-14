@@ -271,6 +271,7 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--sha-stl", required=True)
     parser.add_argument("--sha-3mf", required=True)
     parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    parser.add_argument("--detail", action="store_true", help="Afficher aussi le rapport complet")
     args = parser.parse_args(argv)
     try:
         resultat = _rapport_fichiers(args)
@@ -281,8 +282,16 @@ def main(argv=None, *, prive=None):
                 "statut": resultat["statut"], "association": resultat["association"],
                 "ilot": args.ilot, "plaque": args.plaque, "rapport": str(cible),
             }
+            if resultat["statut"] == "NON VÉRIFIÉ":
+                affiche["exclusions"] = {k: v for k, v in resultat["exclusions"].items() if v}
+                affiche["erreurs_interpreteur"] = resultat["erreurs_interpreteur"]
+                if not affiche["exclusions"] and not affiche["erreurs_interpreteur"]:
+                    affiche["raison"] = "Aucun segment de pont reconnu."
             if args.objet_id is not None:
                 affiche["objet_id_declare"] = args.objet_id
+            if args.detail:
+                # Le détail réaffiche le JSON conservé sans changer le code (#35).
+                affiche = resultat
         else:
             affiche = resultat
         print(json.dumps(affiche, ensure_ascii=False, indent=2, allow_nan=False))

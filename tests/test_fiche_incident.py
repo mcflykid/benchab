@@ -208,6 +208,15 @@ def test_ouverture_junit_est_non_bloquante(incident, monkeypatch):
     assert drapeaux[-1] & os.O_NONBLOCK
 
 
+def test_junit_ignore_un_cas_hors_de_la_suite():
+    """Un élément dans les métadonnées ne vaut pas un résultat de cas."""
+    contenu = (b'<testsuites><testsuite><properties><testcase file="tests/test_fixture.py" '
+               b'classname="tests.test_fixture" name="test_preuve"/></properties></testsuite></testsuites>')
+    cas = {"chemin": "tests/test_fixture.py", "classe": "tests.test_fixture", "nom": "test_preuve"}
+    rapport = incidents._rapport_junit(contenu, [cas])
+    assert rapport["cas_manquants"] == [cas]
+
+
 def test_junit_signale_un_cas_attendu_absent(incident):
     depot, prive, declaration, preuve, _ = incident
     declaration["preuve_execution"].update({

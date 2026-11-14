@@ -122,9 +122,17 @@ def main(argv=None, *, prive=None):
         return rapport["code"]
     temps = [r for r in rapport["groupes"] if r["temps_depot_nominal_s"] is not None]
     matiere = [r for r in rapport["groupes"] if r["matiere_g"] is not None]
-    print(json.dumps(dict(
+    resume = dict(
         statut=rapport["statut"], rapport=str(cible), groupes=len(rapport["groupes"]),
         poste_temps=max(temps, key=lambda r: r["temps_depot_nominal_s"], default=None),
         poste_matiere=max(matiere, key=lambda r: r["matiere_g"], default=None),
-    ), ensure_ascii=False))
+    )
+    if rapport["statut"] == "NON VÉRIFIÉ":
+        if rapport["erreurs"]:
+            resume["raison"] = rapport["erreurs"][0]
+        elif not rapport["groupes"]:
+            resume["raison"] = "Aucun dépôt exploitable."
+        else:
+            resume["raison"] = "Masse ou durée nominale indéterminée pour au moins un groupe."
+    print(json.dumps(resume, ensure_ascii=False))
     return rapport["code"]

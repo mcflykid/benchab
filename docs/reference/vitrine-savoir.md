@@ -22,3 +22,9 @@ Le résultat donne le nombre de fiches et les SHA-256 du corpus et du HTML.
 La commande prépare un aperçu. Une mise en ligne, par exemple via GitHub
 Pages, reste une opération distincte, après relecture de l’artefact et contrôle
 de publication. Aucun déploiement ou workflow de publication n’est activé.
+
+Ajouter `--manifeste prive/savoir.json` pour conserver un index JSON avec
+la date de chaque source, la portée, le statut et l’empreinte du corpus.
+Le champ `page` désigne un chemin sous `docs/` versionné dans le dépôt. Une
+référence documentaire absente de l’arbre Git donne `null` dans l’index.
+Deux générations depuis le même arbre produisent les mêmes octets.

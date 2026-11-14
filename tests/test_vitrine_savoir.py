@@ -85,3 +85,27 @@ def test_vitrine_refuse_corpus_remplace_par_fichier_tiers(tmp_path):
         generer(racine, destination, prive=prive)
 
     assert not destination.exists()
+
+
+def test_manifeste_public_reproductible_et_reference_versionnee(tmp_path):
+    """Le manifeste reprend la provenance, avec des pages publiques réellement suivies."""
+    racine, _ = _depot(tmp_path)
+    prive = racine / "prive"
+    prive.mkdir()
+    page = racine / "docs/reference/machine-kobra-s1.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("# Kobra S1\n")
+    subprocess.run(["git", "-C", racine, "add", "--", page], check=True)
+    subprocess.run(
+        ["git", "-C", racine, "-c", "user.name=Test", "-c", "user.email=test",
+         "-c", "commit.gpgsign=false", "commit", "-qm", "Guide synthétique"],
+        check=True,
+    )
+    for nom in ("a", "b"):
+        generer(racine, prive / f"{nom}.html", prive=prive, manifeste=prive / f"{nom}.json")
+    fichier = prive / "a.json"
+    assert fichier.read_bytes() == (prive / "b.json").read_bytes()
+    manifeste = json.loads(fichier.read_text())
+    assert manifeste["fiches"][0]["date"] == "2026-11-11"
+    assert manifeste["fiches"][0]["page"] == "docs/reference/machine-kobra-s1.md"
+    assert manifeste["fiches"][0]["statut"] == "observé une fois"

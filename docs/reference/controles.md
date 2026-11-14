@@ -69,10 +69,37 @@ décollement, ergots, ponts, première couche, colonnes et géométrie sont publ
 dans un fichier neuf, sous l’atelier privé ou dans un temporaire système hors
 dépôt. Un fichier existant ou un lien est refusé. Les G-code conservés avec
 `supports-requis --garder` sont traités comme des preuves neuves, plaque par
-plaque. Une étude d’orientation publie ensemble son rapport et ses STL dans
+plaque. `supports-requis SOURCE RAPPORT.json --resume` affiche le seuil en
+grammes, les plaques au seuil d’alerte ou au-delà et le chemin du JSON
+complet ; le code de sortie et la répartition par hauteur sont conservés
+(#35). Une étude d’orientation publie ensemble son rapport et ses STL dans
 un dossier neuf. Le renouvellement explicite de la revue locale avec
 `--appliquer` conserve les décisions humaines et refuse une sortie liée au
 tranchage, à la déclaration d’envoi ou à l’autre sortie.
+
+`benchab controle reglages TRANCHE PLACEMENT RAPPORT.json --resume`
+donne le verdict et indique les plaques et objets en écart. Les erreurs de
+lecture du G-code et les motifs déjà présents restent visibles ; le rapport
+complet et le code de sortie sont identiques au mode détaillé (#35).
+
+`benchab controle colonnes-isolees TRANCHE --json RAPPORT.json --resume`
+donne le verdict et les intervalles Z des séries en alerte par plaque.
+Les détails des trajectoires restent dans le JSON complet. Le motif
+d’un contrôle non vérifié et son code 2 sont conservés (#35).
+
+`benchab controle decollement SOURCE --json RAPPORT.json --resume`
+donne la recommandation, son motif et le chemin du rapport complet.
+Un STL seul donne une estimation géométrique. Pour un projet, une
+bordure automatique peut rester NON VÉRIFIÉE avec le code historique 0.
+
+`benchab controle ergots-faces DOSSIER --json RAPPORT.json --resume`
+localise les faces en alerte par paire de pièces et centre de contact.
+Le JSON complet conserve aussi les faces conformes et leurs mesures.
+Les codes de sortie sont identiques avec et sans résumé (#35).
+
+`benchab controle ponts-internes TRANCHE --json RAPPORT.json --resume`
+indique les plaques en alerte, le nombre de ponts concernés et leur
+portée maximale. Les positions restent dans le rapport JSON complet (#35).
 
 La routine lit uniquement les résultats du contrôle courant. Relancer la
 routine conserve les fichiers identiques et publie les fichiers différents
@@ -258,3 +285,10 @@ cercle compatible avec l’hypothèse d’un demi-pas de 0,0005 mm par champ.
 L’intervalle de longueur XY le plus large mesure 0,01450 mm. Le lecteur
 strict refuse toujours les mêmes 697 arcs de cette sonde. Ce résultat
 n’identifie pas le code du firmware et ne modifie aucun seuil.
+
+Sur ce même cylindre, 642 arcs sur 700 ont un cercle compatible avec un
+demi-pas de 0,00025 mm. Le total passe à 687 à 0,00035 mm, 696 à
+0,00040 mm et 700 à 0,00045 mm. Les 697 refus du lecteur strict sont
+identiques dans chaque rejeu. Ces points décrivent la sensibilité à
+l’hypothèse d’arrondi de ce témoin ; la précision du firmware reste
+NON VÉRIFIÉE (#134).

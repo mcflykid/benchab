@@ -579,6 +579,9 @@ def test_moteur_change_reglage_non_declare_sortie_non_livree(tmp_path, monkeypat
     assert len(rapports) == 1
     rapport = json.loads(rapports[0].read_text())
     assert rapport["validation_sortie"]["statut"] == "FAIL"
+    assert rapport["code_processus"] == 0
+    assert rapport["diagnostic"]["cause"] == "validation_sortie"
+    assert trancher._cle_incident(rapport) == ("inconnue", "tranchage", rapport["source_sha256"])
     assert "Intégrité" in rapport["validation_sortie"]["detail"]
     assert (Path(rapport["incident"]["dossier"]) / "sortie-refusee.3mf").is_file()
 
@@ -1023,3 +1026,14 @@ def test_restauration_refuse_octet_altere_apres_publication(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="(?i)copie publi|empreinte"):
         trancher.restaurer_noms(source, ["Nom restauré"], **({"destination": cible} if copie_neuve else {}))
     assert cible.read_bytes().endswith(b"natix")
+
+
+def test_normalisation_refuse_un_projet_sans_reglages_embarques(tmp_path):
+    """Un 3MF sans configuration projet reste intact et ne produit aucune copie."""
+    source, sortie = tmp_path / "source.3mf", tmp_path / "sortie.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/model_settings.config", "<config/>")
+    avant = source.read_bytes()
+    with pytest.raises(ValueError, match=r"configuration absents.*Metadata/project_settings\.config"):
+        trancher.normaliser(source, sortie, usage="temoin")
+    assert not sortie.exists() and source.read_bytes() == avant

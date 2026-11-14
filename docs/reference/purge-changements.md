@@ -18,8 +18,10 @@ Cette convention documentaire ne prouve pas la lecture par un binaire
 particulier. Un témoin à un seul outil avec neuf valeurs ne qualifie aucune
 paire, même si le tableau rappelle une matrice de trois outils.
 
-Le rapport distingue le comptage, les valeurs par paire et leur somme
-conditionnelle en mm³. Le statut PASS couvre seulement ce calcul conditionnel.
+Le rapport distingue le comptage, la valeur unitaire et le volume conditionnel
+de chaque paire en mm³ (nombre de changements × valeur de la case). Un total
+indéterminé ne masque pas les paires calculables. Le statut PASS couvre
+seulement ce calcul conditionnel.
 Le volume attribuable aux commandes de purge, le temps réel, la densité,
 la masse et les effets des commandes du firmware restent NON VÉRIFIÉS.
 Aucun plafond, multiplicateur ou réglage machine n’est ajouté.
@@ -40,3 +42,16 @@ incomplète, le total de cette observation reste NON VÉRIFIÉ ; les segments
 couverts restent détaillés par outil. Le code du bilan reste celui de la
 matrice. Cette observation ne mesure ni purge physique, ni dépôt par paire,
 ni effet d’un changement de réglage (#72).
+
+L’observation de la tour indique aussi le temps nominal de dépôt à l’avance
+programmée, en secondes. La masse nominale en grammes utilise la densité
+embarquée de l’outil exact. Une densité manquante laisse la masse totale
+NON VÉRIFIÉE et conserve le temps et le volume couverts. Le temps de changement
+complet, les déplacements hors dépôt et le temps réel restent séparés.
+
+`--plafond-mm3 VALEUR --source-plafond SOURCE` compare la somme conditionnelle
+de la matrice par plaque et pour l’archive entière au volume documenté. Le
+dépassement donne WARN (code 1). Un dépassement établi sur une plaque reste
+visible si le total de l’archive est indéterminé. Sans plafond, le sous-bilan
+du plafond reste NON VÉRIFIÉ et le verdict du calcul garde son code habituel.
+Le plafond saisi porte sur ce fichier et cette convention de calcul.

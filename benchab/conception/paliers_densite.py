@@ -219,3 +219,152 @@ def modificateurs_depuis_plan(piece, point_plan_mm, normale_sortante, paliers, *
                 "raison": "Sommet d’un modificateur au-delà des plans de son palier",
             }
     return volumes, rapport
+
+
+def modificateurs_depuis_contraintes(etude, seuils, *, volume_min_mm3=0.1):
+    """Convertit les moyennes de von Mises d’un coupon plein en tranches expérimentales.
+
+    L’étude fournit les cotes et limites axiales en mm et au moins deux
+    maillages ordonnés. Les seuils explicites (MPa, % entier) sont choisis
+    pour l’étude. PASS couvre seulement la géométrie ; NON VÉRIFIÉ si
+    l’enveloppe observée change de classe. Aucun fichier ni réglage modifié.
+    """
+    if not isinstance(etude, dict) or etude.get("schema") != 1:
+        raise ValueError("Rapport de contraintes volumétriques de schéma 1 requis")
+    cotes = _vecteur(etude.get("dimensions_xyz_mm"), "Cotes du coupon")
+    if not np.all((0.5 <= cotes) & (cotes <= 1000)):
+        raise ValueError("Cotes hors domaine du coupon volumique")
+    longueur, largeur, hauteur = cotes.tolist()
+    limites = [longueur * i / 4 for i in range(5)]
+    if etude.get("zones_axiales_mm") != limites:
+        raise ValueError("Quatre zones axiales du coupon, dans son repère, requises")
+    if not isinstance(seuils, (list, tuple)) or not 1 <= len(seuils) <= _MAX_PALIERS:
+        raise ValueError("Déclarer de un à cinq couples seuil MPa et densité")
+    if any(not isinstance(s, (list, tuple)) or len(s) != 2 for s in seuils):
+        raise ValueError("Chaque seuil contient une contrainte en MPa et une densité")
+    bornes = [s[0] for s in seuils]
+    if (any(type(x) not in (float, int) or not math.isfinite(x) or x < 0 for x in bornes)
+            or bornes[0] != 0 or any(a >= b for a, b in zip(bornes, bornes[1:]))):
+        raise ValueError("Les seuils en MPa commencent à zéro et croissent strictement")
+    options = _valider_paliers(
+        [{"profondeur_mm": i, "densite": s[1]} for i, s in enumerate(seuils, 1)], "profondeur_mm",
+    )
+    densites = [reglages.valeur_brute(r, _CLE_DENSITE) for _, r in options]
+    if any(int(a[:-1]) >= int(b[:-1]) for a, b in zip(densites, densites[1:])):
+        raise ValueError("Les densités doivent croître strictement avec les seuils")
+    maillages = etude.get("maillages")
+    if not isinstance(maillages, list) or not 2 <= len(maillages) <= 12:
+        raise ValueError("Déclarer de deux à douze maillages du même problème")
+    divisions_avant = [0, 0, 0]
+    mesures = []
+    for maillage in maillages:
+        if not isinstance(maillage, dict):
+            raise ValueError("Maillage invalide")
+        divisions = maillage.get("divisions_xyz")
+        sigma = maillage.get("von_mises_moyenne_par_zone_mpa")
+        if (not isinstance(divisions, list) or len(divisions) != 3
+                or any(type(x) is not int or x < 2 or x <= a for x, a in zip(divisions, divisions_avant))
+                or not isinstance(sigma, list) or len(sigma) != 4
+                or any(type(x) not in (int, float) or not math.isfinite(x) or x < 0 for x in sigma)):
+            raise ValueError("Divisions croissantes et quatre contraintes finies en MPa requises")
+        divisions_avant = divisions
+        mesures.append(sigma)
+    zones = []
+    zones_instables = []
+    paliers = []
+    for i, valeurs in enumerate(zip(*mesures, strict=True)):
+        bas, haut = min(valeurs), max(valeurs)
+        choix = sum(haut >= seuil for seuil in bornes) - 1
+        # Un seuil traversé par les maillages rend la classe indéterminée (#83).
+        stable = sum(bas >= seuil for seuil in bornes) - 1 == choix
+        if not stable:
+            zones_instables.append(i + 1)
+        densite = densites[choix]
+        zones.append({"x_mm": limites[i:i + 2], "enveloppe_moyennes_mpa": [bas, haut],
+                      "densite": densite if stable else None})
+        if paliers and paliers[-1]["densite"] == densite:
+            paliers[-1]["profondeur_mm"] = limites[i + 1]
+        else:
+            paliers.append({"profondeur_mm": limites[i + 1], "densite": densite})
+    details = {"seuils_mpa_et_densites": list(zip(bornes, densites, strict=True)),
+               "zones": zones, "zones_instables": zones_instables, "validation_physique": False,
+               "effet_gcode": "NON VÉRIFIÉ", "loi_mecanique": "NON VÉRIFIÉ"}
+    if zones_instables:
+        return [], {**details, "statut": "NON VÉRIFIÉ", "raison": "Un seuil est franchi entre maillages"}
+    # Reconstruit uniquement le pavé étudié ; aucun rapprochement avec un STL arbitraire.
+    piece = trimesh.creation.box(cotes)
+    piece.apply_translation([longueur / 2, largeur / 2, hauteur / 2])
+    volumes, rapport = modificateurs_depuis_plan(piece, [0, 0, 0], [-1, 0, 0], paliers,
+                                                 volume_min_mm3=volume_min_mm3)
+    if not volumes:
+        return [], {**rapport, **details}
+    moyenne = math.fsum(int(p["densite"][:-1]) * p["volume_mesure_mm3"] for p in rapport["paliers"])
+    return volumes, {**rapport, **details,
+                     "densite_moyenne_ponderee_volume_pct": moyenne / rapport["volume_piece_mm3"]}
+
+
+def _boule_distance(corps):
+    boule = mf.Manifold.sphere(1, _SEGMENTS_SPHERE)
+    if corps.num_tri() * boule.num_tri() > 1_000_000:
+        raise ValueError("Budget de calcul de distance dépassé : utiliser un maillage plus simple")
+    # Le maillage inscrit borne l’écart à une boule de rayon exact.
+    # Son écart radial maximal vient de la face la plus proche du centre.
+    maillage_boule = _vers_trimesh(boule)
+    inrayon = float(np.min(np.einsum("ij,ij->i", maillage_boule.triangles_center, maillage_boule.face_normals)))
+    return boule, inrayon
+
+
+def modificateurs_autour_fixation(piece, fixation, paliers, *, volume_min_mm3=0.1):
+    """Retourne des paliers autour d’une fixation maillée extérieure.
+
+    Les deux solides partagent le repère en mm. Les paliers déclarent une
+    distance en mm et une densité en %. PASS porte sur leur géométrie
+    disjointe dans la pièce, NON VÉRIFIÉ indique une opération incomplète.
+    La distance suit une boule polyédrique inscrite. Aucune entrée n’est
+    modifiée et aucun effet G-code ou comportement physique n’est déduit.
+    """
+    normalises = _valider_paliers(paliers, "distance_mm")
+    base, volume_base = _piece_et_volume(piece, volume_min_mm3)
+    obstacle, _ = _piece_et_volume(fixation, volume_min_mm3)
+    boule, inrayon = _boule_distance(obstacle)
+    intersection = base ^ obstacle
+    if intersection.status() != mf.Error.NoError or abs(intersection.volume()) > max(1e-9, volume_base * 1e-10):
+        return [], {
+            "statut": "NON VÉRIFIÉ", "raison": "La fixation chevauche la matière ou l’intersection est indéterminée.",
+            "effet_gcode": "NON VÉRIFIÉ", "validation_physique": False, "paliers": [],
+        }
+
+    return _assembler(
+        base, volume_base, normalises, lambda d: base ^ obstacle.minkowski_sum(boule.scale((d, d, d))),
+        prefixe="palier-fixation", nom_distance="distance", volume_min_mm3=volume_min_mm3,
+        details={"erreur_radiale_boule_max_mm": (1 - inrayon) * normalises[-1][0],
+                 "triangles_fixation": obstacle.num_tri()},
+        limite="Dilatation de la fixation maillée ; aucun effet G-code ni tenue physique établis.",
+    )
+
+
+def modificateurs_depuis_surface(piece, paliers, *, volume_min_mm3=0.1):
+    """Retourne des bandes internes depuis la surface d’un solide fermé.
+
+    Les profondeurs sont en mm et les densités en %. PASS décrit les
+    volumes disjoints confinés à la pièce. NON VÉRIFIÉ indique un défaut
+    géométrique ou un palier vide. La distance suit une boule inscrite.
+    Aucun réglage, modèle source ou résultat physique n’est modifié.
+    """
+    normalises = _valider_paliers(paliers, "profondeur_mm")
+    base, volume_base = _piece_et_volume(piece, volume_min_mm3)
+    boule, inrayon = _boule_distance(base)
+
+    def couche_cumulee(profondeur):
+        coeur = base.minkowski_difference(boule.scale((profondeur,) * 3))
+        # Un cœur vide peut être normal ; un échec du noyau ne qualifie aucune bande.
+        if coeur.status() != mf.Error.NoError:
+            return coeur
+        return base - coeur
+
+    return _assembler(
+        base, volume_base, normalises, couche_cumulee,
+        prefixe="palier-surface", nom_distance="profondeur", volume_min_mm3=volume_min_mm3,
+        details={"erreur_radiale_boule_max_mm": (1 - inrayon) * normalises[-1][0]},
+        limite="Érosion de la pièce maillée ; aucun effet G-code ni tenue physique établis.",
+    )

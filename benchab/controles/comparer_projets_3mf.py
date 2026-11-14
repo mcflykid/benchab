@@ -3,15 +3,15 @@
 import math
 import re
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
 from benchab import reglages
 from benchab.archives_3mf import Archive3MF
+from benchab.controles.composants_production_3mf import REL_MODELE, feuille_production, relations_opc
 from benchab.controles.materiaux_core_3mf import NS_CORE, resoudre
 
 _CONFIG = "Metadata/project_settings.config"
-_NS_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
-_REL_MODELE = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
 _NS_PRUSA = "{http://schemas.slic3r.org/3mf/2017/06}"
 _DIALECTES_PEINTURE = {
     "paint_color": "paint_color",
@@ -105,21 +105,12 @@ def _lire_peinture_directe(archive):
     inconnu = {"statut": "NON VÉRIFIÉ", "raison": "StartPart OPC et maillage direct non qualifiés."}
     if relation_root not in noms:
         return inconnu
-    relations = archive.xml(relation_root)
-    if relations.tag != _NS_REL + "Relationships":
-        return inconnu
-    candidates, ids = [], set()
-    for relation in relations:
-        if relation.tag != _NS_REL + "Relationship":
-            return {**inconnu, "raison": "QName de relation OPC inattendu."}
-        identifiant, cible = relation.get("Id"), relation.get("Target")
-        mode, type_relation = relation.get("TargetMode", "Internal"), relation.get("Type", "")
-        if not identifiant or identifiant in ids or not cible or mode not in {"Internal", "External"}:
-            return inconnu
-        ids.add(identifiant)
-        if type_relation.endswith("/3dmodel"):
-            candidates.append((type_relation, mode, cible))
-    if len(candidates) != 1 or candidates[0][:2] != (_REL_MODELE, "Internal"):
+    try:
+        relations = relations_opc(archive, relation_root)
+    except ValueError as erreur:
+        return {**inconnu, "raison": str(erreur)}
+    candidates = [relation for relation in relations if relation[0].endswith("/3dmodel")]
+    if len(candidates) != 1 or candidates[0][:2] != (REL_MODELE, "Internal"):
         return {**inconnu, "raison": "Relation OPC StartPart absente, externe ou ambiguë."}
     from urllib.parse import unquote, urlsplit
 
@@ -135,7 +126,8 @@ def _lire_peinture_directe(archive):
     modele = cible.lstrip("/") if cible.startswith("/") else cible
     if modele in {"", "."} or modele not in noms:
         return {**inconnu, "raison": "Cible StartPart hors archive ou absente."}
-    racine = archive.xml(modele)
+    prefixes = {}
+    racine = archive.xml(modele, namespaces_racine=prefixes)
     if racine.tag != NS_CORE + "model":
         return {**inconnu, "raison": "StartPart ne désigne pas un modèle Core reconnu."}
     unite = racine.get("unit", "millimeter")
@@ -160,7 +152,23 @@ def _lire_peinture_directe(archive):
         objet = objets[0]
         if not objet.get("id") or item.get("objectid") != objet.get("id"):
             return {**inconnu, "raison": "Objet du build direct non identifié."}
-        return _lire_feuille_core(objet, contexte, racine, ressources, inconnu)
+        if objet.find(NS_CORE + "components") is not None:
+            try:
+                feuille, sous_modele, ressources_feuille, provenance = feuille_production(
+                    archive, modele, racine, prefixes, construction,
+                    translation_qualifiee=_translation_directe_qualifiee,
+                )
+            except ValueError as erreur:
+                return {**inconnu, "raison": str(erreur)}
+            return _lire_feuille_core(
+                feuille, {**contexte, "production": provenance}, sous_modele, ressources_feuille, inconnu,
+                strict=True,
+            )
+        lecture = _lire_feuille_core(objet, contexte, racine, ressources, inconnu)
+        # Le rapprochement entre conteneurs exige aussi la forme stricte du maillage direct.
+        if lecture["statut"] == "PASS":
+            lecture["direct_qualifie"] = _direct_qualifie(racine, construction, ressources, objet, item)
+        return lecture
 
     choix = _composants_core_locaux(racine, ressources, objets, item)
     if choix is None:
@@ -180,6 +188,32 @@ def _lire_peinture_directe(archive):
     return _assembler_feuilles(lectures)
 
 
+def _direct_qualifie(racine, construction, ressources, objet, item):
+    """Écarte les extensions et ambiguïtés du modèle direct avant un rapprochement Production."""
+    identifiants = [ressource.get("id", "") for ressource in ressources]
+    return (
+        not racine.get("requiredextensions", "").strip()
+        and set(racine.attrib) <= {"unit", "{http://www.w3.org/XML/1998/namespace}lang"}
+        and all(e.tag in {NS_CORE + t for t in ("metadata", "resources", "build")} for e in racine)
+        and len(construction) == 1 and not construction.attrib and not len(item)
+        and set(item.attrib) <= {"objectid", "transform", "printable"}
+        and len(objet) == 1 and set(objet.attrib) <= {"id", "type", "pid", "pindex", "name", "partnumber"}
+        and all(ressource.tag in {NS_CORE + "object", NS_CORE + "basematerials"} for ressource in ressources)
+        and all(re.fullmatch(r"[1-9][0-9]{0,9}", ident) and int(ident) < 2**31 for ident in identifiants)
+        and len(identifiants) == len(set(identifiants))
+    )
+
+
+def _maillage_strict(maillage, groupes, sommets, triangles):
+    """Vérifie que seuls les éléments géométriques et attributs attendus sont présents."""
+    return not (
+        maillage.attrib or len(maillage) != 2 or any(g.attrib for g in groupes)
+        or len(groupes[0]) != len(sommets) or len(groupes[1]) != len(triangles)
+        or any(set(s.attrib) != {"x", "y", "z"} or len(s) for s in sommets)
+        or any(len(t) for t in triangles)
+    )
+
+
 def _lire_feuille_core(objet, contexte, racine, ressources, inconnu, *, strict=False):
     """Lit les attributs et le maillage d’une feuille ; l’identité reste littérale."""
     ident = objet.get("id")
@@ -197,13 +231,8 @@ def _lire_feuille_core(objet, contexte, racine, ressources, inconnu, *, strict=F
     triangles = groupes_triangles[0].findall(NS_CORE + "triangle")
     if not sommets or not triangles:
         return {**inconnu, "raison": "Maillage vide."}
-    if strict and (
-        maillage.attrib or len(maillage) != 2
-        or any(g.attrib for g in (*groupes_sommets, *groupes_triangles))
-        or len(groupes_sommets[0]) != len(sommets) or len(groupes_triangles[0]) != len(triangles)
-        or any(set(s.attrib) != {"x", "y", "z"} or len(s) for s in sommets)
-        or any(len(t) for t in triangles)
-    ):
+    maillage_strict = _maillage_strict(maillage, (*groupes_sommets, *groupes_triangles), sommets, triangles)
+    if strict and not maillage_strict:
         return {**inconnu, "raison": "Extension du maillage local non qualifiée."}
     coordonnees = []
     for sommet in sommets:
@@ -250,6 +279,7 @@ def _lire_feuille_core(objet, contexte, racine, ressources, inconnu, *, strict=F
         }
     return {
         "statut": "PASS",
+        "maillage_strict": maillage_strict,
         "identite": {**contexte, "objet_id": ident},
         "coordonnees": coordonnees,
         "facettes": faces,
@@ -297,6 +327,30 @@ def _identite_facette(source, index):
     return source["identite"]["objet_id"], index
 
 
+def _correspondance_production(source, candidat):
+    """Établit la correspondance d’une feuille unique entre placements en translation pure."""
+    identites = [lecture["identite"] for lecture in (source, candidat)]
+    if not any("production" in identite for identite in identites):
+        return None
+    if not all(
+        lecture.get("maillage_strict") and ("production" in identite or lecture.get("direct_qualifie"))
+        for lecture, identite in zip((source, candidat), identites, strict=True)
+    ):
+        return False
+
+    def pose(identite):
+        production = identite.get("production", {})
+        # Les translations Core se composent par addition. Les fractions
+        # gardent exactes les décimales, y compris un très petit déplacement.
+        deplacements = [
+            tuple(map(Fraction, texte.split()[-3:])) if texte else (0, 0, 0)
+            for texte in (identite["transform"], production.get("transform_composant"))
+        ]
+        return identite["unite"], identite["objet_id"], tuple(map(sum, zip(*deplacements, strict=True)))
+
+    return pose(identites[0]) == pose(identites[1])
+
+
 def _comparer_peinture(source, candidat):
     """Compare les valeurs paint littérales après preuve exacte du modèle et de ses facettes."""
     nv = {
@@ -306,7 +360,11 @@ def _comparer_peinture(source, candidat):
     }
     if source["statut"] != "PASS" or candidat["statut"] != "PASS":
         return {**nv, "raison": source.get("raison") or candidat.get("raison") or "Modèle non qualifié."}
-    for cle in ("identite", "coordonnees", "facettes"):
+    production = _correspondance_production(source, candidat)
+    if production is False:
+        return {**nv, "raison": "Identité ou placement Production différents ou non qualifiés."}
+    cles = ("coordonnees", "facettes") if production else ("identite", "coordonnees", "facettes")
+    for cle in cles:
         if source[cle] != candidat[cle]:
             raison = (
                 "Ordre ou indices des facettes différents."
@@ -348,6 +406,10 @@ def _comparer_peinture(source, candidat):
             })
     statut = "WARN" if differences else "PASS"
     resultat = {"statut": statut, "dialecte": dialecte, "differences_litterales": differences}
+    if production:
+        resultat["correspondance_production"] = {
+            cote: lecture["identite"] for cote, lecture in (("source", source), ("candidat", candidat))
+        }
     if differences and raison_perte is not None:
         resultat["cause"] = raison_perte
     return resultat
@@ -619,7 +681,8 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
 
     Les réglages projet reconnus sont identiques, différents ou NON VÉRIFIÉS.
     La peinture et les matériaux Core par facette sont comparés dans les
-    sous-cas directs ou locaux, à géométrie et ordre strictement identiques.
+    sous-cas directs ou locaux, et la peinture d’une feuille Production
+    peut être comparée à géométrie et pose strictement identiques.
     Les translations sont déclarées dans l’unité du modèle. La compatibilité
     du slicer et la tenue physique restent NON VÉRIFIÉES.
     """
@@ -654,7 +717,8 @@ def comparer(source: str | Path, candidat: str | Path) -> dict:
             "Comparaison en lecture seule des seuls réglages projet décodés par le dictionnaire typé.",
             "Les valeurs sont comparées dans leur forme native, sans normalisation ni réindexation.",
             "Seuls les matériaux de base Core déclarés et les attributs littéraux de peinture connus sont "
-            "comparés dans les sous-cas directs ou d’assemblage local qualifiés.",
+            "comparés dans les sous-cas directs ou d’assemblage local qualifiés. Le sous-cas Production "
+            "à une feuille externe couvre les attributs littéraux de peinture.",
             "Aucune conversion, réécriture, compatibilité de slicer ou validation physique n’est établie.",
         ],
     }

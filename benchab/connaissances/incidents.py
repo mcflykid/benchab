@@ -377,15 +377,21 @@ def _rapport_junit(donnees, cas_attendus):
         raise ValueError("Racine XML JUnit testsuite ou testsuites requise.")
     attendus = {_identite_cas(cas): cas for cas in cas_attendus}
     rencontres = {}
-    for element in racine.iter():
-        if element.tag.rsplit("}", 1)[-1] != "testcase":
+    # Seuls les cas directement déclarés par une suite comptent comme résultats JUnit (#119).
+    suites = [racine]
+    for suite in suites:
+        suites.extend(enfant for enfant in suite if enfant.tag.rsplit("}", 1)[-1] == "testsuite")
+        if suite.tag.rsplit("}", 1)[-1] != "testsuite":
             continue
-        identite = (element.get("file"), element.get("classname"), element.get("name"))
-        if not all(isinstance(partie, str) and partie for partie in identite):
-            continue
-        if identite in rencontres:
-            raise ValueError("Identité de cas JUnit dupliquée.")
-        rencontres[identite] = element
+        for element in suite:
+            if element.tag.rsplit("}", 1)[-1] != "testcase":
+                continue
+            identite = (element.get("file"), element.get("classname"), element.get("name"))
+            if not all(isinstance(partie, str) and partie for partie in identite):
+                continue
+            if identite in rencontres:
+                raise ValueError("Identité de cas JUnit dupliquée.")
+            rencontres[identite] = element
 
     manquants, echecs, ignores = [], [], []
     for identite in attendus:

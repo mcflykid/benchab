@@ -21,6 +21,15 @@ def chemin(value):
     return path
 
 
+def _plaque_conforme(plaque):
+    return (
+        not plaque["erreurs"]
+        and plaque["dans_le_plateau"]
+        and not plaque["recouvrements_enveloppes"]
+        and plaque["objets"] == plaque["objets_attendus"]
+    )
+
+
 def analyser(fichier, placement, plateau=None):
     """Mesure les dépôts par nom d'objet et vérifie leur enveloppe sur le plateau."""
     dimensions = plateau or charger_configuration()["placement"]["plateau_xyz_mm"]
@@ -83,13 +92,7 @@ def analyser(fichier, placement, plateau=None):
             else None,
         }
         resultats["plaques"].append(rapport_plaque)
-    resultats["conforme"] = bool(resultats["plaques"]) and all(
-        not plaque["erreurs"]
-        and plaque["dans_le_plateau"]
-        and not plaque["recouvrements_enveloppes"]
-        and plaque["objets"] == plaque["objets_attendus"]
-        for plaque in resultats["plaques"]
-    )
+    resultats["conforme"] = bool(resultats["plaques"]) and all(map(_plaque_conforme, resultats["plaques"]))
     return resultats
 
 
@@ -104,20 +107,38 @@ def controler(fichier, emplacement, sortie):
 
 
 def main(argv=None):
-    """Lance le contrôle numérique de disposition ; retourne 0 conforme, 1 écart ou 2 refus, sans preuve physique."""
+    """Contrôle les enveloppes en mm et conserve le rapport numérique complet.
+
+    Le résumé localise la première plaque en écart. Codes 0 conforme,
+    1 écart ou 2 refus, sans modification du 3MF ni preuve physique.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("placement", type=Path)
     parser.add_argument("rapport", type=Path)
+    parser.add_argument("--resume", action="store_true", help="Affiche le verdict et la première plaque en écart")
     args = parser.parse_args(argv)
     try:
         resultat = controler(args.source, args.placement, args.rapport)
     except (OSError, ValueError, KeyError, zipfile.BadZipFile, TypeError) as error:
         print("Contrôle refusé : " + str(error), file=sys.stderr)
         return 2
-    for plaque in resultat["plaques"]:
-        print(plaque)
-    print("conforme", resultat["conforme"])
+    if args.resume:
+        resume = {
+            "statut": "PASS" if resultat["conforme"] else "FAIL",
+            "rapport": str(chemin(args.rapport)), "nombre_plaques": len(resultat["plaques"]),
+        }
+        for plaque in resultat["plaques"]:
+            if not _plaque_conforme(plaque):
+                resume["premiere_plaque_en_ecart"] = plaque
+                break
+        if not resultat["plaques"]:
+            resume["raison"] = "Aucune plaque dans le placement déclaré."
+        print(json.dumps(resume, ensure_ascii=False, allow_nan=False))
+    else:
+        for plaque in resultat["plaques"]:
+            print(plaque)
+        print("conforme", resultat["conforme"])
     return 0 if resultat["conforme"] else 1
 
 

@@ -124,13 +124,18 @@ def _svg(rapports):
 
 
 def main(argv=None, *, prive=None):
-    """Produit un JSON et un SVG facultatif dans l’atelier choisi, avec le verdict de lecture."""
+    """Publie les départs en mm et degrés, avec un JSON complet et un SVG facultatif.
+
+    Le mode résumé affiche le verdict et un constat par archive. Le code
+    conserve le verdict le plus défavorable. Aucune archive n’est modifiée.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--comparaison", type=Path)
     parser.add_argument("--centre-xy", type=float, nargs=2, required=True)
     parser.add_argument("--sortie", type=Path, required=True)
     parser.add_argument("--svg", type=Path)
+    parser.add_argument("--resume", action="store_true", help="Affiche les verdicts et le chemin du rapport")
     args = parser.parse_args(argv)
     try:
         entrees = [args.source] + ([args.comparaison] if args.comparaison else [])
@@ -146,5 +151,17 @@ def main(argv=None, *, prive=None):
             publication.publier()
     except (OSError, ValueError, KeyError) as erreur:
         parser.error(str(erreur))
-    print(sortie)
-    return max(r["code"] for r in rapports)
+    code = max(r["code"] for r in rapports)
+    if args.resume:
+        bilan = []
+        for rapport in rapports:
+            entree = {
+                "fichier": rapport["fichier"], "statut": rapport["statut"], "series": len(rapport["series"]),
+            }
+            if rapport["statut"] != "PASS":
+                entree["raison"] = next(iter(rapport["erreurs"]), "Aucun départ de paroi exploitable.")
+            bilan.append(entree)
+        print(json.dumps({"rapport": str(sortie), "archives": bilan, "code": code}, ensure_ascii=False))
+    else:
+        print(sortie)
+    return code

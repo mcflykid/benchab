@@ -59,7 +59,7 @@ CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
     "bilan-depots", "carte-coutures", "surplombs-surface",
     "affleurement", "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
     "surplombs-connexes", "ponts-surplombs",
-    "purge-changements", "fentes-interface", "vissage",
+    "purge-changements", "fentes-interface", "vissage", "enumerations-asn",
 })
 
 # Les espaces homogènes gardent leur préfixe, leurs alias et leurs options en un seul endroit.
@@ -74,7 +74,7 @@ ROUTES_NAMESPACE = {
         "normalisation": "tirets_vers_underscore",
         "modules_prives": frozenset(
             {"trous", "eprouvette_trous", "vissage", "cad_engine", "fiche_cao", "filetage_nominal", "decoupe",
-             "registre_variantes", "greffer_interface", "apercu"}
+             "registre_variantes", "greffer_interface", "apercu", "contraintes_volumiques"}
         ),
     },
     "imports": {
@@ -220,6 +220,7 @@ def parser():
     installation.add_argument("--profil", type=Path, action="append", default=[])
     installation.add_argument("--espace-minimum-mio", type=int, default=1024)
     installation.add_argument("--detail", action="store_true", help="Inclut les preuves et chemins privés dans stdout")
+    installation.add_argument("--sortie", type=Path, help="Conserve le diagnostic complet dans un JSON neuf")
     plan_reparation = controle.add_parser(
         "plan-reparation", help="Compare les vues privées sans appliquer de réparation"
     )
@@ -234,6 +235,11 @@ def parser():
     )
     reprise_export.add_argument("--table", required=True, help="Table canonique BENCHAB à recopier")
     reprise_export.add_argument("--sortie", type=Path, required=True, help="Dossier neuf, hors export")
+    verifier_export = controle.add_parser(
+        "verifier-reprise-export", help="Relit une copie d’export préparée sans l’appliquer"
+    )
+    verifier_export.add_argument("--preuve", type=Path, required=True)
+    verifier_export.add_argument("--sha256-preuve", required=True)
     reprise_source = controle.add_parser(
         "preparer-reprise-source", help="Prépare une copie non appliquée d’un original identifié dans un tar"
     )
@@ -447,6 +453,7 @@ def parser():
         "fiche-cao",
         "filetage-nominal",
         "greffer-interface",
+        "contraintes-volumiques",
         "apercu",
         "decoupe",
     ):
@@ -1256,14 +1263,18 @@ def main(argv=None):
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
-    if arguments.commande == "controle" and arguments.controle == "appliquer-reprise-export":
-        from benchab.qualite.reprise_export import appliquer
+    if arguments.commande == "controle" and arguments.controle in {
+        "appliquer-reprise-export", "verifier-reprise-export",
+    }:
+        from benchab.qualite.reprise_export import appliquer, verifier_copie
 
         # Un candidat fourni et son SHA exact sont requis ; aucune mesure ni Base() n’est ouverte.
         try:
-            rapport = appliquer(arguments.prive, arguments.preuve, arguments.sha256_preuve)
+            operation = appliquer if arguments.controle == "appliquer-reprise-export" else verifier_copie
+            rapport = operation(arguments.prive, arguments.preuve, arguments.sha256_preuve)
         except (OSError, ValueError, sqlite3.Error) as erreur:
-            print(f"BENCHAB : application de reprise refusée : {erreur}", file=sys.stderr)
+            prefixe = "application" if arguments.controle == "appliquer-reprise-export" else "vérification"
+            print(f"BENCHAB : {prefixe} de reprise refusée : {erreur}", file=sys.stderr)
             return 2
         print(json.dumps(rapport, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
@@ -1462,19 +1473,32 @@ def main(argv=None):
             print(f"BENCHAB : réparation de vue refusée : {erreur}", file=sys.stderr)
             return 1
     if arguments.commande == "controle" and arguments.controle == "installation":
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
         from benchab.qualite.installation import diagnostiquer
 
         # Le diagnostic doit rester possible sur un atelier absent ou endommagé :
         # aucun Base() ni mesure, même en cas de refus (docs/reference/diagnostic-installation.md).
         try:
+            cible = destination_neuve(arguments.sortie, prive=arguments.prive) if arguments.sortie else None
             if arguments.espace_minimum_mio < 0:
                 raise ValueError("Le seuil d'espace doit être positif ou nul, en Mio")
             rapport = diagnostiquer(
                 arguments.racine, base=atelier_prive(arguments.prive) / "benchab.sqlite",
                 profils=tuple(arguments.profil), espace_minimum_octets=arguments.espace_minimum_mio * 1024**2,
-                detail=arguments.detail,
+                detail=arguments.detail or cible is not None,
             )
-            print(json.dumps(rapport, ensure_ascii=False, indent=2 if arguments.detail else None))
+            affiche = rapport
+            if cible is not None:
+                # Les chemins privés du diagnostic complet restent dans le rapport demandé (#35).
+                chemins = [atelier_prive(arguments.prive) / "benchab.sqlite", *arguments.profil]
+                ecrire_json_neuf(cible, rapport, entrees=chemins)
+                if not arguments.detail:
+                    affiche = {k: v for k, v in rapport.items() if k != "detail"}
+                    affiche["controles"] = [
+                        {k: v for k, v in c.items() if k != "detail"} for c in rapport["controles"]
+                    ]
+                affiche = {**affiche, "rapport": str(cible)}
+            print(json.dumps(affiche, ensure_ascii=False, indent=2 if arguments.detail else None))
             return rapport["code"]
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
             print(f"BENCHAB : {erreur}", file=sys.stderr)

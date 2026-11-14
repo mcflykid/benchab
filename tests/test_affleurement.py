@@ -49,3 +49,16 @@ def test_cli_produit_une_coupe_et_lie_le_sha(tmp_path, capsys, atelier_initialis
     assert main(arguments) == 0
     assert len(json.loads(capsys.readouterr().out)["source_sha256"]) == 64
     assert "Coupe transversale" in coupe.read_text()
+
+
+def test_resume_affleurement_conserve_le_refus_dans_le_rapport(tmp_path, capsys, atelier_initialise):
+    """Une déclaration incomplète conserve le verdict et le motif sur les deux sorties."""
+    source = tmp_path / "montage.json"
+    source.write_text('{"schema":1}')
+    cible = atelier_initialise / "rapport.json"
+    arguments = ["--prive", str(atelier_initialise), "controle", "affleurement", str(source)]
+    assert main([*arguments, "--resume", "--sortie", str(cible)]) == 2
+    court = json.loads(capsys.readouterr().out)
+    complet = json.loads(cible.read_text())
+    assert court == {"statut": complet["statut"], "raison": complet["raison"], "rapport": str(cible)}
+    assert complet["statut"] == "NON VÉRIFIÉ" and len(complet["source_sha256"]) == 64

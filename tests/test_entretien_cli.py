@@ -233,6 +233,20 @@ def test_resume_entretien_garde_le_warn_et_le_rapport_complet(tmp_path, capsys):
     assert len(court) < len(ancien) and "u-1" not in court
 
 
+def test_resume_entretien_compte_les_motifs_sans_exposer_les_evenements(tmp_path, capsys):
+    """Une période incomplète est visible dans le résumé sans identité d’usage."""
+    historique = _ecrire_historique(tmp_path)
+    donnees = json.loads(historique.read_text())
+    donnees["couverture"] = "INCOMPLETE"
+    historique.write_text(json.dumps(donnees))
+    sortie = tmp_path / "bilan.json"
+    assert cli.main(["--prive", str(tmp_path), "controle", "entretien", "--historique",
+                     str(historique), "--resume", "--sortie", str(sortie)]) == 2
+    court = capsys.readouterr().out
+    assert json.loads(court)["motifs_non_verifies"] == {"COUVERTURE_INCOMPLETE": 1}
+    assert "u-1" not in court
+
+
 def _couverture_extrudeur():
     """Déclare une période fictive sourcée pour le seul compteur de masse."""
     return {
@@ -282,3 +296,18 @@ def test_couverture_locale_non_etablie_prime_sur_le_statut_global(variation):
     assert rapport["statut"] == "NON VÉRIFIÉ"
     assert rapport["compteurs"][0]["valeur"] is None
     assert rapport["compteurs"][0]["motif_couverture"]
+
+
+def test_compteurs_incomplets_expliquent_le_refus_et_priorisent_le_seuil():
+    """Le rapport distingue un seuil absent, une période incomplète et un service manquant."""
+    from benchab.entretien.bilan import calculer
+
+    donnees = _historique()
+    donnees["couverture"] = "INCOMPLETE"
+    donnees["evenements"].append(dict(donnees["evenements"][1], id="a-1", organe="axe"))
+    donnees["seuils"].append(dict(donnees["seuils"][0], organe="plateau"))
+    compteurs = {r["organe"]: r for r in calculer(donnees)["compteurs"]}
+    assert "SEUIL_NON_QUALIFIE" in compteurs["axe"]["motifs_non_verifies"]
+    assert "COUVERTURE_INCOMPLETE" in compteurs["extrudeur"]["motifs_non_verifies"]
+    assert "ENTRETIEN_ABSENT" in compteurs["plateau"]["motifs_non_verifies"]
+    assert all(r["valeur"] is None for r in compteurs.values())

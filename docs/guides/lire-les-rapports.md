@@ -11,15 +11,26 @@ l’empreinte de la source.
 | Continuité, capacités, comparaison 3MF, purge, écarts Z des supports, rejeux G-code | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Entretien, consommation d’un retour, plan de réparation | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Débit U25, `surplombs-connexes` | `--resume --sortie RAPPORT.json` | Remplacer `--resume` par `--detail` |
+| Disposition réelle | `SOURCE.3mf PLACEMENT.json RAPPORT.json --resume` | Retirer `--resume` |
+| Affleurement | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
+| Énumérations ASN | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Couches courtes | `--resume --sortie RAPPORT.json` | Garder `--sortie` et retirer `--resume` |
 | Paquet 3MF | `--resume --sortie RAPPORT.json` | Lire le JSON écrit ou retirer les deux options |
 | Vissage, fentes d’interface | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
+| Finition des parois | `analyser … --json RAPPORT.json` | Ajouter `--detail` |
 | Bilan des dépôts | `--sortie RAPPORT.json` | Ajouter `--detail` |
 | Appuis G-code | `--resume --json RAPPORT.json` | Garder `--json` et retirer `--resume` |
 | Première couche | `--resume --json RAPPORT.json` | Remplacer `--resume` par `--detail` |
+| Carte des coutures | `--resume --sortie RAPPORT.json` | Lire le JSON complet |
 | Coutures | `--sortie DOSSIER_NEUF` | Ajouter `--detail` |
 | Contrôle complet | `--resume` | Retirer `--resume` ou lire le rapport déjà écrit |
 | Règles et opportunité de découpe | `--resume --sortie RAPPORT.json` | Lire le rapport écrit ou retirer `--resume` |
+| Pièces, assemblage, décollement, ergots, ponts internes, colonnes isolées | `--json RAPPORT.json --resume` | Garder `--json` et retirer `--resume` |
+| Livrables (`verifier`), revue locale en lecture seule | `--json RAPPORT.json --resume` | Lire le rapport complet |
+| Plaques d’interface, vérification des réglages, supports requis | `SOURCE … RAPPORT.json --resume` | Retirer `--resume` |
+| Orientations et supports | `--sortie DOSSIER_NEUF --resume` | Lire `orientations.json` dans ce dossier |
+| Surplombs par zone, ponts surplombs, installation | `--sortie RAPPORT.json` | Ajouter `--detail` |
+| Écarts de profils 3MF | `--rapport RAPPORT.json` | Ajouter `--detail` |
 
 Choisissez une destination neuve dans `prive/rapports/`. Les options
 d’entrée restent propres à chaque commande : voir les

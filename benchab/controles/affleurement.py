@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 
 from benchab.chemins import sans_lien
-from benchab.qualite.ecritures import PublicationNeuve, destination_neuve
+from benchab.qualite.ecritures import PublicationNeuve, destination_neuve, destination_rapport_optionnel
 from benchab.qualite.empreintes import sha256_fichier
 from benchab.qualite.statuts import code_statut
 
@@ -86,12 +86,19 @@ def _paires_uniques(paires):
 
 
 def main(argv=None, *, prive=None):
-    """Lit une déclaration en mm et publie une coupe SVG privée neuve si les cotes sont interprétables."""
+    """Contrôle les cotes nominales en mm et conserve le verdict numérique.
+
+    Le résumé exige un JSON complet. Le rapport et la coupe SVG éventuelle
+    sont publiés ensemble dans des sorties neuves. Aucune cote n’est modifiée.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("declaration", type=Path)
     parser.add_argument("--coupe", type=Path)
+    parser.add_argument("--sortie", type=Path, help="Rapport JSON privé neuf")
+    parser.add_argument("--resume", action="store_true", help="Affichage court ; exige --sortie")
     args = parser.parse_args(argv)
     try:
+        cible = destination_rapport_optionnel(args.sortie, resume=args.resume, nom="d’affleurement", prive=prive)
         source = sans_lien(args.declaration, strict=True)
         if not source.is_file():
             raise ValueError("Déclaration de montage régulière requise.")
@@ -106,16 +113,29 @@ def main(argv=None, *, prive=None):
         if sha256_fichier(source) != empreinte:
             raise ValueError("Déclaration modifiée pendant la lecture.")
         rapport["source_sha256"] = empreinte
+        sorties = [cible] if cible is not None else []
+        coupe = None
         if args.coupe is not None and rapport["statut"] != "NON VÉRIFIÉ":
-            sortie = destination_neuve(args.coupe, prive=prive)
-            if sortie.suffix.lower() != ".svg":
+            coupe = destination_neuve(args.coupe, prive=prive)
+            if coupe.suffix.lower() != ".svg":
                 raise ValueError("La coupe exige une destination .svg.")
-            with PublicationNeuve([source], [sortie]) as publication:
+            rapport["coupe"] = str(coupe)
+            sorties.append(coupe)
+        if sorties:
+            with PublicationNeuve([source], sorties) as publication:
                 if sha256_fichier(source) != empreinte:
                     raise ValueError("Déclaration modifiée avant publication.")
-                publication.temporaire(sortie).write_text(_coupe(rapport), encoding="utf-8")
+                if coupe is not None:
+                    publication.temporaire(coupe).write_text(_coupe(rapport), encoding="utf-8")
+                if cible is not None:
+                    publication.temporaire(cible).write_text(
+                        json.dumps(rapport, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8",
+                    )
                 publication.publier()
-            rapport["coupe"] = str(sortie)
+        if args.resume:
+            rapport = {cle: rapport[cle] for cle in (
+                "statut", "raison", "desaffleurement_mm", "jeu_transversal_mm", "jeu_longitudinal_mm",
+            ) if cle in rapport} | {"rapport": str(cible)}
     except (OSError, ValueError) as erreur:
         rapport = {"statut": "NON VÉRIFIÉ", "raison": str(erreur), "validation_physique": False}
     print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))

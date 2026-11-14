@@ -179,6 +179,19 @@ plateau et la dureté de buse restent présents dans les trois sorties.
 Le résultat est limité au binaire ASN 2.0.0.3 déjà identifié et à ce coupon.
 Il ne valide ni résistance, ni profil à adopter, ni impression (#80, #81).
 
+### Rejeu de la hauteur combinée sur les archives M et L
+
+Les deux archives ont des empreintes d’entrée distinctes mais donnent,
+pour cette comparaison, les mêmes mesures et empreintes de trajets.
+À `50%`, le clairsemé occupe 12 niveaux de dépôt, avec 5 370 segments
+et 3 635,17 mm (359 s et 2,52 g estimés). À `100%`, il occupe sept
+niveaux, avec 2 640 segments et 1 794,12 mm (349 s et 2,48 g estimés).
+Le rejeu à `100%` retrouve les mêmes trajets et les parois extérieures
+gardent la même empreinte entre réglages. Seule la hauteur maximale
+de combinaison diffère avant et après tranchage. Les 646 profils
+et les deux sources restent intacts. Les mesures identiques de M et L
+n’établissent pas l’effet sur deux géométries indépendantes (#80, #81).
+
 ### Vérifier une observation contextuelle
 
 `benchab controle enumerations-asn TRANCHE.3mf --contextuelles` inclut
@@ -190,3 +203,9 @@ mm. Toute condition absente ou différente reste NON VÉRIFIÉE. Le verdict
 décrit la déclaration et l’observation sur le coupon ; il ne prédit pas
 les trajectoires d’une autre géométrie et ne valide pas le retrait.
 Sans l’option, l’ensemble historique des contrôles reste inchangé (#80, #89).
+
+La clé `infill_combination_max_layer_height` est aussi contextuelle. Les
+valeurs `50%` et `100%` sont reliées aux témoins lorsque la combinaison
+est active, avec la buse déclarée à 0,4 mm, une hauteur de couche déclarée
+de 0,2 mm et un gyroïde à 20 %. Une autre valeur ou des conditions
+différentes restent NON VÉRIFIÉES (#80, #81).

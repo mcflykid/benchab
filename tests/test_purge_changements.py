@@ -23,8 +23,8 @@ def test_paires_directionnelles_ne_confondent_pas_la_premiere_selection_ni_une_r
     rapport = analyser_lignes(texte.splitlines(), _reglages())
     assert rapport["changements_explicites"] == 3
     assert rapport["paires"] == [
-        {"depart": 0, "arrivee": 1, "nombre": 2, "valeur_unitaire_matrice": 12.0},
-        {"depart": 1, "arrivee": 0, "nombre": 1, "valeur_unitaire_matrice": 31.0},
+        {"depart": 0, "arrivee": 1, "nombre": 2, "valeur_unitaire_matrice": 12.0, "somme_conditionnelle_mm3": 24.0},
+        {"depart": 1, "arrivee": 0, "nombre": 1, "valeur_unitaire_matrice": 31.0, "somme_conditionnelle_mm3": 31.0},
     ]
     assert rapport["somme_conditionnelle_matrice"] == 55.0
     assert rapport["purge_physique_mm3"] is None
@@ -43,10 +43,19 @@ def test_matrice_trois_par_trois_ne_qualifie_pas_un_temoin_mono():
 
 def test_selection_hors_slots_interrompt_la_couverture():
     """Un indice inconnu ne doit pas fabriquer une transition entre deux slots valides."""
-    rapport = analyser_lignes(["T0", "T255", "T1"], _reglages())
-    assert rapport["changements_explicites"] == 2
+    rapport = analyser_lignes(["T0", "T255", "T1", "T0"], _reglages())
+    assert rapport["changements_explicites"] == 3
     assert rapport["changements_hors_contexte"] == 2
+    assert [p["somme_conditionnelle_mm3"] for p in rapport["paires"]] == [None, 31.0, None]
     assert rapport["somme_conditionnelle_matrice"] is None
+
+
+def test_somme_de_paire_debordante_reste_indeterminee():
+    """Le rapport JSON ne contient ni infini ni volume global partiel."""
+    rapport = analyser_lignes(["T0", "T1", "T0", "T1"], _reglages([0, 1e308, 31, 0]))
+    assert [p["somme_conditionnelle_mm3"] for p in rapport["paires"]] == [None, 31.0]
+    assert rapport["somme_conditionnelle_matrice"] is None
+    json.dumps(rapport, allow_nan=False)
 
 
 def test_lecture_conditionnelle_ne_change_pas_le_type_historique():
@@ -172,7 +181,11 @@ def test_observer_tour_mesure_uniquement_les_depots_nominalement_etiquetes(tmp_p
     mesure = rapport["plaques"][0]["observation_tour"]
     assert mesure["statut"] == "PASS"
     assert mesure["outils"] == [
-        {"outil": 1, "segments": 1, "volume_nominal_mm3": pytest.approx(math.pi * (2.85 / 2)**2)},
+        {
+            "outil": 1, "segments": 1, "volume_nominal_mm3": pytest.approx(math.pi * (2.85 / 2)**2),
+            "temps_depot_nominal_s": pytest.approx(1 / 15),
+            "masse_nominale_g": None, "densite_embarquee_g_cm3": None,
+        },
     ]
     assert rapport["somme_conditionnelle_matrice"] == 12.0
     assert rapport["volume_gcode_attribue_mm3"] is None
@@ -197,3 +210,40 @@ def test_observer_tour_refuse_de_qualifier_une_couverture_incomplete(tmp_path, l
     mesure = analyser(source, observer_tour=True)["plaques"][0]["observation_tour"]
     assert mesure["statut"] == "NON VÉRIFIÉ"
     assert mesure["volume_nominal_mm3"] is None
+
+
+@pytest.mark.parametrize("densites", [[1.1, 1.25], [1.1]])
+def test_tour_temps_et_masse_nominale_par_outil(tmp_path, densites):
+    """Seule la densité embarquée de l’outil exact permet de calculer la masse."""
+    source = tmp_path / "tour.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", json.dumps({
+            **_reglages(), "filament_diameter": [1.75, 2], "filament_density": densites,
+        }))
+        archive.writestr("Metadata/plate_1.gcode", (
+            "G90\nM83\nT0\nG1 X1 F600\nT1\n;TYPE:Prime tower\nG1 X11 E2 F600\n"
+            ";TYPE:Outer wall\nG1 X21 E1 F600\n"
+        ))
+    mesure = analyser(source, observer_tour=True)["plaques"][0]["observation_tour"]
+    assert mesure["statut"] == "PASS"
+    assert mesure["temps_depot_nominal_s"] == pytest.approx(1.0)
+    if len(densites) == 2:
+        assert mesure["masse_nominale_g"] == pytest.approx(2 * 3.141592653589793 * 1.25 / 1000)
+    else:
+        assert mesure["masse_nominale_g"] is None
+    assert mesure["temps_reel_s"] is None
+
+
+@pytest.mark.parametrize(("plafond", "statut"), [(None, "NON VÉRIFIÉ"), (12, "PASS"), (10, "WARN")])
+def test_plafond_de_purge_conditionnel(tmp_path, plafond, statut):
+    """Le plafond explicite qualifie la somme par plaque, avec sa provenance."""
+    source = tmp_path / "purge.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", json.dumps(_reglages()))
+        archive.writestr("Metadata/plate_1.gcode", "T0\nT1\n")
+    options = {} if plafond is None else {"plafond_mm3": plafond, "source_plafond": "Seuil du témoin"}
+    rapport = analyser(source, **options)
+    assert rapport["bilan_plafond"]["statut"] == statut
+    assert rapport["plaques"][0]["bilan_plafond"]["statut"] == statut
+    assert rapport["statut"] == ("WARN" if statut == "WARN" else "PASS")
+    assert rapport["purge_physique_mm3"] is None

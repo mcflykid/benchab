@@ -6,7 +6,21 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 - L’aperçu d’une coque allumée compare la transmission directe estimée sur deux variantes à la même échelle (#271).
 
+- Les transactions SQLite réutilisent les empreintes des tables inchangées sur la même connexion. Les JSONL restent contrôlés et les dérivés divergents sont reconstruits (#19).
+- Le comparateur vérifie la peinture du sous-cas 3MF Production à une feuille liée. Les deux réexports Orca du témoin ont perdu les deux marques Prusa (#43).
+- Les diagnostics de pièces, d’assemblage et de préparation proposent des résumés lisibles avec un rapport complet (#35). Le bilan d’entretien agrège les motifs des compteurs non vérifiés (#73).
+- La vérification d’une reprise d’export indique l’état de la cible en lecture seule. Les preuves JUnit retiennent les cas déclarés dans les suites de tests (#119).
+- Les essais de tranchage documentent les supports et leurs jeux Z (#89), les paliers de densité à masse estimée égale (#83), le remplissage combiné (#80, #81, #82) et les couches variables de l’ailette (#92). Les essais physiques de rigidité et de retrait restent à faire (#84, #92).
+- La sonde des arcs natifs documente la sensibilité à l’hypothèse d’arrondi, avec les mêmes refus du lecteur strict (#134).
+
+Les changements des sections 1.32.0 et 1.31.1 sont inclus dans cette publication.
+
 ## 1.32.0
+
+- Les paliers de densité suivent la surface d’un solide ou le voisinage d’une fixation extérieure (#83).
+- Le bilan de purge conditionnel accepte un plafond sourcé et l’observation de la tour indique le temps et la masse nominaux disponibles (#72).
+- Les contrôles d’affleurement, de couture et d’énumérations disposent d’un résumé lié au rapport complet. La vitrine peut produire un manifeste du corpus public (#35, #80).
+- Les compteurs d’entretien expliquent pourquoi leur verdict reste NON VÉRIFIÉ (#73).
 
 - Le vissage et les fentes d’interface proposent un résumé avec rapport privé. Le bilan des dépôts peut afficher tous ses groupes (#35).
 

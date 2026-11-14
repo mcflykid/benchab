@@ -96,6 +96,11 @@ mode explicite (`aide` ou `defauts`) pour l’inspection. Les anciennes inconnue
 sans ce contexte restent dans l’historique, mais ne sont pas agrégées à une
 nouvelle demande ; elles ne permettent pas de déterminer si la cause est commune.
 
+Si le moteur termine avec le code 0 et que BENCHAB refuse le 3MF produit,
+le journal classe l’incident comme `validation_sortie` et conserve le motif
+exact dans le rapport privé. Le plafond de relances reste lié à l’empreinte
+de la source. La sortie refusée reste disponible pour analyse (#119).
+
 ## Relire le résultat
 
 Rouvrir le 3MF, contrôler toutes les plaques et les paramètres réellement

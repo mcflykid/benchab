@@ -12,6 +12,22 @@ import trimesh
 from benchab.controles import decollement as D
 
 
+def test_resume_decollement_conserve_le_motif_auto(tmp_path, capsys, monkeypatch):
+    """La décision laissée au slicer reste NON VÉRIFIÉE avec le même code historique."""
+    source = tmp_path / "tall.stl"
+    source.touch()
+    rapport = tmp_path / "detail.json"
+    objet = {"statut": "NON VÉRIFIÉ", "recommandation": "bordure",
+             "raison": "petite emprise", "detail": "auto_brim : décision du slicer", "aire_mm2": 25}
+    monkeypatch.setattr(D, "controler", lambda *_args, **_kw: ({"Témoin": objet}, 0))
+    assert D.main([str(source), "--resume"]) == 2
+    assert D.main([str(source), "--json", str(rapport), "--resume"]) == 0
+    resume = json.loads(capsys.readouterr().out)
+    assert resume == {"statut": "NON VÉRIFIÉ", "code": 0, "objets": 1, "rapport": str(rapport),
+                      "points": [{"objet": "Témoin", **{k: v for k, v in objet.items() if k != "aire_mm2"}}]}
+    assert json.loads(rapport.read_text()) == {"Témoin": objet}
+
+
 class Decollement(unittest.TestCase):
     def setUp(self):
         temporaire = tempfile.TemporaryDirectory()

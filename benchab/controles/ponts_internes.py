@@ -19,6 +19,7 @@ prédit ni la flèche
 réelle d'un pont, ni l'effet du refroidissement : un PASS ne garantit pas un dessus fermé.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -68,7 +69,10 @@ def mesurer(g, portee=10.0, sous_sommet=2.0):
 
 
 def main(a):
-    """Rapporte les ponts internes en mm et rend le code du contrôle."""
+    """Rapporte les ponts internes en mm et rend 0 (PASS), 1 (WARN) ou 2 (refus).
+
+    Le résumé conserve les positions détaillées dans un JSON neuf, sans modifier la source.
+    """
     if not a:
         print(__doc__)
         return 2
@@ -78,7 +82,10 @@ def main(a):
 
     portee, sous, seuil = opt("--portee", 10.0), opt("--sous-sommet", 2.0), int(opt("--seuil", 5))
     f = Path(a[0])
+    resume = "--resume" in a
     try:
+        if resume and "--json" not in a:
+            raise ValueError("--resume exige --json pour conserver le rapport complet.")
         sortie = destination_neuve(a[a.index("--json") + 1]) if "--json" in a else None
     except (OSError, ValueError, IndexError) as erreur:
         print("Sortie JSON refusée : " + str(erreur), file=sys.stderr)
@@ -95,10 +102,11 @@ def main(a):
         m = mesurer(g, portee, sous)
         m["statut"] = "WARN" if m["longs_sous_sommet"] >= seuil else "PASS"
         res["plaques"][n] = m
-        print(
-            f"{m['statut']:5s} {n} : {m['longs_sous_sommet']} pont(s) interne(s) de plus de {portee:g} mm "
-            f"à moins de {sous:g} mm du sommet (max {m['portee_max_sous_sommet_mm']} mm)"
-        )
+        if not resume:
+            print(
+                f"{m['statut']:5s} {n} : {m['longs_sous_sommet']} pont(s) interne(s) de plus de {portee:g} mm "
+                f"à moins de {sous:g} mm du sommet (max {m['portee_max_sous_sommet_mm']} mm)"
+            )
     res["statut"] = "WARN" if any(p["statut"] == "WARN" for p in res["plaques"].values()) else "PASS"
     if sortie is not None:
         try:
@@ -106,7 +114,16 @@ def main(a):
         except (OSError, ValueError) as erreur:
             print("Sortie JSON refusée : " + str(erreur), file=sys.stderr)
             return 2
-    return 0 if res["statut"] == "PASS" else 1
+    code = 0 if res["statut"] == "PASS" else 1
+    if resume:
+        # Les positions restent dans le rapport complet pour localiser les alertes (#35).
+        alertes = [
+            {"plaque": nom, "segments": p["longs_sous_sommet"], "portee_max_mm": p["portee_max_sous_sommet_mm"]}
+            for nom, p in res["plaques"].items() if p["statut"] == "WARN"
+        ]
+        print(json.dumps({"statut": res["statut"], "code": code, "plaques": len(res["plaques"]),
+                          "alertes": alertes, "rapport": str(sortie)}, ensure_ascii=False))
+    return code
 
 
 if __name__ == "__main__":

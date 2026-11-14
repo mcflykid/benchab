@@ -17,6 +17,7 @@ Code 0 si chaque plaque reste sous le seuil, 1 sinon, 2 si la preuve ne peut pas
 Estimation du slicer, pas une observation d'impression.
 """
 
+import json
 import math
 import re
 import shutil
@@ -204,7 +205,10 @@ def mesurer(src, regl=None, seuil=1.0, garder=None):
 
 
 def main(argv=None):
-    """Estime les supports en g, publie des preuves neuves et renvoie le code sans commande imprimante."""
+    """Estime les supports en g et conserve le rapport complet, même avec --resume.
+
+    Renvoie 0 (PASS), 1 (WARN) ou 2 si refus ; aucune commande imprimante.
+    """
     a = list(sys.argv[1:] if argv is None else argv)
     if len(a) < 2:
         print(__doc__)
@@ -232,8 +236,17 @@ def main(argv=None):
     except (OSError, ValueError, IndexError) as e:
         print(f"refusé : {e}", file=sys.stderr)
         return 2
-    for p in r["plaques"]:
-        print(f"{p['statut']:5s} plaque {p['plaque']} : {p['support_g']} g de supports demandés {p['par_5mm_g']}")
+    if "--resume" in a[2:]:
+        # Le détail par hauteur est déjà conservé dans la preuve neuve (#35).
+        print(json.dumps({
+            "statut": r["statut"], "seuil_g": r["seuil_g"], "plaques": len(r["plaques"]),
+            "alertes": [{"plaque": p["plaque"], "support_g": p["support_g"]} for p in r["plaques"]
+                        if p["statut"] != "PASS"],
+            "rapport": str(sortie),
+        }, ensure_ascii=False))
+    else:
+        for p in r["plaques"]:
+            print(f"{p['statut']:5s} plaque {p['plaque']} : {p['support_g']} g de supports demandés {p['par_5mm_g']}")
     return 0 if r["statut"] == "PASS" else 1
 
 

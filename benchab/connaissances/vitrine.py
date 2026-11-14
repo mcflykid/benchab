@@ -139,8 +139,31 @@ def _rendre(fiches, empreinte):
     ).encode("utf-8")
 
 
-def generer(racine, sortie, *, prive=None):
-    """Écrit un HTML neuf et retourne ses SHA et le nombre de fiches, sans lire de contenu privé à publier."""
+def _manifeste(racine, fiches, empreinte):
+    with tempfile.TemporaryDirectory(prefix="benchab-index-public-") as diagnostics:
+        resultat = executer(
+            ["git", "ls-tree", "-rz", "--name-only", "HEAD", "--", "docs"],
+            cwd=racine, diagnostics=diagnostics, delai=15,
+        )
+    if not resultat.ok or resultat.sortie_tronquee:
+        raise ValueError("Index des pages versionnées indisponible.")
+    pages = set(resultat.stdout.split("\0"))
+    index = []
+    for fiche in fiches:
+        entree = dict(fiche)
+        lien = entree["page"]
+        entree["page"] = lien if lien in pages else None
+        index.append(entree)
+    return {"schema": 1, "sha256_corpus": empreinte, "nombre_fiches": len(index), "fiches": index}
+
+
+def generer(racine, sortie, *, prive=None, manifeste=None):
+    """Écrit le HTML et, sur demande, l’index JSON public dans des sorties neuves.
+
+    Les chemins et empreintes sont sans unité. Les fiches viennent du corpus
+    vérifié dans HEAD. Toute erreur empêche la génération ou la publication
+    du lot ; aucune modification du corpus ou écriture distante.
+    """
     racine = sans_lien(Path(racine), strict=True)
     sortie = destination_neuve(sortie, prive=prive)
     source, corpus = _lire_versionne(racine)
@@ -151,8 +174,17 @@ def generer(racine, sortie, *, prive=None):
         raise ValueError("Frontière publique non validée ; aucun HTML généré.")
     empreinte = hashlib.sha256(corpus).hexdigest()
     html = _rendre(fiches, empreinte)
-    with PublicationNeuve([source], [sortie]) as publication:
+    sorties = [sortie]
+    octets_manifeste = None
+    if manifeste is not None:
+        manifeste = destination_neuve(manifeste, prive=prive)
+        index = _manifeste(racine, fiches, empreinte)
+        octets_manifeste = (json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
+        sorties.append(manifeste)
+    with PublicationNeuve([source], sorties) as publication:
         publication.temporaire(sortie).write_bytes(html)
+        if octets_manifeste is not None:
+            publication.temporaire(manifeste).write_bytes(octets_manifeste)
         publication.publier()
     return {"nombre_fiches": len(fiches), "sha256_corpus": empreinte, "sha256_html": hashlib.sha256(html).hexdigest()}
 
@@ -163,9 +195,10 @@ def main(argv=None):
     parser.add_argument("--racine", type=Path, default=Path.cwd(), help="Checkout du corpus public versionné")
     parser.add_argument("--prive", type=Path, help="Atelier de référence pour le contrôle de frontière")
     parser.add_argument("--sortie", type=Path, required=True, help="Fichier HTML neuf, privé ou temporaire")
+    parser.add_argument("--manifeste", type=Path, help="Fichier JSON neuf des fiches publiques")
     arguments = parser.parse_args(argv)
     try:
-        resultat = generer(arguments.racine, arguments.sortie, prive=arguments.prive)
+        resultat = generer(arguments.racine, arguments.sortie, prive=arguments.prive, manifeste=arguments.manifeste)
     except (OSError, ValueError) as erreur:
         print(f"BENCHAB : {erreur}", file=sys.stderr)
         return 2

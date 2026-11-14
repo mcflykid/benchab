@@ -121,8 +121,32 @@ def lignes_export(connexion, table):
     """
     if table not in TABLES:
         raise ValueError("Table d’export BENCHAB inconnue.")
-    for ligne in connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
+    for ligne in connexion.execute(f'SELECT * FROM main."{table}" ORDER BY id'):
         yield _ligne_jsonl(dict(ligne))
+
+
+class _ConnexionAtelier(sqlite3.Connection):
+    """Connexion dont les accès hors SQL ordinaire désactivent le cache JSONL."""
+
+    suivi_sql = True
+    autoriseur_externe = False
+
+    def blobopen(self, table, column, row, /, *, readonly=False, name="main"):
+        """Ouvre le BLOB SQLite ; un accès en écriture rend le suivi SQL incomplet."""
+        if not readonly:
+            self.suivi_sql = False
+        return super().blobopen(table, column, row, readonly=readonly, name=name)
+
+    def deserialize(self, data, /, *, name="main"):
+        """Charge des octets SQLite et invalide tout suivi de l'ancienne base."""
+        self.suivi_sql = False
+        return super().deserialize(data, name=name)
+
+    def set_authorizer(self, authorizer_callback):
+        """Préserve l'autoriseur demandé par l'appelant, avec audit complet ensuite."""
+        self.suivi_sql = False
+        self.autoriseur_externe = True
+        return super().set_authorizer(authorizer_callback)
 
 
 class Base:
@@ -137,6 +161,8 @@ class Base:
 
         self.prive = atelier_prive(prive)
         self._export_attendu = None
+        self._export_verifie = None
+        self._bloc_transaction = 0
         chemin = self.prive / "benchab.sqlite"
         if chemin.is_symlink():
             raise ValueError("Une base liée est refusée.")
@@ -162,8 +188,10 @@ class Base:
         chemin = self.prive / "benchab.sqlite"
         if chemin.is_symlink():
             raise ValueError("Une base liée est refusée.")
-        self.connexion = (sqlite3.connect(chemin, timeout=10) if creer else
-                          sqlite3.connect(chemin.as_uri() + "?mode=rw", uri=True, timeout=10))
+        self.connexion = sqlite3.connect(
+            chemin if creer else chemin.as_uri() + "?mode=rw",
+            uri=not creer, timeout=10, factory=_ConnexionAtelier,
+        )
         self.connexion.row_factory = sqlite3.Row
         self.connexion.execute("PRAGMA foreign_keys = ON")
         try:
@@ -206,46 +234,99 @@ class Base:
 
     @contextmanager
     def transaction(self):
-        """Fournit la connexion SQLite, valide toutes les lignes et publie les exports.
+        """Fournit la connexion SQLite et publie ses exports JSONL en octets UTF-8.
 
-        Les références durables sont contrôlées avant le commit. Les SHA
-        calculés sur cet instantané, en octets JSONL, ne sont réemployés
-        que pendant l'export immédiat et sur la même version de données.
-        Une exception dans le bloc garde le rollback SQLite habituel.
+        Les références durables sont contrôlées avant le commit. Les tables
+        inchangées réemploient un SHA issu de la même connexion ; les fichiers
+        et les chemins restent vérifiés. Une exception dans le bloc conserve
+        le rollback SQLite habituel.
         """
-        from benchab.qualite.ecritures import verifier_references_durables
+        from benchab.qualite.ecritures import sortie_durable
 
-        attendu = {}
+        precedent = self._export_verifie
+        self._export_verifie = None
+        changements_avant = self.connexion.total_changes
+        tables_touchees: set[str] = set()
+        self._bloc_transaction += 1
+        bloc = self._bloc_transaction
+        tracer = self.connexion.suivi_sql and precedent is not None
+        suivi_complet = True
+        transaction_continue = True
+
+        def suivre(action, nom, detail, schema, origine):
+            nonlocal suivi_complet, transaction_continue
+            if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE):
+                if schema == "main" and nom in TABLES:
+                    tables_touchees.add(nom)
+            elif action in (sqlite3.SQLITE_PRAGMA, sqlite3.SQLITE_ATTACH, sqlite3.SQLITE_DETACH):
+                suivi_complet = False
+            elif action == sqlite3.SQLITE_SAVEPOINT or (action == sqlite3.SQLITE_TRANSACTION and nom != "BEGIN"):
+                transaction_continue = False
+            return sqlite3.SQLITE_OK
+
         with self.connexion:
-            yield self.connexion
-            # Sans transaction SQLite active, plusieurs SELECT peuvent voir des instantanés différents (#19).
-            version = self._version_export() if self.connexion.in_transaction else None
+            # Poser l'autoriseur à chaque bloc force SQLite à recompiler les
+            # requêtes en cache. Les écritures des triggers sont suivies aussi (#19).
+            observer = not self.connexion.autoriseur_externe
+            if observer:
+                sqlite3.Connection.set_authorizer(self.connexion, suivre)
+            try:
+                yield self.connexion
+            finally:
+                if observer and not self.connexion.autoriseur_externe:
+                    sqlite3.Connection.set_authorizer(self.connexion, None)
+            # Sans écriture dans un bloc SQLite actif, un snapshot de lecture
+            # WAL peut précéder un commit externe. L'export recalcule alors.
+            version = self._version_export() if (
+                self.connexion.in_transaction and self.connexion.total_changes != changements_avant
+                and transaction_continue and self._bloc_transaction == bloc
+            ) else None
+            reutiliser = (
+                tracer and suivi_complet and self.connexion.suivi_sql and self._bloc_transaction == bloc
+                and version is not None and precedent is not None
+                and precedent[0] == (changements_avant, *version[1:])
+            )
+            digests, chemins = {}, {}
             for table in TABLES:
-                empreinte, octets = hashlib.sha256(), 0
-                for ligne in self.connexion.execute(f'SELECT * FROM "{table}" ORDER BY id'):
-                    donnees = dict(ligne)
-                    canonique = _ligne_jsonl(donnees)
-                    if version is not None:
-                        empreinte.update(canonique)
-                        octets += len(canonique)
-                    for cle, valeur in donnees.items():
-                        if not isinstance(valeur, str):
-                            continue
-                        # Valider les chemins décodés, même quand le JSON masque
-                        # le séparateur ou désigne le parent sans séparateur.
-                        if cle.endswith("_json"):
-                            try:
-                                valeur = json.loads(valeur)
-                            except ValueError:
-                                pass
-                        verifier_references_durables(valeur, self.prive)
-                if version is not None:
-                    attendu[table] = (empreinte.hexdigest(), octets)
-        self._export_attendu = (version, attendu) if version is not None else None
+                if reutiliser and precedent is not None and table not in tables_touchees:
+                    digests[table] = precedent[1][table]
+                    chemins[table] = precedent[2][table]
+                else:
+                    digests[table], chemins[table] = self._verifier_table(table)
+            # L'identité SQLite ne garantit pas que le système de fichiers
+            # n'a pas changé. Les chemins distincts sont donc toujours relus.
+            for chemin in dict.fromkeys(chemin for table in TABLES for chemin in chemins[table]):
+                sortie_durable(chemin, prive=self.prive)
+
+        self._export_attendu = (version, digests, chemins) if version is not None else None
         try:
             self.exporter()
         finally:
             self._export_attendu = None
+
+    def _verifier_table(self, table):
+        """Calcule SHA et taille JSONL, et collecte les chemins à revalider avant commit."""
+        from benchab.qualite.ecritures import chemins_references_durables
+
+        empreinte, octets, chemins = hashlib.sha256(), 0, set()
+        for ligne in self.connexion.execute(f'SELECT * FROM main."{table}" ORDER BY id'):
+            donnees = dict(ligne)
+            canonique = _ligne_jsonl(donnees)
+            empreinte.update(canonique)
+            octets += len(canonique)
+            for cle, valeur in donnees.items():
+                if not isinstance(valeur, str):
+                    continue
+                # Le décodage est requis quand un JSON masque un séparateur.
+                if cle.endswith("_json"):
+                    if valeur == "{}":
+                        continue
+                    try:
+                        valeur = json.loads(valeur)
+                    except ValueError:
+                        pass
+                chemins.update(chemins_references_durables(valeur, self.prive))
+        return (empreinte.hexdigest(), octets), chemins
 
     def _version_export(self):
         """Épingle l'instantané puis relève les compteurs utiles sur la même connexion."""
@@ -273,6 +354,7 @@ class Base:
 
         if self.connexion.in_transaction:
             raise ValueError("Terminer la transaction avant l'export")
+        self._export_verifie = None
         cache = sans_lien(self.prive / "cache", racine=self.prive)
         dossier = os.open(cache, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
@@ -322,8 +404,8 @@ class Base:
         dossier = sans_lien(self.prive / "export", racine=self.prive, strict=True)
         empreintes = {}
         attendu = None
-        if self._export_attendu is not None:
-            version, vues = self._export_attendu
+        if self._export_attendu is not None and self.connexion.suivi_sql:
+            version, vues, _ = self._export_attendu
             if version == self._version_export():
                 attendu = vues
         for table in TABLES:
@@ -376,16 +458,17 @@ class Base:
         manifeste_octets = (json.dumps(manifeste, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
         fichier_manifeste = dossier / "manifest.json"
         manifeste_identique, signature_manifeste = _export_identique(fichier_manifeste, manifeste_octets)
-        if manifeste_identique:
-            return
-        fd, nom = tempfile.mkstemp(prefix=".manifest-", dir=dossier)
-        try:
-            with os.fdopen(fd, "wb") as flux:
-                flux.write(manifeste_octets)
-            _verifier_export_inchange(fichier_manifeste, signature_manifeste)
-            Path(nom).replace(fichier_manifeste)
-        finally:
-            Path(nom).unlink(missing_ok=True)
+        if not manifeste_identique:
+            fd, nom = tempfile.mkstemp(prefix=".manifest-", dir=dossier)
+            try:
+                with os.fdopen(fd, "wb") as flux:
+                    flux.write(manifeste_octets)
+                _verifier_export_inchange(fichier_manifeste, signature_manifeste)
+                Path(nom).replace(fichier_manifeste)
+            finally:
+                Path(nom).unlink(missing_ok=True)
+        if attendu is not None and self.connexion.suivi_sql:
+            self._export_verifie = self._export_attendu
 
 
     def _publier_table(self, table, dossier, cible, signature, attendu):

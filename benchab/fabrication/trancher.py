@@ -48,6 +48,7 @@ GROUPES_CAUSES = {
     "expand_plate_extruders": "multi-filament",
     "filaments_cnt": "multi-filament",
 }
+_CAUSE_CONTROLE_SORTIE = "validation_sortie"
 
 
 def ecrire_json(chemin, donnees):
@@ -110,6 +111,9 @@ def _cle_incident(rapport, operation=None, *, mode=None):
     """Identifie une cause ou une inconnue reliée par opération et SHA/contexte explicite."""
     diagnostic_rapport = rapport.get("diagnostic", {})
     cause = diagnostic_rapport.get("cause") if isinstance(diagnostic_rapport, dict) else None
+    if cause == _CAUSE_CONTROLE_SORTIE:
+        # Un refus après succès du moteur se limite au même fichier, pas à toutes les sorties (#119).
+        cause = "inconnue"
     if cause and cause != "inconnue":
         return ("cause", GROUPES_CAUSES.get(cause, cause))
     if cause != "inconnue":
@@ -459,6 +463,7 @@ def _executer(demande):
         except (OSError, ValueError, KeyError, BadZipFile, ET.ParseError) as erreur:
             resultat["code"] = 2
             resultat["validation_sortie"] = {"statut": "FAIL", "detail": str(erreur)}
+            resultat["diagnostic"] = {"cause": _CAUSE_CONTROLE_SORTIE, "fonctions": []}
             resultat["sortie_refusee"] = str(fichier)
     else:
         if processus.returncode == 0:
@@ -534,7 +539,11 @@ def archiver_echec(resultat, demande, prive):
         "reglage_impression_modifie": False,
         "cause_etablie": False,
         "erreurs_archivage": erreurs,
-        "note": "La signature de pile est une observation, y compris bridge_over_infill ; aucune causalité établie.",
+        "note": (
+            "Le moteur a terminé. Le contrôle de sortie a refusé l’archive."
+            if diagnostic_incident.get("cause") == _CAUSE_CONTROLE_SORTIE
+            else "La signature de pile est une observation, y compris bridge_over_infill ; aucune causalité établie."
+        ),
         "raison_volume": "Entrées, éventuelle sortie refusée et rapport IPS conservés pour documenter l’incident.",
     }
     ecrire_json(dossier / "incident.json", resultat)
@@ -664,7 +673,7 @@ def trancher_fichier(
             diagnostic = resultat.get("diagnostic", {})
             cause = diagnostic.get("cause") if isinstance(diagnostic, dict) else None
             # Le message donne la preuve privée utile, sans recopier des détails de diagnostic arbitraires.
-            cause = cause if isinstance(cause, str) and cause in CAUSES else "inconnue"
+            cause = cause if isinstance(cause, str) and cause in (*CAUSES, _CAUSE_CONTROLE_SORTIE) else "inconnue"
             validation = resultat.get("validation_sortie", {})
             natif = resultat.get("code_processus")
             etape = "sortie refusée par BENCHAB" if natif == 0 else "échec du moteur ou de sa préparation"

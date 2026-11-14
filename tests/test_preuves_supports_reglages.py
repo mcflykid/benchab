@@ -24,6 +24,33 @@ def test_rapport_supports_identique_a_source_refuse_avant_tranchage(tmp_path, mo
     assert not appels
 
 
+def test_resume_supports_localise_warn_et_conserve_la_preuve(tmp_path, monkeypatch, capsys):
+    """Le résumé indique la plaque en cause et garde la répartition par hauteur dans le JSON."""
+    source = tmp_path / "support.3mf"
+    source.write_bytes(b"source")
+    rapport = {
+        "statut": "WARN", "seuil_g": 1.0, "plaques": [
+            {"plaque": 1, "statut": "PASS", "support_g": 0.4, "par_5mm_g": {"0": 0.4}},
+            {"plaque": 3, "statut": "WARN", "support_g": 1.2, "par_5mm_g": {"5": 1.2}},
+        ],
+    }
+    monkeypatch.setattr(supports_requis, "mesurer", lambda *_: rapport)
+    detail, court = tmp_path / "detail.json", tmp_path / "court.json"
+
+    assert supports_requis.main([str(source), str(detail)]) == 1
+    assert "plaque 3" in capsys.readouterr().out
+    assert supports_requis.main([str(source), str(court), "--resume"]) == 1
+    resume = json.loads(capsys.readouterr().out)
+    assert resume == {
+        "statut": "WARN", "plaques": 2, "seuil_g": 1.0,
+        "alertes": [{"plaque": 3, "support_g": 1.2}], "rapport": str(court),
+    }
+    assert json.loads(court.read_text()) == json.loads(detail.read_text()) == rapport
+    assert supports_requis.main([str(source), str(court), "--resume"]) == 2
+    assert capsys.readouterr().out == ""
+    assert source.read_bytes() == b"source"
+
+
 def test_reglages_protege_3mf_et_placement_et_ecrit_une_preuve_neuve(tmp_path):
     """Les deux entrées sont préservées et le format JSON du rapport reste exploitable."""
     source = tmp_path / "reglages.3mf"
@@ -42,6 +69,34 @@ def test_reglages_protege_3mf_et_placement_et_ecrit_une_preuve_neuve(tmp_path):
     rapport = json.loads(preuve.read_bytes())
     assert rapport["source"] == source.name and rapport["tout_conforme"] is False
     assert [p.read_bytes() for p in (source, placement)] == avant
+
+
+def test_resume_reglages_localise_un_objet_absent(tmp_path, capsys):
+    """Un objet absent reste non conforme et son motif reste disponible dans les deux sorties."""
+    source = tmp_path / "tranche.3mf"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("Metadata/project_settings.config", "{}")
+        archive.writestr("Metadata/plate_1.gcode", "M104 S205\n")
+    placement = tmp_path / "placement.json"
+    placement.write_text(json.dumps({
+        "plates": [{"name": "P1"}],
+        "objects": [{"name": "Pièce", "plate": 1, "xy": [0, 0], "size": [8, 8]}],
+    }))
+    complet, court = tmp_path / "complet.json", tmp_path / "court.json"
+    assert verifier_reglages.main([str(source), str(placement), str(complet)]) == 1
+    capsys.readouterr()
+    commande = [str(source), str(placement), str(court), "--resume"]
+    assert verifier_reglages.main(commande) == 1
+    resume = json.loads(capsys.readouterr().out)
+    assert resume["statut"] == "FAIL"
+    assert resume["alertes"] == [{
+        "plaque": "P1", "erreurs": [],
+        "objets": [{"objet": "Pièce", "erreur": "aucun dépôt identifié pour cet objet"}],
+    }]
+    assert resume["rapport"] == str(court)
+    assert json.loads(complet.read_text()) == json.loads(court.read_text())
+    assert verifier_reglages.main(commande) == 2
+    assert capsys.readouterr().out == ""
 
 
 def test_gcode_de_supports_protege_toutes_les_preuves_avant_publication(tmp_path):

@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 
+from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
 from benchab.tiers import modeling as M
 
 
@@ -148,8 +149,31 @@ def enveloppe(coque, internes, *, paroi=1.2, pas=None):
     }
 
 
+def _afficher_rapport(rapport, source, sortie, resume):
+    code = {"FAIL": 1, "NON VÉRIFIÉ": 2}.get(rapport["statut"], 0)
+    if sortie is not None:
+        ecrire_json_neuf(sortie, rapport, entrees=[source])
+    if resume:
+        # Les contacts attendus et toutes les poses restent consultables dans le JSON (#35).
+        court = {k: rapport[k] for k in ("statut", "mode", "raison", "echecs", "alertes",
+                                         "contacts_non_autorises", "couverture", "minimum_mm",
+                                         "paroi_min_mm") if k in rapport}
+        if "contacts" in rapport:
+            court["contacts_serres"] = [c for c in rapport["contacts"] if c.get("press")]
+        if "positions" in rapport:
+            court["positions_en_ecart"] = [
+                p for p in [rapport["pose_initiale"], *rapport["positions"]] if p["alertes"] or p["echecs"]
+            ]
+        rapport = {**court, "code": code, "rapport": str(sortie)}
+    print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))
+    return code
+
+
 def main(argv=None):
-    """Contrôle l’assemblage en mm ; codes 1 FAIL, 2 NON VÉRIFIÉ, 0 sinon, sans validation physique."""
+    """Contrôle l’assemblage en mm, avec rapport complet neuf en option.
+
+    Renvoie 1 sur FAIL, 2 sur NON VÉRIFIÉ ou refus, 0 sinon. Aucune validation physique.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("fichier", type=Path)
     parser.add_argument("--mode", choices=("assemblage", "contacts", "parois"), default="assemblage")
@@ -159,7 +183,15 @@ def main(argv=None):
     parser.add_argument("--contact-voulu", action="append", default=[], metavar="A:B")
     parser.add_argument("--sweep", metavar="PIECE=AXE:DEBUT:FIN:POSITIONS")
     parser.add_argument("--pivot", metavar="X,Y,Z", help="Pivot de rotation en mm ; défaut : centroïde de la pièce")
+    parser.add_argument("--json", type=Path, help="Rapport complet neuf")
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
+    try:
+        if args.resume and args.json is None:
+            raise ValueError("--resume exige --json pour conserver le rapport complet.")
+        sortie = destination_neuve(args.json) if args.json is not None else None
+    except (OSError, ValueError) as erreur:
+        parser.error(str(erreur))
     voulus = []
     for paire in args.contact_voulu:
         noms = paire.split(":")
@@ -186,17 +218,20 @@ def main(argv=None):
             )
         except (ValueError, TypeError) as erreur:
             parser.error(f"Balayage invalide : {erreur}")
-        print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))
-        return 1 if rapport["statut"] == "FAIL" else 2 if rapport["statut"] == "NON VÉRIFIÉ" else 0
-    if args.pivot:
-        parser.error("--pivot nécessite --sweep")
-    rapport = analyser(
-        args.fichier,
-        jeu=args.jeu,
-        paroi=args.paroi,
-        mode=args.mode,
-        echantillons=args.echantillons,
-        intentionnels=voulus,
-    )
-    print(json.dumps(rapport, ensure_ascii=False, allow_nan=False))
-    return 1 if rapport["statut"] == "FAIL" else 2 if rapport["statut"] == "NON VÉRIFIÉ" else 0
+    else:
+        if args.pivot:
+            parser.error("--pivot nécessite --sweep")
+        rapport = analyser(
+            args.fichier,
+            jeu=args.jeu,
+            paroi=args.paroi,
+            mode=args.mode,
+            echantillons=args.echantillons,
+            intentionnels=voulus,
+        )
+    try:
+        return _afficher_rapport(rapport, args.fichier, sortie, args.resume)
+    except (OSError, ValueError) as erreur:
+        if sortie is None:
+            raise
+        parser.error(str(erreur))

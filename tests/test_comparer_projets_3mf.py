@@ -701,3 +701,84 @@ def test_assemblage_a_deux_feuilles_refuse_ordre_change_ou_reference_repetee(tmp
     rapport = comparer(source, candidat)["peinture"]
     assert rapport["extensions_asn_prusa"]["statut"] == "NON VÉRIFIÉ"
     assert rapport["proprietes_standard_3mf"]["statut"] == "NON VÉRIFIÉ"
+
+
+@pytest.fixture
+def projets_production(tmp_path):
+    """Déplace une feuille synthétique vers la partie liée du même ZIP, comme Orca."""
+    from benchab.imports3d.lecture_3mf import NS, NS_REL, PROD, REL_MODELE
+
+    source = tmp_path / "direct.3mf"
+    _archive_peinte(source, dialect="prusa")
+
+    def construire(*, couleurs=("1", "2"), cible="/3D/Objects/part.model", relation="interne",
+                   translation="0", unite="millimeter", espace=PROD, extension="prod"):
+        candidat = tmp_path / "production.3mf"
+        with ZipFile(source) as archive:
+            membres = {nom: archive.read(nom) for nom in archive.namelist()}
+        modele = ET.fromstring(membres["3D/3dmodel.model"])
+        ressources = modele.find(NS + "resources")
+        feuille = ressources[0]
+        for triangle, couleur in zip(feuille.iter(NS + "triangle"), couleurs, strict=True):
+            cle, = set(triangle.attrib) - {"v1", "v2", "v3"}
+            if couleur is None:
+                triangle.attrib.pop(cle)
+            else:
+                triangle.set(cle, couleur)
+        ressources.remove(feuille)
+        sous_modele = ET.Element(NS + "model", unit=unite, requiredextensions=extension)
+        ET.SubElement(sous_modele, NS + "resources").append(feuille)
+        ET.SubElement(sous_modele, NS + "build")
+        parent = ET.SubElement(ressources, NS + "object", id="2", type="model")
+        composants = ET.SubElement(parent, NS + "components")
+        ET.SubElement(composants, NS + "component", {
+            espace + "path": cible, "objectid": "1", "transform": f"1 0 0 0 1 0 0 0 1 {translation} 0 0",
+        })
+        modele.find(NS + "build")[0].set("objectid", "2")
+        modele.set("requiredextensions", extension)
+        relations = ET.Element(NS_REL + "Relationships")
+        if relation != "absente":
+            for i in range(2 if relation == "double" else 1):
+                ET.SubElement(relations, NS_REL + "Relationship", {
+                    "Id": f"r{i}", "Type": REL_MODELE, "Target": cible,
+                    "TargetMode": "External" if relation == "externe" else "Internal",
+                })
+
+        def xml(element):
+            contenu = ET.tostring(element)
+            debut, suite = contenu.split(b">", 1)
+            return debut + b' xmlns:prod="' + PROD[1:-1].encode() + b'">' + suite
+
+        membres.update({
+            "3D/3dmodel.model": xml(modele),
+            "3D/Objects/part.model": xml(sous_modele),
+            "3D/_rels/3dmodel.model.rels": ET.tostring(relations),
+        })
+        with ZipFile(candidat, "w") as archive:
+            for nom, contenu in membres.items():
+                archive.writestr(nom, contenu)
+        return comparer(source, candidat)["peinture"]["extensions_asn_prusa"]
+
+    return construire
+
+
+@pytest.mark.parametrize(("couleurs", "statut"), [(("1", "2"), "PASS"), ((None, None), "WARN")])
+def test_composant_production_compare_la_peinture_des_memes_facettes(projets_production, couleurs, statut):
+    """Deux marques sont vérifiées avec la même feuille et la même pose effective."""
+    preuve = projets_production(couleurs=couleurs)
+    assert preuve["statut"] == statut
+    assert len(preuve["differences_litterales"]) == (2 if statut == "WARN" else 0)
+    if statut == "WARN":
+        assert [ecart["facette"] for ecart in preuve["differences_litterales"]] == [1, 2]
+        assert all(not ecart["present_candidat"] for ecart in preuve["differences_litterales"])
+
+
+@pytest.mark.parametrize("options", [
+    {"relation": "absente"}, {"relation": "double"}, {"relation": "externe"},
+    {"cible": "/3D/Objects/%2e%2e/part.model"}, {"cible": "/3D/Objects/manquante.model"},
+    {"espace": "{urn:autre}"}, {"extension": "inconnue"},
+    {"translation": "0.0001"}, {"unite": "inch"},
+])
+def test_composant_production_ambigu_reste_non_verifie(projets_production, options):
+    """Le ZIP, le lien OPC, la feuille et la pose doivent tous être qualifiés."""
+    assert projets_production(**options)["statut"] == "NON VÉRIFIÉ"

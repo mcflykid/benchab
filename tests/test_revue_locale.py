@@ -74,6 +74,19 @@ class Revue(unittest.TestCase):
         self.assertEqual(sorted(r["reste"]), ["couche-courte", "long-haut"])
         self.assertEqual(r["plaques"][1]["min_s"], 6.0)
 
+    def test_resume_garde_toutes_les_zones_dans_le_rapport(self):
+        """La revue courte conserve une zone hors de sa liste d’exemples."""
+        env = json.loads(self.env.read_text())
+        env["zones_locales"]["zones"] = [
+            {**self.zones[2], "id": f"zone-{i}"} for i in range(16)
+        ]
+        self.env.write_text(json.dumps(env))
+        cible = self.d / "rapport.json"
+        self.assertEqual(RL.main([str(self.tr), "--envoi", str(self.env), "--json", str(cible), "--resume"]), 1)
+        rapport = json.loads(cible.read_text())
+        self.assertEqual(len(rapport["a_revoir_exemples"]), 15)
+        self.assertEqual(rapport["a_revoir_detail"], [f"zone-{i}" for i in range(16)])
+
     def test_revue_ecrite_acceptee_par_controle_envoi_et_humain_conserve(self):
         revue = self.d / "REVUE-ZONES-LOCALES.json"
         revue.write_text(

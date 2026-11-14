@@ -905,12 +905,17 @@ def rendre_html(rapport, sortie):
 
 
 def main(argv=None):
-    """Analyse la paroi en mm et mm/s ; codes 1 FAIL, 2 refus, 0 sinon, aucune validation physique."""
+    """Analyse la paroi en mm et mm/s avec détail JSON optionnel.
+
+    Codes 1 FAIL, 2 refus, 0 sinon ; aucune validation physique ou réécriture
+    des mouvements. Le rapport comporte les motifs et mesures par couche.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="action", required=True)
     a = sub.add_parser("analyser")
     a.add_argument("source")
     a.add_argument("--json")
+    a.add_argument("--detail", action="store_true", help="Affiche le rapport complet en JSON")
     a.add_argument("--html")
     a.add_argument("--maitre")
     a.add_argument("--limites-filaments")
@@ -931,12 +936,14 @@ def main(argv=None):
             _ecrire(args.json, json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False))
         if args.html:
             rendre_html(report, args.html)
-        print(
-            json.dumps(
-                {"statut": report["statut"], "series": len(report["series"]), "transformable": False},
-                ensure_ascii=False,
-            )
-        )
+        affiche = report if args.detail else {
+            "statut": report["statut"],
+            "series": len(report["series"]),
+            "transformable": False,
+        }
+        if args.json and not args.detail:
+            affiche["rapport"] = str(Path(args.json).absolute())
+        print(json.dumps(affiche, ensure_ascii=False, allow_nan=False))
         return 1 if report["statut"] == "FAIL" else 0
     except (ValueError, OSError, UnicodeError, zipfile.BadZipFile, KeyError, TypeError) as ex:
         print("Erreur : " + str(ex), file=sys.stderr)
