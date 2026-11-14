@@ -508,8 +508,13 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
                 )
                 verifier_annulation(annule)
                 mesures = _mesures(tranche)
+                ecarts = _ecarts(reference, mesures)
                 commandes_variante = _empreintes_commandes(tranche)
                 variante["commandes_identiques"] = commandes_reference == commandes_variante
+                variante["commandes_par_plaque"] = [
+                    {"plaque": plaque, "commandes_identiques": commandes_variante.get(plaque) == empreinte}
+                    for plaque, empreinte in sorted(commandes_reference.items())
+                ]
                 if mesures["debit"] == "FAIL":
                     variante["motif_export_refuse"] = "Dépassement du plafond de débit déclaré (U25)."
                 if couches is not None:
@@ -523,10 +528,8 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
                     mesures["appuis"] = _appuis_selection(tranche, selection_appuis, annule=annule)
                 if orientation is not None:
                     variante["autres_plaques"] = [
-                        {"plaque": plaque, "commandes_identiques": commandes_variante.get(plaque) == empreinte}
-                        for plaque, empreinte in sorted(commandes_reference.items()) if plaque != plaque_appuis
+                        bilan for bilan in variante["commandes_par_plaque"] if bilan["plaque"] != plaque_appuis
                     ]
-                ecarts = _ecarts(reference, mesures)
                 if dossier_exports is not None and mesures["debit"] != "FAIL":
                     nom_export = f"variante-{i}.3mf"
                     empreinte = sha256_fichier(fichier)

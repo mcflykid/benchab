@@ -51,23 +51,30 @@ function actualiserContraintes() {
 
 function installerContraintes() {
   const bloc = $('atelierContraintes'), reprise = $('atelierReprendreIntentions');
+  const choix = $('atelierChoixContraintes');
   let sauvegarde;
   try {
     sauvegarde = JSON.parse(localStorage.getItem(cleIntentions) || localStorage.getItem(cleDernieresIntentions) || 'null');
   } catch (_erreur) { /* Stockage facultatif. */ }
-  reprise.hidden = !/^[a-f0-9]{64}$/.test(sauvegarde?.source_sha256 || '');
-  if (!reprise.hidden && sauvegarde.source_sha256 !== D.source.sha256) {
+  choix.hidden = !/^[a-f0-9]{64}$/.test(sauvegarde?.source_sha256 || '') ||
+    !(sauvegarde?.usage || sauvegarde?.exposition?.length);
+  if (!choix.hidden && sauvegarde.source_sha256 !== D.source.sha256) {
     reprise.textContent = 'Reprendre les contraintes du modèle précédent';
-    bloc.open = true;
   }
-  bloc.onchange = actualiserContraintes;
+  $('atelierIgnorerIntentions').onclick = () => {
+    choix.hidden = true;
+    actualiserContraintes();
+  };
+  bloc.onchange = () => {
+    choix.hidden = true;
+    actualiserContraintes();
+  };
   $('atelierEnregistrerIntentions').onclick = () => {
     sauvegarde = contraintesAtelier();
     try {
       localStorage.setItem(cleIntentions, JSON.stringify(sauvegarde));
       localStorage.setItem(cleDernieresIntentions, JSON.stringify(sauvegarde));
-      reprise.hidden = false;
-      reprise.textContent = 'Reprendre les contraintes sauvegardées';
+      choix.hidden = true;
       actualiserContraintes();
       $('atelierContraintesEtat').append(' Contraintes sauvegardées sur ce poste.');
     } catch (_erreur) { $('atelierContraintesEtat').textContent = 'Stockage local indisponible.'; }
@@ -78,9 +85,11 @@ function installerContraintes() {
     for (const c of bloc.querySelectorAll('input')) {
       c.checked = Array.isArray(sauvegarde.exposition) && sauvegarde.exposition.includes(c.value);
     }
+    choix.hidden = true;
     actualiserContraintes();
   };
   $('atelierReinitialiserIntentions').onclick = () => {
+    choix.hidden = true;
     provenanceContraintes = null;
     $('atelierUsage').value = '';
     for (const c of bloc.querySelectorAll('input')) c.checked = false;
@@ -195,6 +204,7 @@ function memoriserAtelier() {
     piece: $('atelierListePiece').value, plateau: !plateauAtelier || plateauAtelier.visible,
     axes: !axesAtelier || axesAtelier.visible,
     onglet: document.querySelector('#plaques button[aria-pressed=true]')?.dataset.k,
+    ecarts: !$('atelierEcarts').hidden,
   };
   try { localStorage.setItem(cleAtelier, JSON.stringify(etat)); } catch (_e) { /* Stockage facultatif hors ligne. */ }
 }
@@ -490,7 +500,14 @@ function afficherComparaisonAtelier() {
       ligne.textContent = titre + ' · ' + duree(m.secondes) + ' · ' + nombre(m.grammes) +
         ' g. Écart : ' + signe(e.secondes) + duree(e.secondes) + ' · ' +
         signe(e.grammes) + nombre(Math.abs(e.grammes)) + ' g. ' + debit(m) + '.';
-      if (v.commandes_identiques) ligne.textContent += ' Le G-code contient les mêmes commandes que la référence.';
+      if (v.commandes_identiques) {
+        ligne.textContent += ' Réglages relus, mais commandes identiques à la référence.';
+      } else if (v.commandes_par_plaque?.length > 1 && !v.pose) {
+        const conservees = v.commandes_par_plaque.filter(p => p.commandes_identiques).map(p => p.plaque);
+        if (conservees.length) {
+          ligne.textContent += ' Commandes inchangées sur : ' + conservees.map(p => 'plaque ' + p).join(', ') + '.';
+        }
+      }
       if (v.motif_export_refuse) ligne.textContent += ' Export refusé. ' + v.motif_export_refuse;
       ligne.textContent += depots(m);
       if ('plaques_avec_supports' in m && ('enable_support' in v.reglages || 'support_type' in v.reglages)) {
@@ -697,6 +714,7 @@ function installerAtelier() {
     const ecarts = $('atelierEcarts');
     ecarts.hidden = !ecarts.hidden;
     $('atelierInfo').setAttribute('aria-expanded', String(!ecarts.hidden));
+    memoriserAtelier();
   };
   $('atelierRapport').onclick = () => {
     const a = document.createElement('a');
@@ -719,6 +737,8 @@ function installerAtelier() {
     ligne.append(terme, valeur); $('atelierReglages').append(ligne);
   }
   try { etatAtelier = JSON.parse(localStorage.getItem(cleAtelier)) || {}; } catch (_e) { /* État neuf. */ }
+  $('atelierEcarts').hidden = etatAtelier.ecarts !== true;
+  $('atelierInfo').setAttribute('aria-expanded', String(!$('atelierEcarts').hidden));
   for (const [cle, titre] of Object.entries(categoriesAtelier)) {
     const label = document.createElement('label'), c = document.createElement('input');
     label.className = 'c'; c.type = 'checkbox'; c.value = cle;

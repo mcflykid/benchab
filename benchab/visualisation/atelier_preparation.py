@@ -322,8 +322,9 @@ def construire(source, *, unites=None, sha_attendu=None, nom_source=None, contex
         vue.modele(f"partie_{i}", mesh, couleur="#b6c7df", max_faces=MAX_FACES_VUE)
         vue.piece(nom_piece, f"partie_{i}", info=f"Plaque {plaque}" if plaque is not None else "Plaque non vérifiée")
         onglets[nom_piece] = plaque
+        selectionnee = (plaque_cible is None or plaque == plaque_cible) and (piece_cible is None or i == piece_cible)
         try:
-            if (plaque_cible is not None and plaque != plaque_cible) or (piece_cible is not None and i != piece_cible):
+            if not selectionnee:
                 raise ValueError("Pièce hors du périmètre demandé.")
             diagnostic = carte_risques.mesurer(
                 mesh, nom_piece, nom_source, sha, seuil_epaisseur_mm=largeur, annule=annule,
@@ -345,7 +346,7 @@ def construire(source, *, unites=None, sha_attendu=None, nom_source=None, contex
             except (ValueError, RuntimeError):
                 diagnostic["orientation_indicative"] = None
         diagnostic.update(plaque=plaque, identite_3mf=identite, faces_source=len(mesh.faces),
-                          affichage_allege=len(mesh.faces) > MAX_FACES_VUE)
+                          affichage_allege=len(vue.modeles[f"partie_{i}"]["maillage"].faces) < len(mesh.faces))
         vue.diagnostics.append(diagnostic)
         propositions.extend(_propositions(diagnostic, params))
     plaques = sorted({p for p in onglets.values() if p is not None})
@@ -450,7 +451,11 @@ class _PageHorsCache(Exception):
 
 def import_html(contenu, nom, unites, *, annule=None, progression=None, plaque_cible=None, piece_cible=None,
                 prive=None, comparaison_auto=False):
-    """Analyse les octets fournis ; tranche une copie temporaire du 3MF si demandé."""
+    """Analyse les octets fournis ; peut trancher une copie temporaire du 3MF entier.
+
+    Pour une plaque ou pièce ciblée, garde l’aperçu et omet le tranchage automatique.
+    Les unités du STL/OBJ sont explicites ; aucune modification de la source.
+    """
     suffixe = Path(nom).suffix.lower()
     if not nom or len(nom) > 250 or Path(nom).name != nom or "\\" in nom or suffixe not in (".3mf", ".stl", ".obj"):
         raise ValueError("Nom ou format de modèle invalide.")
@@ -459,7 +464,10 @@ def import_html(contenu, nom, unites, *, annule=None, progression=None, plaque_c
         source.write_bytes(contenu)
         vue = construire(source, unites=unites, nom_source=nom, annule=annule, progression=progression,
                          plaque_cible=plaque_cible, piece_cible=piece_cible, prive=prive)
-        if comparaison_auto and suffixe == ".3mf":
+        if plaque_cible is not None or piece_cible is not None:
+            # Une demande ciblée borne les mesures ; le trancheur, lui, traiterait toutes les plaques.
+            vue.atelier["etat_comparaison"] = "Mesures ciblées. Aucun tranchage automatique pour cette sélection."
+        elif comparaison_auto and suffixe == ".3mf":
             mode = vue.atelier["mode_conseille"]
             with Archive3MF(source) as archive:
                 deja_tranche = any(n.casefold().endswith(".gcode") for n in archive.noms())

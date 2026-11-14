@@ -99,6 +99,10 @@ __ATELIER_CSS__
     <section><h2>Référence</h2><p id="atelierReference"></p><a id="atelierImporter" href="/atelier?vue=preparation" hidden>Ouvrir un autre modèle</a></section>
     <button id="atelierGenerer" hidden>Comparer les réglages</button>
     <p id="atelierContraintesEtat" role="status"></p>
+    <div id="atelierChoixContraintes" hidden>
+      <button id="atelierReprendreIntentions" class="sec">Reprendre les contraintes sauvegardées</button>
+      <button id="atelierIgnorerIntentions" class="sec">Continuer sans les reprendre</button>
+    </div>
     <details id="atelierAvance"><summary>Réglages et options avancés</summary>
     <a id="atelierObservations" hidden>Observations et preuves du projet</a>
     <section><h2>Réglages du fichier</h2><dl id="atelierReglages"></dl><p id="atelierSansProfil" class="note">Profil et réglages non fournis par la source.</p></section>
@@ -133,7 +137,6 @@ __ATELIER_CSS__
         <label class="c"><input type="checkbox" value="produits chimiques"> Produits chimiques</label>
       </fieldset>
       <button id="atelierEnregistrerIntentions" class="sec">Mémoriser ces contraintes</button>
-      <button id="atelierReprendreIntentions" class="sec" hidden>Reprendre les contraintes sauvegardées</button>
       <button id="atelierReinitialiserIntentions" class="sec">Repartir sans contraintes</button>
     </details>
     <fieldset id="atelierCalques"><legend>Calques</legend></fieldset>

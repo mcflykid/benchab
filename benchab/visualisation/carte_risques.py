@@ -174,6 +174,7 @@ def mesurer(mesh, piece, source, sha256, *, plan_mm=0.0, seuil_epaisseur_mm=0.84
         raise ValueError("Coordonnées et seuil d’épaisseur finis requis.")
     topo = mesh.copy()
     topo.merge_vertices(digits_vertex=12)
+    ferme = bool(topo.is_watertight)
     verifier_annulation(annule)
     if plan_mm is None:
         sur = {"faces_detectees": 0, "anomalies": []}
@@ -198,12 +199,17 @@ def mesurer(mesh, piece, source, sha256, *, plan_mm=0.0, seuil_epaisseur_mm=0.84
             groupes = len(
                 surplombs_connexes.cartographier(pose, source=source, unite="mm", angle_max_deg=50)["groupes"]
             )
+        orientation_etablie = ferme and topo.is_winding_consistent and topo.volume > 0
+        # Des normales cohérentes sur une surface ouverte ne prouvent pas son extérieur.
+        reserve = "" if orientation_etablie else "Maillage ouvert ou orientation incertaine. "
         mesure_sur = {
-            "statut": "WARN" if sur["faces_detectees"] else "PASS" if topo.is_winding_consistent else "NON VÉRIFIÉ",
+            "statut": (
+                "WARN" if sur["faces_detectees"] else "PASS" if orientation_etablie else "NON VÉRIFIÉ"
+            ),
             "surface_surplomb_mm2": float(pose.area_faces[faces_surplomb(pose)].sum()),
             "detail": f"{sur['faces_detectees']} faces au-delà du plan ; {len(sur['anomalies'])} repères affichés. "
             f"Groupes descendants (assise comprise) : {groupes if groupes is not None else 'non vérifiés'}. "
-            "Portée de pont et trajectoires de support non vérifiées.",
+            f"{reserve}Portée de pont et trajectoires de support non vérifiées.",
         }
     verifier_annulation(annule)
     epaisseur, reperes = _epaisseur(topo, contexte, seuil_epaisseur_mm, annule)
@@ -214,5 +220,5 @@ def mesurer(mesh, piece, source, sha256, *, plan_mm=0.0, seuil_epaisseur_mm=0.84
         "faces_detectees": sur["faces_detectees"],
         "anomalies": sur["anomalies"] + reperes + appuis,
         "calques": {"surplomb": mesure_sur, "epaisseur": epaisseur, "assise": assise},
-        "maillage_ferme": bool(topo.is_watertight),
+        "maillage_ferme": ferme,
     }

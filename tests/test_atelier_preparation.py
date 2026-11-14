@@ -46,6 +46,15 @@ def test_orientation_indicative_ne_deplace_pas_la_piece():
     assert (mesh.vertices == sommets).all()
 
 
+def test_face_ouverte_ne_valide_pas_absence_surplomb():
+    """Une surface ouverte ne permet pas d’affirmer l’absence de surplomb."""
+    mesh = trimesh.Trimesh(vertices=[[0, 0, 2], [5, 0, 2], [0, 5, 2]], faces=[[0, 1, 2]])
+    diagnostic = carte_risques.mesurer(mesh, "surface", "témoin", "a" * 64)
+    assert not diagnostic["maillage_ferme"]
+    assert diagnostic["calques"]["surplomb"]["statut"] == "NON VÉRIFIÉ"
+    assert diagnostic["calques"]["surplomb"]["surface_surplomb_mm2"] == 0
+
+
 def test_bibliotheque_assemblage_pose_et_jeu_nominal():
     """Le couvercle garde le jeu par face et chaque modèle est un solide posé."""
     import pytest
@@ -73,6 +82,34 @@ def test_source_sans_profil_et_epaisseur_localisee(tmp_path):
     assert vue.atelier["propositions"]
     assert any(a["type"] == "epaisseur_locale" for a in vue.diagnostics[0]["anomalies"])
     assert source.read_bytes() == original
+
+
+def test_import_cible_ne_tranche_pas_toutes_les_plaques(tmp_path, monkeypatch):
+    """Une demande de mesures ciblées conserve l’aperçu sans lancer une comparaison globale."""
+    from zipfile import ZipFile
+
+    from benchab.visualisation import atelier_preparation as atelier
+
+    chemin = tmp_path / "multi.3mf"
+    with ZipFile(chemin, "w") as archive:
+        archive.writestr("3D/3dmodel.model", "<model/>")
+    maillage = trimesh.creation.box()
+    monkeypatch.setattr(atelier, "_lire_3mf", lambda *_a, **_k: (
+        [("Cube", maillage, 1, None), ("Cube", maillage, 2, None)], {"spiral_mode": "0"}, [], False,
+    ))
+    appels = []
+    monkeypatch.setattr(atelier.carte_risques, "orientation_indicative", lambda mesh: appels.append(mesh))
+
+    def comparaison_interdite(*_args, **_options):
+        raise AssertionError("Une analyse ciblée ne lance pas de tranchage global.")
+
+    monkeypatch.setattr(atelier, "_comparaison_navigateur", comparaison_interdite)
+    page = atelier.import_html(
+        chemin.read_bytes(), "multi.3mf", None, plaque_cible=2, comparaison_auto=True,
+    )
+    assert "Mesures ciblées".encode() in page
+    assert b"Cube" in page
+    assert len(appels) == 1
 
 
 def test_erreur_de_mesure_conserve_la_geometrie(tmp_path, monkeypatch):
@@ -196,14 +233,18 @@ def test_comparaison_depuis_la_reference_exacte(tmp_path, monkeypatch):
     monkeypatch.setattr(module.optimisation, "clone", cloner)
     monkeypatch.setattr(module, "trancher_fichier", trancher)
     monkeypatch.setattr(module, "_mesures", lambda x: x)
-    monkeypatch.setattr(module, "_empreintes_commandes", lambda _: {1: "commandes"})
+    empreintes = iter([{1: "a", 2: "b"}, {1: "a", 2: "c"}, {1: "a"}])
+    monkeypatch.setattr(module, "_empreintes_commandes", lambda _: next(empreintes))
     resultat = module.comparer(
         source, sha, [{"titre": "Remplissage", "avant_mm_s": 350, "apres_mm_s": 249.09}], marge=True,
     )
     assert deltas == [{"sparse_infill_speed": "249.09"}, {"sparse_infill_speed": "224.18"}]
     valide, invalide = resultat["variantes"]
     assert valide["ecarts"] == {"secondes": -20, "grammes": 0.5}
-    assert valide["commandes_identiques"]
+    assert not valide["commandes_identiques"]
+    assert valide["commandes_par_plaque"] == [
+        {"plaque": 1, "commandes_identiques": True}, {"plaque": 2, "commandes_identiques": False},
+    ]
     assert "Plaques différentes" in invalide["erreur"] and "ecarts" not in invalide
     assert source.read_bytes() == original
 
