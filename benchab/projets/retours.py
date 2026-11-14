@@ -5,7 +5,7 @@ préparation n'est réécrite, aucun fichier supprimé, aucun envoi déduit d'un
 """
 
 import json
-import math
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,7 +89,8 @@ def confirmer(
     Sans préparation, conserve une capture privée neuve et son SHA-256 comme source contrôlable.
     """
     if duree_observee_s is not None and (
-        type(duree_observee_s) not in (int, float) or not 0 < duree_observee_s < math.inf
+        type(duree_observee_s) not in (int, float)
+        or not 0 < duree_observee_s <= sys.float_info.max
     ):
         raise ValueError("Durée observée positive et finie requise, en secondes.")
     projet = _projet(base, projet)
