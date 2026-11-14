@@ -713,3 +713,12 @@ def test_ci_github_refuse_plusieurs_origins_sans_choisir_une_url(incident, monke
     resultat = incidents.fiche(declaration, depot=depot, prive=prive, ci_github="43048027734/1")
 
     assert resultat["ci_github"]["statut"] == "NON VÉRIFIÉ"
+
+
+def test_junit_ignore_un_resultat_d_un_namespace_etranger():
+    """Une extension XML ne peut pas déclarer un résultat JUnit à la place d’une suite."""
+    contenu = (b'<testsuites xmlns:meta="urn:meta"><meta:testsuite><meta:testcase '
+               b'file="tests/test_fixture.py" classname="tests.test_fixture" name="test_preuve"/>'
+               b'</meta:testsuite></testsuites>')
+    cas = {"chemin": "tests/test_fixture.py", "classe": "tests.test_fixture", "nom": "test_preuve"}
+    assert incidents._rapport_junit(contenu, [cas])["cas_manquants"] == [cas]
