@@ -97,6 +97,10 @@ localise les faces en alerte par paire de pièces et centre de contact.
 Le JSON complet conserve aussi les faces conformes et leurs mesures.
 Les codes de sortie sont identiques avec et sans résumé (#35).
 
+`benchab controle ponts-internes TRANCHE --json RAPPORT.json --resume`
+indique les plaques en alerte, le nombre de ponts concernés et leur
+portée maximale. Les positions restent dans le rapport JSON complet (#35).
+
 La routine lit uniquement les résultats du contrôle courant. Relancer la
 routine conserve les fichiers identiques et publie les fichiers différents
 dans un sous-dossier de rejeu neuf. Les anciennes preuves restent consultables.
