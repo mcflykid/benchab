@@ -331,11 +331,19 @@ def main(argv=None):
         return 2
     if resume:
         # Seule une étude publiée peut être annoncée (#35).
-        pieces = [
-            {"piece": nom, "orientation_disponible": bool(p["meilleures"]),
-             **({"motif": p["resistance"]["avertissement"]} if "resistance" in p else {})}
-            for nom, p in rapport["pieces"].items()
-        ]
+        pieces = []
+        for nom, p in rapport["pieces"].items():
+            point = {"piece": nom, "orientation_disponible": bool(p["meilleures"])}
+            if p["meilleures"]:
+                point["premiere_orientation"] = {
+                    k: p["meilleures"][0][k] for k in ("direction_bas", "support_rayons_mm3", "tranchage")
+                    if k in p["meilleures"][0]
+                }
+            else:
+                point["motif"] = "Aucune orientation compatible avec le plateau."
+            if "resistance" in p:
+                point["avertissement"] = p["resistance"]["avertissement"]
+            pieces.append(point)
         affiche = {"statut": "ESTIMATION" if pieces and all(p["orientation_disponible"] for p in pieces)
                    else "NON VÉRIFIÉ", "code": 0, "pieces": pieces, "rapport": str(cible / "orientations.json")}
         print(json.dumps(affiche, ensure_ascii=False))

@@ -36,7 +36,7 @@ def test_orientations_publie_rapport_dans_dossier_neuf_sans_trancher(tmp_path, m
     assert rapport["methode"] == ""
 
 
-def test_orientations_publie_ensemble_ou_rien_si_moteur_refuse(tmp_path, monkeypatch):
+def test_orientations_publie_ensemble_ou_rien_si_moteur_refuse(tmp_path, monkeypatch, capsys):
     """Les STL et leur rapport sont disponibles ensemble sans modifier la source."""
     import trimesh
 
@@ -52,11 +52,15 @@ def test_orientations_publie_ensemble_ou_rien_si_moteur_refuse(tmp_path, monkeyp
         raise ValueError("trancheur synthétique refusé")
 
     monkeypatch.setattr(orientations_supports, "trancher", refus)
-    assert orientations_supports.main(commun) == 2
+    assert orientations_supports.main([*commun, "--resume"]) == 2
+    assert capsys.readouterr().out == ""
     assert not dossier.exists()
 
     monkeypatch.setattr(orientations_supports, "trancher", lambda *_: [{"support_g": 1.0}])
-    assert orientations_supports.main(commun) == 0
+    assert orientations_supports.main([*commun, "--resume"]) == 0
+    court = json.loads(capsys.readouterr().out)
+    assert court["pieces"][0]["premiere_orientation"]["tranchage"] == {"support_g": 1.0}
+    assert court["rapport"] == str(dossier / "orientations.json")
     assert (dossier / "piece-1.stl").is_file()
     rapport = json.loads((dossier / "orientations.json").read_bytes())
     assert rapport["pieces"]["piece"]["meilleures"][0]["tranchage"] == {"support_g": 1.0}
