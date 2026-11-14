@@ -20,7 +20,9 @@ from benchab.machine.configuration import charger
 from benchab.qualite.empreintes import sha256_fichier
 
 _CLES = {"Paroi intérieure": "inner_wall_speed", "Remplissage": "sparse_infill_speed"}
-INTENTIONS = ("resistance", "silencieux", "remplissage", "finition", "rapide", "supports", "haut-debit")
+INTENTIONS = ("resistance", "silencieux", "remplissage", "finition", "rapide", "supports", "supports-plateau",
+              "haut-debit")
+REGLAGES_SUPPORTS = frozenset({"enable_support", "support_type", "support_on_build_plate_only"})
 MODES = ("reference", "vitesses", "qualite-supports", "orientation", "couches-variables", "diagnostic-debit",
          *INTENTIONS)
 
@@ -38,6 +40,12 @@ def variante_intention(params, surcharges, mode, *, profil_debit=None):
         return []
     if mode == "supports":
         return _variantes_supports(lire)
+    if mode == "supports-plateau":
+        # Un support peut partir de la pièce et rester coincé dans un creux (#319).
+        if (lire("enable_support") == "1" and lire("support_on_build_plate_only") == "0"
+                and lire("support_type") in ("tree(auto)", "normal(auto)")):
+            return [("Supports depuis le plateau uniquement", {"support_on_build_plate_only": "1"})]
+        return []
     if mode == "haut-debit":
         if not profil_debit:
             return []
@@ -458,7 +466,7 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
             from benchab.fabrication.couches_variables import ecrire_profils, hauteurs_gcode
 
             reference["hauteurs_gcode"] = hauteurs_gcode(tranche)
-        comparaison_supports = any({"enable_support", "support_type"} & changements.keys()
+        comparaison_supports = any(REGLAGES_SUPPORTS & changements.keys()
                                    for _, changements in essais)
         selection_appuis = [plaque_appuis] if plaque_appuis is not None else (
             reference["plaques"] if comparaison_supports else []

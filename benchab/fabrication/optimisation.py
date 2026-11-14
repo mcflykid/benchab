@@ -38,7 +38,7 @@ ACCELERATIONS = ("default_acceleration", "inner_wall_acceleration", "travel_acce
 VARIABLES = frozenset((*INTERIEURS, *EXTERIEURS, *ACCELERATIONS, "travel_speed"))
 VARIANTES_COMPARATEUR = frozenset({
     "layer_height", "enable_support", "support_type", "wall_loops", "top_shell_layers",
-    "sparse_infill_density", "top_shell_thickness",
+    "sparse_infill_density", "top_shell_thickness", "support_on_build_plate_only",
 })
 CONFIGURATION = "Metadata/project_settings.config"
 OBJETS = "Metadata/model_settings.config"

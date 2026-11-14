@@ -423,6 +423,21 @@ def test_comparaison_supports_preserve_les_ecarts_z():
     ]
 
 
+def test_supports_depuis_le_plateau_sans_changer_les_interfaces():
+    """Compare l’origine des supports sans modifier leurs interfaces ni le type."""
+    from benchab.visualisation.comparaison_atelier import variante_intention
+
+    params = {"spiral_mode": "0", "enable_support": "1", "support_type": "tree(auto)",
+              "support_on_build_plate_only": "0", "support_top_z_distance": "0.2"}
+    assert variante_intention(params, False, "supports-plateau") == [
+        ("Supports depuis le plateau uniquement", {"support_on_build_plate_only": "1"}),
+    ]
+    for changements in ({"enable_support": "0"}, {"support_on_build_plate_only": "1"},
+                        {"support_on_build_plate_only": None}, {"spiral_mode": "1"}):
+        assert variante_intention(params | changements, False, "supports-plateau") == []
+    assert variante_intention(params, True, "supports-plateau") == []
+
+
 def test_haut_debit_exige_un_profil_de_meme_filament():
     """Seul un profil compatible peut relever le plafond déclaré en mm³/s."""
     from benchab.visualisation.comparaison_atelier import variante_intention

@@ -23,6 +23,7 @@ const boutonsIntentions = [
   ['atelierComparerRapide', 'rapide'],
   ['atelierComparerHautDebit', 'haut-debit'],
   ['atelierComparerSupports', 'supports'],
+  ['atelierComparerSupportsPlateau', 'supports-plateau'],
   ['atelierComparerResistance', 'resistance'], ['atelierComparerSilence', 'silencieux'],
   ['atelierComparerRemplissage', 'remplissage'], ['atelierComparerFinition', 'finition'],
   ['atelierComparerCouches', 'couches-variables'],
@@ -490,6 +491,7 @@ function afficherComparaisonAtelier() {
         (avant ? ecart.avant.join(' / ') + ' → ' : '') + valeur.join(' / ') + ' mm³/s';
       if (k === 'support_type') return 'Type de supports : ' +
         (avant ? typeSupport(ecart.avant) + ' → ' : '') + typeSupport(valeur) + ' automatiques';
+      if (k === 'support_on_build_plate_only') return 'Départ des supports : plateau uniquement';
       return (roles[k] || k) + ' : ' +
         (avant ? nombre(Number(ecart.avant)) + ' → ' : '') + nombre(Number(valeur)) + ' mm/s';
     });
@@ -510,11 +512,15 @@ function afficherComparaisonAtelier() {
       }
       if (v.motif_export_refuse) ligne.textContent += ' Export refusé. ' + v.motif_export_refuse;
       ligne.textContent += depots(m);
-      if ('plaques_avec_supports' in m && ('enable_support' in v.reglages || 'support_type' in v.reglages)) {
+      if ('plaques_avec_supports' in m &&
+          ['enable_support', 'support_type', 'support_on_build_plate_only'].some(k => k in v.reglages)) {
         ligne.textContent += m.plaques_avec_supports.length
           ? ' Dépôts de support sur les plaques ' + m.plaques_avec_supports.join(', ') + ' (' +
             nombre(m.trajets_supports_mm) + ' mm de trajet observé).'
           : m.supports_verifies ? ' Aucun dépôt de support relevé.' : ' Dépôts de support non vérifiés.';
+      }
+      if ('support_on_build_plate_only' in v.reglages) {
+        ligne.textContent += ' Le retrait des branches dans les creux reste à vérifier dans l’aperçu.';
       }
       if (v.pose && m.supports_verifies && ref.supports_verifies) {
         ligne.textContent += ' Trajets déposés en support : ' + nombre(ref.trajets_supports_mm) +
