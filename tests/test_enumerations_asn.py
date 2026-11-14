@@ -180,3 +180,24 @@ def test_direction_rectiligne_exige_le_repere_observe(valeur, alignement, statut
     resultats = reglages.verifier(donnees, identite_slicer=ASN, inclure_contextuelles=True)
     ligne, = (r for r in resultats if r["cle"] == "infill_direction")
     assert ligne["enumeration"]["statut"] == statut
+
+
+@pytest.mark.parametrize("cle", ["locked_skin_infill_pattern", "locked_skeleton_infill_pattern"])
+@pytest.mark.parametrize("valeur", ["rectilinear", "zigzag"])
+def test_options_lockedzag_disparues_de_la_sortie(cle, valeur):
+    """Le refus documenté porte sur le profil et le motif effectivement éprouvés."""
+    donnees = {
+        cle: valeur, "sparse_infill_pattern": "lockedzag", "sparse_infill_density": "20%",
+        "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle", "nozzle_diameter": ["0.4"],
+        "layer_height": "0.2", "infill_combination": "0",
+    }
+    def verdict(reglages_source):
+        return next(ligne["enumeration"] for ligne in reglages.verifier(
+            reglages_source, identite_slicer=ASN,
+        ) if ligne["cle"] == cle)
+
+    obtenu = verdict(donnees)
+    assert obtenu["statut"] == "FAIL"
+    assert obtenu["valeur_embarquee"] is None
+    assert "absente" in obtenu["detail"]
+    assert verdict({**donnees, "sparse_infill_pattern": "rectilinear"})["statut"] == "NON VÉRIFIÉ"
