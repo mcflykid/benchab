@@ -41,7 +41,7 @@ PIECE = {
     "Internal Bridge",
     "Solid infill",
 }
-SUPPORTS = {"Support", "Support interface"}
+SUPPORTS = {"Support", "Support interface", "Support transition"}
 
 
 def mesurer_appui(cibles, supports, *, recouvrement_min_mm=0.05, pas_mm=0.15, voisins=4):
@@ -566,6 +566,9 @@ def analyser_lignes(
         )
         par_couche.append(groupe)
     status = "NON VÉRIFIÉ" if interpreter.errors or not rows else "PASS"
+    if interpreter.first_object_error:
+        for row in rows:
+            row["objet"] = None
     return {
         "statut": status,
         "mode": mode,
@@ -588,6 +591,8 @@ def analyser_lignes(
         "lignes": rows,
         "par_couche": par_couche,
         "erreurs_interpreteur": interpreter.errors,
+        **({"premier_bloc_objet_incoherent": interpreter.first_object_error}
+           if interpreter.first_object_error else {}),
         **({"superposition": {"traces": traces, "parcours_omis": traces_omises}} if superposition else {}),
         "limite": (
             "Échantillons analytiques G17 ; chaque intervalle requiert une marge de recouvrement "
@@ -612,6 +617,7 @@ def analyser_fichier(
     plaques=None,
     arcs_planaires=False,
     superposition=False,
+    verifier=None,
 ):
     """Mesure les appuis nominaux en mm dans un G-code ou des plaques 3MF.
 
@@ -620,6 +626,7 @@ def analyser_fichier(
     réglage n’est modifié et aucune adhérence réelle n’est déduite. L'option
     ``arcs_planaires`` ne qualifie que les arcs G17 analytiques et planaires ;
     ``superposition`` ajoute les coordonnées nominales en mm.
+    Le rappel ``verifier`` peut interrompre la lecture par exception.
     """
     path = Path(chemin)
     options = {
@@ -635,6 +642,16 @@ def analyser_fichier(
         options["arcs_planaires"] = True
     if superposition:
         options["superposition"] = True
+
+    def lignes_verifiees(lignes):
+        """Permet l’arrêt au cours d’une plaque sans changer les mesures."""
+        for i, ligne in enumerate(lignes):
+            if verifier is not None and i % 1024 == 0:
+                verifier()
+            yield ligne
+
+    if verifier is not None:
+        verifier()
     if path.suffix.lower() == ".3mf":
         results = []
         with Archive3MF(path) as archive:
@@ -644,19 +661,22 @@ def analyser_fichier(
             digest = archive.sha256()
 
             def run(lines):
-                return analyser_lignes(lines, **options)
+                return analyser_lignes(lignes_verifiees(lines), **options)
 
             for plaque, membre in membres:
                 if plaques is not None and plaque not in plaques:
                     continue
                 result = analyser_membre_gcode_3mf(
                     path, membre, options, run,
-                    version=("appuis-gcode-vue-1" if superposition else
-                             "appuis-gcode-arc-1" if arcs_planaires else "appuis-gcode-1"),
+                    version="appuis-gcode-2",
                     archive=archive,
                 )
+                if verifier is not None:
+                    verifier()
                 for row in result["lignes"]:
                     row["plaque"] = plaque
+                if diagnostic := result.get("premier_bloc_objet_incoherent"):
+                    diagnostic["plaque"] = plaque
                 results.append(result)
             archive.verifier_source(path)
         return {
@@ -670,7 +690,9 @@ def analyser_fichier(
     if path.suffix.lower() != ".gcode":
         raise ValueError("entrée attendue : fichier .gcode ou paquet .3mf")
     with path.open("r", encoding="utf-8", errors="replace") as flux:
-        result = analyser_lignes(flux, **options)
+        result = analyser_lignes(lignes_verifiees(flux), **options)
+    if verifier is not None:
+        verifier()
     result["fichier"] = path.name
     result["sha256"] = _sha256(path)
     result["plaques"] = [{k: v for k, v in result.items() if k != "plaques"}]

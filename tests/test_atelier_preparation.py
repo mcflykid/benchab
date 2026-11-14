@@ -66,8 +66,11 @@ def test_bibliotheque_assemblage_pose_et_jeu_nominal():
     assert boite["Boîte"].extents.tolist() == [20, 20, 10]
     insert = couvercle.vertices[couvercle.vertices[:, 2] > 2]
     assert max(insert[:, 0]) - min(insert[:, 0]) == pytest.approx(16.2, abs=1e-5)
-    for modele in ("boite", "clip", "temoin"):
+    for modele in ("boite", "clip", "temoin", "fixation"):
         assert all(m.is_volume and m.bounds[0, 2] == 0 for m in generer(modele, 20, 0.3).values())
+    fixation = next(iter(generer("fixation", 20, 0.3).values()))
+    assert fixation.extents.tolist() == [20, 8, 3]
+    assert fixation.contains([[-5, 0, 1.5], [5, 0, 1.5], [0, 0, 1.5]]).tolist() == [False, False, True]
 
 
 def test_source_sans_profil_et_epaisseur_localisee(tmp_path):
@@ -98,7 +101,7 @@ def test_import_cible_ne_tranche_pas_toutes_les_plaques(tmp_path, monkeypatch):
         [("Cube", maillage, 1, None), ("Cube", maillage, 2, None)], {"spiral_mode": "0"}, [], False,
     ))
     appels = []
-    monkeypatch.setattr(atelier.carte_risques, "orientation_indicative", lambda mesh: appels.append(mesh))
+    monkeypatch.setattr(atelier.carte_risques, "orientation_indicative", lambda mesh, **_options: appels.append(mesh))
 
     def comparaison_interdite(*_args, **_options):
         raise AssertionError("Une analyse ciblée ne lance pas de tranchage global.")
@@ -173,6 +176,9 @@ def test_bibliotheque_archive_deux_versions_liees(tmp_path):
     assert verifier(base, registre)["explorations"] == [avant["id"], apres["id"]]
     assert registre[1]["parent"] == avant["id"]
     assert (base / avant["id"] / "piece.stl").read_bytes() != (base / apres["id"] / "piece.stl").read_bytes()
+    fiche = json.loads((base / apres["id"] / "cotes.json").read_bytes())
+    assert fiche["controle_emboitement_nominal"]["statut"] == "PASS"
+    assert fiche["controle_emboitement_nominal"]["jeu_par_face_mm"] == 0.4
 
 
 def test_appuis_multiplaque_ne_cachent_pas_un_defaut_local(tmp_path):
@@ -318,6 +324,7 @@ def test_deux_maillages_du_meme_membre_externe_restant_lies_a_leurs_plaques(tmp_
             ET.SubElement(triangles, NS + "triangle", {**attributs, "paint_color": str(4 * i)})
         description = ET.SubElement(config, "object", id=str(i))
         ET.SubElement(description, "metadata", key="name", value=f"Objet {i}")
+        ET.SubElement(description, "metadata", key="extruder", value=str(i))
         plaque = ET.SubElement(config, "plate")
         ET.SubElement(plaque, "metadata", key="plater_id", value=str(i))
         instance = ET.SubElement(plaque, "model_instance")
@@ -333,7 +340,10 @@ def test_deux_maillages_du_meme_membre_externe_restant_lies_a_leurs_plaques(tmp_
         archive.writestr("3D/3dmodel.model", ET.tostring(modele))
         archive.writestr("3D/feuilles.model", ET.tostring(externe))
         archive.writestr("Metadata/model_settings.config", ET.tostring(config))
-        archive.writestr("Metadata/project_settings.config", '{"inner_wall_speed":"100"}')
+        archive.writestr("Metadata/project_settings.config", (
+            '{"inner_wall_speed":"100","filament_settings_id":["PLA A","PLA B"],'
+            '"filament_colour":["#FFFFFF","#333333"],"filament_map":["1","2"]}'
+        ))
     objets, _, _, _ = _lire_3mf(source)
     assert [(plaque, ident["modele_maillage"], ident["objet_id_maillage"]) for _, _, plaque, ident in objets] == [
         (1, "3D/feuilles.model", "1"), (2, "3D/feuilles.model", "2"),
@@ -355,6 +365,8 @@ def test_deux_maillages_du_meme_membre_externe_restant_lies_a_leurs_plaques(tmp_
     assert integrite["statut"] == "PASS"
     with Archive3MF(source) as avant, Archive3MF(export) as apres:
         assert [m for m in avant.noms() if avant.lire(m) != apres.lire(m)] == ["Metadata/project_settings.config"]
+        assert apres.reglages()["filament_map"] == avant.reglages()["filament_map"] == ["1", "2"]
+        assert apres.lire("3D/feuilles.model").count(b"paint_color=") == 92
     assert [o[2] for o in _lire_3mf(export)[0]] == [1, 2]
 
     local = tmp_path / "par-objet.3mf"
@@ -483,3 +495,53 @@ def test_constat_confirme_par_preparation_sans_modifier_la_source(tmp_path, monk
     historique = observations_atelier_html(projet)
     assert f'observations-{constat["id"]}' in historique
     assert "Coin &lt;soulevé&gt;" in historique
+
+
+def test_decision_impression_exige_pose_et_supports_mesures():
+    """Le débit seul ne décide pas et un gain ne compense pas un appui perdu."""
+    from benchab.visualisation.comparaison_atelier import decision_impression
+
+    def mesures(sans_appui=0):
+        return {"plaques": [1], "debit": "PASS", "appuis": {
+            "statut": "PASS", "plaques": [1], "parcours_sans_appui": sans_appui,
+        }, "supports_deposes": False, "premiere_couche": "PASS"}
+
+    ref = mesures()
+    ref.update(secondes=100, grammes=10)
+    pose = {"nom": "Autre face", "pose": {"statut": "PASS"}, "commandes_identiques": False,
+            "mesures": mesures(), "ecarts": {"secondes": -10, "grammes": 0}}
+    sans = {"nom": "Sans support", "reglages": {"enable_support": "0"},
+            "mesures": mesures(1), "ecarts": {"secondes": -20, "grammes": -2}}
+    pose["mesures"].update(secondes=90, grammes=10)
+    assert decision_impression(ref, [])["statut"] == "ETUDE"
+    assert decision_impression(ref, [pose])["statut"] == "ETUDE"
+    assert decision_impression(ref, [pose, sans])["variante"] == "Autre face"
+    pose["mesures"]["appuis"]["parcours_sans_appui"] = 1
+    ref["appuis"]["parcours_sans_appui"] = 1
+    assert decision_impression(ref, [pose, sans])["statut"] == "ETUDE"
+
+
+def test_reglages_supports_critiques_uniquement_si_qualifies():
+    """La variante garde les interfaces et respecte les surcharges et le mode vase."""
+    from benchab.visualisation.comparaison_atelier import variante_intention
+
+    params = {"spiral_mode": "0", "enable_support": "1", "support_type": "tree(auto)",
+              "support_critical_regions_only": "0", "support_top_z_distance": "0.2"}
+    assert variante_intention(params, False, "supports-critiques")[0][1] == {
+        "support_critical_regions_only": "1",
+    }
+    assert not variante_intention(params, True, "supports-critiques")
+    assert not variante_intention(params | {"spiral_mode": "1"}, False, "supports-critiques")
+
+
+def test_pose_maillage_dense_conserve_la_source():
+    """Le classement échantillonné donne une pose utilisable sur les triangles d’origine."""
+    mesh = trimesh.creation.box(extents=[10, 8, 3])
+    for _ in range(6):
+        mesh = mesh.subdivide()
+    mesh.apply_translation([0, 0, 1.5])
+    avant = mesh.vertices.copy()
+    pose = carte_risques.orientation_indicative(mesh)
+    assert pose["classement_echantillonne"] == 16_384
+    assert pose["surface_surplomb_alternative_mm2"] == 0
+    assert (mesh.vertices == avant).all()

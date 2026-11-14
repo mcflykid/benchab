@@ -23,7 +23,8 @@ __PREPARATIONS__
   <summary>Créer une pièce paramétrique</summary>
   <form id="atelierParametres" action="/bibliotheque-atelier" method="get">
     <label>Modèle <select name="modele"><option value="boite">Boîte avec couvercle</option>
-      <option value="clip">Clip à languette</option><option value="temoin">Témoin de jeux</option></select></label>
+      <option value="clip">Clip à languette</option><option value="temoin">Témoin de jeux</option>
+      <option value="fixation">Plat de fixation à deux trous</option></select></label>
     <label>Cote de référence (mm) <input type="number" name="cote" min="8" max="80" step="0.1" value="20" required></label>
     <label>Jeu de la boîte ou du clip (mm) <input type="number" name="jeu" min="0.1" max="0.6" step="0.05" value="0.3" required></label>
     <button>Examiner la pièce</button>
@@ -48,7 +49,7 @@ function afficherHistorique() {
   historique.replaceChildren(new Option('Choisir', ''));
   jeux.forEach(jeu => {
     const famille = parametres.elements.namedItem('modele').querySelector('option[value="' + jeu.modele + '"]');
-    const cotes = jeu.cote + ' mm' + (jeu.modele === 'temoin' ? '' : ' · jeu ' + jeu.jeu + ' mm');
+    const cotes = jeu.cote + ' mm' + (['boite', 'clip'].includes(jeu.modele) ? ' · jeu ' + jeu.jeu + ' mm' : '');
     historique.add(new Option(famille.textContent + ' · ' + cotes, jeu.id));
   });
 }

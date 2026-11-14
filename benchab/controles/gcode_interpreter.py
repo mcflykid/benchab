@@ -50,6 +50,7 @@ class Interpreter:
         self.feed = 0.0
         self.kind = None
         self.object = None
+        self.first_object_error = None
         self.errors = []
         self.last_event: dict[str, object] | None = None
         self.line_number = 0
@@ -138,23 +139,34 @@ class Interpreter:
         if c.startswith("EXCLUDE_OBJECT_START"):
             m = re.fullmatch(r"EXCLUDE_OBJECT_START\s+NAME=(\S+)", c)
             if not m:
-                self.error("début objet invalide : " + c)
+                self._erreur_objet("début objet invalide", c)
                 return True
             if self.object is not None:
-                self.error("début objet imbriqué : " + c)
+                self._erreur_objet("début objet imbriqué", c, m.group(1))
                 return True
             self.object = m.group(1)
             return True
         if c.startswith("EXCLUDE_OBJECT_END"):
             m = re.fullmatch(r"EXCLUDE_OBJECT_END(?:\s+NAME=(\S+))?", c)
             if not m or self.object is None or (m.group(1) and m.group(1) != self.object):
-                self.error("fin objet invalide ou contradictoire : " + c)
+                self._erreur_objet("fin objet invalide ou contradictoire", c, m.group(1) if m else None)
                 return True
             self.object = None
             return True
         if c.startswith("EXCLUDE_OBJECT_DEFINE"):
             return True
         return False
+
+    def _erreur_objet(self, raison, commande, demande=None):
+        """Localise la première incohérence d’identité pour les rapports par plaque."""
+        if self.first_object_error is None:
+            self.first_object_error = {
+                "ligne": self.line_number, "commande": commande.split()[0],
+                "objet_actif": self.object, "objet_demande": demande,
+            }
+        self.error(raison + " : " + commande)
+        # Conserver l’état modal pour le diagnostic. Les contrôles bloquent
+        # l'attribution de la plaque dès qu'une balise est incohérente (#330).
 
     def _valeurs_klipper(self, c, allowed):
         """Décode les paramètres déclarés et leur validité ; unités natives, aucune simulation."""

@@ -24,6 +24,7 @@ const boutonsIntentions = [
   ['atelierComparerHautDebit', 'haut-debit'],
   ['atelierComparerSupports', 'supports'],
   ['atelierComparerSupportsPlateau', 'supports-plateau'],
+  ['atelierComparerSupportsCritiques', 'supports-critiques'],
   ['atelierComparerResistance', 'resistance'], ['atelierComparerSilence', 'silencieux'],
   ['atelierComparerRemplissage', 'remplissage'], ['atelierComparerFinition', 'finition'],
   ['atelierComparerCouches', 'couches-variables'],
@@ -206,7 +207,11 @@ function memoriserAtelier() {
     axes: !axesAtelier || axesAtelier.visible,
     onglet: document.querySelector('#plaques button[aria-pressed=true]')?.dataset.k,
     ecarts: !$('atelierEcarts').hidden,
+    appuis: choixAppuis.length ? ($('atelierAppuisChoix').value === '' ? '' :
+      $('atelierAppuisChoix').selectedOptions[0]?.text) : etatAtelier.appuis,
+    couche_appui: choixAppuis.length ? $('atelierAppuisCouche').value : etatAtelier.couche_appui,
   };
+  etatAtelier = etat;
   try { localStorage.setItem(cleAtelier, JSON.stringify(etat)); } catch (_e) { /* Stockage facultatif hors ligne. */ }
 }
 
@@ -271,12 +276,30 @@ function actualiserAtelier() {
         mesure.minimum_echantillonne_mm == null ? '' : 'Minimum observé ' + nombre(mesure.minimum_echantillonne_mm) + ' mm.'];
       p.textContent = [categoriesAtelier[cle] + ' · ' + mesure.statut, ...valeurs, mesure.detail].filter(Boolean).join(' ');
       a.append(p);
+      if (mesure.methode) {
+        const details = document.createElement('details');
+        const libelle = document.createElement('summary');
+        libelle.textContent = 'Méthode et seuils · ' + categoriesAtelier[cle];
+        const methode = document.createElement('p');
+        const seuils = [
+          mesure.seuil_mm == null ? '' : 'Seuil : ' + nombre(mesure.seuil_mm) + ' mm.',
+          mesure.tolerance_plan_mm == null ? '' : 'Tolérance au plan : ±' + nombre(mesure.tolerance_plan_mm) + ' mm.',
+          mesure.seuil_angle_depuis_verticale_deg == null ? '' : 'Angle depuis la verticale : ' +
+            nombre(mesure.seuil_angle_depuis_verticale_deg) + '° ; distance au plan > ' +
+            nombre(mesure.distance_min_plan_mm) + ' mm.',
+        ];
+        methode.textContent = [mesure.methode, ...seuils].filter(Boolean).join(' ');
+        details.append(libelle, methode);
+        a.append(details);
+      }
     }
     if (d.orientation_indicative) {
       const o = d.orientation_indicative, p = document.createElement('p');
       p.textContent = 'Pose sur une autre face · surplombs ' + nombre(o.surface_surplomb_source_mm2) +
         ' → ' + nombre(o.surface_surplomb_alternative_mm2) + ' mm² · assise ' +
-        nombre(o.assise_alternative_mm2) + ' mm². Estimation géométrique.';
+        nombre(o.assise_alternative_mm2) + ' mm². Estimation géométrique' +
+        (o.directions_evaluees ? ' sur ' + nombre(o.directions_evaluees) + ' directions' : '') +
+        (o.classement_echantillonne ? ' · classement par échantillonnage' : '') + '.';
       a.append(p);
     }
     $('atelierCartes').append(a);
@@ -318,7 +341,7 @@ function afficherAppuis() {
   const choix = $('atelierAppuisChoix').value;
   const couche = $('atelierAppuisCouche'), etat = $('atelierAppuisEtat');
   if (choix === '') { etat.textContent = ''; return; }
-  const {appuis, pose} = choixAppuis[Number(choix)];
+  const {appuis, pose, degagement} = choixAppuis[Number(choix)];
   const traces = appuis.superposition.traces.filter(t => String(t.z_mm) === couche.value);
   if (!traces.length) {
     etat.textContent = appuis.superposition.parcours_omis ? 'Tracés hors budget pour ce tranchage.' :
@@ -340,6 +363,18 @@ function afficherAppuis() {
     ligne.renderOrder = 20;
     tracesAppuis.add(ligne);
   }
+  // Le calque n’utilise le repère G-code que si la superposition de la plaque 1 est qualifiée (#326).
+  const risques = degagement?.plaques?.find(p => p.plaque === 1)?.regions || [];
+  const proches = risques.filter(r => r.acces !== 'OUVERT' &&
+    Math.abs(r.position_mm[2] - Number(couche.value)) <= degagement.pas_mm);
+  for (const {position_mm: [x, y, z]} of proches) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(
+      [x - 1, y - 1, z, x + 1, y + 1, z, x - 1, y + 1, z, x + 1, y - 1, z], 3));
+    const croix = new THREE.LineSegments(g, new THREE.LineBasicMaterial({color: 0xf25ba4, depthTest: false}));
+    croix.renderOrder = 21;
+    tracesAppuis.add(croix);
+  }
   root.add(tracesAppuis);
   if (pose?.transformation_mm) {
     const diagnostic = diagnostics.find(d => d.identite_3mf?.build_item === pose.instance);
@@ -356,6 +391,7 @@ function afficherAppuis() {
     }
   }
   tracesAppuis.userData.legende = 'Plaque 1 · cyan : supports déposés · orange : parcours de pièce sans appui nominal.' +
+    (proches.length ? ' Croix roses : accès étroit ou enclavé sur la grille.' : '') +
     (pose ? ' Le maillage filaire indique la pose alternative.' : '') +
     (appuis.superposition.parcours_omis ? ' Vue partielle : budget des tracés atteint.' : '');
   visibiliteAppuis();
@@ -364,11 +400,14 @@ function afficherAppuis() {
 function actualiserChoixAppuis() {
   const choix = $('atelierAppuisChoix'), couche = $('atelierAppuisCouche');
   const rapports = comparaisonAtelier ? [
-    {nom: '3MF d’origine', appuis: comparaisonAtelier.reference.appuis},
-    ...comparaisonAtelier.variantes.map(v => ({nom: v.nom, appuis: v.mesures?.appuis, pose: v.pose})),
+    {nom: '3MF d’origine', appuis: comparaisonAtelier.reference.appuis,
+      degagement: comparaisonAtelier.reference.degagement_supports},
+    ...comparaisonAtelier.variantes.map(v => ({nom: v.nom, appuis: v.mesures?.appuis, pose: v.pose,
+      degagement: v.mesures?.degagement_supports})),
   ] : [];
-  const precedent = choix.options[choix.selectedIndex]?.text;
-  const z = couche.value;
+  // Le choix appartient à l’empreinte de la source et doit encore exister dans ce bilan (#317).
+  const precedent = choix.value !== '' ? choix.selectedOptions[0]?.text : etatAtelier.appuis;
+  const z = couche.value || etatAtelier.couche_appui;
   choixAppuis = rapports.filter(r => r.appuis?.superposition);
   choix.replaceChildren(new Option('Masquée', ''));
   choixAppuis.forEach((r, i) => choix.add(new Option(r.nom, String(i))));
@@ -384,8 +423,9 @@ function actualiserChoixAppuis() {
     couche.replaceChildren(...altitudes.map(h => new Option(nombre(h) + ' mm', String(h))));
     if (altitudes.includes(Number(ancienne))) couche.value = ancienne;
     afficherAppuis();
+    memoriserAtelier();
   };
-  couche.onchange = afficherAppuis;
+  couche.onchange = () => { afficherAppuis(); memoriserAtelier(); };
   choix.onchange();
 }
 
@@ -436,7 +476,15 @@ function afficherComparaisonAtelier() {
   } else if (admissibles.some(v => v.ecarts.secondes < 0 && v.ecarts.grammes <= 0)) {
     decision.textContent = 'Une variante réduit le temps estimé. Consultez les appuis avant de choisir.';
   } else {
-    decision.textContent = 'Conserver les réglages d’origine.';
+    decision.textContent = 'Aucun gain vérifié pour les réglages comparés.';
+  }
+  // Une comparaison de débit seule ne qualifie pas la préparation (#328).
+  const preparation = comparaisonAtelier.decision_impression;
+  if (preparation?.statut === 'RECOMMANDATION_NUMERIQUE') {
+    decision.textContent += ' Préparation recommandée après contrôles numériques : ' + preparation.variante + '.';
+  } else {
+    decision.textContent += ' Préparation à l’étude. ' +
+      (preparation?.raison || 'Comparaison des poses et des supports à vérifier.');
   }
   const titre = document.createElement('h2');
   titre.textContent = comparaisonAtelier.tranchage_existant
@@ -466,9 +514,36 @@ function afficherComparaisonAtelier() {
     const statut = bilan.statut === 'PASS' ? '' : ' (lecture partielle ou indisponible)';
     return ' Dépôts commandés' + statut + (masses.length ? ' · ' + masses.join(' · ') : '') + '.';
   };
+  const retrait = m => {
+    if (m.retrait_supports !== 'NON VÉRIFIÉ') return '';
+    const risques = (m.degagement_supports?.plaques || []).flatMap(p =>
+      p.regions.filter(r => r.acces !== 'OUVERT').map(r =>
+        'plaque ' + p.plaque + ', Z ' + nombre(r.position_mm[2]) + ' mm : accès ' +
+        (r.acces === 'ENCLAVE' ? 'enclavé' : 'étroit')));
+    const partiel = m.degagement_supports?.plaques.some(p => p.couverture !== 'ESTIMATION');
+    return ' Retrait des supports à vérifier.' + (risques.length ?
+      ' Indices sur la grille : ' + risques.slice(0, 3).join(' · ') + '.' : '') +
+      (partiel ? ' Dégagement analysé en partie ou hors budget.' : '');
+  };
+  const masseSupports = m => {
+    const masses = m.supports_grammes_par_plaque?.filter(p => p.grammes != null) || [];
+    return masses.length ? ' Supports : ' +
+      masses.map(p => nombre(p.grammes) + ' g (plaque ' + p.plaque + ')').join(' · ') + '.' : '';
+  };
   p.textContent = '3MF d’origine · ' + duree(ref.secondes) + ' · ' + nombre(ref.grammes) + ' g · ' +
-    debit(ref) + '.' + depots(ref);
+    debit(ref) + '.' + depots(ref) + masseSupports(ref) + retrait(ref);
   bloc.append(p);
+  for (const [plaque, sha] of Object.entries(ref.gcode_sha256_par_plaque || {})) {
+    const preuve = document.createElement('details');
+    const titrePreuve = document.createElement('summary');
+    titrePreuve.textContent = 'G-code vérifié de la plaque ' + plaque;
+    const instructions = document.createElement('p');
+    // L’aperçu d’un projet peut recalculer la plaque. Le SHA permet d’extraire les octets contrôlés (#327).
+    instructions.textContent = 'Pour afficher les trajets contrôlés, ouvrez le fichier G-code de cette plaque dans le trancheur. ' +
+      'Empreinte SHA-256 : ' + sha;
+    preuve.append(titrePreuve, instructions);
+    bloc.append(preuve);
+  }
   for (const v of comparaisonAtelier.variantes) {
     const ligne = document.createElement('p');
     const roles = {
@@ -492,6 +567,7 @@ function afficherComparaisonAtelier() {
       if (k === 'support_type') return 'Type de supports : ' +
         (avant ? typeSupport(ecart.avant) + ' → ' : '') + typeSupport(valeur) + ' automatiques';
       if (k === 'support_on_build_plate_only') return 'Départ des supports : plateau uniquement';
+      if (k === 'support_critical_regions_only') return 'Supports sur les régions critiques';
       return (roles[k] || k) + ' : ' +
         (avant ? nombre(Number(ecart.avant)) + ' → ' : '') + nombre(Number(valeur)) + ' mm/s';
     });
@@ -511,7 +587,10 @@ function afficherComparaisonAtelier() {
         }
       }
       if (v.motif_export_refuse) ligne.textContent += ' Export refusé. ' + v.motif_export_refuse;
-      ligne.textContent += depots(m);
+      ligne.textContent += depots(m) + masseSupports(m) + retrait(m);
+      if (ref.premiere_couche && m.premiere_couche) {
+        ligne.textContent += ' Première couche : ' + ref.premiere_couche + ' → ' + m.premiere_couche + '.';
+      }
       if ('plaques_avec_supports' in m &&
           ['enable_support', 'support_type', 'support_on_build_plate_only'].some(k => k in v.reglages)) {
         ligne.textContent += m.plaques_avec_supports.length
@@ -561,12 +640,20 @@ function afficherComparaisonAtelier() {
         }
       } else if (m.appuis) {
         ligne.textContent += ' Comparaison des appuis non vérifiée.';
+        const diagnostic = m.appuis.premier_bloc_objet_incoherent ||
+          m.appuis.par_plaque?.find(p => p.premier_bloc_objet_incoherent)?.premier_bloc_objet_incoherent;
+        if (diagnostic) {
+          ligne.textContent += ' Plaque ' + diagnostic.plaque + ', ligne ' + diagnostic.ligne +
+            ' : le trancheur indique « ' + (diagnostic.objet_demande || 'sans nom') +
+            ' » alors que le bloc actif est « ' + (diagnostic.objet_actif || 'aucun') + ' ».';
+        }
       }
       if (v.export && m.debit !== 'FAIL' && !v.export.limite_navigateur &&
           (v.export.octets_base64 || location.protocol === 'file:')) {
         const lien = document.createElement('a');
         lien.download = v.export.fichier;
-        lien.textContent = 'Télécharger le 3MF de préparation';
+        lien.textContent = preparation?.variante === v.nom
+          ? 'Télécharger le 3MF de préparation' : 'Télécharger le 3MF pour étude';
         if (v.export.octets_base64) {
           lien.href = '#';
           lien.onclick = evenement => {
@@ -585,6 +672,26 @@ function afficherComparaisonAtelier() {
         ligne.append(' ', lien);
       } else if (v.export?.limite_navigateur) {
         ligne.append(' Export volumineux. Disponible avec la commande d’export de l’atelier.');
+      }
+      if (v.export?.fiche && (v.preuve_export || location.protocol === 'file:')) {
+        const fiche = document.createElement('a');
+        fiche.href = fiche.download = v.export.fiche;
+        fiche.textContent = 'Fiche de contrôle';
+        const contenu = v.preuve_export;
+        if (contenu) {
+          fiche.href = '#';
+          fiche.onclick = evenement => {
+            evenement.preventDefault();
+            const adresse = URL.createObjectURL(new Blob([JSON.stringify(contenu, null, 2)],
+              {type: 'application/json'}));
+            const copie = document.createElement('a');
+            copie.href = adresse;
+            copie.download = fiche.download;
+            copie.click();
+            setTimeout(() => URL.revokeObjectURL(adresse), 1000);
+          };
+        }
+        ligne.append(' ', fiche);
       }
       if (m.hauteurs_gcode) {
         ligne.append(m.hauteurs_variables_observees

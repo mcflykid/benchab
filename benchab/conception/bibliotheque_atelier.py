@@ -32,6 +32,16 @@ def generer(modele, cote_mm, jeu_mm):
     elif modele == "temoin":
         eprouvette, _ = plaque(cote_mm)
         pieces = {"Témoin de jeux": eprouvette}
+    elif modele == "fixation":
+        # Deux passages ouverts, orientés selon Z, évitent un plafond de perçage (#324).
+        largeur = max(8.0, cote_mm / 3)
+        semelle = trimesh.creation.box([cote_mm, largeur, 3.0])
+        outils = []
+        for x in (-cote_mm / 4, cote_mm / 4):
+            trou = trimesh.creation.cylinder(radius=min(1.6, cote_mm / 8), height=5, sections=48)
+            trou.apply_translation([x, 0, 0])
+            outils.append(trou)
+        pieces = {"Plat de fixation": trimesh.boolean.difference([semelle, *outils], engine="manifold")}
     else:
         raise ValueError("Pièce paramétrique inconnue.")
     for index, mesh in enumerate(pieces.values()):

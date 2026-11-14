@@ -89,6 +89,30 @@ def test_analyse_refuse_si_le_3mf_change_pendant_le_parse(tmp_path):
     vider_cache_lecture()
 
 
+def test_analyse_interrompue_ferme_le_flux_avant_l_archive(tmp_path):
+    paquet = tmp_path / "tranche.3mf"
+    membre = "Metadata/plate_1.gcode"
+    with ZipFile(paquet, "w") as archive:
+        archive.writestr(membre, "G1 X1\nG1 X3\n")
+    flux_vus = []
+    interruption = KeyboardInterrupt("arrêt demandé")
+
+    def interrompre(lignes):
+        # La référence conservée reproduit la survie du flux dans une pile d'erreur.
+        flux_vus.append(lignes)
+        next(lignes)
+        raise interruption
+
+    from benchab.archives_3mf import Archive3MF
+
+    with Archive3MF(paquet) as archive:
+        with pytest.raises(KeyboardInterrupt) as erreur:
+            analyser_membre_gcode_3mf(paquet, membre, {}, interrompre, archive=archive)
+        assert erreur.value is interruption
+        assert next(flux_vus[0], None) is None
+    assert lire_membre_3mf(paquet, membre) == b"G1 X1\nG1 X3\n"
+
+
 def test_verification_finale_preserve_exception_du_consommateur(tmp_path):
     """Une mutation concomitante reste visible sans remplacer l’erreur initiale."""
     paquet = tmp_path / "tranche.3mf"
@@ -161,3 +185,21 @@ def test_cache_analyse_ne_substitue_pas_un_autre_contexte(tmp_path):
         with pytest.raises(ValueError, match="Source différente"):
             analyser_membre_gcode_3mf(actuel, membre, {}, analyser, archive=contexte)
     vider_cache_lecture()
+
+
+def test_export_gcode_exact_epingle_a_la_plaque(tmp_path):
+    """L’export d’aperçu conserve les octets et refuse le SHA d’un autre tranchage."""
+    from benchab.gcode.lecture import empreintes_plaques, exporter_apercu
+
+    paquet = tmp_path / "tranche.3mf"
+    octets = b"; commentaire\r\nG1 X1\r\n"
+    with ZipFile(paquet, "w") as archive:
+        archive.writestr("Metadata/plate_1.gcode", b"G1 X2\n")
+        archive.writestr("Metadata/plate_2.gcode", octets)
+    manifeste = empreintes_plaques(paquet)
+    cible = tmp_path / "plaque.gcode"
+    with pytest.raises(ValueError, match="empreinte"):
+        exporter_apercu(paquet, 2, manifeste[1], cible)
+    assert not cible.exists()
+    exporter_apercu(paquet, 2, manifeste[2], cible)
+    assert cible.read_bytes() == octets

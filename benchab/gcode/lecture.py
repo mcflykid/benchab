@@ -7,9 +7,10 @@ import inspect
 import io
 import json
 import re
+import shutil
 import stat
 from collections import OrderedDict
-from contextlib import contextmanager, nullcontext
+from contextlib import closing, contextmanager, nullcontext
 from pathlib import Path
 from threading import RLock
 
@@ -162,6 +163,40 @@ def lire_texte_gcode_3mf(
     return lire_membre_3mf(chemin, membre, archive=archive).decode(encodage, errors=erreurs)
 
 
+def empreintes_plaques(chemin):
+    """Retourne le SHA-256 des octets exacts par numéro de plaque, en lecture seule."""
+    with Archive3MF(chemin) as archive:
+        resultats = {}
+        for plaque, membre in plaques_gcode_archive(archive):
+            with archive.ouvrir_flux(membre) as flux:
+                resultats[plaque] = hashlib.file_digest(flux, "sha256").hexdigest()
+        archive.verifier_source(chemin)
+    return resultats
+
+
+def exporter_apercu(chemin, plaque, sha_attendu, sortie, *, prive=None):
+    """Exporte sans écraser le G-code exact d’une plaque numérotée, sans commande machine."""
+    from benchab.qualite.ecritures import PublicationNeuve, destination_neuve
+
+    sortie = destination_neuve(sortie, prive=prive)
+    if sortie.suffix.lower() != ".gcode":
+        raise ValueError("Sortie .gcode attendue.")
+    with PublicationNeuve([chemin], [sortie]) as publication:
+        temporaire = publication.temporaire(sortie)
+        with Archive3MF(chemin) as archive:
+            membre = dict(plaques_gcode_archive(archive)).get(plaque)
+            if membre is None:
+                raise ValueError("Plaque absente du G-code.")
+            with archive.ouvrir_flux(membre) as flux, temporaire.open("xb") as fichier:
+                shutil.copyfileobj(flux, fichier)
+            # Un 3MF recalculé peut garder son nom et contenir d’autres trajectoires (#327).
+            if sha256_fichier(temporaire) != sha_attendu:
+                raise ValueError("L’empreinte du G-code diffère du bilan contrôlé.")
+            archive.verifier_source(chemin)
+            publication.publier()
+    return sortie
+
+
 @contextmanager
 def ouvrir_membre_3mf(chemin: str | Path, membre: str, *, archive: Archive3MF | None = None):
     """Ouvre un membre en flux, sans charger les gros G-code en mémoire ; cache concurrent protégé.
@@ -222,10 +257,17 @@ def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1"
     if archive is not None:
         archive.verifier_source(chemin)
     options_json = json.dumps(options, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+    def lire_et_analyser():
+        """Ferme les lignes avant l’archive, même si le calcul ne les épuise pas."""
+        # Une pile d'exception peut retenir le générateur après l'annulation (#329).
+        with closing(iter_lignes_gcode_3mf(chemin, membre, archive=archive)) as lignes:
+            return analyseur(lignes)
+
     try:
         source = inspect.getsource(analyseur)
     except (TypeError, OSError):
-        return analyseur(iter_lignes_gcode_3mf(chemin, membre, archive=archive))
+        return lire_et_analyser()
     version_parseur = hashlib.sha256(source.encode("utf-8")).hexdigest()
     empreinte_initiale = empreinte_3mf(chemin)
     cle = (empreinte_initiale, membre, options_json, version, version_parseur)
@@ -237,7 +279,7 @@ def analyser_membre_gcode_3mf(chemin, membre, options, analyseur, *, version="1"
             archive.verifier_source(chemin)
         return json.loads(valeur)
 
-    resultat = analyseur(iter_lignes_gcode_3mf(chemin, membre, archive=archive))
+    resultat = lire_et_analyser()
     if empreinte_3mf(chemin) != empreinte_initiale:
         raise ValueError("3MF modifié pendant l'analyse du G-code")
     if archive is not None:

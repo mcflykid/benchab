@@ -11,18 +11,20 @@ from zipfile import BadZipFile
 
 from benchab import reglages
 from benchab.archives_3mf import Archive3MF
-from benchab.controles import bilan_depots, debit_gcode
+from benchab.controles import bilan_depots, debit_gcode, premiere_couche
 from benchab.fabrication import anycubic, optimisation
 from benchab.fabrication.trancher import trancher_fichier
 from benchab.gcode.debit import verdict
-from benchab.gcode.lecture import plaques_gcode_archive
+from benchab.gcode.lecture import empreintes_plaques, plaques_gcode_archive
 from benchab.machine.configuration import charger
 from benchab.qualite.empreintes import sha256_fichier
 
 _CLES = {"Paroi intérieure": "inner_wall_speed", "Remplissage": "sparse_infill_speed"}
 INTENTIONS = ("resistance", "silencieux", "remplissage", "finition", "rapide", "supports", "supports-plateau",
-              "haut-debit")
-REGLAGES_SUPPORTS = frozenset({"enable_support", "support_type", "support_on_build_plate_only"})
+              "supports-critiques", "haut-debit")
+REGLAGES_SUPPORTS = frozenset({
+    "enable_support", "support_type", "support_on_build_plate_only", "support_critical_regions_only",
+})
 MODES = ("reference", "vitesses", "qualite-supports", "orientation", "couches-variables", "diagnostic-debit",
          *INTENTIONS)
 
@@ -45,6 +47,12 @@ def variante_intention(params, surcharges, mode, *, profil_debit=None):
         if (lire("enable_support") == "1" and lire("support_on_build_plate_only") == "0"
                 and lire("support_type") in ("tree(auto)", "normal(auto)")):
             return [("Supports depuis le plateau uniquement", {"support_on_build_plate_only": "1"})]
+        return []
+    if mode == "supports-critiques":
+        # Le trancheur choisit les régions : le G-code devra confirmer l’effet (#320, #328).
+        if (lire("enable_support") == "1" and lire("support_type") in ("tree(auto)", "normal(auto)")
+                and lire("support_critical_regions_only") == "0"):
+            return [("Supports sur les régions critiques", {"support_critical_regions_only": "1"})]
         return []
     if mode == "haut-debit":
         if not profil_debit:
@@ -195,6 +203,12 @@ def _variantes_supports(lire):
     return configurations
 
 
+def temoin_supports_desactives(params, surcharges):
+    """Renvoie le delta typé du témoin sans supports, ou None si le profil le refuse."""
+    return next((modifs for _, modifs in variante_intention(params, surcharges, "supports")
+                 if modifs.get("enable_support") == "0"), None)
+
+
 def variante_locale(prive, sha, params):
     """Lit des plafonds en mm/s rattachés à l’empreinte exacte du 3MF ; aucun profil modifié."""
     if prive is None:
@@ -228,6 +242,7 @@ def _mesures(archive):
     plaques = anycubic.resultats(archive)
     with Archive3MF(archive) as fichier:
         resume = fichier.xml("Metadata/slice_info.config")
+        fichier_reglages = fichier.reglages() if "Metadata/project_settings.config" in fichier.noms() else {}
         masse_filaments = []
         for plaque in resume.findall("plate"):
             index = int(plaque.find("metadata[@key='index']").get("value"))
@@ -273,15 +288,32 @@ def _mesures(archive):
         "supports_verifies": bool(controle.get("plaques")) and all(
             p["lecture_depots_supports_complete"] for p in controle["plaques"]
         ),
+        "supports_actives": {"0": False, "1": True}.get(
+            reglages.valeur_brute(fichier_reglages, "enable_support") if "enable_support" in fichier_reglages else None
+        ),
     }
+    # Un dépôt présent qualifie la génération de support, sans établir sa voie de retrait (#326).
+    mesures["retrait_supports"] = (
+        "SANS OBJET" if mesures["supports_verifies"] and not mesures["plaques_avec_supports"] else "NON VÉRIFIÉ"
+    )
     try:
         bilan = bilan_depots.analyser(archive)
     except (ValueError, RuntimeError) as erreur:
         mesures["depots_par_filament"] = {"statut": "NON VÉRIFIÉ", "raison": str(erreur), "lignes": []}
     else:
         masses = defaultdict(list)
+        masses_supports = defaultdict(list)
         for groupe in bilan["groupes"]:
             masses[groupe["plaque"], groupe["filament"]].append(groupe["matiere_g"])
+            if (groupe["type"] or "").casefold() in {"support", "support interface", "support transition"}:
+                masses_supports[groupe["plaque"]].append(groupe["matiere_g"])
+        # La masse des supports vient des dépôts par rôle, pas d'une différence de masse totale (#319).
+        mesures["supports_grammes_par_plaque"] = [
+            {"plaque": plaque, "grammes": round(sum(valeurs), 3)
+             if bilan["statut"] == "PASS" and mesures["supports_verifies"]
+             and all(v is not None for v in valeurs) else None}
+            for plaque in mesures["plaques"] if (valeurs := masses_supports[plaque])
+        ]
         mesures["depots_par_filament"] = {
             "statut": bilan["statut"],
             "lignes": [
@@ -298,9 +330,11 @@ def _mesures(archive):
 def bilan_tranchage_existant(source, sha_attendu):
     """Relit les estimations (s, g) et le débit (mm³/s) du G-code déjà présent."""
     mesures = _mesures(source)
+    mesures["gcode_sha256_par_plaque"] = empreintes_plaques(source)
     if sha256_fichier(source) != sha_attendu:
         raise ValueError("Le 3MF a changé pendant la lecture de son G-code.")
     return {"source_sha256": sha_attendu, "reference": mesures, "variantes": [],
+            "decision_impression": decision_impression(mesures, []),
             "tranchage_existant": True}
 
 
@@ -329,9 +363,10 @@ def _ecarts(reference, variante):
     }
 
 
-def _appuis(tranche, plaque, *, tracer=True):
+def _appuis(tranche, plaque, *, tracer=True, annule=None):
     """Résume les appuis nominaux des petites plaques en mm, avec couverture explicite."""
     from benchab.controles import appuis_gcode
+    from benchab.visualisation.carte_risques import verifier_annulation
 
     with Archive3MF(tranche) as archive:
         membre = dict(plaques_gcode_archive(archive)).get(plaque)
@@ -348,12 +383,17 @@ def _appuis(tranche, plaque, *, tracer=True):
         rapport = appuis_gcode.analyser_fichier(
             tranche, plaques=[plaque], arcs_planaires=True, types_cibles=appuis_gcode.PIECE,
             superposition=superposition,
+            verifier=lambda: verifier_annulation(annule),
         )
     except (ValueError, RuntimeError) as erreur:
+        verifier_annulation(annule)
         return {"statut": "NON VÉRIFIÉ", "raison": str(erreur)}
     plaques = rapport["plaques"]
+    incoherence = next((p["premier_bloc_objet_incoherent"] for p in plaques
+                       if "premier_bloc_objet_incoherent" in p), None)
     return {
         "statut": rapport["statut"],
+        **({"premier_bloc_objet_incoherent": incoherence} if incoherence else {}),
         "parcours_sans_appui": sum(p["sans_appui_nominal"] for p in plaques),
         "portee_libre_max_mm": max(
             (p["portee_libre_max_global_mm"] for p in plaques if p["portee_libre_max_global_mm"] is not None),
@@ -369,7 +409,7 @@ def _appuis_selection(tranche, selection, *, annule=None):
     from benchab.visualisation.carte_risques import verifier_annulation
 
     if len(selection) == 1:
-        return _appuis(tranche, selection[0])
+        return _appuis(tranche, selection[0], annule=annule)
     with Archive3MF(tranche) as archive:
         membres = dict(plaques_gcode_archive(archive))
         if not selection or any(plaque not in membres for plaque in selection):
@@ -379,7 +419,7 @@ def _appuis_selection(tranche, selection, *, annule=None):
     rapports = []
     for plaque in selection:
         verifier_annulation(annule)
-        rapport = _appuis(tranche, plaque, tracer=False)
+        rapport = _appuis(tranche, plaque, tracer=False, annule=annule)
         # Les coordonnées G-code restent locales à chaque plaque ; la vue 3MF les
         # dispose sur un plateau composite dont le recalage n’est pas attesté (#319).
         rapports.append({"plaque": plaque, **{k: v for k, v in rapport.items() if k != "superposition"}})
@@ -396,9 +436,78 @@ def _appuis_selection(tranche, selection, *, annule=None):
     }
 
 
+def decision_impression(reference, variantes):
+    """Décide entre ETUDE et RECOMMANDATION_NUMERIQUE pour des plaques tranchées.
+
+    La sélection compare le temps en secondes puis la matière en grammes.
+    Un appui non couvert ou un retrait inconnu empêche la recommandation (#328, #326).
+    """
+    def appuis_lus(mesures):
+        """Vérifie que les appuis sont mesurés sur les mêmes plaques, sans juger leur tenue."""
+        appuis = mesures.get("appuis", {})
+        return (bool(reference.get("plaques"))
+                and mesures.get("plaques") == reference["plaques"] == appuis.get("plaques")
+                and appuis.get("statut") == "PASS")
+
+    poses = [v for v in variantes
+             if v.get("pose", {}).get("statut") == "PASS" and v.get("commandes_identiques") is False
+             and appuis_lus(v.get("mesures", {})) and all(
+                 p.get("commandes_identiques") is True for p in v.get("autres_plaques", [])
+             )]
+    sans_support = [v for v in variantes if v.get("reglages", {}).get("enable_support") == "0"
+                    and appuis_lus(v.get("mesures", {})) and v["mesures"].get("supports_deposes") is False]
+    reference_sans_support = reference.get("supports_actives") is False and reference.get("supports_deposes") is False
+    if not appuis_lus(reference) or not poses or not (sans_support or reference_sans_support):
+        return {"statut": "ETUDE", "raison": "Comparer une autre pose et vérifier le tranchage sans supports."}
+    candidats = []
+    options = [("Référence", reference)]
+    options.extend((v["nom"], v["mesures"]) for v in poses)
+    options.extend((v["nom"], v["mesures"]) for v in sans_support)
+    for nom, mesures in options:
+        appuis = mesures.get("appuis", {})
+        if (mesures.get("debit") == "PASS" and mesures.get("premiere_couche") == "PASS"
+                and appuis_lus(mesures) and appuis.get("parcours_sans_appui") == 0
+                and mesures.get("supports_deposes") is False):
+            candidats.append((mesures.get("secondes", float("inf")),
+                              mesures.get("grammes", float("inf")), nom))
+    if not candidats:
+        return {"statut": "ETUDE", "raison": "Première couche, appuis, débit ou retrait des supports à vérifier."}
+    return {"statut": "RECOMMANDATION_NUMERIQUE", "variante": min(candidats)[2]}
+
+
+def _mesures_preparation(tranche, mesures, *, annule=None):
+    """Complète l’étude de pose pour toutes les plaques, dans le budget de lecture d’appuis."""
+    from benchab.visualisation.carte_risques import verifier_annulation
+
+    mesures["appuis"] = _appuis_selection(tranche, mesures["plaques"], annule=annule)
+    mesures["supports_deposes"] = bool(mesures["plaques_avec_supports"]) if mesures["supports_verifies"] else None
+    mesures["premiere_couche"] = "NON VÉRIFIÉ"
+    if mesures["appuis"]["statut"] == "PASS":
+        statuts = []
+        for _, gcode in premiere_couche.gcodes(tranche):
+            verifier_annulation(annule)
+            statuts.append(premiere_couche.controler(gcode, arcs_planaires=True)["statut"])
+        if len(statuts) == len(mesures["plaques"]):
+            mesures["premiere_couche"] = "PASS" if statuts and all(s == "PASS" for s in statuts) else (
+                "WARN" if "WARN" in statuts else "NON VÉRIFIÉ"
+            )
+
+
+def _retrait_supports(tranche, mesures, *, annule=None):
+    """Ajoute les indices de dégagement par plaque, sans modifier le verdict d’impression."""
+    from benchab.controles import retrait_supports
+    from benchab.visualisation.carte_risques import verifier_annulation
+
+    plaques = mesures.get("plaques_avec_supports", [])
+    if plaques:
+        mesures["degagement_supports"] = retrait_supports.analyser(
+            tranche, plaques, verifier=lambda: verifier_annulation(annule),
+        )
+
+
 def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante=None, procede=None,
              dossier_exports=None, orientation=None, couches=None, profil_debit_sha=None,
-             reference_seule=False, annule=None):
+             reference_seule=False, annule=None, temoin_sans_support=None):
     """Tranche la référence exacte et les propositions admissibles, avec estimations en s et g.
 
     Une variante optionnelle retient 90 % du plafond estimé en mm/s.
@@ -425,6 +534,8 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
     plaque_appuis = orientation[1]["plaque"] if orientation is not None else None
     if orientation is not None:
         essais = [("Pose sur une autre face", {})]
+        if temoin_sans_support:
+            essais.append(("Sans support", temoin_sans_support))
     elif couches is not None:
         essais = [("Hauteurs de couche variables", {})]
     elif procede is not None:
@@ -472,19 +583,21 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
             reference["plaques"] if comparaison_supports else []
         )
         if selection_appuis:
-            reference["appuis"] = _appuis_selection(tranche, selection_appuis, annule=annule)
+            _mesures_preparation(tranche, reference, annule=annule)
+            _retrait_supports(tranche, reference, annule=annule)
         variantes = []
         for i, (nom, changements) in enumerate(essais, 1):
             verifier_annulation(annule)
             variante = {"nom": nom, "reglages": changements}
             try:
-                if procede is None and any(float(v) <= 0 for v in changements.values()):
+                est_procede = procede is not None or (orientation is not None and i == 2)
+                if not est_procede and any(float(v) <= 0 for v in changements.values()):
                     raise ValueError("Plafond trop faible pour cette variante.")
                 fichier = dossier / f"variante-{i}.3mf"
-                options = {"comparaison_procede": True} if procede is not None else {}
+                options = {"comparaison_procede": True} if est_procede else {}
                 if profil_debit_sha is not None:
                     options["comparaison_debit"] = True
-                if orientation is not None:
+                if orientation is not None and i == 1:
                     from benchab.visualisation.orientation_atelier import copier_pose
 
                     arguments_pose, options_pose = orientation
@@ -533,12 +646,18 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
                         h["distinctes"] > fixe["distinctes"] or h["min"] != fixe["min"] or h["max"] != fixe["max"]
                     )
                 if selection_appuis:
-                    mesures["appuis"] = _appuis_selection(tranche, selection_appuis, annule=annule)
-                if orientation is not None:
+                    _mesures_preparation(tranche, mesures, annule=annule)
+                    _retrait_supports(tranche, mesures, annule=annule)
+                if orientation is not None and i == 1:
                     variante["autres_plaques"] = [
                         bilan for bilan in variante["commandes_par_plaque"] if bilan["plaque"] != plaque_appuis
                     ]
-                if dossier_exports is not None and mesures["debit"] != "FAIL":
+                if dossier_exports is not None and mesures["debit"] != "PASS":
+                    variante.setdefault("motif_export_refuse", "Le débit de la variante reste non vérifié (U25).")
+                if dossier_exports is not None and mesures["debit"] == "PASS":
+                    if preuve_tranchage is None:
+                        raise ValueError("Preuve de tranchage indisponible pour l’export.")
+                    empreintes_gcode = empreintes_plaques(tranche)
                     nom_export = f"variante-{i}.3mf"
                     empreinte = sha256_fichier(fichier)
                     with (dossier_exports / nom_export).open("xb") as sortie, fichier.open("rb") as entree:
@@ -553,11 +672,26 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
                         "reglages_relus_gcode": changements,
                         "membres_geometrie_sha256": controle_clone.get("geometrie_sha256"),
                         "sortie_moteur_sha256": preuve_tranchage.get("sortie_sha256"),
+                        "gcode_sha256_par_plaque": empreintes_gcode,
                         "integrite_sortie_moteur": preuve_tranchage.get(
                             "integrite_apres_restauration_matrices",
                             preuve_tranchage.get("integrite_sortie_moteur", {}),
                         ).get("statut"),
                     }
+                    # La fiche lie le 3MF de préparation et les preuves du tranchage relu (#321, #327).
+                    nom_fiche = f"variante-{i}-preuve.json"
+                    contenu_fiche = {
+                        "schema": 1,
+                        "source_sha256": sha_attendu,
+                        "moteur_sha256": empreinte_moteur,
+                        "export": dict(variante["export"]),
+                        "commandes_par_plaque": variante["commandes_par_plaque"],
+                        "mesures": {cle: valeur for cle, valeur in mesures.items() if cle != "appuis"},
+                    }
+                    with (dossier_exports / nom_fiche).open("x", encoding="utf-8") as fiche:
+                        json.dump(contenu_fiche, fiche, ensure_ascii=False, indent=2, allow_nan=False)
+                    variante["export"]["fiche"] = nom_fiche
+                    variante["preuve_export"] = contenu_fiche
                 variante.update(mesures=mesures, ecarts=ecarts)
             except (ValueError, RuntimeError, BadZipFile) as erreur:
                 verifier_annulation(annule)
@@ -572,4 +706,5 @@ def comparer(source, sha_attendu, vitesses, *, marge=False, prive=None, variante
         **({"profil_debit_sha256": profil_debit_sha} if profil_debit_sha is not None else {}),
         "reference": reference,
         "variantes": variantes,
+        "decision_impression": decision_impression(reference, variantes),
     }
