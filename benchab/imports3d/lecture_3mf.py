@@ -25,22 +25,41 @@ UNITES = {"micron": 0.001, "millimeter": 1.0, "centimeter": 10.0, "inch": 25.4, 
 _MAX_XML = 512 * 1024 * 1024
 
 
-def lire(source, max_faces=3_000_000, *, identites=False):
+def lire(source, max_faces=3_000_000, *, identites=False, annule=None, max_parts=10_000):
     """Lit une scène 3MF en mm, bornée en faces ; optionnellement conserve identifiants et transforms source.
 
     `identites=True` exige un StartPart OPC unique et les relations de partie qui
     justifient chaque `p:path` ; le mode générique garde ses replis historiques.
+    `annule` permet d’interrompre la lecture entre objets et lots de coordonnées.
+    `max_parts` borne le nombre de maillages d’instances matérialisés.
     Aucun réglage n’est lu ni modifié et aucun membre n’est extrait sur disque.
     """
     try:
-        return _lire(source, max_faces, identites=identites)
+        return _lire(source, max_faces, identites=identites, annule=annule, max_parts=max_parts)
     except (E.ParseError, BadZipFile, KeyError, UnicodeError) as exc:
         raise ValueError("Archive 3MF illisible ou incomplète") from exc
 
 
-def _lire(source, max_faces, *, identites=False):
+def _lire(source, max_faces, *, identites=False, annule=None, max_parts=10_000):
     modeles, resultats = {}, []
     total_faces = 0
+
+    def verifier_annulation():
+        if annule is not None and annule():
+            raise ValueError("Analyse annulée.")
+
+    def coordonnees(elements, cles, conversion, maximum=None):
+        # Le parcours direct évite une seconde liste d’éléments XML en mémoire.
+        valeurs = []
+        for index, element in enumerate(elements):
+            if maximum is not None and index >= maximum:
+                raise ValueError("Budget de géométrie 3MF dépassé")
+            if index % 4096 == 0:
+                verifier_annulation()
+            valeurs.append([conversion(element.get(k)) for k in cles])
+        return valeurs
+
+    verifier_annulation()
     # Les modèles géométriques gardent leur budget XML propre, sans assouplir l'index commun (#122).
     with Archive3MF(source, taille_max_xml=_MAX_XML) as archive:
         noms = set(archive.noms())
@@ -156,6 +175,7 @@ def _lire(source, max_faces, *, identites=False):
 
         def parcourir(nom, ident, transform, pile=(), racine=None, trace=(), build_item=None):
             nonlocal total_faces
+            verifier_annulation()
             cle = nom, ident
             if cle in pile or len(pile) >= 32:
                 raise ValueError("Cycle ou profondeur excessive des composants 3MF")
@@ -175,16 +195,12 @@ def _lire(source, max_faces, *, identites=False):
                     return
                 if genre != "normal_part":
                     raise ValueError("Type de partie 3MF inconnu : " + genre)
-                vertices = [
-                    [float(v.get(k)) for k in ("x", "y", "z")] for v in mesh.findall(NS + "vertices/" + NS + "vertex")
-                ]
-                faces = [
-                    [int(t.get(k)) for k in ("v1", "v2", "v3")]
-                    for t in mesh.findall(NS + "triangles/" + NS + "triangle")
-                ]
+                if len(resultats) >= max_parts:
+                    raise ValueError("Budget de parties 3MF dépassé")
+                faces = coordonnees(mesh.iterfind(NS + "triangles/" + NS + "triangle"), ("v1", "v2", "v3"), int,
+                                    max_faces - total_faces)
+                vertices = coordonnees(mesh.iterfind(NS + "vertices/" + NS + "vertex"), ("x", "y", "z"), float)
                 total_faces += len(faces)
-                if total_faces > max_faces or len(resultats) >= 10000:
-                    raise ValueError("Budget de géométrie 3MF dépassé")
                 if not vertices or not faces or not np.isfinite(vertices).all():
                     raise ValueError("Maillage 3MF vide ou non fini")
                 if min(min(f) for f in faces) < 0 or max(max(f) for f in faces) >= len(vertices):

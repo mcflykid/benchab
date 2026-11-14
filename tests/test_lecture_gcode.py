@@ -7,6 +7,7 @@ from benchab.gcode.lecture import (
     empreinte_3mf,
     lire_membre_3mf,
     lire_texte_gcode_3mf,
+    ouvrir_membre_3mf,
     vider_cache_lecture,
 )
 
@@ -86,6 +87,21 @@ def test_analyse_refuse_si_le_3mf_change_pendant_le_parse(tmp_path):
         analyser_membre_gcode_3mf(paquet, membre, {}, analyser)
 
     vider_cache_lecture()
+
+
+def test_verification_finale_preserve_exception_du_consommateur(tmp_path):
+    """Une mutation concomitante reste visible sans remplacer l’erreur initiale."""
+    paquet = tmp_path / "tranche.3mf"
+    membre = "Metadata/plate_1.gcode"
+    with ZipFile(paquet, "w") as archive:
+        archive.writestr(membre, "G1 X1\n")
+    with pytest.raises(RuntimeError, match="appelant") as capture:
+        with ouvrir_membre_3mf(paquet, membre) as flux:
+            assert flux.read() == b"G1 X1\n"
+            with ZipFile(paquet, "w") as archive:
+                archive.writestr(membre, "G1 X200\n")
+            raise RuntimeError("appelant")
+    assert any("modifié" in note for note in capture.value.__notes__)
 
 
 @pytest.mark.parametrize("cache_chaud", [False, True])

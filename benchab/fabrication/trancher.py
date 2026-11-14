@@ -302,7 +302,17 @@ def _terminer_groupe_slicer(groupe, *, grace_s=0.3):
     return not _actif(groupe)
 
 
-def _executer(demande):
+class TranchageAnnule(ValueError):
+    """Interruption demandée pour un tranchage local, sans incident du moteur."""
+
+
+def _verifier_annulation(annule):
+    if annule is not None and annule():
+        raise TranchageAnnule("Tranchage annulé.")
+
+
+def _executer(demande, *, annule=None):
+    _verifier_annulation(annule)
     timeout_s = demande.get("timeout_s", 1800)
     if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s):
         raise ValueError("Délai du slicer : nombre fini exigé")
@@ -356,33 +366,40 @@ def _executer(demande):
     ]
     environnement = _environnement_slicer(travail)
     debut = time.time()
+    interruption = False
+    groupe_termine = True
     with (travail / "slicer.log").open("w") as journal:
-        processus = subprocess.Popen(
-            commande,
-            cwd=travail,
-            env=environnement,
-            stdout=journal,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        limite = time.monotonic() + timeout_s
-        expiration = False
-        groupe_termine = True
-        while True:
-            termine, statut, ressources = os.wait4(processus.pid, os.WNOHANG)
-            if termine:
-                break
-            if time.monotonic() > limite:
-                expiration = True
-                # Un slicer peut déléguer le calcul : le PID seul laisserait ses
-                # descendants actifs. La session dédiée borne SIGTERM/SIGKILL à
-                # ce lancement, jamais au processus BENCHAB parent.
-                groupe_termine = _terminer_groupe_slicer(processus.pid)
-                _, statut, ressources = os.wait4(processus.pid, 0)
-                break
-            time.sleep(0.1)
-        code_processus = os.waitstatus_to_exitcode(statut)
-        processus.returncode = 124 if expiration or not groupe_termine else code_processus
+        if annule is not None and annule():
+            interruption = True
+        else:
+            processus = subprocess.Popen(
+                commande,
+                cwd=travail,
+                env=environnement,
+                stdout=journal,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            limite = time.monotonic() + timeout_s
+            expiration = False
+            while True:
+                termine, statut, ressources = os.wait4(processus.pid, os.WNOHANG)
+                if termine:
+                    break
+                interruption = annule is not None and annule()
+                expiration = time.monotonic() > limite
+                if interruption or expiration:
+                    # La session dédiée contient uniquement ce lancement et ses descendants.
+                    groupe_termine = _terminer_groupe_slicer(processus.pid)
+                    _, statut, ressources = os.wait4(processus.pid, 0)
+                    break
+                time.sleep(0.1)
+            code_processus = os.waitstatus_to_exitcode(statut)
+            processus.returncode = 124 if expiration or not groupe_termine else code_processus
+    if interruption or (annule is not None and annule()):
+        if groupe_termine:
+            shutil.rmtree(travail)
+        raise TranchageAnnule("Tranchage annulé.")
     resultat = {
         "code": processus.returncode,
         "code_processus": code_processus,
@@ -480,8 +497,8 @@ def _executer(demande):
 
 
 @contextmanager
-def verrou_slicer():
-    """Le service et les appels directs utilisent le même verrou d’exécution."""
+def verrou_slicer(*, annule=None):
+    """Partage le verrou local et autorise l’interruption pendant l’attente si demandée."""
     if ECHANGE.is_symlink():
         raise ValueError("Dossier d’échange symbolique refusé")
     ECHANGE.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -491,7 +508,16 @@ def verrou_slicer():
     if verrou.is_symlink():
         raise ValueError("Verrou symbolique refusé")
     with verrou.open("a") as flux:
-        fcntl.flock(flux, fcntl.LOCK_EX)
+        if annule is None:
+            fcntl.flock(flux, fcntl.LOCK_EX)
+        else:
+            while True:
+                _verifier_annulation(annule)
+                try:
+                    fcntl.flock(flux, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    time.sleep(0.1)
         yield
 
 
@@ -565,7 +591,7 @@ def _publier_sortie(cible, destination):
         os.link(temporaire, destination, follow_symlinks=False)
 
 
-def trancher(demande, *, prive=None, destination_finale=None):
+def trancher(demande, *, prive=None, destination_finale=None, annule=None):
     """Lance sous verrou et peut publier une sortie privée sans écrasement.
 
     `demande` contient la source et la cible temporaire; `prive` est la racine des preuves.
@@ -575,14 +601,18 @@ def trancher(demande, *, prive=None, destination_finale=None):
     destination = sortie_privee(destination_finale, prive=prive) if destination_finale is not None else None
     rapports = _prive(prive) / "mesures/tranchages"
     rapports.mkdir(parents=True, exist_ok=True)
-    with verrou_slicer():
+    with (verrou_slicer() if annule is None else verrou_slicer(annule=annule)):
         source = demande.get("source")
         empreinte_source = sha256(chemin_temporaire(source)) if source is not None else None
         _verifier_limite_causes(prive, operation="tranchage", source_sha256=empreinte_source)
         # Le précontrôle initial peut dater d'avant l'attente du verrou; relire juste avant le moteur.
         if destination is not None and (destination.exists() or destination.is_symlink()):
             raise ValueError("Destination apparue avant le moteur ; aucun lancement effectué.")
-        resultat = _executer(demande)
+        resultat = _executer(demande) if annule is None else _executer(demande, annule=annule)
+        if annule is not None and annule():
+            if resultat["groupe_slicer_termine"]:
+                shutil.rmtree(resultat["travail"])
+            raise TranchageAnnule("Tranchage annulé.")
         if resultat["code"] != 0:
             archiver_echec(resultat, demande, prive)
         preuve = rapports / f"{uuid.uuid4().hex}.json"
@@ -617,13 +647,14 @@ def trancher(demande, *, prive=None, destination_finale=None):
 
 def trancher_fichier(
     source, dossier_sortie, nom=None, *, usage="impression", prive=None, timeout_s=1800, journal=None, attendu=None,
-    identifiants=None, validation_visuelle=None,
+    identifiants=None, validation_visuelle=None, annule=None,
 ):
     """Prépare un 3MF (mm) avec catalogue et publie dans l’atelier choisi ou le temporaire système.
 
     Retourne la sortie et le rapport, sans modifier les profils installés.
     En usage impression, une source dans projets/<projet>/candidats exige PASS
     pour son aperçu avant toute copie. Le témoin reste libre.
+    Le rappel facultatif `annule` interrompt l’attente ou le moteur local.
     """
     preuve_visuelle = None
     if usage == "impression":
@@ -658,6 +689,7 @@ def trancher_fichier(
             },
             prive=prive,
             destination_finale=sortie,
+            **({"annule": annule} if annule is not None else {}),
         )
         if preuve_visuelle is not None:
             resultat["validation_visuelle"] = preuve_visuelle

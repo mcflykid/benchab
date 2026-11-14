@@ -1,0 +1,44 @@
+/* Le gabarit d’inspection reste commun, la préparation affiche son contexte à gauche. */
+body.preparation { --accent: #006dad; --accent-soft: #e5f2fc; --view: #e3edf5; }
+:root[data-theme="dark"] body.preparation { --accent: #75c9ff; --accent-soft: #19384d; --view: #101c2a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body.preparation { --accent: #75c9ff; --accent-soft: #19384d; --view: #101c2a; }
+}
+.preparation .app { grid-template-columns: minmax(205px, 235px) minmax(0, 1fr) minmax(255px, 315px); }
+.preparation aside { gap: 14px; }
+.preparation .entete { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.preparation .entete a { font-weight: 700; text-decoration: none; }
+.preparation h2 { font-size: 15px; margin: 0 0 8px; }
+.preparation select, .preparation button { min-height: 32px; }
+.preparation :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#atelierReference { overflow-wrap: anywhere; font-weight: 650; }
+.preparation aside, .preparation details, .preparation fieldset { min-width: 0; }
+.preparation aside select { max-width: 100%; }
+#atelierDecision:empty, #atelierContraintesEtat:empty { display: none; }
+#atelierReglages { margin: 0; font-size: 13px; }
+#atelierReglages div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+#atelierReglages dd { margin: 0; overflow-wrap: anywhere; font-family: var(--f-data); font-size: 12px; }
+#atelierCartes, #atelierPropositions { display: grid; gap: 8px; }
+#atelierCartes article, #atelierPropositions article { border: 1px solid var(--line); padding: 10px; border-radius: 6px; }
+#atelierCartes p, #atelierPropositions p { font-size: 13px; margin: 5px 0 0; }
+#atelierCartes strong, #atelierPropositions strong { font-size: 13px; }
+#atelierOutils { position: absolute; right: 10px; bottom: 42px; z-index: 4; display: flex; flex-wrap: wrap; gap: 6px; }
+#atelierOutils button { border: 1px solid var(--line); }
+#atelierCalques .c { margin: 4px 0; }
+#atelierListePiece { width: 100%; }
+.atelier-titre { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#atelierEcarts { padding-inline: 10px; border-inline-start: 2px solid var(--accent); }
+#atelierResume { display: grid; gap: 14px; }
+.preparation #anomalies { max-height: 185px; }
+@media(max-width:1080px) {
+  .preparation .app { grid-template-columns: minmax(185px, 205px) minmax(0,1fr) minmax(215px, 250px); }
+  .preparation aside { padding: 10px; }
+}
+@media(max-width:860px) {
+  .preparation .app { grid-template-columns: minmax(0,1fr); }
+  .preparation #vue { height: 58vh; }
+  .preparation aside { overflow: visible; }
+}
+@media(prefers-reduced-motion: reduce) {
+  .preparation * { animation-duration: 0s; }
+}

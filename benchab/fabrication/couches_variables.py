@@ -245,7 +245,8 @@ def hauteurs_gcode(archive: str | Path) -> dict:
     """Résume les hauteurs G-code en mm, en flux depuis un seul 3MF ; aucune écriture."""
     with Archive3MF(archive) as source:
         hauteurs = [
-            float(correspondance.group(1))
+            # Le G-code peut écrire 0,199999 pour une couche nominale de 0,20 mm.
+            round(float(correspondance.group(1)), 3)
             for _, membre in plaques_gcode_archive(source)
             for ligne in iter_lignes_gcode_3mf(archive, membre, archive=source)
             if (correspondance := re.match(r"^;HEIGHT:([\d.]+)", ligne))

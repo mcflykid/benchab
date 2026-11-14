@@ -193,13 +193,18 @@ class AuditHTTP(Serveur):
 
 
 class ValidationPOSTHTTP(Serveur):
-    """Vérifie les mêmes barrières HTTP pour les quatre routes POST locales."""
+    """Vérifie les mêmes barrières HTTP pour les routes POST JSON de ce témoin."""
 
     ROUTES = (
         ("/__commentaires", 1_000_000),
         ("/__decoupe", 1_000_000),
         ("/__cloud_lecture", 8192),
         ("/__automatisation", 4096),
+        ("/__preparation_comparer", 4096),
+        ("/__preparation_annuler", 256),
+        ("/__preparation_progression", 256),
+        ("/__preparation_observation", 16384),
+        ("/__conception_enregistrer", 1024),
     )
 
     def poster(self, route, donnees=b"{}", *, origine=None, hote=None, media="application/json",

@@ -85,6 +85,7 @@ summary {cursor:pointer;font-size:14px;font-weight:600}details[open]>summary {ma
 #panneauCouches iframe {width:100%;flex:1;min-height:260px;border:1px solid var(--line)}
 @media(max-width:860px){.cadre{height:auto}.entete{align-items:flex-start;flex-direction:column;gap:8px}}
  .cadre[hidden], #demarrage[hidden] {display:none}
+__ATELIER_CSS__
 </style>
 </head>
 <body>
@@ -93,12 +94,111 @@ summary {cursor:pointer;font-size:14px;font-weight:600}details[open]>summary {ma
 <p>Cette page est un gabarit technique. Les vues produites par BENCHAB sont autonomes et contiennent leur géométrie.</p>
 <p>Pour examiner un autre modèle, générez une nouvelle vue depuis BENCHAB. Cette page ne charge pas de fichiers externes.</p><p id="infoDepot" role="status"></p>
 </section>
-<div class="cadre" hidden><header class="entete"><p id="contexte"></p></header><div class="app">
+<div class="cadre" hidden><header class="entete"><a id="atelierHome" href="/atelier" hidden>BENCHAB</a><p id="contexte"></p></header><div class="app">
+  <aside id="atelierGauche" aria-label="Configuration de la préparation" hidden>
+    <section><h2>Référence</h2><p id="atelierReference"></p><a id="atelierImporter" href="/atelier?vue=preparation" hidden>Ouvrir un autre modèle</a></section>
+    <button id="atelierGenerer" hidden>Comparer les réglages</button>
+    <p id="atelierContraintesEtat" role="status"></p>
+    <details id="atelierAvance"><summary>Réglages et options avancés</summary>
+    <a id="atelierObservations" hidden>Observations et preuves du projet</a>
+    <section><h2>Réglages du fichier</h2><dl id="atelierReglages"></dl><p id="atelierSansProfil" class="note">Profil et réglages non fournis par la source.</p></section>
+    <p id="atelierDebitDeclare" class="note"></p>
+    <fieldset id="atelierTranchage" hidden>
+      <legend>Comparer au tranchage</legend>
+      <label class="c"><input id="atelierMarge" type="checkbox"> Ajouter une variante à 90 % du plafond</label>
+      <button id="atelierComparer" class="sec">Trancher et comparer</button>
+      <button id="atelierComparerProcede" class="sec" hidden>Comparer qualité et supports</button>
+      <button id="atelierComparerSupports" class="sec" hidden>Comparer les types de supports</button>
+      <button id="atelierComparerOrientation" class="sec" hidden>Trancher une autre pose</button>
+      <button id="atelierComparerRapide" class="sec" hidden>Comparer une variante rapide</button>
+      <button id="atelierComparerHautDebit" class="sec" hidden>Comparer le profil haut débit déclaré</button>
+      <button id="atelierComparerResistance" class="sec" hidden>Comparer parois et coque supérieure</button>
+      <button id="atelierComparerSilence" class="sec" hidden>Comparer des vitesses réduites</button>
+      <button id="atelierComparerRemplissage" class="sec" hidden>Comparer une densité plus élevée</button>
+      <button id="atelierComparerFinition" class="sec" hidden>Comparer la couverture des dessus</button>
+      <button id="atelierComparerCouches" class="sec" hidden>Comparer des couches variables</button>
+      <p class="note">Standard reprend le 3MF. Rapide agit sur les trajets intérieurs selon les plafonds machine et filament déclarés. Le débit du filament et les réglages protégés priment sur la vitesse.</p>
+      <p class="note">Une surcharge locale ou le mode vase peut bloquer une variante. Le temps et la matière sont estimés par le trancheur, le débit est lu dans les commandes.</p>
+    </fieldset>
+    <details id="atelierContraintes">
+      <summary>Usage et exposition</summary>
+      <label for="atelierUsage">Usage déclaré</label>
+      <select id="atelierUsage"><option value="">Non renseigné</option>
+        <option value="décoratif">Décoratif</option><option value="fonctionnel">Fonctionnel</option>
+        <option value="assemblage">Assemblage</option></select>
+      <fieldset><legend>Exposition déclarée</legend>
+        <label class="c"><input type="checkbox" value="température"> Température</label>
+        <label class="c"><input type="checkbox" value="UV"> UV</label>
+        <label class="c"><input type="checkbox" value="humidité"> Humidité</label>
+        <label class="c"><input type="checkbox" value="produits chimiques"> Produits chimiques</label>
+      </fieldset>
+      <button id="atelierEnregistrerIntentions" class="sec">Mémoriser ces contraintes</button>
+      <button id="atelierReprendreIntentions" class="sec" hidden>Reprendre les contraintes sauvegardées</button>
+      <button id="atelierReinitialiserIntentions" class="sec">Repartir sans contraintes</button>
+    </details>
+    <fieldset id="atelierCalques"><legend>Calques</legend></fieldset>
+    <label for="atelierListePiece">Risques par pièce</label><select id="atelierListePiece"><option value="">Toutes les pièces visibles</option></select>
+    </details>
+  </aside>
   <div id="vue" tabindex="0" role="region" aria-label="Vue 3D ; flèches : tourner, plus et moins : zoom, R : vue initiale"><div id="chargement">Chargement de la géométrie…</div><div id="etiquette" hidden></div><nav id="plaques" hidden aria-label="Plaques d'impression"></nav><div id="resumePlaque" hidden></div>
     <div class="pied">Glisser : tourner · molette : zoom · clic droit : déplacer · clic : sélectionner une pièce (en mode commentaire : poser un repère)</div>
+    <div id="atelierOutils" role="group" aria-label="Affichage de la scène" hidden>
+      <button id="atelierPlateau" class="sec" aria-pressed="true">Grille</button>
+      <button id="atelierAxes" class="sec" aria-pressed="true">Axes</button>
+      <button id="atelierRotation" class="sec" aria-pressed="false">Rotation auto</button>
+    </div>
     <section id="panneauCouches" aria-label="Couches G-code" hidden><div class="boutons"><button id="fermerCouches">Revenir au modèle</button></div><p class="note" id="etatCouches" role="status"></p><iframe id="couchesFrame" title="Couches G-code conservées" sandbox="allow-scripts allow-downloads allow-same-origin"></iframe></section></div>
   <aside>
     <div><h1 id="titre"></h1><p class="sous" id="sousTitre"></p></div>
+    <div id="atelierResume" hidden>
+      <section id="atelierResultat" hidden aria-labelledby="atelierTitreResume">
+        <div class="atelier-titre"><h2 id="atelierTitreResume" tabindex="-1">En résumé</h2>
+          <button id="atelierInfo" class="sec" aria-label="Pourquoi ces écarts ?" aria-expanded="false" aria-controls="atelierEcarts">ⓘ</button>
+        </div>
+        <p id="atelierBilan" role="status"></p>
+        <div id="atelierDecision" role="status"></div>
+        <details id="atelierDetailComparaison" hidden><summary>Détails du tranchage</summary>
+        <div id="atelierComparaison" aria-live="polite"></div>
+        <details id="atelierAppuis" hidden><summary>Voir les appuis par couche</summary>
+        <fieldset>
+          <legend>Superposition des appuis</legend>
+          <label for="atelierAppuisChoix">Tranchage</label>
+          <select id="atelierAppuisChoix"><option value="">Masquée</option></select>
+          <label for="atelierAppuisCouche">Couche</label>
+          <select id="atelierAppuisCouche" disabled></select>
+          <p id="atelierAppuisEtat" class="note" role="status"></p>
+        </fieldset>
+        </details>
+        </details>
+        <a id="atelierExportReference" hidden>Télécharger le 3MF de référence</a>
+        <div id="atelierEcarts" hidden><div id="atelierExplication"></div><div id="atelierVitesses"></div></div>
+      </section>
+      <details><summary>Risques par pièce</summary><p id="atelierSeuil" class="note"></p><div id="atelierCartes"></div></details>
+      <details><summary>Points à vérifier</summary><p id="atelierAucune" class="note">Aucune proposition sur les pièces affichées. Consultez la couverture des mesures.</p><div id="atelierPropositions"></div></details>
+      <button class="sec" id="atelierRapport">Télécharger le diagnostic JSON</button>
+      <details id="atelierRetour">
+        <summary>Examiner un défaut observé</summary>
+        <label for="atelierDefaut">Défaut</label>
+        <select id="atelierDefaut">
+          <option value="">Choisir</option>
+          <option value="decollement">Décollement</option>
+          <option value="sous-extrusion">Sous-extrusion</option>
+          <option value="filage">Filage</option>
+        </select>
+        <label for="atelierPhotoDefaut">Photo locale (facultative)</label>
+        <input id="atelierPhotoDefaut" type="file" accept="image/jpeg,image/png,image/heic,image/heif">
+        <p id="atelierPhotoEtat" role="status"></p>
+        <p id="atelierDiagnosticRetour" role="status"></p>
+        <form id="atelierConfirmerObservation" hidden>
+          <label for="atelierConstat">Qu’as-tu observé sur la pièce ?</label>
+          <textarea id="atelierConstat" maxlength="2000" required></textarea>
+          <button class="sec">Confirmer et enregistrer l’observation</button>
+        </form>
+        <p id="atelierEtatObservation" role="status"></p>
+        <button id="atelierVerifierDefaut" class="sec" hidden>Comparer une variante liée au défaut</button>
+      </details>
+    </div>
+    <details id="atelierInspection" hidden><summary>Outils d’inspection</summary></details>
     <fieldset><legend>Pièces</legend><div id="listePieces" aria-label="Pièces du projet"></div><p class="note" id="fidelite">Aperçu numérique ; précision de fabrication non vérifiée.</p></fieldset>
     <details id="blocMesures"><summary>Mesures du maillage source</summary><div id="mesuresSource" class="fiche mesures-source">Sélectionner une pièce. Les dimensions de l’aperçu ne servent pas de cote de fabrication.</div></details>
     <details id="blocComparaison"><summary>Comparer les géométries chargées</summary><label for="compareA">Source A</label><select id="compareA"></select><label for="compareB">Source B</label><select id="compareB"></select><button id="comparerGeometries" class="sec">Comparer ces sources</button><div id="comparaison" class="fiche mesures-source" aria-live="polite"></div></details>
@@ -280,6 +380,7 @@ function maj() {
     b.dataset.visibilite = p.mesh?.visible ? 'Visible' : 'Masquée';
   }
   coupe();
+  if (D.atelier && typeof actualiserAtelier === 'function') actualiserAtelier();
 }
 
 function coupe() {
@@ -611,6 +712,8 @@ return new GLTFLoader().parse(bin, '', gltf => {
   $('chargement').hidden = true; $('exporterGlb').disabled=false;
   if (meca >= 0) choisirMeca(0); else maj();
   synchroniser(); ongletsPlaques();
+  poserAnomalies();
+  if (D.atelier) restaurerOngletAtelier();
 }, err => { $('chargement').textContent = 'La géométrie n’a pas pu être chargée (' + err + ').'; });
 }).catch(err => { $('chargement').textContent = 'Décompression impossible (' + err + ') : navigateur trop ancien ?'; });
 
@@ -622,6 +725,7 @@ function ongletsPlaques() {
     anim = null; if (meca !== i) { $('meca').value = i; choisirMeca(i); }
     $('pos').value = k; $('eclate').value = 0; maj();
     for (const b of nav.children) b.setAttribute('aria-pressed', String(+b.dataset.k === k));
+    if (D.atelier && typeof memoriserAtelier === 'function') { memoriserAtelier(); visibiliteAppuis(); }
     const plaque = k > 0; $('resumePlaque').hidden = !plaque; if (plaque && m.etats) $('resumePlaque').textContent = m.etats[k];
     recadrer(plaque ? (D.axe_haut === 'Z' ? [0, -1.25, 1] : [0, 1, 1.25]) : null);
   };
@@ -670,6 +774,7 @@ if (carteContacts) {
 const diagnostics = D.diagnostics || [], anomalies = diagnostics.flatMap(d => d.anomalies || []);
 const libellesRisques = {surplomb_geometrique:'Surplomb potentiel',bord_ouvert:'Bord ouvert',arete_multiple:'Jonction de surfaces à vérifier',triangle_degenere:'Triangle sans aire',orientation_inversee:'Orientation du maillage à vérifier',petite_base_modele:'Petite base du modèle'};
 Object.assign(libellesRisques,{visee_degagee:'Visée dégagée',visee_obstruee:'Visée obstruée',visee_ambigue:'Visée ambiguë'});
+Object.assign(libellesRisques,{epaisseur_locale:'Épaisseur locale',assise_locale:'Contact au plan'});
 const couleursVisees=new Map([['visee_degagee',0x187260],['visee_obstruee',0xa83020],['visee_ambigue',0x8d530d]]);
 const nombre = n => new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3}).format(n);
 function afficherMesures(p) {
@@ -699,7 +804,7 @@ for (const id of ['compareA','compareB']) $(id).onchange=comparerSources;
 $('comparerGeometries').onclick=comparerSources;
 comparerSources();
 function montrerAnomalie(a) {
-  initiale();
+  if (!D.atelier) initiale();
   const p = pieces.find(p => p.nom === a.piece);
   if (!p?.mesh) return;
   selectionner(p); p.cache = false; grpVisible[p.groupe] = true; maj();
@@ -709,16 +814,22 @@ function montrerAnomalie(a) {
   const contexte = a.normale_modele ? 0 : new THREE.Box3().setFromObject(p.mesh).getSize(new THREE.Vector3()).length();
   controls.target.copy(w); camera.position.copy(w).addScaledVector(direction, Math.max(D.taille * .15, contexte*1.2, 10)); controls.update();
   $('blocAnomalies').open = true;
-  for (const q of pieces) for (const o of q.mesh?.children || []) if (o.userData.anomalie) o.visible = o.userData.anomalie.id === a.id;
+  if (D.atelier) { repereAtelier = a; actualiserRetour(); }
+  else for (const q of pieces) for (const o of q.mesh?.children || []) if (o.userData.anomalie) o.visible = o.userData.anomalie.id === a.id;
   $('diagnostic').hidden = false; $('diagnostic').dataset.anomalie = a.id;
   $('diagnostic').textContent = [libellesRisques[a.type]||a.type, 'Pièce : ' + a.piece, 'Source : ' + a.source, 'SHA-256 : ' + a.sha256,
-    'Mesure : ' + a.valeur.toFixed(4) + ' ; seuil : ' + a.seuil.toFixed(4), a.condition,
+    'Mesure : ' + nombre(a.valeur) + ' ' + (a.unite_mesure || '') + ' ; seuil : ' + nombre(a.seuil), a.condition,
     'Repère : ' + a.repere + ' ; point : ' + a.point_modele.map(x => x.toFixed(3)).join(', ') + ' mm', a.precision, a.limite].join('\n');
 }
 $('resumeAnomalies').textContent = diagnostics.length ? anomalies.length + ' zones localisées ; ' + diagnostics.reduce((n,d) => n + d.faces_detectees, 0) + ' faces en surplomb détectées. Sélection bornée par catégorie et pièce. Le repère choisi reste visible à travers la pièce. Les autres risques restent non vérifiés ; aucune absence d’alerte ne valide la fabrication.' : 'Aucun diagnostic géométrique fourni : risques non vérifiés.';
 if (D.source.visibilite_surplombs) {
   $('blocAnomalies').querySelector('summary').textContent = 'Visées échantillonnées';
   $('resumeAnomalies').textContent = D.source.visibilite_surplombs + '. Seuls les points calculés sont localisés.';
+}
+if (D.atelier) {
+  $('resumeAnomalies').textContent = 'Choisissez un repère visible dans les calques actifs.';
+  $('filtreRisques').hidden = true;
+  document.querySelector('label[for=filtreRisques]').hidden = true;
 }
 for (const type of [...new Set(anomalies.map(a=>a.type))]) $('filtreRisques').append(new Option(libellesRisques[type]||type,type));
 for (const a of anomalies) {
@@ -758,19 +869,31 @@ if(D.source.couches_url) {
 if(D.source.paquet_url&&location.protocol!=='file:') { $('paquetLien').href=D.source.paquet_url;$('paquetLien').hidden=false; }
 // Marqueurs rattachés au même repère local que le maillage ; pose et éclaté sont hérités.
 const poserAnomalies = () => {
-  if (!pieces.every(p => p.mesh)) { requestAnimationFrame(poserAnomalies); return; }
+  if (!pieces.every(p => p.mesh)) return;
   for (const a of anomalies) {
     const p = pieces.find(p => p.nom === a.piece); if (!p) continue;
-    const marque = new THREE.Mesh(new THREE.SphereGeometry(Math.max(D.taille / 350, .3), 8, 6), new THREE.MeshBasicMaterial({color:couleursVisees.get(a.type) ?? 0xd84315,depthTest:false,depthWrite:false}));
+    const couleur = D.atelier ? couleursAtelier[categorieRepere[a.type]] : couleursVisees.get(a.type);
+    const marque = new THREE.Mesh(new THREE.SphereGeometry(Math.max(D.taille / 350, .3), 8, 6), new THREE.MeshBasicMaterial({color:couleur ?? 0xd84315,depthTest:false,depthWrite:false}));
     marque.renderOrder = 10; marque.position.set(...a.point_modele); marque.userData.piece = p; marque.userData.anomalie = a; p.mesh.add(marque);
+    const triangles = a.surfaces_mm || (a.surface_mm?.length ? [a.surface_mm] : []);
+    if (D.atelier && triangles.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(triangles.flat(2), 3));
+      const surface = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: couleur, side: THREE.DoubleSide, transparent: true, opacity: .64, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2,
+      }));
+      surface.renderOrder = 8; surface.userData.piece = p; surface.userData.anomalie = a; p.mesh.add(surface);
+    }
   }
+  if (D.atelier) actualiserAtelier();
 };
-poserAnomalies();
 function resize() { const w = vue.clientWidth, h = vue.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 $('aretes').addEventListener('change', () => { for (const p of pieces) if (p.mesh?.userData.aretes) p.mesh.userData.aretes.visible = $('aretes').checked; });
 new ResizeObserver(resize).observe(vue); resize(); recadrer(); controls.saveState();
 if (!MECAS.some(m => m.id === 'impression')) { $('fidelite').textContent += ' Plaques indisponibles : aucun placement fourni.'; }
 __OUTIL_DECOUPE__
+__ATELIER_JS__
 renderer.setAnimationLoop(now => { pasAnim(now); controls.update(); if($('panneauCouches').hidden)renderer.render(scene, camera); });
 } else {
  document.title = 'Ouvrir l’atelier Impression 3D';

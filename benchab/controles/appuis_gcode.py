@@ -279,6 +279,7 @@ def analyser_lignes(
     z_min_mm=None,
     z_max_mm=None,
     arcs_planaires=False,
+    superposition=False,
 ):
     """Agrège les parcours imprimés et estime leur appui, sans interpréter le slicer.
 
@@ -287,7 +288,8 @@ def analyser_lignes(
     Chaque échantillon conserve la demi-largeur déclarée par le G-code. Le mode
     opt-in ``arcs_planaires`` échantillonne les dépôts G17 exacts, planaires et
     à extrémités compatibles ; les hélices, extrémités arrondies et données
-    manquantes restent NON VÉRIFIÉES.
+    manquantes restent NON VÉRIFIÉES. ``superposition`` conserve un échantillon
+    borné des parcours de support et de pièce sans appui, en mm.
     """
     if type(arcs_planaires) is not bool:
         raise ValueError("arcs_planaires doit être booléen")
@@ -306,6 +308,9 @@ def analyser_lignes(
     parcours = None
     previous = None
     rows = []
+    traces = []
+    points_restants = {"support": 12_000, "sans_appui": 12_000}
+    traces_omises = 0
     total_echantillons = 0
     total_echantillons_arcs = 0
     total_parcours = 0
@@ -327,7 +332,7 @@ def analyser_lignes(
         parcours = None
 
     def fermer_couche():
-        nonlocal couche, previous, nombre_couches
+        nonlocal couche, previous, nombre_couches, traces_omises
         if couche is None:
             return
         fermer_parcours()
@@ -392,6 +397,19 @@ def analyser_lignes(
             inclus = types_cibles is None or path["type"] in types_cibles
             inclus = inclus and (couche["z_mm"] is None or z_min_mm is None or couche["z_mm"] >= z_min_mm)
             inclus = inclus and (couche["z_mm"] is None or z_max_mm is None or couche["z_mm"] <= z_max_mm)
+            if superposition and couche["z_mm"] is not None and (
+                path["type"] in SUPPORTS or (inclus and not result["ancre_nominale"])
+            ):
+                # Garder les arcs échantillonnés et borner les points transmis à la vue.
+                nature = "support" if path["type"] in SUPPORTS else "sans_appui"
+                if len(p) <= points_restants[nature]:
+                    traces.append({
+                        "z_mm": couche["z_mm"], "xy_mm": p[:, :2].round(4).ravel().tolist(),
+                        "type": nature,
+                    })
+                    points_restants[nature] -= len(p)
+                else:
+                    traces_omises += 1
             if inclus:
                 rows.append(
                     {
@@ -570,6 +588,7 @@ def analyser_lignes(
         "lignes": rows,
         "par_couche": par_couche,
         "erreurs_interpreteur": interpreter.errors,
+        **({"superposition": {"traces": traces, "parcours_omis": traces_omises}} if superposition else {}),
         "limite": (
             "Échantillons analytiques G17 ; chaque intervalle requiert une marge de recouvrement "
             "d'au moins la moitié de sa longueur à chaque extrémité, sinon sa longueur entière "
@@ -592,13 +611,15 @@ def analyser_fichier(
     z_max_mm=None,
     plaques=None,
     arcs_planaires=False,
+    superposition=False,
 ):
     """Mesure les appuis nominaux en mm dans un G-code ou des plaques 3MF.
 
     Les numéros de plaque sont sans unité. Sortie PASS ou NON VÉRIFIÉ selon
     la couverture ; refuse un index ambigu même en cache. Aucun fichier ni
     réglage n’est modifié et aucune adhérence réelle n’est déduite. L'option
-    ``arcs_planaires`` ne qualifie que les arcs G17 analytiques et planaires.
+    ``arcs_planaires`` ne qualifie que les arcs G17 analytiques et planaires ;
+    ``superposition`` ajoute les coordonnées nominales en mm.
     """
     path = Path(chemin)
     options = {
@@ -612,6 +633,8 @@ def analyser_fichier(
     }
     if arcs_planaires:
         options["arcs_planaires"] = True
+    if superposition:
+        options["superposition"] = True
     if path.suffix.lower() == ".3mf":
         results = []
         with Archive3MF(path) as archive:
@@ -628,7 +651,8 @@ def analyser_fichier(
                     continue
                 result = analyser_membre_gcode_3mf(
                     path, membre, options, run,
-                    version="appuis-gcode-arc-1" if arcs_planaires else "appuis-gcode-1",
+                    version=("appuis-gcode-vue-1" if superposition else
+                             "appuis-gcode-arc-1" if arcs_planaires else "appuis-gcode-1"),
                     archive=archive,
                 )
                 for row in result["lignes"]:

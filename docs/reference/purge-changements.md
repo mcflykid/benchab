@@ -87,3 +87,11 @@ outil sont relevés. Le contrôle numérique de débit de ce rejeu est PASS.
 Les mesures par rôle et l’absence d’effet visible sur ces commandes
 n’établissent aucune correspondance physique. Une réécriture ambiguë
 reste bloquante et les sorties restent des archives de diagnostic (#290).
+
+Sur un autre témoin bicolore, les deux filaments étaient réglés à 225 °C et
+215 °C, avec deux slots ACE déclarés distincts. Les entrées `[1]`,
+`[1, 1]`, `[1, 2]` et `[2, 1]` donnent toutes `[1, 1]` en sortie
+pour `filament_map`. Intervertir les slots change l’ordre conservé dans
+l’archive. Les 67 133 commandes restent identiques hors commentaires dans
+les cinq cas. Intervertir les températures change 124 commandes de chauffe.
+Le routage physique reste non vérifié et le refus d’intégrité est conservé.

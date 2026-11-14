@@ -105,6 +105,8 @@ def analyser(path, overrides=None, attendus=None):
             samples = collections.defaultdict(list)
             pics = {}
             depassements_embarques = collections.Counter()
+            depots_supports = 0
+            trajets_supports_mm = 0.0
             longueurs_embarquees = collections.Counter()
             g = lire_texte_gcode_3mf(path, gc[k], erreurs="strict", archive=z)
             declared = [o.get("name") for o in plate.findall("object") if o.get("skipped", "false") != "true"]
@@ -151,6 +153,10 @@ def analyser(path, overrides=None, attendus=None):
                 m = it.feed_line(line)
                 if not m or m["deposited"] <= 0 or m["deposited_length"] <= 0:
                     continue
+                # Les supports peuvent être déposés en dehors des blocs d’objet du trancheur.
+                if (m["type"] or "").casefold() in {"support", "support interface", "support transition"}:
+                    depots_supports += 1
+                    trajets_supports_mm += m["deposited_length"]
                 nom = m["object"]
                 if nom is not None:
                     nom = identity(nom)
@@ -244,6 +250,9 @@ def analyser(path, overrides=None, attendus=None):
             res["plaques"].append(
                 {
                     "plaque": k,
+                    "segments_depot_support": depots_supports,
+                    "trajets_supports_mm": round(trajets_supports_mm, 3),
+                    "lecture_depots_supports_complete": not it.errors,
                     "objets_attendus": expected,
                     "source_objets": source,
                     "couverture_complete": not errors,

@@ -36,6 +36,10 @@ INTERIEURS = ("inner_wall_speed", "sparse_infill_speed", "internal_solid_infill_
 EXTERIEURS = ("outer_wall_speed", "top_surface_speed", "gap_infill_speed")
 ACCELERATIONS = ("default_acceleration", "inner_wall_acceleration", "travel_acceleration")
 VARIABLES = frozenset((*INTERIEURS, *EXTERIEURS, *ACCELERATIONS, "travel_speed"))
+VARIANTES_COMPARATEUR = frozenset({
+    "layer_height", "enable_support", "support_type", "wall_loops", "top_shell_layers",
+    "sparse_infill_density", "top_shell_thickness",
+})
 CONFIGURATION = "Metadata/project_settings.config"
 OBJETS = "Metadata/model_settings.config"
 
@@ -410,11 +414,13 @@ def proposer(base: Base, projet: str | Path, source: str | Path, objectif: str |
     }
 
 
-def clone(source: str | Path, cible: str | Path, proposition: dict | None = None) -> tuple[dict, dict]:
+def clone(source: str | Path, cible: str | Path, proposition: dict | None = None, *,
+          comparaison_procede=False, comparaison_debit=False) -> tuple[dict, dict]:
     """Publie un clone contrôlé : SHA et statut PASS ; vitesses mm/s, accélérations mm/s², géométrie inchangée.
 
     L’entrée reste épinglée pendant ses lectures et les membres hors réglages sont copiés
     en flux avec leurs CRC ; aucune modification de la source n’est permise.
+    Le comparateur peut aussi déclarer une hauteur en mm et des supports globaux.
     """
     source, cible = Path(source), Path(cible)
     with Archive3MF(source) as archive:
@@ -424,15 +430,22 @@ def clone(source: str | Path, cible: str | Path, proposition: dict | None = None
         if proposition is not None:
             changements_globaux = proposition.get("reglages", {}).get("global", {})
             changements_objets = proposition.get("reglages", {}).get("objets", [])
-            if set(changements_globaux) - VARIABLES or any(
+            globaux_permis = VARIABLES | VARIANTES_COMPARATEUR if comparaison_procede else VARIABLES
+            if comparaison_debit:
+                globaux_permis = globaux_permis | {"filament_max_volumetric_speed"}
+            if set(changements_globaux) - globaux_permis or any(
                 set(item.get("reglages", {})) - VARIABLES for item in changements_objets
             ):
-                raise ValueError("Réglage hors allowlist de vitesse et accélération.")
+                raise ValueError("Réglage hors allowlist de ce clone.")
             avant_etat = integrite_3mf.instantane(source)
             archive.verifier_source(source)
             if archive.sha256() != sha_source:
                 raise ValueError("Source modifiée pendant la lecture de son état d’intégrité.")
             index = {item["id"]: item["reglages"] for item in changements_objets}
+            if index:
+                identifiants = [objet.get("id") for objet in xml.findall("object")]
+                if len(index) != len(changements_objets) or any(identifiants.count(ident) != 1 for ident in index):
+                    raise ValueError("Réglage par objet refusé : identifiant absent ou ambigu dans le 3MF.")
             # Le plan exact interdit les changements collatéraux dans un 3MF sérialisé (docs/reference/regles.md).
             permis = []
             for cle in changements_globaux:
@@ -475,7 +488,7 @@ def clone(source: str | Path, cible: str | Path, proposition: dict | None = None
                     if nom == CONFIGURATION:
                         contenu = reglages_types.encoder(reglages, ensure_ascii=False, allow_nan=False).encode("utf-8")
                         sortie.writestr(info, contenu)
-                    elif nom == OBJETS:
+                    elif nom == OBJETS and index:
                         sortie.writestr(info, ET.tostring(xml, encoding="utf-8", xml_declaration=True))
                     else:
                         empreinte = hashlib.sha256()
@@ -510,6 +523,7 @@ def clone(source: str | Path, cible: str | Path, proposition: dict | None = None
         "conforme": True,
         "statut": integrite["statut"],
         "geometrie_sha256": geometrie_copie,
+        "differences": integrite["differences"],
     }
 
 

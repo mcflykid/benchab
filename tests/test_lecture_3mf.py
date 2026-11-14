@@ -59,6 +59,24 @@ def test_cycle_budget_et_zip_invalide_refuses(tmp_path):
         lire(source)
 
 
+def test_lecture_annulee_puis_reprise(tmp_path):
+    """La conversion s’interrompt avant de rendre une scène puis repart depuis le même 3MF."""
+    source = tmp_path / "reprendre.3mf"
+    fabriquer(source)
+    octets = source.read_bytes()
+    appels = 0
+
+    def annule():
+        nonlocal appels
+        appels += 1
+        return appels == 4
+
+    with pytest.raises(ValueError, match="Analyse annulée"):
+        lire(source, annule=annule)
+    assert lire(source).geometry
+    assert source.read_bytes() == octets
+
+
 def test_modele_importe_refuse_dtd_sans_changer_archive(tmp_path):
     """Le modèle est soumis au parseur XML commun, même si sa géométrie est valide."""
     source = tmp_path / "modele.3mf"

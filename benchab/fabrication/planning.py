@@ -221,9 +221,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Le dossier de sortie doit exister et ne pas être un lien.")
     if not projets.is_relative_to(prive / "projets"):
         parser.error("Les projets doivent rester sous prive/projets.")
-    temporaire = Path("/private/tmp").resolve()
-    if not sortie.is_relative_to(prive) and not sortie.is_relative_to(temporaire):
-        parser.error("La sortie doit rester dans prive/ ou /private/tmp.")
+    from benchab.chemins import est_temporaire_hors_depot
+
+    if not sortie.is_relative_to(prive) and not est_temporaire_hors_depot(sortie):
+        parser.error("La sortie doit rester dans l’atelier privé ou dans un dossier temporaire hors dépôt.")
     base = Base(prive, creer=False)
     try:
         plaques = plaques_pretes(projets, base)

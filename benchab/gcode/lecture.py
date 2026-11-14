@@ -131,6 +131,10 @@ def membres_gcode_3mf(chemin: str | Path) -> tuple[str, ...]:
         return tuple(sorted(nom for _, nom in plaques))
 
 
+class PlaqueGcodeAmbigue(ValueError):
+    """Plusieurs membres G-code désignent la même plaque."""
+
+
 def plaques_gcode_archive(archive):
     """Renvoie (numéro de plaque, membre) en ordre numérique depuis un contexte 3MF ouvert.
 
@@ -142,7 +146,7 @@ def plaques_gcode_archive(archive):
         if (match := re.fullmatch(r"Metadata/plate_(\d+)\.gcode", nom))
     )
     if len({numero for numero, _ in plaques}) != len(plaques):
-        raise ValueError("numéro de plaque dupliqué dans l'archive")
+        raise PlaqueGcodeAmbigue("numéro de plaque dupliqué dans l'archive")
     return plaques
 
 
@@ -176,20 +180,22 @@ def ouvrir_membre_3mf(chemin: str | Path, membre: str, *, archive: Archive3MF | 
         if empreinte_3mf(chemin) != empreinte_initiale:
             raise ValueError("3MF modifié pendant la lecture du membre")
 
-    donnees = _recuperer(_CACHE, (empreinte_initiale, membre))
-    if donnees is not None:
-        flux = io.BytesIO(donnees)
-        try:
-            yield flux
-        finally:
-            flux.close()
-            verifier()
-        return
     try:
-        with (Archive3MF(chemin) if archive is None else nullcontext(archive)) as contexte:
-            with contexte.ouvrir_flux(membre) as flux:
+        donnees = _recuperer(_CACHE, (empreinte_initiale, membre))
+        if donnees is not None:
+            with io.BytesIO(donnees) as flux:
                 yield flux
-    finally:
+        else:
+            with (Archive3MF(chemin) if archive is None else nullcontext(archive)) as contexte:
+                with contexte.ouvrir_flux(membre) as flux:
+                    yield flux
+    except BaseException as erreur:
+        try:
+            verifier()
+        except (ValueError, OSError) as verification:
+            erreur.add_note(str(verification))
+        raise
+    else:
         verifier()
 
 

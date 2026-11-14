@@ -40,6 +40,8 @@ from benchab.visualisation.hors_ligne import VENDOR
 from benchab.visualisation.stockage_commentaires import atomique, lire, ouvrir_dossier, sans_liens, transaction, valider
 
 RACINE = racine_privee()
+_IMPORTS_ACTIFS = {}
+_VERROU_IMPORTS = threading.Lock()
 
 
 def fichier_commentaires(page, racine=None):
@@ -82,6 +84,35 @@ def fusionner(anciens, nouveaux, supprimes=()):
     return [c for c in nouveaux + [c for c in anciens if c.get("id") not in ids] if c.get("id") not in supprimes]
 
 
+_VERROU_PREPARATION = threading.Lock()
+
+
+def _decoder_json_post(brut, cles_permises):
+    """Refuse doublons, valeurs non finies et clés étrangères avant les handlers locaux."""
+    def objet_sans_doublons(paires):
+        resultat = {}
+        for cle, valeur in paires:
+            if cle in resultat:
+                raise ValueError("clé JSON dupliquée")
+            resultat[cle] = valeur
+        return resultat
+
+    def flottant_fini(texte):
+        valeur = float(texte)
+        if not math.isfinite(valeur):
+            raise ValueError("flottant JSON non fini")
+        return valeur
+
+    donnees = json.loads(
+        brut.decode("utf-8"), object_pairs_hook=objet_sans_doublons,
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError("constante JSON interdite")),
+        parse_float=flottant_fini,
+    )
+    if not isinstance(donnees, dict) or (cles_permises is not None and set(donnees) - set(cles_permises)):
+        raise ValueError("objet JSON ou clés invalides")
+    return donnees
+
+
 class Gestion(http.server.SimpleHTTPRequestHandler):
     """Traite les requêtes locales et statuts HTTP ; ne publie pas les secrets et ne commande jamais l’imprimante."""
 
@@ -120,14 +151,25 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
         `maximum` est en octets ; corps, en-têtes, UTF-8 et clés permis sont contrôlés
         avant l’action métier. Délai de lecture fixe à 5 s ; aucun effet secondaire.
         """
+        brut = self.lire_corps_post(maximum, "application/json")
+        if brut is None:
+            return None
+        try:
+            return _decoder_json_post(brut, cles_permises)
+        except (ValueError, UnicodeError, RecursionError):
+            self.repondre(400, {"erreur": "requête invalide"})
+            return None
+
+    def lire_corps_post(self, maximum, type_attendu):
+        """Lit au plus maximum octets d’une requête de même origine et du type exact demandé."""
         hote = self.headers.get_all("Host", [])
         origine = self.headers.get_all("Origin", [])
         if len(hote) != 1 or len(origine) != 1 or not self.hote_valide(hote[0]) or origine[0] != "http://" + hote[0]:
             self.repondre(403, {"erreur": "origine non autorisée"})
             return None
         types = self.headers.get_all("Content-Type", [])
-        if len(types) != 1 or types[0].split(";", 1)[0].strip().lower() != "application/json":
-            self.repondre(415, {"erreur": "JSON requis"})
+        if len(types) != 1 or types[0].split(";", 1)[0].strip().lower() != type_attendu:
+            self.repondre(415, {"erreur": "Type de données attendu : " + type_attendu})
             return None
         longueurs = self.headers.get_all("Content-Length", [])
         if self.headers.get_all("Transfer-Encoding", []) or len(longueurs) > 1:
@@ -153,32 +195,8 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             if len(brut) != taille:
                 raise ValueError("requête incomplète")
 
-            def objet_sans_doublons(paires):
-                resultat = {}
-                for cle, valeur in paires:
-                    if cle in resultat:
-                        raise ValueError("clé JSON dupliquée")
-                    resultat[cle] = valeur
-                return resultat
-
-            def flottant_fini(texte):
-                valeur = float(texte)
-                if not math.isfinite(valeur):
-                    raise ValueError("flottant JSON non fini")
-                return valeur
-
-            donnees = json.loads(
-                brut.decode("utf-8"),
-                object_pairs_hook=objet_sans_doublons,
-                parse_constant=lambda _: (_ for _ in ()).throw(ValueError("constante JSON interdite")),
-                parse_float=flottant_fini,
-            )
-            if not isinstance(donnees, dict) or (
-                cles_permises is not None and set(donnees) - set(cles_permises)
-            ):
-                raise ValueError("objet JSON ou clés invalides")
-            return donnees
-        except (OSError, ValueError, UnicodeError, RecursionError):
+            return brut
+        except (OSError, ValueError):
             self.repondre(400, {"erreur": "requête invalide"})
             return None
 
@@ -200,6 +218,10 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
                 and parts[2:4] == ("preuves", "visualisation")
                 and rel.suffix == ".html"
             )
+            conception = (
+                len(parts) == 4 and parts[:2] == ("conceptions", "bibliotheque")
+                and re.fullmatch(r"[0-9a-f]{32}", parts[2]) and parts[3] == "atelier.html"
+            )
             # Les exports historiques restent intacts : seul cet ancien préfixe
             # connu pointe vers les mêmes modules vérifiés (docs/reference/controles.md).
             script = (
@@ -212,7 +234,7 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
                 ".." in parts
                 or "\\" in decoded
                 or any((ord(c) < 32 for c in decoded))
-                or (not (page or script or image))
+                or (not (page or conception or script or image))
             ):
                 raise ValueError("ressource interdite")
             if script:
@@ -311,6 +333,41 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
         if u.path == "/__visionneuse":
             return self.repondre(200, {"serveur": "visionneuses", "racine": self.racine.name,
                                        "racine_sha256": _identite_racine(self.racine)})
+        if u.path == "/bibliotheque-atelier":
+            from benchab.visualisation.atelier_preparation import bibliotheque
+
+            params = urllib.parse.parse_qs(u.query)
+            modele = params.get("modele", [""])[0]
+            export = params.get("sortie", [None])[0]
+            def produire():
+                """Construit les mêmes pièces pour l’aperçu et pour le téléchargement STL."""
+                return bibliotheque(
+                    modele, float(params.get("cote", [""])[0]), float(params.get("jeu", [""])[0]),
+                    format_stl=export == "stl", format_fiche=export == "json",
+                )
+
+            if export in ("stl", "json"):
+                if not _VERROU_PREPARATION.acquire(blocking=False):
+                    return self.repondre(429, {"erreur": "Une analyse est en cours. Réessayez après sa fin."})
+                try:
+                    body = produire()
+                except (ValueError, RuntimeError) as erreur:
+                    return self.repondre(400, {"erreur": str(erreur)})
+                finally:
+                    _VERROU_PREPARATION.release()
+                self.send_response(200)
+                self.send_header("Content-Type", "model/stl" if export == "stl" else "application/json")
+                self.send_header("Content-Disposition", f'attachment; filename="{modele}.{export}"')
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                if self.command != "HEAD":
+                    try:
+                        self.wfile.write(body)
+                    except (BrokenPipeError, ConnectionResetError):
+                        return None
+                return None
+            return self.preparation_html(produire)
         if u.path == "/atelier":
             try:
                 from benchab.visualisation.atelier_local import page
@@ -331,6 +388,14 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
                 if self.command != "HEAD":
                     self.wfile.write(body)
                 return
+        if u.path == "/preparation":
+            from benchab.visualisation.atelier_preparation import preparation_projet
+
+            params = urllib.parse.parse_qs(u.query)
+            return self.preparation_html(
+                lambda: preparation_projet(self.racine, params.get("projet", [""])[0],
+                                           params.get("preparation", [None])[0])
+            )
         if u.path == "/inspecter":
             try:
                 from benchab.visualisation.catalogue_visuel import scene
@@ -403,6 +468,175 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def preparation_html(self, produire):
+        """Limite l’analyse lourde à une demande locale ; HTTP 200/400/429, sources intactes."""
+        from zipfile import BadZipFile
+
+        if not _VERROU_PREPARATION.acquire(blocking=False):
+            return self.repondre(429, {"erreur": "Une analyse est en cours. Réessayez après sa fin."})
+        try:
+            body = produire()
+        except (OSError, ValueError, BadZipFile, TypeError, KeyError, RuntimeError) as exc:
+            return self.repondre(400, {"erreur": str(exc)})
+        finally:
+            _VERROU_PREPARATION.release()
+        if body is not None:
+            try:
+                return self.html(body)
+            except (BrokenPipeError, ConnectionResetError):
+                # Un import annulé dans la page peut finir avant la réponse.
+                return None
+
+    def preparation_import(self):
+        """Construit un aperçu depuis les seuls octets du modèle déposé, avec taille et extension bornées."""
+        from benchab.visualisation.atelier_preparation import MAX_SOURCE, import_html
+
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        jeton = params.get("analyse", [""])[0]
+        if jeton and not re.fullmatch(r"[0-9a-f-]{36}", jeton):
+            return self.repondre(400, {"erreur": "Identifiant d’analyse invalide."})
+
+        def produire():
+            """Analyse seulement un corps déjà accepté par le serveur."""
+            evenement = threading.Event()
+            if jeton:
+                with _VERROU_IMPORTS:
+                    _IMPORTS_ACTIFS[jeton] = (evenement, ("Réception du fichier", 0, 0))
+
+            def progression(etape, finies, total):
+                """Mémorise une progression sans conserver la géométrie ni publier de fichier."""
+                if jeton:
+                    with _VERROU_IMPORTS:
+                        _IMPORTS_ACTIFS[jeton] = (evenement, (etape, finies, total))
+
+            try:
+                brut = self.lire_corps_post(MAX_SOURCE, "application/octet-stream")
+                if brut is not None:
+                    if evenement.is_set():
+                        raise ValueError("Analyse annulée.")
+                    plaque = params.get("plaque", [""])[0]
+                    piece = params.get("piece", [""])[0]
+                    return import_html(brut, params.get("nom", [""])[0], params.get("unites", [None])[0],
+                                       annule=evenement.is_set, progression=progression,
+                                       prive=self.racine, comparaison_auto=True,
+                                       plaque_cible=int(plaque) if plaque else None,
+                                       piece_cible=int(piece) if piece else None)
+            finally:
+                if jeton:
+                    with _VERROU_IMPORTS:
+                        _IMPORTS_ACTIFS.pop(jeton, None)
+
+        return self.preparation_html(produire)
+
+    def annuler_import(self):
+        """Signale à l’analyse active de s’arrêter au prochain point de contrôle."""
+        demande = self.lire_json_post(256, cles_permises={"analyse"})
+        if demande is None:
+            return None
+        identifiant = demande.get("analyse")
+        if not isinstance(identifiant, str) or not re.fullmatch(r"[0-9a-f-]{36}", identifiant):
+            return self.repondre(400, {"erreur": "Identifiant d’analyse invalide."})
+        with _VERROU_IMPORTS:
+            etat = _IMPORTS_ACTIFS.get(identifiant)
+            if etat is not None:
+                etat[0].set()
+        return self.repondre(200, {"annulation_demandee": etat is not None})
+
+    def progression_import(self):
+        """Retourne l’étape et les compteurs sans rendre d’information sur le fichier importé."""
+        demande = self.lire_json_post(256, cles_permises={"analyse"})
+        if demande is None:
+            return None
+        identifiant = demande.get("analyse")
+        if not isinstance(identifiant, str) or not re.fullmatch(r"[0-9a-f-]{36}", identifiant):
+            return self.repondre(400, {"erreur": "Identifiant d’analyse invalide."})
+        with _VERROU_IMPORTS:
+            etat = _IMPORTS_ACTIFS.get(identifiant)
+        if etat is None:
+            return self.repondre(200, {"active": False})
+        etape, finies, total = etat[1]
+        return self.repondre(200, {"active": True, "etape": etape, "finies": finies, "total": total})
+
+    def comparer_preparation(self):
+        """Compare une préparation privée épinglée ; JSON en s et g, sans commande machine."""
+        from benchab.visualisation.atelier_preparation import comparaison_projet
+        from benchab.visualisation.comparaison_atelier import MODES
+
+        champs = {"projet", "preparation", "sha256", "marge"}
+        requete = self.lire_json_post(4096, cles_permises=champs | {"mode", "piece"})
+        if requete is None:
+            return
+        if (
+            not champs.issubset(requete) or type(requete["marge"]) is not bool
+            or any(not isinstance(requete[k], str) for k in champs - {"marge"})
+            or requete.get("mode", "vitesses") not in MODES
+            or ("piece" in requete and (not isinstance(requete["piece"], str) or len(requete["piece"]) > 256))
+            or not re.fullmatch(r"P[0-9]+", requete["preparation"])
+            or not re.fullmatch(r"[0-9a-f]{64}", requete["sha256"])
+        ):
+            return self.repondre(400, {"erreur": "Préparation ou empreinte invalide."})
+        if not _VERROU_PREPARATION.acquire(blocking=False):
+            return self.repondre(429, {"erreur": "Une analyse est en cours. Réessayez après sa fin."})
+        try:
+            resultat = comparaison_projet(
+                self.racine, requete["projet"], requete["preparation"], requete["sha256"], requete["marge"],
+                mode=requete.get("mode", "vitesses"),
+                piece=requete.get("piece"),
+            )
+        except (ValueError, OSError, KeyError, RuntimeError) as exc:
+            return self.repondre(400, {"erreur": str(exc)})
+        finally:
+            _VERROU_PREPARATION.release()
+        return self.repondre(200, resultat)
+
+    def enregistrer_observation(self):
+        """Archive un constat confirmé dans le projet privé, sans action sur l’impression."""
+        from benchab.visualisation.atelier_preparation import enregistrer_observation
+
+        champs = {"projet", "preparation", "sha256", "piece", "defaut", "zone", "photo", "texte"}
+        demande = self.lire_json_post(16384, cles_permises=champs)
+        if demande is None:
+            return
+        if set(demande) != champs or any(
+            not isinstance(demande[k], str) for k in ("projet", "preparation", "sha256")
+        ):
+            return self.repondre(400, {"erreur": "Préparation ou observation incomplète."})
+        if not _VERROU_PREPARATION.acquire(blocking=False):
+            return self.repondre(429, {"erreur": "Une analyse est en cours. Réessayez après sa fin."})
+        try:
+            observation = enregistrer_observation(
+                self.racine, demande["projet"], demande["preparation"], demande["sha256"],
+                demande["piece"], demande["defaut"], demande["zone"], demande["photo"], demande["texte"],
+            )
+        except (ValueError, OSError, KeyError, RuntimeError) as erreur:
+            return self.repondre(400, {"erreur": str(erreur)})
+        finally:
+            _VERROU_PREPARATION.release()
+        return self.repondre(201, {"id": observation["id"]})
+
+    def enregistrer_conception(self):
+        """Ajoute une version privée paramétrique par action explicite."""
+        from benchab.visualisation.atelier_preparation import enregistrer_bibliotheque
+
+        demande = self.lire_json_post(1024, cles_permises={"modele", "cote", "jeu", "parent"})
+        if demande is None:
+            return None
+        if not {"modele", "cote", "jeu"} <= demande.keys() or not isinstance(demande["modele"], str) or any(
+            type(demande[k]) not in (int, float) for k in ("cote", "jeu")
+        ):
+            return self.repondre(400, {"erreur": "Modèle et cotes numériques requis."})
+        if not _VERROU_PREPARATION.acquire(blocking=False):
+            return self.repondre(429, {"erreur": "Une analyse est en cours."})
+        try:
+            resultat = enregistrer_bibliotheque(
+                self.racine, demande["modele"], demande["cote"], demande["jeu"], demande.get("parent"),
+            )
+        except (ValueError, OSError, KeyError, TypeError, RuntimeError, OverflowError) as erreur:
+            return self.repondre(400, {"erreur": str(erreur)})
+        finally:
+            _VERROU_PREPARATION.release()
+        return self.repondre(200, resultat)
 
     def cloud_lecture(self):
         """Traite un objet Cloud JSON de 8192 octets max ; lecture seule, aucune commande machine."""
@@ -507,6 +741,18 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         """Route les POST connus vers leur lecteur JSON local ; réponses HTTP 4xx sur requête invalide."""
+        if urllib.parse.urlparse(self.path).path == "/__preparation":
+            return self.preparation_import()
+        if urllib.parse.urlparse(self.path).path == "/__preparation_annuler":
+            return self.annuler_import()
+        if urllib.parse.urlparse(self.path).path == "/__preparation_progression":
+            return self.progression_import()
+        if urllib.parse.urlparse(self.path).path == "/__conception_enregistrer":
+            return self.enregistrer_conception()
+        if urllib.parse.urlparse(self.path).path == "/__preparation_comparer":
+            return self.comparer_preparation()
+        if urllib.parse.urlparse(self.path).path == "/__preparation_observation":
+            return self.enregistrer_observation()
         if urllib.parse.urlparse(self.path).path == "/__decoupe":
             return self.decoupe()
         if urllib.parse.urlparse(self.path).path == "/__cloud_lecture":
