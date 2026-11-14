@@ -350,5 +350,9 @@ def resumer(rapport, sortie):
         "rapport": str(sortie),
         "compteurs_par_statut": dict(Counter(c["statut"] for c in rapport["compteurs"])),
         "diagnostics_dans_rapport": len(rapport["erreurs"]),
+        # Conserver la raison agrégée sans exposer les sources des événements privés (#73).
+        "motifs_non_verifies": dict(Counter(
+            motif for compteur in rapport["compteurs"] for motif in compteur.get("motifs_non_verifies", [])
+        )),
         "validation_physique": rapport["validation_physique"],
     }
