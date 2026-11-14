@@ -233,6 +233,20 @@ def test_resume_entretien_garde_le_warn_et_le_rapport_complet(tmp_path, capsys):
     assert len(court) < len(ancien) and "u-1" not in court
 
 
+def test_resume_entretien_compte_les_motifs_sans_exposer_les_evenements(tmp_path, capsys):
+    """Une période incomplète est visible dans le résumé sans identité d’usage."""
+    historique = _ecrire_historique(tmp_path)
+    donnees = json.loads(historique.read_text())
+    donnees["couverture"] = "INCOMPLETE"
+    historique.write_text(json.dumps(donnees))
+    sortie = tmp_path / "bilan.json"
+    assert cli.main(["--prive", str(tmp_path), "controle", "entretien", "--historique",
+                     str(historique), "--resume", "--sortie", str(sortie)]) == 2
+    court = capsys.readouterr().out
+    assert json.loads(court)["motifs_non_verifies"] == {"COUVERTURE_INCOMPLETE": 1}
+    assert "u-1" not in court
+
+
 def _couverture_extrudeur():
     """Déclare une période fictive sourcée pour le seul compteur de masse."""
     return {
