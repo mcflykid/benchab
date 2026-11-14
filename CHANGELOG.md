@@ -2,7 +2,7 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
-## Prochaine version
+## 1.37.0
 
 - L’atelier compare une autre face et un témoin sans supports lorsque la source le permet. Un bilan incomplet reste à l’étude. L’aperçu identifie le G-code exact et distingue la présence des supports de leur retrait (#327, #328).
 - L’arrêt d’un contrôle ferme le flux G-code avant son archive. Un bloc d’objet incohérent est signalé avec sa plaque et sa première ligne en cause (#329, #330).
