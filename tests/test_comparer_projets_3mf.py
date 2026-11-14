@@ -745,8 +745,9 @@ def projets_production(tmp_path):
                 })
 
         def xml(element):
-            return ET.tostring(element).replace(b"<ns0:model ", b'<ns0:model xmlns:prod="' +
-                                               PROD[1:-1].encode() + b'" ', 1)
+            contenu = ET.tostring(element)
+            debut, suite = contenu.split(b">", 1)
+            return debut + b' xmlns:prod="' + PROD[1:-1].encode() + b'">' + suite
 
         membres.update({
             "3D/3dmodel.model": xml(modele),
