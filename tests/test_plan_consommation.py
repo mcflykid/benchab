@@ -12,7 +12,6 @@ from benchab.fabrication import preparation as PR
 from benchab.projets.envois import enregistrer as enregistrer_envoi
 from benchab.projets.plan_consommation import estimer_retour
 from benchab.projets.preparations import enregistrer as enregistrer_preparation
-from benchab.projets.retours import confirmer
 
 
 class PlanConsommation(unittest.TestCase):
