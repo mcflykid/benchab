@@ -325,3 +325,16 @@ de trajets de support. Les dessous horizontaux de ce témoin ne
 discriminent pas les deux angles. Les sources et les 646 profils
 relus gardent leurs empreintes. La tenue et le retrait restent
 à mesurer (#89).
+
+### Angle de déclenchement sur des dessous inclinés
+
+Un second témoin comporte trois dessous inclinés à 32,48°, 52,40°
+et 73,58° par rapport au plateau, mesurés sur les faces modélisées.
+En organique, relever `support_threshold_angle` de 45 à 65° ajoute
+2 109,4 mm d’axes de support dans la boîte sous le dessous à 52,40°.
+La boîte sous le dessous à 32,48° passe de 1 905,1 à 2 002,6 mm
+et celle à 73,58° reste sans dépôt de support. La plaque passe de
+3,20 à 3,41 g et de 1 149 à 1 185 s estimés. La médiane Z estimée
+reste à 0,40 mm. Seul l’angle seuil diffère dans les réglages
+avant et après tranchage. Le rejeu concorde hors date et les sources
+et les 646 profils relus gardent leurs empreintes (#89).
