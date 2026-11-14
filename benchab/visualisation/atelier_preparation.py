@@ -2,8 +2,12 @@
 
 import argparse
 import json
+import os
+import re
+import stat
 from collections import Counter, defaultdict
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import urlencode
@@ -92,6 +96,8 @@ def _lire_3mf(source, *, annule=None):
         "spiral_mode",
         "enable_support",
         "support_type",
+        "support_critical_regions_only",
+        "support_on_build_plate_only",
         "wall_loops",
         "top_shell_layers",
         "top_shell_thickness",
@@ -318,8 +324,9 @@ def construire(source, *, unites=None, sha_attendu=None, nom_source=None, contex
         vue.modele(f"partie_{i}", mesh, couleur="#b6c7df", max_faces=MAX_FACES_VUE)
         vue.piece(nom_piece, f"partie_{i}", info=f"Plaque {plaque}" if plaque is not None else "Plaque non vérifiée")
         onglets[nom_piece] = plaque
+        selectionnee = (plaque_cible is None or plaque == plaque_cible) and (piece_cible is None or i == piece_cible)
         try:
-            if (plaque_cible is not None and plaque != plaque_cible) or (piece_cible is not None and i != piece_cible):
+            if not selectionnee:
                 raise ValueError("Pièce hors du périmètre demandé.")
             diagnostic = carte_risques.mesurer(
                 mesh, nom_piece, nom_source, sha, seuil_epaisseur_mm=largeur, annule=annule,
@@ -337,11 +344,13 @@ def construire(source, *, unites=None, sha_attendu=None, nom_source=None, contex
             }
         if plaque is not None and diagnostic.get("maillage_ferme"):
             try:
-                diagnostic["orientation_indicative"] = carte_risques.orientation_indicative(mesh)
+                diagnostic["orientation_indicative"] = carte_risques.orientation_indicative(mesh, annule=annule)
+            except carte_risques.AnalyseAnnulee:
+                raise
             except (ValueError, RuntimeError):
                 diagnostic["orientation_indicative"] = None
         diagnostic.update(plaque=plaque, identite_3mf=identite, faces_source=len(mesh.faces),
-                          affichage_allege=len(mesh.faces) > MAX_FACES_VUE)
+                          affichage_allege=len(vue.modeles[f"partie_{i}"]["maillage"].faces) < len(mesh.faces))
         vue.diagnostics.append(diagnostic)
         propositions.extend(_propositions(diagnostic, params))
     plaques = sorted({p for p in onglets.values() if p is not None})
@@ -381,6 +390,13 @@ def construire(source, *, unites=None, sha_attendu=None, nom_source=None, contex
                                                                         profil_debit=profil_debit)]
         if _couches_admissibles(objets, params, overrides):
             intentions.append("couches-variables")
+    pieces_orientables = [
+        d["piece"] for d in vue.diagnostics
+        if d.get("orientation_indicative") and d["plaque"] is not None
+        and d["identite_3mf"]["unite_source"] == "millimeter"
+        and d["identite_3mf"]["transformations"][0].get("transform_3mf") is not None
+        and sum(o[3]["build_item"] == d["identite_3mf"]["build_item"] for o in objets) == 1
+    ] if not overrides and all(o[2] is not None for o in objets) else []
     vue.atelier = {
         "reference": nom_source,
         "reglages": [
@@ -402,15 +418,11 @@ def construire(source, *, unites=None, sha_attendu=None, nom_source=None, contex
             "diagnostic-debit" if variante is not None else
             "vitesses" if any(v.get("apres_mm_s", 0) < v.get("avant_mm_s", 0) for v in vitesses) else
             "haut-debit" if "haut-debit" in intentions else
+            # Avec une seule pièce admissible, aucune sélection utilisateur n’est nécessaire (#328).
+            "orientation" if len(objets) == 1 and pieces_orientables and params else
             "qualite-supports" if procede else "reference" if params else None
         ),
-        "pieces_orientables": [
-            d["piece"] for d in vue.diagnostics
-            if d.get("orientation_indicative") and d["plaque"] is not None
-            and d["identite_3mf"]["unite_source"] == "millimeter"
-            and d["identite_3mf"]["transformations"][0].get("transform_3mf") is not None
-            and sum(o[3]["build_item"] == d["identite_3mf"]["build_item"] for o in objets) == 1
-        ] if not overrides and all(o[2] is not None for o in objets) else [],
+        "pieces_orientables": pieces_orientables,
     }
     if annule is not None and annule():
         raise ValueError("Analyse annulée.")
@@ -446,7 +458,11 @@ class _PageHorsCache(Exception):
 
 def import_html(contenu, nom, unites, *, annule=None, progression=None, plaque_cible=None, piece_cible=None,
                 prive=None, comparaison_auto=False):
-    """Analyse les octets fournis ; tranche une copie temporaire du 3MF si demandé."""
+    """Analyse les octets fournis ; peut trancher une copie temporaire du 3MF entier.
+
+    Pour une plaque ou pièce ciblée, garde l’aperçu et omet le tranchage automatique.
+    Les unités du STL/OBJ sont explicites ; aucune modification de la source.
+    """
     suffixe = Path(nom).suffix.lower()
     if not nom or len(nom) > 250 or Path(nom).name != nom or "\\" in nom or suffixe not in (".3mf", ".stl", ".obj"):
         raise ValueError("Nom ou format de modèle invalide.")
@@ -455,7 +471,10 @@ def import_html(contenu, nom, unites, *, annule=None, progression=None, plaque_c
         source.write_bytes(contenu)
         vue = construire(source, unites=unites, nom_source=nom, annule=annule, progression=progression,
                          plaque_cible=plaque_cible, piece_cible=piece_cible, prive=prive)
-        if comparaison_auto and suffixe == ".3mf":
+        if plaque_cible is not None or piece_cible is not None:
+            # Une demande ciblée borne les mesures ; le trancheur, lui, traiterait toutes les plaques.
+            vue.atelier["etat_comparaison"] = "Mesures ciblées. Aucun tranchage automatique pour cette sélection."
+        elif comparaison_auto and suffixe == ".3mf":
             mode = vue.atelier["mode_conseille"]
             with Archive3MF(source) as archive:
                 deja_tranche = any(n.casefold().endswith(".gcode") for n in archive.noms())
@@ -503,8 +522,90 @@ def accueil(root, projet=None):
         )
         if liens:
             liens = "<h2>Préparations conservées</h2><div class='actions'>" + liens + "</div>"
-    corps = corps.replace("__PREPARATIONS__", liens)
+    versions = json.dumps(historique_bibliotheque(root), ensure_ascii=True).replace("<", "\\u003c")
+    corps = corps.replace("__PREPARATIONS__", liens).replace("__VERSIONS_CONCEPTION__", versions)
     return document("Atelier de préparation", corps)
+
+
+def _lire_archive_conception(dossier, nom, limite):
+    """Lit un fichier régulier épinglé, au plus limite octets, sans suivre de lien."""
+    fd = os.open(nom, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dossier)
+    with os.fdopen(fd, "rb") as fichier:
+        info = os.fstat(fichier.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limite:
+            raise ValueError("Archive de conception hors budget ou irrégulière.")
+        donnees = fichier.read(limite + 1)
+        if len(donnees) != info.st_size:
+            raise ValueError("Archive de conception modifiée pendant la lecture.")
+        return donnees
+
+
+def _version_conception(base, identifiant, *, stl=False):
+    """Relit la fiche cotée (mm), et éventuellement les octets du STL liés par SHA."""
+    from benchab.visualisation.stockage_commentaires import ouvrir_dossier
+
+    if not re.fullmatch(r"[0-9a-f]{32}", identifiant):
+        raise ValueError("Version de conception invalide.")
+    dossier = ouvrir_dossier(base / identifiant)
+    try:
+        registre = json.loads(_lire_archive_conception(dossier, "registre.json", 1_048_576))
+        if not isinstance(registre, list) or not registre:
+            raise ValueError("Registre de conception invalide.")
+        ligne = registre[-1]
+        fiche = _lire_archive_conception(dossier, "cotes.json", 16_384)
+        if ligne["id"] != identifiant or ligne["source"] != {
+            "fichier": f"{identifiant}/cotes.json", "sha256": sha256(fiche).hexdigest(),
+        }:
+            raise ValueError("La fiche a changé depuis son archivage.")
+        cotes = json.loads(fiche)
+        modele = cotes["modele"]
+        if modele not in ("boite", "clip", "temoin", "fixation"):
+            raise ValueError("Famille de conception inconnue.")
+        version = {
+            "id": identifiant, "modele": modele, "cote": str(cotes["cote_mm"]),
+            "jeu": str(cotes["jeu_nominal_mm"] if modele in ("boite", "clip") else 0.3),
+        }
+        if not stl:
+            return version, None
+        contenu = _lire_archive_conception(dossier, "piece.stl", MAX_EXPORT_NAVIGATEUR)
+        if sha256(contenu).hexdigest() != cotes["stl_sha256"]:
+            raise ValueError("Le STL a changé depuis son archivage.")
+        return version, contenu
+    finally:
+        os.close(dossier)
+
+
+def historique_bibliotheque(root):
+    """Liste les 12 dernières fiches privées lisibles, cotes en mm, sans écriture."""
+    from benchab.chemins import sans_lien
+
+    try:
+        base = sans_lien(Path(root) / "conceptions" / "bibliotheque", racine=root)
+        archives = sorted(
+            ((p.lstat().st_mtime_ns, p.name) for p in base.iterdir() if re.fullmatch(r"[0-9a-f]{32}", p.name)),
+            reverse=True,
+        )
+    except (OSError, ValueError):
+        return []
+    versions = []
+    for _, identifiant in archives[:100]:
+        try:
+            version, _ = _version_conception(base, identifiant)
+            versions.append(version)
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+        if len(versions) == 12:
+            break
+    return versions
+
+
+def stl_bibliotheque_archive(root, identifiant):
+    """Renvoie les octets du STL archivé en mm et sa famille, sans régénération ni écriture."""
+    from benchab.chemins import sans_lien
+
+    base = sans_lien(Path(root) / "conceptions" / "bibliotheque", racine=root)
+    version, contenu = _version_conception(base, identifiant, stl=True)
+    return contenu, version["modele"]
 
 
 def bibliotheque(modele, cote_mm, jeu_mm, *, format_stl=False, format_fiche=False):
@@ -516,12 +617,10 @@ def bibliotheque(modele, cote_mm, jeu_mm, *, format_stl=False, format_fiche=Fals
     pieces = generer(modele, cote_mm, jeu_mm)
     contenu = trimesh.util.concatenate(list(pieces.values())).export(file_type="stl")
     if format_fiche:
-        import hashlib
-
         rapport = {
             "schema": 1, "modele": modele, "cote_mm": cote_mm,
-            "jeu_nominal_mm": jeu_mm if modele != "temoin" else None,
-            "stl_sha256": hashlib.sha256(contenu).hexdigest(),
+            "jeu_nominal_mm": jeu_mm if modele in ("boite", "clip") else None,
+            "stl_sha256": sha256(contenu).hexdigest(),
             "pieces": [
                 {"nom": nom, "dimensions_mm": mesh.extents.tolist(), "volume_mm3": mesh.volume}
                 for nom, mesh in pieces.items()
@@ -532,20 +631,39 @@ def bibliotheque(modele, cote_mm, jeu_mm, *, format_stl=False, format_fiche=Fals
                     "boite": ("Créer le corps", "Soustraire le volume intérieur", "Ajouter l’emboîtement au couvercle"),
                     "clip": ("Construire la languette", "Ajouter la rampe"),
                     "temoin": ("Créer la plaque", "Soustraire les empreintes de la série de jeux"),
+                    "fixation": ("Créer le plat", "Percer deux passages verticaux"),
                 }[modele]
             ] + [{"type": "Poser les pièces sur le plan Z = 0"}],
         }
+        if modele == "boite":
+            # L'emboîtement est mesuré sur les solides générés. Aucun jeu physique n'est déduit (#324).
+            corps, couvercle = pieces["Boîte"], pieces["Couvercle"]
+            ouverture = corps.vertices[corps.vertices[:, 2] == corps.bounds[1, 2]]
+            haut = couvercle.vertices[couvercle.vertices[:, 2] == couvercle.bounds[1, 2]]
+            import numpy as np
+
+            largeur = float(np.min(np.abs(ouverture[:, 0])) * 2)
+            insert = float(np.ptp(haut[:, 0]))
+            jeu_mesure = (largeur - insert) / 2
+            rapport["controle_emboitement_nominal"] = {
+                "statut": "PASS" if abs(jeu_mesure - jeu_mm) <= 1e-4 else "FAIL",
+                "jeu_par_face_mm": round(jeu_mesure, 5),
+                "ouverture_mm": round(largeur, 5),
+                "insert_mm": round(insert, 5),
+            }
         return json.dumps(rapport, indent=2, ensure_ascii=False, allow_nan=False).encode()
     if format_stl:
         return contenu
     titre = f"{modele.capitalize()} · cote {cote_mm:g} mm"
-    titre += f" · jeu nominal {jeu_mm:g} mm" if modele != "temoin" else " · série de jeux étagés"
+    if modele in ("boite", "clip"):
+        titre += f" · jeu nominal {jeu_mm:g} mm"
+    elif modele == "temoin":
+        titre += " · série de jeux étagés"
     return import_html(contenu, titre + ".stl", "mm")
 
 
 def enregistrer_bibliotheque(root, modele, cote_mm, jeu_mm, parent=None):
     """Archive une exploration et sa filiation privée, avec STL et fiche cotée en mm."""
-    import re
     from uuid import uuid4
 
     from benchab.chemins import sans_lien
@@ -555,8 +673,6 @@ def enregistrer_bibliotheque(root, modele, cote_mm, jeu_mm, parent=None):
     fiche = bibliotheque(modele, cote_mm, jeu_mm, format_fiche=True)
     stl = bibliotheque(modele, cote_mm, jeu_mm, format_stl=True)
     donnees = json.loads(fiche)
-    from hashlib import sha256
-
     if sha256(stl).hexdigest() != donnees["stl_sha256"]:
         raise ValueError("La génération a changé entre la fiche et le STL.")
     identifiant = uuid4().hex
@@ -683,7 +799,7 @@ def preparation_projet(root, nom, ident):
     return html(cible, sha_attendu=sha, prive=root, contexte={"projet": nom, "preparation": ident})
 
 
-def _choisir_pose(objets, surcharges, piece=None):
+def _choisir_pose(objets, surcharges, piece=None, *, annule=None):
     """Résout l’instance demandée et les voisines immobiles de sa plaque, en mm."""
     if surcharges or not objets or any(o[2] is None for o in objets):
         raise ValueError("Les plaques doivent être identifiées et les surcharges résolues.")
@@ -697,7 +813,7 @@ def _choisir_pose(objets, surcharges, piece=None):
         raise ValueError("La pièce doit déclarer une pose explicite en millimètres.")
     if sum(o[3]["build_item"] == identite["build_item"] for o in objets) != 1:
         raise ValueError("La pièce sélectionnée partage son instance avec un autre maillage.")
-    proposition = carte_risques.orientation_indicative(mesh)
+    proposition = carte_risques.orientation_indicative(mesh, annule=annule)
     if not proposition:
         raise ValueError("Aucune autre pose vérifiable dans la zone d’étude.")
     plaques = {o[2] for o in objets}
@@ -763,6 +879,7 @@ def _comparer_source(cible, attendu, root, marge, mode, piece, *, annule=None, d
         INTENTIONS,
         MODES,
         comparer,
+        temoin_supports_desactives,
         variante_intention,
         variante_locale,
         variantes_procede,
@@ -778,7 +895,9 @@ def _comparer_source(cible, attendu, root, marge, mode, piece, *, annule=None, d
         return comparer(cible, attendu, [], reference_seule=True, **options)
     objets, params, _, surcharges = _lire_3mf(cible, annule=annule)
     if mode == "orientation":
-        return comparer(cible, attendu, [], orientation=_choisir_pose(objets, surcharges, piece), **options)
+        temoin = temoin_supports_desactives(params, surcharges)
+        return comparer(cible, attendu, [], orientation=_choisir_pose(objets, surcharges, piece, annule=annule),
+                        temoin_sans_support=temoin, **options)
     if mode == "qualite-supports":
         return comparer(cible, attendu, [], procede=variantes_procede(params, surcharges), **options)
     if mode == "couches-variables":
@@ -844,6 +963,7 @@ def main(argv=None, *, prive=None):
             if args.comparer:
                 from benchab.visualisation.comparaison_atelier import (
                     comparer,
+                    temoin_supports_desactives,
                     variante_intention,
                     variante_locale,
                     variantes_procede,
@@ -851,6 +971,7 @@ def main(argv=None, *, prive=None):
 
                 variante = None
                 orientation = None
+                temoin = None
                 couches = None
                 profil_debit_sha = None
                 procede = [] if args.qualite_supports else None
@@ -860,6 +981,7 @@ def main(argv=None, *, prive=None):
                     objets, params, _, surcharges = _lire_3mf(args.source)
                     if args.orientation:
                         orientation = _choisir_pose(objets, surcharges, args.piece)
+                        temoin = temoin_supports_desactives(params, surcharges)
                     elif args.qualite_supports:
                         procede = variantes_procede(params, surcharges)
                     elif args.intention == "couches-variables":
@@ -877,6 +999,7 @@ def main(argv=None, *, prive=None):
                     marge=args.avec_marge, prive=prive, variante=variante, procede=procede,
                     dossier_exports=dossier if args.exporter_variantes else None,
                     orientation=orientation,
+                    temoin_sans_support=temoin,
                     couches=couches,
                     profil_debit_sha=profil_debit_sha,
                 )

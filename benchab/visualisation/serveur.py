@@ -334,11 +334,12 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
             return self.repondre(200, {"serveur": "visionneuses", "racine": self.racine.name,
                                        "racine_sha256": _identite_racine(self.racine)})
         if u.path == "/bibliotheque-atelier":
-            from benchab.visualisation.atelier_preparation import bibliotheque
+            from benchab.visualisation.atelier_preparation import bibliotheque, stl_bibliotheque_archive
 
             params = urllib.parse.parse_qs(u.query)
             modele = params.get("modele", [""])[0]
             export = params.get("sortie", [None])[0]
+            version = params.get("version", [None])[0]
             def produire():
                 """Construit les mêmes pièces pour l’aperçu et pour le téléchargement STL."""
                 return bibliotheque(
@@ -350,9 +351,16 @@ class Gestion(http.server.SimpleHTTPRequestHandler):
                 if not _VERROU_PREPARATION.acquire(blocking=False):
                     return self.repondre(429, {"erreur": "Une analyse est en cours. Réessayez après sa fin."})
                 try:
-                    body = produire()
-                except (ValueError, RuntimeError) as erreur:
-                    return self.repondre(400, {"erreur": str(erreur)})
+                    if version is not None:
+                        if export != "stl":
+                            raise ValueError("Seul le STL archivé est téléchargeable ici.")
+                        body, modele = stl_bibliotheque_archive(self.racine, version)
+                    else:
+                        body = produire()
+                except (ValueError, RuntimeError, OSError, TypeError, KeyError):
+                    if version is not None:
+                        return self.repondre(400, {"erreur": "STL archivé introuvable ou modifié."})
+                    return self.repondre(400, {"erreur": "Modèle ou cotes incompatibles."})
                 finally:
                     _VERROU_PREPARATION.release()
                 self.send_response(200)

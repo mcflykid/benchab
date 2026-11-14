@@ -91,6 +91,7 @@ def _epaisseur(mesh, contexte, seuil, annule=None):
         "rayons_valides": len(observations),
         "rayons_lances": NB_RAYONS,
         "seuil_mm": seuil,
+        "methode": "Première intersection sur la normale intérieure, sur points tirés à la surface.",
         "detail": f"{len(observations)}/{NB_RAYONS} rayons exploitables. {limite}",
     }, list(alertes.values())
 
@@ -137,28 +138,86 @@ def _assise(mesh, contexte, plan):
     )
     # La surbrillance borne ses triangles, le polygone d’assise est mesuré sur tous.
     repere["surfaces_mm"] = triangles[ids[:128]].tolist()
-    return {"statut": statut, "aire_mm2": aire, "marge_centre_mm": marge, "detail": limite}, [repere]
+    return {
+        "statut": statut, "aire_mm2": aire, "marge_centre_mm": marge,
+        "tolerance_plan_mm": TOLERANCE_PLAN_MM,
+        "methode": "Union XY des faces au niveau du plateau.",
+        "detail": limite,
+    }, [repere]
 
 
-def orientation_indicative(mesh):
-    """Compare la pose source et une pose sur une face en mm², sans déplacer la pièce."""
+def orientation_indicative(mesh, *, annule=None):
+    """Compare la pose source et des faces d’appui en mm², sans déplacer la pièce."""
     from benchab.controles.orientations_supports import mesure_rapide, pose
 
-    if len(mesh.faces) > 20_000 or not mesh.is_volume:
+    if len(mesh.faces) > 1_000_000 or not mesh.is_volume:
         return None
+    # Sur les maillages denses, qualifier une shortlist par échantillonnage de
+    # surface. La pose et les mesures finales s’appliquent au maillage source (#322).
+    densite_elevee = len(mesh.faces) > 20_000
+    if densite_elevee:
+        support_geometrique = mesh.convex_hull
+        verifier_annulation(annule)
+        ech = np.random.default_rng(1).choice(len(mesh.faces), 16_384, p=mesh.area_faces / mesh.area)
+        centres, normales = mesh.triangles_center[ech], mesh.face_normals[ech]
+        candidats = []
+        ordre = np.argsort(-support_geometrique.facets_area, kind="stable")
+        directions = support_geometrique.facets_normal[ordre]
+        directions = directions[directions[:, 2] >= -0.95][:12]
+        for direction in directions:
+            verifier_annulation(annule)
+            z = (support_geometrique.vertices @ direction).max() - centres @ direction
+            n = normales @ direction
+            if not np.any((z < 0.6) & (n > 0.9)):
+                continue
+            sur = (z > 0.4) & (n > np.cos(np.deg2rad(50)))
+            candidats.append((float(np.sum(z[sur] * n[sur])), direction))
+        if not candidats:
+            return None
+        _, direction = min(candidats, key=lambda entree: entree[0])
+        transformation, tient = pose(support_geometrique, direction)
+        if not tient:
+            return None
+        verifier_annulation(annule)
+        alternative = mesh.copy().apply_transform(transformation)
+        return {
+            "triangle_source": None,
+            "surface_surplomb_source_mm2": float(mesh.area_faces[faces_surplomb(mesh)].sum()),
+            "surface_surplomb_alternative_mm2": float(alternative.area_faces[faces_surplomb(alternative)].sum()),
+            "assise_alternative_mm2": mesure_rapide(alternative)["appui_mm2"],
+            "directions_evaluees": len(candidats),
+            "classement_echantillonne": len(ech),
+            "transformation_mm": transformation.tolist(),
+        }
     faces = np.argsort(-mesh.area_faces, kind="stable")
-    face = next((i for i in faces if abs(mesh.face_normals[i, 2]) < 0.95), None)
-    if face is None:
+    directions = []
+    essais = []
+    for face in faces:
+        direction = mesh.face_normals[face]
+        # Les triangles coplanaires ne doivent pas épuiser le budget de poses (#328).
+        if direction[2] < -0.95 or any(np.dot(direction, d) > 0.985 for d in directions):
+            continue
+        verifier_annulation(annule)
+        directions.append(direction)
+        transformation, tient = pose(mesh, direction)
+        if tient:
+            alternative = mesh.copy().apply_transform(transformation)
+            bilan = mesure_rapide(alternative)
+            if bilan["appui_mm2"] > 0:
+                note = (bilan["indice_support_mm3"], -bilan["appui_mm2"], int(face))
+                essais.append((*note, transformation, alternative))
+        if len(directions) == 12:
+            break
+    if not essais:
         return None
-    transformation, tient = pose(mesh, mesh.face_normals[face])
-    if not tient:
-        return None
-    alternative = mesh.copy().apply_transform(transformation)
+    verifier_annulation(annule)
+    _, appui_inverse, face, transformation, alternative = min(essais, key=lambda e: e[:3])
     return {
         "triangle_source": int(face),
         "surface_surplomb_source_mm2": float(mesh.area_faces[faces_surplomb(mesh)].sum()),
         "surface_surplomb_alternative_mm2": float(alternative.area_faces[faces_surplomb(alternative)].sum()),
-        "assise_alternative_mm2": mesure_rapide(alternative)["appui_mm2"],
+        "assise_alternative_mm2": -appui_inverse,
+        "directions_evaluees": len(directions),
         "transformation_mm": transformation.tolist(),
     }
 
@@ -174,6 +233,7 @@ def mesurer(mesh, piece, source, sha256, *, plan_mm=0.0, seuil_epaisseur_mm=0.84
         raise ValueError("Coordonnées et seuil d’épaisseur finis requis.")
     topo = mesh.copy()
     topo.merge_vertices(digits_vertex=12)
+    ferme = bool(topo.is_watertight)
     verifier_annulation(annule)
     if plan_mm is None:
         sur = {"faces_detectees": 0, "anomalies": []}
@@ -198,12 +258,20 @@ def mesurer(mesh, piece, source, sha256, *, plan_mm=0.0, seuil_epaisseur_mm=0.84
             groupes = len(
                 surplombs_connexes.cartographier(pose, source=source, unite="mm", angle_max_deg=50)["groupes"]
             )
+        orientation_etablie = ferme and topo.is_winding_consistent and topo.volume > 0
+        # Des normales cohérentes sur une surface ouverte ne prouvent pas son extérieur.
+        reserve = "" if orientation_etablie else "Maillage ouvert ou orientation incertaine. "
         mesure_sur = {
-            "statut": "WARN" if sur["faces_detectees"] else "PASS" if topo.is_winding_consistent else "NON VÉRIFIÉ",
+            "statut": (
+                "WARN" if sur["faces_detectees"] else "PASS" if orientation_etablie else "NON VÉRIFIÉ"
+            ),
             "surface_surplomb_mm2": float(pose.area_faces[faces_surplomb(pose)].sum()),
+            "methode": "Aire cumulée des faces descendantes au-dessus du plan.",
+            "seuil_angle_depuis_verticale_deg": 50.0,
+            "distance_min_plan_mm": 0.4,
             "detail": f"{sur['faces_detectees']} faces au-delà du plan ; {len(sur['anomalies'])} repères affichés. "
             f"Groupes descendants (assise comprise) : {groupes if groupes is not None else 'non vérifiés'}. "
-            "Portée de pont et trajectoires de support non vérifiées.",
+            f"{reserve}Portée de pont et trajectoires de support non vérifiées.",
         }
     verifier_annulation(annule)
     epaisseur, reperes = _epaisseur(topo, contexte, seuil_epaisseur_mm, annule)
@@ -214,5 +282,5 @@ def mesurer(mesh, piece, source, sha256, *, plan_mm=0.0, seuil_epaisseur_mm=0.84
         "faces_detectees": sur["faces_detectees"],
         "anomalies": sur["anomalies"] + reperes + appuis,
         "calques": {"surplomb": mesure_sur, "epaisseur": epaisseur, "assise": assise},
-        "maillage_ferme": bool(topo.is_watertight),
+        "maillage_ferme": ferme,
     }

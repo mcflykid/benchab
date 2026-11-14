@@ -274,6 +274,26 @@ class AutomatisationHTTP(unittest.TestCase):
     setUp = Serveur.setUp
     tearDown = Serveur.tearDown
 
+    def test_conception_reprise_sans_historique_navigateur(self):
+        """Une nouvelle page retrouve la version privée et son STL exact ; elle refuse un STL altéré."""
+        status, version = self.requete(
+            "/__conception_enregistrer", {"modele": "clip", "cote": 20, "jeu": 0.3},
+        )
+        self.assertEqual(status, 200)
+        ident = version["id"]
+        base = f"http://127.0.0.1:{self.srv.server_port}"
+        with urllib.request.urlopen(base + "/atelier?vue=preparation") as response:
+            self.assertIn(ident, response.read().decode())
+        chemin = Path(self.t.name) / "conceptions" / "bibliotheque" / ident / "piece.stl"
+        url = base + f"/bibliotheque-atelier?version={ident}&sortie=stl"
+        with urllib.request.urlopen(url) as response:
+            self.assertEqual(response.read(), chemin.read_bytes())
+            self.assertIn("attachment", response.headers["Content-Disposition"])
+        chemin.write_bytes(b"STL modifie")
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(url)
+        self.assertEqual(caught.exception.code, 400)
+
     def requete(self, path, data, origin=True):
         import http.client
         import json

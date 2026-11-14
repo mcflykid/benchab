@@ -4,6 +4,10 @@ Historique des versions publiques ; les tags Git identifient les candidates livr
 
 ## Prochaine version
 
+- L’atelier compare une autre face et un témoin sans supports lorsque la source le permet. Un bilan incomplet reste à l’étude. L’aperçu identifie le G-code exact et distingue la présence des supports de leur retrait (#327, #328).
+- L’arrêt d’un contrôle ferme le flux G-code avant son archive. Un bloc d’objet incohérent est signalé avec sa plaque et sa première ligne en cause (#329, #330).
+- Le bilan localise les passages étroits et les supports enclavés à la résolution de sa grille. La carte indique la méthode et les seuils de mesure par calque (#318, #326).
+
 - L’atelier local analyse les modèles, affiche les zones à risque et compare les variantes au tranchage, y compris pour un 3MF déposé hors projet (#317, #318, #319, #320).
 - Les variantes 3MF sont relues au tranchage avec contrôle des plaques et conservation des membres géométriques peints. Un routage multimatière ambigu reste refusé (#321).
 - L’analyse locale peut être ciblée et annulée jusque dans le trancheur. Un constat confirmé rejoint les observations privées de sa préparation et la bibliothèque conserve la filiation des conceptions (#322, #323, #324).

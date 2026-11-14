@@ -157,6 +157,9 @@ def analyser(path, overrides=None, attendus=None):
                 if (m["type"] or "").casefold() in {"support", "support interface", "support transition"}:
                     depots_supports += 1
                     trajets_supports_mm += m["deposited_length"]
+                if it.first_object_error:
+                    # Les dépôts restent lisibles. Leur attribution après la rupture du bloc ne l’est plus (#330).
+                    continue
                 nom = m["object"]
                 if nom is not None:
                     nom = identity(nom)
@@ -261,6 +264,8 @@ def analyser(path, overrides=None, attendus=None):
                     "plafond": cap,
                     "objets": objects,
                     "erreurs": errors,
+                    **({"premier_bloc_objet_incoherent": {"plaque": k, **it.first_object_error}}
+                       if it.first_object_error else {}),
                     "mesure_incomplete": ambigu or bool(missing) or not samples or bool(it.errors),
                     "incoherence_etablie": any(
                         erreur not in it.errors
@@ -300,6 +305,10 @@ def _resume(resultat, cible):
             "plaque": plaque["plaque"], "conforme": plaque["conforme"],
             "erreurs": [erreur[:240] for erreur in erreurs[:3]],
         }
+        if diagnostic := plaque.get("premier_bloc_objet_incoherent"):
+            ligne["premier_bloc_objet_incoherent"] = {
+                cle: valeur[:120] if isinstance(valeur, str) else valeur for cle, valeur in diagnostic.items()
+            }
         if len(erreurs) > 3 or any(len(erreur) > 240 for erreur in erreurs[:3]):
             ligne["erreurs_tronquees"] = True
         premier_ecart = next(

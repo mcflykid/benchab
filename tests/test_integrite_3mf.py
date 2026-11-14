@@ -36,6 +36,38 @@ def test_mutation_non_declaree_refusee_sur_toutes_les_portees(tmp_path):
             integrite_3mf.verifier(avant, apres)
 
 
+def test_metadonnee_sans_cle_reste_integrale_et_inconnue(tmp_path):
+    """Une metadata sans clé garde ses attributs exacts et bloque toute réécriture inconnue."""
+    fichiers = [tmp_path / f"compte-{n}.3mf" for n in ("source", "copie", "modifie", "absent")]
+    modeles = [
+        '<config><object id="1"><metadata key="name" value="Piece"/>'
+        '<metadata face_count="1479542"/></object></config>',
+        '<config><object id="1"><metadata key="name" value="Piece"/>'
+        '<metadata face_count="1479542"/></object></config>',
+        '<config><object id="1"><metadata key="name" value="Piece"/>'
+        '<metadata face_count="1479543"/></object></config>',
+        '<config><object id="1"><metadata key="name" value="Piece"/></object></config>',
+    ]
+    for path, modele in zip(fichiers, modeles, strict=True):
+        with ZipFile(path, "w") as archive:
+            archive.writestr("Metadata/model_settings.config", modele)
+
+    etat, types = integrite_3mf.instantane(fichiers[0], avec_types=True)
+    cle = "objet/Piece/metadata_sans_cle"
+    assert etat[cle] == [
+        {"tag": "metadata", "attributs": {"face_count": "1479542"}, "texte": "", "enfants": []},
+    ]
+    assert types[cle]["type"] == "inconnu"
+    copie = integrite_3mf.verifier(fichiers[0], fichiers[1])
+    assert copie["statut"] == "PASS"
+    assert {"chemin": cle, "statut": "NON VÉRIFIÉ"} in copie["reglages_non_verifies"]
+
+    for destination in fichiers[2:]:
+        permis = integrite_3mf.difference(integrite_3mf.instantane(fichiers[0]), integrite_3mf.instantane(destination))
+        with pytest.raises(ValueError, match="type inconnu"):
+            integrite_3mf.verifier(fichiers[0], destination, permis)
+
+
 def test_objet_huit_et_projet_cinq_conserves_et_plan_exact(tmp_path):
     """Conserve 8/5 couches et exige les valeurs prévues ; PASS pour copie, FAIL si différence attendue manque."""
     a, b = tmp_path / "a.3mf", tmp_path / "b.3mf"

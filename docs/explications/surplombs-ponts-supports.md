@@ -90,6 +90,11 @@ ni tenue réelle des branches. Ne pas convertir un gain numérique en qualité
 physique. Préférer une autre orientation ou une géométrie autoportante si elle
 préserve l’usage, puis vérifier dimensions et montage.
 
+Sur un 3MF à plusieurs plaques, le comparateur de l’atelier détaille les
+parcours sans appui nominal par plaque. Une amélioration sur une plaque ne
+compense pas une dégradation sur une autre. Les tracés ne sont pas superposés
+si le repère local du G-code n’est pas recalé sur celui de l’aperçu.
+
 Pour un canal horizontal, un profil en goutte pointe vers le haut et des
 flancs inclinés peuvent supprimer un plafond difficile ; vérifier le dégagement
 utile sur toute la course. Pour un pont, surveiller l’accrochage initial et

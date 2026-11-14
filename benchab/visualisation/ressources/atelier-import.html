@@ -23,7 +23,8 @@ __PREPARATIONS__
   <summary>Créer une pièce paramétrique</summary>
   <form id="atelierParametres" action="/bibliotheque-atelier" method="get">
     <label>Modèle <select name="modele"><option value="boite">Boîte avec couvercle</option>
-      <option value="clip">Clip à languette</option><option value="temoin">Témoin de jeux</option></select></label>
+      <option value="clip">Clip à languette</option><option value="temoin">Témoin de jeux</option>
+      <option value="fixation">Plat de fixation à deux trous</option></select></label>
     <label>Cote de référence (mm) <input type="number" name="cote" min="8" max="80" step="0.1" value="20" required></label>
     <label>Jeu de la boîte ou du clip (mm) <input type="number" name="jeu" min="0.1" max="0.6" step="0.05" value="0.3" required></label>
     <button>Examiner la pièce</button>
@@ -32,45 +33,49 @@ __PREPARATIONS__
     <button type="button" id="atelierEnregistrerConception">Enregistrer cette version</button>
     <p id="atelierEtatConception" role="status"></p>
   </form>
-  <label for="atelierHistorique">Reprendre un jeu de cotes</label>
+  <label for="atelierHistorique">Reprendre une version enregistrée</label>
   <select id="atelierHistorique"><option value="">Choisir</option></select>
+  <p id="atelierLiensConception"></p>
 </details>
+<script type="application/json" id="atelierVersions">__VERSIONS_CONCEPTION__</script>
 <script>
-// Conserver seulement les cotes et la famille de pièce dans ce navigateur.
+// Les versions viennent de l’atelier privé ; changer de navigateur ne casse pas la filiation.
 const parametres = document.getElementById('atelierParametres');
 const historique = document.getElementById('atelierHistorique');
-const cleHistorique = 'benchab-bibliotheque-cotes-v1';
-let jeux = [];
+const liensConception = document.getElementById('atelierLiensConception');
+let jeux = JSON.parse(document.getElementById('atelierVersions').textContent);
 let parentConception = null;
-try {
-  const donnees = JSON.parse(localStorage.getItem(cleHistorique) || '[]');
-  if (Array.isArray(donnees)) jeux = donnees.filter(x => x && typeof x.modele === 'string' &&
-    typeof x.cote === 'string' && typeof x.jeu === 'string').slice(0, 12);
-} catch (_erreur) { /* Stockage facultatif. */ }
 function afficherHistorique() {
   historique.replaceChildren(new Option('Choisir', ''));
-  jeux.forEach((jeu, i) => historique.add(new Option(
-    jeu.modele + ' · ' + jeu.cote + ' mm · jeu ' + jeu.jeu + ' mm', String(i))));
+  jeux.forEach(jeu => {
+    const famille = parametres.elements.namedItem('modele').querySelector('option[value="' + jeu.modele + '"]');
+    const cotes = jeu.cote + ' mm' + (['boite', 'clip'].includes(jeu.modele) ? ' · jeu ' + jeu.jeu + ' mm' : '');
+    historique.add(new Option(famille.textContent + ' · ' + cotes, jeu.id));
+  });
+}
+function afficherLiensConception() {
+  liensConception.replaceChildren();
+  if (!parentConception) return;
+  const id = encodeURIComponent(parentConception);
+  const apercu = document.createElement('a');
+  apercu.href = '/conceptions/bibliotheque/' + id + '/atelier.html';
+  apercu.textContent = 'Ouvrir l’aperçu enregistré';
+  const stl = document.createElement('a');
+  stl.href = '/bibliotheque-atelier?version=' + id + '&sortie=stl';
+  stl.textContent = 'Télécharger le STL enregistré';
+  liensConception.append(apercu, ' · ', stl);
 }
 historique.onchange = () => {
-  if (historique.value === '') {
-    parentConception = null;
-    return;
-  }
-  const jeu = jeux[Number(historique.value)];
-  parentConception = typeof jeu.id === 'string' ? jeu.id : null;
-  for (const cle of ['modele', 'cote', 'jeu']) parametres.elements.namedItem(cle).value = jeu[cle];
+  const jeu = jeux.find(version => version.id === historique.value);
+  parentConception = jeu?.id || null;
+  if (jeu) for (const cle of ['modele', 'cote', 'jeu']) parametres.elements.namedItem(cle).value = jeu[cle];
+  afficherLiensConception();
 };
 parametres.elements.namedItem('modele').onchange = () => {
   parentConception = null;
   historique.value = '';
+  afficherLiensConception();
 };
-parametres.addEventListener('submit', () => {
-  const jeu = Object.fromEntries(new FormData(parametres));
-  jeux = [jeu, ...jeux.filter(x => JSON.stringify(x) !== JSON.stringify(jeu))].slice(0, 12);
-  try { localStorage.setItem(cleHistorique, JSON.stringify(jeux)); } catch (_erreur) { /* Stockage facultatif. */ }
-  afficherHistorique();
-});
 afficherHistorique();
 document.getElementById('atelierEnregistrerConception').onclick = async e => {
   if (!parametres.reportValidity()) return;
@@ -87,13 +92,10 @@ document.getElementById('atelierEnregistrerConception').onclick = async e => {
     if (!reponse.ok) throw new Error(resultat.erreur);
     parentConception = resultat.id;
     jeux = [{...jeu, id: resultat.id}, ...jeux].slice(0, 12);
-    try { localStorage.setItem(cleHistorique, JSON.stringify(jeux)); } catch (_erreur) { /* Facultatif. */ }
     afficherHistorique();
-    historique.value = '0';
-    const lien = document.createElement('a');
-    lien.href = '/conceptions/bibliotheque/' + encodeURIComponent(resultat.id) + '/atelier.html';
-    lien.textContent = 'Ouvrir la version enregistrée dans la préparation';
-    etat.replaceChildren(lien);
+    historique.value = resultat.id;
+    afficherLiensConception();
+    etat.textContent = 'Version enregistrée dans l’atelier privé.';
   } catch (erreur) {
     etat.textContent = erreur.message;
   } finally {
@@ -111,7 +113,6 @@ const annuler = document.getElementById('atelierAnnuler');
 const statut = document.getElementById('atelierEtat');
 const choixUnites = document.getElementById('atelierChoixUnites');
 let analyse;
-let identifiantAnalyse;
 function modeleChoisi() {
   if (analyse || !fichier.files.length) return;
   const est3mf = fichier.files[0].name.toLowerCase().endsWith('.3mf');
@@ -124,18 +125,32 @@ function modeleChoisi() {
   }
 }
 fichier.addEventListener('change', modeleChoisi);
+async function signalerAnnulation(enCours) {
+  if (enCours !== analyse || enCours.signalEnCours || enCours.annulationRecue) return;
+  enCours.signalEnCours = true;
+  try {
+    const reponse = await fetch('/__preparation_annuler', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({analyse: enCours.id}),
+    });
+    enCours.annulationRecue = reponse.ok && (await reponse.json()).annulation_demandee;
+  } catch (_erreur) {
+    // Le suivi réessaie tant que le serveur n’a pas confirmé la demande.
+  } finally {
+    enCours.signalEnCours = false;
+  }
+}
 annuler.onclick = () => {
-  if (!analyse) return;
-  fetch('/__preparation_annuler', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({analyse: identifiantAnalyse}),
-  }).catch(() => {});
-  analyse.abort();
+  if (!analyse || analyse.annulation) return;
+  analyse.annulation = true;
+  annuler.disabled = true;
+  statut.textContent = 'Arrêt demandé. Attente de la fin de l’analyse…';
+  void signalerAnnulation(analyse);
 };
 depot.addEventListener('dragover', e => e.preventDefault());
 depot.addEventListener('drop', e => {
   e.preventDefault();
-  if (bouton.disabled) return;
+  if (analyse) return;
   if (e.dataTransfer.files.length === 1) {
     fichier.files = e.dataTransfer.files;
     modeleChoisi();
@@ -143,6 +158,7 @@ depot.addEventListener('drop', e => {
 });
 formulaire.addEventListener('submit', async e => {
   e.preventDefault();
+  if (analyse) return;
   const modèle = fichier.files[0];
   if (!modèle) return;
   if (!modèle.name.toLowerCase().endsWith('.3mf') && !unites.value) {
@@ -150,44 +166,55 @@ formulaire.addEventListener('submit', async e => {
   }
   if (modèle.size > 128 * 1024 * 1024) { statut.textContent = 'Le fichier dépasse 128 Mio.'; return; }
   bouton.disabled = true;
+  fichier.disabled = true;
+  annuler.disabled = false;
   annuler.hidden = false;
-  analyse = new AbortController();
-  identifiantAnalyse = crypto.randomUUID();
+  const enCours = {id: crypto.randomUUID(), annulation: false};
+  analyse = enCours;
   statut.textContent = 'Analyse en cours…';
-  const identifiant = identifiantAnalyse;
   const suivre = setInterval(async () => {
+    if (analyse !== enCours) return;
+    // On garde la requête ouverte jusqu’à la libération du serveur, même si l’arrêt
+    // a été demandé avant l’enregistrement de l’analyse côté serveur.
+    if (enCours.annulation) return signalerAnnulation(enCours);
     try {
       const reponse = await fetch('/__preparation_progression', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({analyse: identifiant}),
+        body: JSON.stringify({analyse: enCours.id}),
       });
       const etat = await reponse.json();
-      if (analyse && !analyse.signal.aborted && identifiantAnalyse === identifiant && etat.active) {
+      if (analyse === enCours && !enCours.annulation && etat.active) {
         statut.textContent = etat.etape + (etat.total ? ' · ' + etat.finies + '/' + etat.total : '…');
       }
     } catch (_erreur) { /* L’import principal rapporte son propre état. */ }
   }, 750);
   try {
-    const requete = new URLSearchParams({nom: modèle.name, unites: unites.value, analyse: identifiantAnalyse,
+    const requete = new URLSearchParams({nom: modèle.name, unites: unites.value, analyse: enCours.id,
       plaque: document.getElementById('atelierPlaqueImport').value,
       piece: document.getElementById('atelierPieceImport').value});
     const réponse = await fetch('/__preparation?' + requete, {
-      method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: modèle, signal: analyse.signal,
+      method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: modèle,
     });
     if (!réponse.ok) throw new Error((await réponse.json()).erreur || 'Analyse interrompue.');
     const html = await réponse.text();
     // Le document généré garde la même origine, pour les ressources et préférences locales.
-    document.open(); document.write(html); document.close();
+    if (!enCours.annulation) { document.open(); document.write(html); document.close(); }
   } catch (erreur) {
     bouton.hidden = false;
-    statut.textContent = erreur.name === 'AbortError'
-      ? 'Arrêt demandé. Vous pouvez préparer le prochain dépôt.'
-      : erreur.message + ' Vous pouvez relancer l’analyse.';
+    if (!enCours.annulation) statut.textContent = erreur.message + ' Vous pouvez relancer l’analyse.';
   } finally {
     clearInterval(suivre);
     bouton.disabled = false;
+    fichier.disabled = false;
     annuler.hidden = true;
     analyse = null;
+    if (enCours.annulation) {
+      fichier.value = '';
+      bouton.hidden = true;
+      choixUnites.hidden = true;
+      statut.textContent = 'Analyse arrêtée. Choisissez ou déposez un autre modèle.';
+      fichier.focus();
+    }
   }
 });
 </script>

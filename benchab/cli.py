@@ -47,6 +47,7 @@ CONTROLES_DIRECTS = {
     "premiere-couche": "premiere_couche",
     "supports-requis": "supports_requis",
     "appuis-gcode": "appuis_gcode",
+    "apercu-gcode": "apercu_gcode",
     "assemblage": "assemblage",
     "affleurement": "affleurement",
     "fentes-interface": "fentes_interface",
@@ -57,7 +58,7 @@ CONTROLES_DIRECTS = {
 }
 CONTROLES_DIRECTS_AVEC_PRIVE = frozenset({
     "bilan-depots", "carte-coutures", "surplombs-surface",
-    "affleurement", "appuis-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
+    "affleurement", "appuis-gcode", "apercu-gcode", "couches-courtes", "ecarts-profils-3mf", "paquet-3mf", "plages-z",
     "surplombs-connexes", "ponts-surplombs",
     "purge-changements", "fentes-interface", "vissage", "enumerations-asn",
 })

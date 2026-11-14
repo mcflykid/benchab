@@ -15,6 +15,7 @@ body.preparation { --accent: #006dad; --accent-soft: #e5f2fc; --view: #e3edf5; }
 .preparation aside, .preparation details, .preparation fieldset { min-width: 0; }
 .preparation aside select { max-width: 100%; }
 #atelierDecision:empty, #atelierContraintesEtat:empty { display: none; }
+#atelierChoixContraintes:not([hidden]) { display: grid; gap: 6px; }
 #atelierReglages { margin: 0; font-size: 13px; }
 #atelierReglages div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 #atelierReglages dd { margin: 0; overflow-wrap: anywhere; font-family: var(--f-data); font-size: 12px; }

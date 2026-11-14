@@ -350,3 +350,54 @@ def test_resume_appuis_laisse_le_detail_complet_dans_un_rapport_neuf(tmp_path, c
     assert main([str(source), "--resume"], prive=prive) == 2
     affiche = capsys.readouterr()
     assert not affiche.out and "--resume exige --json" in affiche.err
+
+
+def test_blocs_objets_incoherents_localises_par_plaque(tmp_path):
+    """Deux objets cohérents restent lisibles, une fin discordante bloque leur attribution."""
+    from zipfile import ZipFile
+
+    from benchab.controles.appuis_gcode import analyser_fichier
+
+    debut = "G90\nM83\n;LAYER_CHANGE\n;Z:0.2\n;TYPE:Inner wall\n;WIDTH:0.4\n"
+    objet_a = "EXCLUDE_OBJECT_START NAME=A\nG1 X0 Z0.2\nG1 X4 E0.2\n"
+    objet_b = "EXCLUDE_OBJECT_START NAME=B\nG1 X6\nG1 X9 E0.2\nEXCLUDE_OBJECT_END NAME=B\n"
+    chemin = tmp_path / "objets.3mf"
+    with ZipFile(chemin, "w") as archive:
+        archive.writestr("Metadata/plate_1.gcode", debut + objet_a + "EXCLUDE_OBJECT_END NAME=A\n" + objet_b)
+        archive.writestr("Metadata/plate_2.gcode", debut + objet_a + "EXCLUDE_OBJECT_END NAME=B\n" + objet_b)
+    rapport = analyser_fichier(chemin)
+    bonne, mauvaise = rapport["plaques"]
+    assert bonne["statut"] == "PASS"
+    assert mauvaise["statut"] == "NON VÉRIFIÉ"
+    assert mauvaise["premier_bloc_objet_incoherent"] == {
+        "plaque": 2, "ligne": 10, "commande": "EXCLUDE_OBJECT_END",
+        "objet_actif": "A", "objet_demande": "B",
+    }
+    assert all(ligne["objet"] is None for ligne in mauvaise["lignes"])
+
+
+def test_appuis_interrompus_en_cours_de_plaque_puis_relances(tmp_path):
+    """Un arrêt en cours de flux ne rend aucun bilan et laisse le fichier relisible."""
+    from zipfile import ZipFile
+
+    import pytest
+
+    from benchab.controles.appuis_gcode import analyser_fichier
+    from benchab.visualisation.carte_risques import AnalyseAnnulee
+
+    paquet = tmp_path / "appuis.3mf"
+    gcode = ("G90\nM83\n;LAYER_CHANGE\n;Z:0.2\n;TYPE:Inner wall\n;WIDTH:0.4\n"
+             + "; ligne de remplissage du témoin\n" * 1500 + "G1 Z0.2\nG1 X4 E0.2\n")
+    with ZipFile(paquet, "w") as archive:
+        archive.writestr("Metadata/plate_1.gcode", gcode)
+    appels = 0
+
+    def verifier():
+        nonlocal appels
+        appels += 1
+        if appels == 3:
+            raise AnalyseAnnulee("arrêt pendant la plaque")
+
+    with pytest.raises(AnalyseAnnulee, match="pendant la plaque"):
+        analyser_fichier(paquet, verifier=verifier)
+    assert analyser_fichier(paquet)["statut"] == "PASS"
