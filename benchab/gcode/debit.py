@@ -3,6 +3,19 @@
 import math
 
 
+def section_nominale(largeur_mm, hauteur_mm):
+    """Estime la section du cordon en mm² à partir de ses dimensions en mm.
+
+    Modèle à bords arrondis utilisé avant tranchage, distinct d’un dépôt
+    commandé par le G-code. Retourne None si les dimensions sont incompatibles.
+    """
+    largeur, hauteur = positif(largeur_mm), positif(hauteur_mm)
+    if largeur is None or hauteur is None or largeur < hauteur:
+        return None
+    aire = hauteur * (largeur - hauteur) + math.pi * hauteur**2 / 4
+    return positif(aire)
+
+
 def positif(valeur):
     """Lit un nombre fini strictement positif ; renvoie float ou None, unités fournies par l'appelant."""
     if isinstance(valeur, bool):

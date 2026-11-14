@@ -509,8 +509,9 @@ def test_delai_tue_le_groupe_cree_sans_toucher_parent(tmp_path, monkeypatch):
         assert resultat["cpu_utilisateur_s"] == 0.1
 
 
-def test_delai_arrete_un_descendant_simule_du_moteur(tmp_path, monkeypatch):
-    """Le vrai wait4 du lanceur expire et arrête un enfant Python, sans slicer ni réseau."""
+@pytest.mark.parametrize("annulation", [False, True])
+def test_delai_arrete_un_descendant_simule_du_moteur(tmp_path, monkeypatch, annulation):
+    """Le délai ou l’annulation arrête le groupe de processus, sans slicer ni réseau."""
     with tempfile.TemporaryDirectory(prefix="benchab-descendant-", dir="/private/tmp") as racine:
         dossier = Path(racine)
         source = entree_3mf(dossier / "source.3mf")
@@ -529,12 +530,18 @@ def test_delai_arrete_un_descendant_simule_du_moteur(tmp_path, monkeypatch):
         configuration["slicer"]["executable"] = str(executable)
         monkeypatch.setattr(trancher, "charger", lambda: configuration)
 
-        resultat = trancher._executer(
-            {"source": str(source), "destination": str(destination), "timeout_s": 1.5}
-        )
+        demande = {"source": str(source), "destination": str(destination), "timeout_s": 1.5}
+        if annulation:
+            def arreter():
+                return pid_enfant.exists() and bool(pid_enfant.read_text())
 
-        assert resultat["delai_depasse"] is True
-        assert resultat["cpu_utilisateur_s"] >= 0
+            with pytest.raises(trancher.TranchageAnnule):
+                trancher._executer(demande, annule=arreter)
+            assert not destination.exists()
+        else:
+            resultat = trancher._executer(demande)
+            assert resultat["delai_depasse"] is True
+            assert resultat["cpu_utilisateur_s"] >= 0
         assert pid_enfant.is_file()
         parent, enfant = map(int, pid_enfant.read_text().split())
         from benchab.processus import _actif

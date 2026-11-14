@@ -125,6 +125,19 @@ def test_analyseur_flux_3mf_agrege_couches_supportantes_et_porte_a_faux(tmp_path
     assert anterieur["plaques"] == local["plaques"] or anterieur["plaques"][0]["mode"] != local["plaques"][0]["mode"]
 
 
+def test_superposition_garde_coordonnees_et_roles(tmp_path):
+    """Les traces de support et de porte-à-faux restent dans leurs couches en mm."""
+    source = tmp_path / "fixture.3mf"
+    _ecrire_fixture_gcode_3mf(source)
+    rapport = analyser_fichier(
+        source, arcs_planaires=True, superposition=True, types_cibles={"Outer wall", "Inner wall"},
+    )
+    traces = rapport["plaques"][0]["superposition"]["traces"]
+    assert [(t["type"], t["z_mm"]) for t in traces] == [("support", 0.2), ("sans_appui", 0.6)]
+    assert traces[0]["xy_mm"][-2:] == [1.0, 0.0]
+    assert traces[1]["xy_mm"][-2:] == [1.0, 1.0]
+
+
 def test_cli_flux_refuse_rapport_hors_prive_et_ecrit_resume_prive(tmp_path, monkeypatch, capsys):
     source = tmp_path / "fixture.3mf"
     _ecrire_fixture_gcode_3mf(source)

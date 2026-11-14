@@ -129,6 +129,31 @@ def test_3mf_multi_plaques_sans_selection_est_explicitement_non_verifie(tmp_path
     assert "plusieurs plaques" in resultat["avertissements"][0]
 
 
+def test_continuite_apres_une_ligne_refusee(tmp_path):
+    """Un diagnostic reste visible, puis deux dépôts adjacents forment un seul morceau."""
+    fichier = ecrire_gcode(
+        tmp_path / "reprise.gcode",
+        "M83\nG1 Z0.2 F600\n;TYPE:Outer wall\nG1 X1 E1\nG1X?E1\nG1 X2 E1\nG1 X3 E1\n",
+    )
+    resultat = controler(fichier)
+    assert resultat["statut"] == "NON VÉRIFIÉ"
+    assert resultat["couches"][0]["segments"] == 3
+    assert resultat["couches"][0]["morceaux"] == 2
+
+
+def test_gcode_brut_reconnait_le_mode_vase_en_fin_de_fichier(tmp_path):
+    """Une déclaration native en fin de fichier doit s’appliquer aux premiers dépôts."""
+    fichier = ecrire_gcode(
+        tmp_path / "vase.gcode",
+        "M83\n;LAYER_CHANGE\n;Z:0.2\nG1 Z0.2 F600\n;TYPE:Outer wall\n"
+        "G1 X1 Z0.21 E1\nG1 X2 Z0.22 E1\n; spiral_mode = 1\n",
+    )
+    resultat = controler(fichier)
+    assert resultat["mode_vase"] is True
+    assert resultat["couches_analysees"] == 1
+    assert resultat["couches"][0]["segments"] == 2
+
+
 def test_analyse_par_defaut_toutes_hauteurs_et_intervalle_configurable(tmp_path):
     gcode = ecrire_gcode(
         tmp_path / "hauteurs.gcode",

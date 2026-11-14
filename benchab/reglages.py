@@ -491,6 +491,19 @@ def valeur_brute(donnees, cle):
     return copy.deepcopy(valeur)
 
 
+def imprimantes_compatibles(profil):
+    """Lit les noms déclarés dans un profil fabricant, sans convertir une option de 3MF."""
+    noms = profil.get("compatible_printers")
+    if not isinstance(noms, list) or any(not isinstance(n, str) or not n.strip() for n in noms):
+        return ()
+    return tuple(noms)
+
+
+def extrudeur_unique_sans_decalage(donnees):
+    """Reconnaît uniquement la déclaration Anycubic d’un outil à l’origine XY en mm."""
+    return donnees.get("extruder_offset") == ["0x0"]
+
+
 def lire_matrice_purge(donnees):
     """Lit une matrice de purge en mm³ selon la convention source, PASS conditionnel ou NON VÉRIFIÉ.
 

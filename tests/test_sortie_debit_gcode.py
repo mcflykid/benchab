@@ -122,6 +122,18 @@ def test_u25_localise_le_pic_et_garde_les_deux_plafonds(tmp_path):
     assert outil["pic"]["longueur_mm"] == 1
 
 
+def test_depot_support_compte_hors_objet_et_sans_deplacement_a_vide(tmp_path):
+    """Le G-code mesure un dépôt hors objet et ignore un trajet sous la même étiquette."""
+    source = _archive_objets(
+        tmp_path, ["objet"],
+        "G90\nM83\nT0\n;TYPE:Support\nG1 X10 F900\nG1 X20 E0.4 F900\n"
+        ";TYPE:Outer wall\nEXCLUDE_OBJECT_START NAME=objet\nG1 X30 E0.4 F900\n",
+    )
+    plaque = debit_gcode.analyser(source)["plaques"][0]
+    assert plaque["segments_depot_support"] == 1
+    assert plaque["trajets_supports_mm"] == 10
+
+
 def _archive_objets(tmp_path, noms, gcode, *, vase=False):
     """Crée une plaque synthétique avec les noms et le réglage vase déclarés."""
     from xml.etree import ElementTree as ET

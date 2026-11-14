@@ -179,16 +179,27 @@ def difference(avant, apres):
 
 
 def _equivalence_moteur(ecart):
-    """Reconnaît uniquement une réécriture décimale exacte du débit natif en mm³/s."""
+    """Reconnaît les réécritures numériques qualifiées du débit et des plages de couche."""
     avant, apres = ecart["avant"], ecart["apres"]
+    decimal_natif = r"[0-9]{1,16}(?:[.][0-9]{1,16})?"
+    if re.fullmatch(r"couches/objet/\d+/plage/\d+/(?:@min_z|@max_z|layer_height)", ecart["chemin"]):
+        if not all(isinstance(v, str) and re.fullmatch(decimal_natif, v) for v in (avant, apres)):
+            return False
+        a, b = Decimal(avant), Decimal(apres)
+        # ASN réécrit en double précision les bornes des plages, par exemple 17.800.
+        # La hauteur elle-même reste strictement équivalente en décimal.
+        return a == b or (
+            ecart["chemin"].endswith(("/@min_z", "/@max_z"))
+            and abs(a - b) <= Decimal("1e-12") and float(a) == float(b)
+        )
     return (
         ecart["chemin"] == "projet/filament_max_volumetric_speed"
         and isinstance(avant, list) and isinstance(apres, list)
         and bool(avant) and len(avant) == len(apres)
         and all(
             isinstance(a, str) and isinstance(b, str)
-            and re.fullmatch(r"[0-9]{1,16}(?:[.][0-9]{1,16})?", a)
-            and re.fullmatch(r"[0-9]{1,16}(?:[.][0-9]{1,16})?", b)
+            and re.fullmatch(decimal_natif, a)
+            and re.fullmatch(decimal_natif, b)
             and Decimal(a) == Decimal(b)
             for a, b in zip(avant, apres)
         )
@@ -198,7 +209,7 @@ def _equivalence_moteur(ecart):
 def verifier(source, destination, permis=(), *, relecture_moteur=False):
     """Vérifie le plan d'écarts en unités natives et renvoie PASS ou lève sur FAIL, sans écrire.
 
-    En relecture moteur, isole les représentations équivalentes du débit en mm³/s.
+    En relecture moteur, isole les représentations équivalentes du débit en mm³/s et des plages en mm.
     Une différence explicitement déclarée reste comparée exactement au plan.
     """
     avant, types_avant = instantane(source, avec_types=True)

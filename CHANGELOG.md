@@ -2,6 +2,13 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## Prochaine version
+
+- L’atelier local analyse les modèles, affiche les zones à risque et compare les variantes au tranchage, y compris pour un 3MF déposé hors projet (#317, #318, #319, #320).
+- Les variantes 3MF sont relues au tranchage avec contrôle des plaques et conservation des membres géométriques peints. Un routage multimatière ambigu reste refusé (#321).
+- L’analyse locale peut être ciblée et annulée jusque dans le trancheur. Un constat confirmé rejoint les observations privées de sa préparation et la bibliothèque conserve la filiation des conceptions (#322, #323, #324).
+- La continuité des parois traite les erreurs par ligne et le mode vase en G-code brut. Les options, le cache, les types et les motifs de refus sont fiabilisés (#306, #307, #309, #310, #311, #312, #313, #314, #315, #316).
+
 ## 1.36.0
 
 - Le catalogue qualifie les densités de peau et de squelette Locked Zag sur le binaire et le coupon testés. Les omissions des motifs spécialisés restent signalées (#80).

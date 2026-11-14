@@ -453,6 +453,7 @@ def page_projet(root, nom, params):
     body += (
         lien(url(nom, controle="contrat"), "Vérifier le contrat du projet")
         + lien(url(nom, controle="automatisation"), "Préparation et diagnostic")
+        + (lien(url(nom, vue="preparation"), "Atelier de préparation") if preps else "")
         + "</div>"
     )
     if params.get("controle") == "contrat":
@@ -551,7 +552,7 @@ def page_projet(root, nom, params):
     )
     pages = [f for f in sorted((p / "preuves/visualisation").glob("*.html")) if f.name != "apercu-gcode.html"]
     body += (
-        "<h2>Observations</h2><p>Les observations pointées utilisent les c"
+        '<h2 id="observations">Observations</h2><p>Les observations pointées utilisent les c'
         "ommentaires existants de la visionneuse, avec leur pièce et leurs"
         " coordonnées. Elles ne modifient pas le statut physique du projet"
         ".</p>"
@@ -575,14 +576,54 @@ def page_projet(root, nom, params):
             "e compatible. La création d’un journal reste disponible par l’out"
             "il existant, sans faux point3D.</p>"
         )
+    body += observations_atelier_html(p)
     body += "<p>" + lien("/atelier?vue=connaissances", "Consulter les connaissances") + "</p>"
     return document(s.get("titre", nom), body)
+
+
+def observations_atelier_html(projet):
+    """Affiche les constats privés confirmés et leurs préparations, sans écrire dans le projet."""
+    from benchab.chemins import sans_lien
+    from benchab.visualisation.stockage_commentaires import lire
+
+    try:
+        dossier = sans_lien(projet / "preuves" / "observations-atelier", racine=projet)
+    except (ValueError, OSError):
+        return "<p>Historique des constats indisponible.</p>"
+    fiches = []
+
+    for f in dossier.glob("*.json"):
+        if not re.fullmatch(r"[a-f0-9]{32}", f.stem):
+            continue
+        try:
+            observation = lire(f)
+        except (ValueError, OSError):
+            continue
+        if (isinstance(observation, dict) and observation.get("id") == f.stem
+                and observation.get("confirmation_humaine") is True):
+            fiches.append(observation)
+    if not fiches:
+        return ""
+    fiches.sort(key=lambda o: str(o.get("date", "")), reverse=True)
+    return "<ul>" + "".join(
+        '<li id="observations-' + o["id"] + '">'
+        + (lien("/preparation?" + urlencode({"projet": projet.name, "preparation": o["preparation"]}),
+                o["preparation"]) if re.fullmatch(r"P[0-9]+", str(o.get("preparation"))) else "Préparation inconnue")
+        + " · "
+        + texte(o.get("piece")) + " · " + texte(o.get("defaut")) + " · "
+        + texte(o.get("texte")) + "</li>"
+        for o in fiches[:100]
+    ) + "</ul>"
 
 
 def page(root=None, params=None):
     """Construit une page locale depuis l'atelier choisi; aucune écriture ou lecture Cloud."""
     root = atelier_prive(root or racine_privee())
     params = params or {}
+    if params.get("vue") == "preparation":
+        from benchab.visualisation.atelier_preparation import accueil
+
+        return accueil(root, params.get("projet"))
     if params.get("vue") == "cloud":
         return page_cloud(root)
     if len(params.get("q", "")) > 200:

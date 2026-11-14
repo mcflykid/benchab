@@ -237,8 +237,8 @@ class Archive3MF:
             raise
         return self
 
-    def __exit__(self, *_):
-        """Ferme le ZIP et refuse une mutation du fichier pendant le contexte."""
+    def __exit__(self, _type_erreur, erreur, _trace):
+        """Ferme le ZIP et signale toute mutation sans masquer l’erreur d’origine."""
         if self._archive is not None:
             self._archive.close()
             self._archive = None
@@ -250,7 +250,10 @@ class Archive3MF:
             flux.close()
         self._flux_ouverts.clear()
         if identite_apres != self._identite:
-            raise ValueError("archive 3MF modifiée pendant sa lecture")
+            motif = "archive 3MF modifiée pendant sa lecture"
+            if erreur is None:
+                raise ValueError(motif)
+            erreur.add_note(motif)
 
     def _stat_identite(self):
         """Identité locale (périphérique, inode, taille et dates) de l’archive."""

@@ -791,6 +791,7 @@ class Visionneuse:
             "groupes": [{"nom": g, "visible": v} for g, v in self.groupes.items()],
             # GLB compressé gzip, décompressé par le navigateur pour réduire le poids du HTML.
             "diagnostics": getattr(self, "diagnostics", []),
+            "atelier": getattr(self, "atelier", None),
             "contacts": getattr(self, "_contacts", None),
             "pieces": pieces,
             "mecanismes": self.mecanismes,
@@ -806,6 +807,11 @@ class Visionneuse:
         gabarit = (ICI / "gabarit.html").read_text()
         html = gabarit.replace("__TITRE__", _html(self.titre)).replace("__DONNEES__", js)
         html = html.replace("__OUTIL_DECOUPE__", (ICI / "decoupe.js").read_text() if hasattr(self, "_decoupe") else "")
+        ressources = ICI / "ressources"
+        html = html.replace("__ATELIER_CSS__", (ressources / "atelier-preparation.css").read_text()
+                            if self.atelier_actif else "")
+        html = html.replace("__ATELIER_JS__", (ressources / "atelier-preparation.js").read_text()
+                            if self.atelier_actif else "")
         html = autonome(html)
         with chemin.open("x", encoding="utf-8") as flux:
             flux.write(html)
@@ -823,6 +829,11 @@ class Visionneuse:
                 f"{r['octets']} octets > {LIMITE_OCTETS} : alléger les modèles (max_faces) pour une ouverture fiable"
             )
         return r
+
+    @property
+    def atelier_actif(self):
+        """Indique si la scène contient la présentation de préparation, sans modifier la scène."""
+        return getattr(self, "atelier", None) is not None
 
 
 def adresse_page(chemin, *, prive=None):
