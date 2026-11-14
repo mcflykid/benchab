@@ -359,3 +359,11 @@ Avec ASN 2.0.0.3, seule la consigne inférieure diffère dans les
 réglages avant et après tranchage. Le rejeu concorde hors date.
 La source et les 646 profils contrôlés gardent leurs empreintes.
 Le retrait et les marques sur la semelle restent à observer (#89).
+
+En contrôle, la consigne inférieure reste à 0,20 mm et seul
+`support_on_build_plate_only` est activé. Les deux tranchages
+suppriment les 3 010 mm d’axes de corps et les 1 152 mm d’interface
+dans la fenêtre de la cavité. Le rapport d’écart devient NON MESURABLE,
+car aucun écart n’est observable. La masse et la durée estimées
+passent de 6,88 à 4,72 g et de 1 261 à 1 156 s. Les deux G-code
+de la variante concordent hors date (#89).
