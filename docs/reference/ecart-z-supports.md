@@ -380,3 +380,15 @@ estime 990 s et 3,28 g dans les trois cas. Le coupon, la référence et les
 646 profils vérifiés gardent leurs empreintes. Aucun effet du changement
 n’a été observé sur ce coupon ; les autres géométries et types de support
 restent NON VÉRIFIÉS (#89).
+
+### Hauteur indépendante des couches de support
+
+Sur le coupon organique à interface concentrique, les deux états
+`0` et `1` de `independent_support_layer_height` sont conservés et
+forment la seule différence des réglages projet. Le rejeu à `1`
+retrouve les mêmes empreintes par rôle que la référence : 20 019
+segments de support et 64 d’interface, écart Z médian de 0,20 mm.
+La masse et la durée restent estimées à 3,28 g et 990 s. Le coupon
+et les 646 profils relus sont inchangés. Aucun effet n’est observé
+dans ces conditions. Les hauteurs, géométries et familles distinctes
+gardent leur propre périmètre de mesure (#89).

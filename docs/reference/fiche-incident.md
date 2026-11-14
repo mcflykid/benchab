@@ -78,3 +78,14 @@ de la production du rapport n’est authentifiée. Les rapports sans `format`
 restent opaques et conservent le traitement historique.
 La commande ne télécharge pas d’objet Git, ne modifie ni code, ni réglage, ni
 projet et n’ajoute pas automatiquement de connaissance à SQLite.
+
+## Périmètre de reprise
+
+Le parcours couvre les vues canoniques, les cibles de lien manquantes,
+les tables d’export absentes et les originaux identifiés dans une
+sauvegarde. Chaque application exige une preuve explicite et relit
+la destination. Le rapport JUnit rattache les régressions déclarées
+aux cas du rapport, et facultativement à l’artefact public d’une
+tentative de CI. Toute autre famille de reprise dépend d’un incident
+concret dont les conditions et les sources pourront être établies
+avant de proposer une réparation (#119).

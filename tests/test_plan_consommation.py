@@ -12,7 +12,6 @@ from benchab.fabrication import preparation as PR
 from benchab.projets.envois import enregistrer as enregistrer_envoi
 from benchab.projets.plan_consommation import estimer_retour
 from benchab.projets.preparations import enregistrer as enregistrer_preparation
-from benchab.projets.retours import confirmer
 
 
 class PlanConsommation(unittest.TestCase):
@@ -109,6 +108,35 @@ class PlanConsommation(unittest.TestCase):
         self.assertEqual(self.base.connexion.total_changes, changements_avant)
         self.assertEqual(self.envoi_sha, hashlib.sha256(self.envoi.read_bytes()).hexdigest())
         self.assertEqual(sha_archive_avant, hashlib.sha256(self.archive_prive.read_bytes()).hexdigest())
+
+    def test_lire_envoi_associe_la_duree_au_numero_du_gcode(self):
+        """Les prédictions XML désordonnées sont rattachées au même 3MF par indice."""
+        from benchab.fabrication.envois_slicer import lire
+
+        with zipfile.ZipFile(self.envoi, "a") as archive:
+            archive.writestr("Metadata/slice_info.config", b"""
+                <config>
+                  <plate><metadata key="index" value="2"/><metadata key="prediction" value="245"/>
+                  <metadata key="weight" value="3.25"/></plate>
+                  <plate><metadata key="index" value="1"/><metadata key="prediction" value="125"/>
+                  <metadata key="weight" value="12.5"/></plate>
+                </config>""")
+        self.assertNotIn("duree_estimee_s", lire(self.envoi)["details_plaques"][0])
+        rapport = lire(self.envoi, inclure_durees=True)
+        self.assertEqual([p["duree_estimee_s"] for p in rapport["details_plaques"]], [125, 245])
+
+    def test_duree_comparee_seulement_pour_un_envoi_a_plaque_unique(self):
+        """Une durée globale ne peut pas être attribuée à l’une de plusieurs plaques."""
+        from benchab.projets.plan_consommation import _comparer_duree
+
+        retour = {"duree_observee_s": 125}
+        detail = {"gcode": "Metadata/plate_2.gcode", "duree_estimee_s": 100}
+        comparaison = _comparer_duree(retour, [detail])
+        self.assertEqual(comparaison["ecart_s"], 25)
+        self.assertEqual(comparaison["gcode"], detail["gcode"])
+        self.assertIsNone(_comparer_duree(retour, [detail, {**detail, "gcode": "Metadata/plate_1.gcode"}]))
+        self.assertIsNone(_comparer_duree({"duree_observee_s": True}, [detail]))
+        self.assertIsNone(_comparer_duree(retour, [{"gcode": detail["gcode"]}]))
 
     def _declaration_pesee(self, **modifications):
         """Écrit un témoin privé qui déclare la masse et l’identité du membre."""
@@ -627,6 +655,11 @@ class PlanConsommation(unittest.TestCase):
 
     def test_parcours_reel_envoi_et_retour_sans_sql_de_fixture(self):
         """Les APIs de préparation, d'envoi et de retour produisent un plan lisible."""
+        import contextlib
+        import io
+
+        from benchab.fabrication.retour import main
+
         temporaire = tempfile.TemporaryDirectory()
         self.addCleanup(temporaire.cleanup)
         atelier = Path(temporaire.name).resolve()
@@ -648,17 +681,27 @@ class PlanConsommation(unittest.TestCase):
         with zipfile.ZipFile(source, "w") as archive:
             archive.writestr("Metadata/project_settings.config", json.dumps({"filament_ids": ["f1", "f2"]}))
             archive.writestr("Metadata/plate_1.gcode", "; filament used [g] = 0, 12.5\n" + lignes.decode())
+            archive.writestr("Metadata/slice_info.config", b"""
+                <config><plate><metadata key="index" value="1"/>
+                <metadata key="prediction" value="100"/><metadata key="weight" value="12.5"/>
+                </plate></config>""")
         envoi = enregistrer_envoi(base, projet, "P01", source)
-        retour = confirmer(
-            base, projet, "reussie", "retour synthétique déclaré", preparation="P01",
-            ensemble_complet=True, envois=[envoi["fichier"]],
-        )
+        with contextlib.redirect_stdout(io.StringIO()) as affichage:
+            code = main([
+                "--projet", str(projet), "--id", "P01", "--resultat", "reussie",
+                "--preuve-retour", "retour synthétique déclaré", "--ensemble-complet",
+                "--envoi-identifie", envoi["fichier"], "--duree-observee-s", "125",
+            ], base=base)
+        self.assertEqual(code, 0)
+        retour = json.loads(affichage.getvalue())
 
         resultat = estimer_retour(base, retour["retour"]["id"])
 
         self.assertEqual(resultat["statut"], "NON VÉRIFIÉ")
         self.assertEqual(resultat["estimation"]["plaques"][0]["outils"][1]["grammes_estimes"], 12.5)
         self.assertIsNone(resultat["affectation_bobine"])
+        self.assertEqual(resultat["comparaison_duree"]["ecart_s"], 25)
+        self.assertEqual(resultat["comparaison_duree"]["gcode"], "Metadata/plate_1.gcode")
 
     def test_json_de_retour_a_cles_dupliquees_reste_non_verifie(self):
         """Une déclaration JSON ambiguë ne fournit aucune estimation."""

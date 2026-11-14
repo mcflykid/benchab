@@ -88,7 +88,7 @@ def _verifier_reste(archive, deja_lus):
                 pass
 
 
-def lire(p, *, sha256_attendu=None):
+def lire(p, *, sha256_attendu=None, inclure_durees=False):
     """Inventorie un 3MF tranché sans écriture, avec masses estimées en g.
 
     Entrées : chemin et SHA-256 hexadécimal facultatif. Le SHA et les membres
@@ -96,6 +96,8 @@ def lire(p, *, sha256_attendu=None):
     toute lecture d’un membre. Le rapport conserve la taille en octets, les
     réglages typés et le contrôle final de la source. Une archive ambiguë,
     divergente ou illisible est refusée ; aucune impression n’est attestée.
+    Sur demande, les durées estimées en secondes proviennent des résultats
+    de plaque du même 3MF, si tous les indices concordent.
     """
     p = Path(p)
     if sha256_attendu is not None and (
@@ -115,7 +117,23 @@ def lire(p, *, sha256_attendu=None):
             if not plaques:
                 raise ValueError(f"{p.name} : aucun G-code de plaque")
             details = [_lire_plaque(archive, nom) for _, nom in plaques]
-            _verifier_reste(archive, {_REGLES_PROJET, *(nom for _, nom in plaques)})
+            deja_lus = {_REGLES_PROJET, *(nom for _, nom in plaques)}
+            resultats = "Metadata/slice_info.config"
+            if inclure_durees and resultats in archive.noms():
+                from xml.etree.ElementTree import ParseError
+
+                from benchab.fabrication.anycubic import resultats_xml
+
+                brut = archive.lire(resultats, limite_octets=archive.taille_max_xml)
+                deja_lus.add(resultats)
+                try:
+                    durees = {p["index"]: p["secondes"] for p in resultats_xml(brut)}
+                except (ValueError, ParseError):
+                    durees = {}
+                if durees.keys() == {numero for numero, _ in plaques}:
+                    for detail, (numero, _) in zip(details, plaques, strict=True):
+                        detail["duree_estimee_s"] = durees[numero]
+            _verifier_reste(archive, deja_lus)
             # Une plaque non renseignée interdit de présenter un total partiel
             # comme la consommation de l'archive entière.
             utilise = None

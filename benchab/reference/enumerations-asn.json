@@ -11,7 +11,7 @@
     "locked_skin_infill_pattern",
     "support_interface_pattern"
   ],
-  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height", "infill_direction"],
+  "cles_contextuelles": ["support_style", "infill_combination_max_layer_height", "infill_direction", "align_infill_direction_to_model"],
   "binaires": {
     "618b3fc1b291f30a564c4df2e87df5e4e6598927ae061e3d9a90dd119754a58d": {
       "version": "2.0.0.3",
@@ -157,6 +157,38 @@
               "layer_height": "0.2",
               "sparse_infill_pattern": "rectilinear",
               "sparse_infill_density": "20%"
+            }
+          }
+        },
+        "align_infill_direction_to_model": {
+          "0": {
+            "statut": "PASS",
+            "valeur_embarquee": "0",
+            "conditions": {
+              "sparse_infill_pattern": "rectilinear",
+              "sparse_infill_density": "20%",
+              "infill_direction": "45",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle"
+            }
+          },
+          "1": {
+            "statut": "PASS",
+            "valeur_embarquee": "1",
+            "conditions": {
+              "sparse_infill_pattern": "rectilinear",
+              "sparse_infill_density": "20%",
+              "infill_direction": "45",
+              "nozzle_diameter": [
+                "0.4"
+              ],
+              "layer_height": "0.2",
+              "infill_combination": "0",
+              "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle"
             }
           }
         },

@@ -206,6 +206,8 @@ def main(argv=None, *, base=None):
     parser.add_argument("--reference-imprimee", action="append", default=[])
     parser.add_argument("--remplace-reference", action="append", default=[])
     parser.add_argument("--ensemble-complet", action="store_true")
+    parser.add_argument("--envoi-identifie", action="append", default=[],
+                        help="Chemin enregistré de l’envoi exact du retour, relatif à l’atelier")
     arguments = parser.parse_args(argv)
     possede = base is None
     if possede:
@@ -219,6 +221,8 @@ def main(argv=None, *, base=None):
             raise ValueError("Projet hors de base.prive")
         if arguments.duree_observee_s is not None and not arguments.resultat:
             raise ValueError("--duree-observee-s exige --resultat.")
+        if arguments.envoi_identifie and not (arguments.resultat and arguments.id):
+            raise ValueError("--envoi-identifie exige --resultat et --id.")
         if arguments.resultat:
             from benchab.projets.retours import confirmer
 
@@ -232,6 +236,7 @@ def main(argv=None, *, base=None):
                 arguments.remplace_reference,
                 ensemble_complet=arguments.ensemble_complet,
                 duree_observee_s=arguments.duree_observee_s,
+                envois=arguments.envoi_identifie,
             )
             print(json.dumps(resultat, ensure_ascii=False, indent=2))
             return 0

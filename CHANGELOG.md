@@ -2,6 +2,13 @@
 
 Historique des versions publiques ; les tags Git identifient les candidates livrées.
 
+## 1.35.0
+
+- Le contrôle contextuel Anycubic qualifie l’alignement du remplissage rectiligne dans le repère de la pièce pour le coupon et le profil éprouvés (#80).
+- Un retour peut identifier l’archive exacte et rapprocher la durée observée de la prédiction embarquée pour une plaque unique (#51).
+- Les périmètres numériques des paliers de densité, de la reprise de fichiers et des compteurs d’entretien sont documentés (#83, #119, #73).
+- Les comparaisons hors ligne documentent le seuil de petites surfaces et la hauteur indépendante des supports organiques (#80, #89).
+
 ## 1.34.1
 
 - Le catalogue Anycubic signale la disparition des motifs de peau et de squelette dans le 3MF tranché avec `lockedzag` dans les conditions mesurées (#80).

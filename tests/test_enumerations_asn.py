@@ -201,3 +201,21 @@ def test_options_lockedzag_disparues_de_la_sortie(cle, valeur):
     assert obtenu["valeur_embarquee"] is None
     assert "absente" in obtenu["detail"]
     assert verdict({**donnees, "sparse_infill_pattern": "rectilinear"})["statut"] == "NON VÉRIFIÉ"
+
+
+def test_alignement_rectiligne_reste_lie_aux_conditions_observees():
+    """La qualification du repère pièce exige le motif et le profil du coupon."""
+    cle = "align_infill_direction_to_model"
+    source = {
+        cle: "1", "infill_direction": "45", "infill_combination": "0",
+        "printer_settings_id": "Anycubic Kobra S1 0.4 nozzle", "nozzle_diameter": ["0.4"],
+        "layer_height": "0.2", "sparse_infill_pattern": "rectilinear", "sparse_infill_density": "20%",
+    }
+
+    def ligne(donnees, **options):
+        return next(r for r in reglages.verifier(donnees, identite_slicer=ASN, **options) if r["cle"] == cle)
+
+    assert "enumeration" not in ligne(source)
+    assert ligne(source, inclure_contextuelles=True)["enumeration"]["statut"] == "PASS"
+    variante = {**source, "sparse_infill_pattern": "gyroid"}
+    assert ligne(variante, inclure_contextuelles=True)["enumeration"]["statut"] == "NON VÉRIFIÉ"

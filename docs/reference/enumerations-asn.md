@@ -244,3 +244,34 @@ Le témoin et les 646 profils vérifiés gardent leurs empreintes. Le catalogue
 signale l’omission uniquement pour le binaire et les réglages compagnons
 observés. L’effet de ces options dans d’autres conditions reste NON VÉRIFIÉ
 (#80).
+
+### Alignement sur le repère de la pièce
+
+Un coupon rectangulaire de 38 × 22 × 7 mm est placé à 0°, puis à 30° par
+la transformation de l’instance dans le 3MF. Le motif rectiligne est à
+20 %, direction déclarée 45°, sans combinaison, profil Kobra S1, buse
+de 0,4 mm et couche de 0,2 mm. Les directions sont lues sur les segments
+clairsemés déposés d’au moins 2 mm, modulo 180°, à 0,1° près.
+
+| Rotation de la pièce | Alignement sur la pièce | Axes du motif dans le plateau |
+| ---: | ---: | --- |
+| 0° | 0 ou 1 | 45° et 135° |
+| 30° | 0 | 45° et 135° |
+| 30° | 1, avec rejeu | 75° et 165° |
+
+À 30°, les deux variantes gardent les mêmes axes de paroi (30° et 120°).
+Les segments clairsemés comportent aussi des liaisons selon ces axes.
+La seule différence de réglage pour chaque rotation est
+`align_infill_direction_to_model`. Le rejeu à 30° avec alignement
+retrouve la même empreinte du 3MF tranché. Aucune erreur de l’interpréteur
+et aucun changement des 646 profils relus. Le catalogue qualifie les deux
+états avec `--contextuelles` pour ce binaire et ce profil. L’effet mécanique
+et les autres géométries restent hors de cette observation (#80).
+
+Sur ce même coupon sans rotation, le seuil
+`minimum_sparse_infill_area` est passé de `0` à `600`, avec un
+rejeu de la variante. La valeur est conservée et aucune autre clé du
+projet tranché ne diffère. Les comptages restent de 1 027 segments de
+remplissage clairsemé et 1 021 segments de remplissage plein interne.
+L’essai ne distingue aucun effet sur cette géométrie. Un autre contour
+ou un seuil différent doit être évalué séparément (#80).

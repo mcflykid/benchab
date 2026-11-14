@@ -171,3 +171,13 @@ résultat déclaré une durée positive en secondes. Indiquer dans
 `--preuve-retour` comment elle a été relevée, par exemple au chronomètre.
 Un retour déclaré comme interrompu garde ce statut. L’option laisse
 l’estimation du slicer intacte et ne consulte aucune machine (#51).
+
+Pour rattacher la durée à une archive déjà enregistrée, ajouter
+`--envoi-identifie CHEMIN_RELATIF_DANS_ATELIER` avec l’identifiant de la
+préparation (`--id`). Pour un retour complet réussi et une archive liée
+à une seule plaque, `benchab controle consommation-retour ID_RETOUR`
+compare les secondes déclarées à la prédiction embarquée sur cette plaque.
+Le résultat reste individuel. Les envois à plusieurs plaques, les durées
+absentes et les résultats de plaque sans correspondance ne donnent pas
+d’écart. L’imputation de matière garde son parcours de pesée et de
+confirmation explicites (#51).
