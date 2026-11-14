@@ -202,13 +202,18 @@ et le premier dépôt du coupon dont le ruban recoupe sa projection.
 L’écart nominal est calculé entre le dessous du dépôt du coupon et
 le dessus de l’ailette, à partir des commandes Z et de `HEIGHT`.
 
-| Hauteur fixe | Sommet de l’ailette | Premier dépôt en recouvrement | Écart nominal |
+| Hauteur | Sommet de l’ailette | Premier dépôt en recouvrement | Écart nominal |
 | --- | ---: | ---: | ---: |
 | 0,16 mm | 14,76 mm | 15,24 mm | 0,32 mm |
 | 0,20 mm | 14,80 mm | 15,20 mm | 0,20 mm |
 | 0,24 mm | 14,84 mm | 15,32 mm | 0,24 mm |
+| Variable (0,160 à 0,239 mm observés) | 14,794 mm | 15,114 mm | 0,16 mm |
 
 Le recouvrement nominal du premier dépôt est d’environ 37,3 mm²
-dans les trois cas. Les valeurs couvrent ce coupon et ces hauteurs
-fixes. La hauteur variable sur une même pièce et le retrait physique
-restent à qualifier.
+dans les quatre cas. Le profil variable expérimental est aligné
+sur les deux objets A01 et demande 0,16 mm près de l’ailette.
+Le moteur l’a réécrit à six décimales au premier tranchage, ce qui
+a déclenché le refus d’intégrité. Après vérification de l’égalité
+des valeurs, une copie au format réémis a passé le contrôle. Son
+rejeu donne le même G-code hors date. Le retrait et les marques
+sur la pièce restent à mesurer (#92).
