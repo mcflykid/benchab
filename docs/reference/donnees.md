@@ -1,23 +1,27 @@
 # Données de l'atelier
 
-SQLite dans l'espace privé est la source des vues et de l'export JSONL. Chaque
-transaction valide toujours les données, puis compare les treize exports à leur
-sérialisation canonique. Si les octets et le SHA réels concordent, le JSONL garde
-son inode ; un fichier divergent est reconstruit depuis SQLite. Le manifeste est
-publié en dernier et n'est jamais utilisé seul pour déclarer les JSONL valides
-(#19). Lorsqu’une écriture a validé un instantané SQLite, les SHA calculés sur
-sa sérialisation peuvent être réutilisés pour contrôler les fichiers. Les
-exports restent lus et vérifiés ; les absents ou divergents seuls sont
-resérialisés. Une modification entre connexions, détectée par
-[`PRAGMA data_version`](https://sqlite.org/pragma.html#pragma_data_version),
-ou un changement de schéma invalide le réemploi. Un export explicite sans
-instantané de transaction reprend la comparaison complète. Pendant la
-publication, BENCHAB réserve le verrou SQLite d’écriture, y compris en mode
-WAL, afin qu’un autre commit ne devance pas le manifeste. Il ne modifie
-aucune ligne dans cette phase. Un écrivain peut reprendre dès la libération
-du verrou (#226). La validation des références parcourt toujours toute la base.
-Elle contrôle les chemins après décodage des champs JSON. Un refus annule
-l’écriture SQLite et conserve les exports précédents.
+SQLite dans l’espace privé est la source des vues et de l’export JSONL.
+Après une transaction validée et publiée, la connexion peut réutiliser les SHA
+et tailles canoniques des tables inchangées. Elle réinstalle l’autoriseur SQLite
+à chaque bloc suivi pour inclure les instructions en cache et les écritures
+déclenchées par SQLite. Les requêtes qui peuvent écrire signalent les tables à
+relire et à sérialiser. Les références privées extraites des JSON sont
+revérifiées avant chaque commit, y compris pour les tables dont les lignes
+n’ont pas changé. Un refus annule l’écriture SQLite.
+
+Une connexion neuve, une modification directe ou concurrente, un changement
+de schéma et une transaction non suivie reprennent le contrôle complet. Un
+accès BLOB en écriture, une désérialisation ou un autoriseur externe désactivent
+le réemploi sur la connexion. Un export explicite effectue une comparaison
+complète. Les empreintes conservées proviennent de SQLite, indépendamment du
+manifeste. Tous les fichiers JSONL restent vérifiés à chaque publication.
+Les JSONL canoniques conservent leur inode ; seuls les absents ou divergents
+sont réécrits. Le manifeste est publié en dernier (#19).
+
+Pendant la publication, BENCHAB réserve le verrou SQLite d’écriture, y
+compris en mode WAL, afin qu’un autre commit ne devance pas le manifeste.
+Il ne modifie aucune ligne dans cette phase. Un écrivain peut reprendre
+dès la libération du verrou (#226).
 Les projets, leurs fichiers, les observations et les préférences restent privés.
 Le savoir général publiable est sélectionné séparément dans `benchab/reference/`.
 
