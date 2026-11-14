@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import stat
+import sys
 from contextlib import closing
 from pathlib import Path
 from zipfile import BadZipFile
@@ -182,6 +183,21 @@ def estimer_retour_ro(prive: Path | str, connexion: sqlite3.Connection, retour_i
         return _nv(retour_id, f"source incomplète ou illisible : {type(erreur).__name__}")
 
 
+def _comparer_duree(retour, details):
+    """Compare des secondes déclarées et estimées pour une seule plaque du retour complet."""
+    if len(details) != 1:
+        return None
+    observee = retour.get("duree_observee_s")
+    estimee = details[0].get("duree_estimee_s")
+    if any(type(v) not in (int, float) or not 0 < v <= sys.float_info.max for v in (observee, estimee)):
+        return None
+    # Un historique sans mesure exploitable ne reçoit aucune correction de planning (#51).
+    return {
+        "gcode": details[0]["gcode"], "duree_observee_s": observee, "duree_estimee_s": estimee,
+        "ecart_s": observee - estimee, "nature": "DECLARATION_HUMAINE_ET_ESTIMATION_SLICER",
+    }
+
+
 def _estimer_retour(prive: Path, connexion: sqlite3.Connection, retour_id: str) -> dict:
     """Lit les preuves relationnelles et l'envoi ; n'ouvre pas l'atelier et n'écrit rien."""
     try:
@@ -231,7 +247,9 @@ def _estimer_retour(prive: Path, connexion: sqlite3.Connection, retour_id: str) 
             return _nv(retour_id, "association d’envoi absente ou ambiguë")
         chemin = _chemin_prive(prive, chemin_envoi)
         try:
-            rapport = envois_slicer.lire(chemin, sha256_attendu=envoi_sha)
+            rapport = envois_slicer.lire(
+                chemin, sha256_attendu=envoi_sha, inclure_durees=retour.get("duree_observee_s") is not None,
+            )
         except (OSError, ValueError):
             # Préserver le motif de l’association rompue même si l’index ZIP ne s’ouvre plus (#223).
             return _nv(retour_id, "envoi absent, ambigu ou empreinte divergente")
@@ -275,9 +293,11 @@ def _estimer_retour(prive: Path, connexion: sqlite3.Connection, retour_id: str) 
                     for index, masse in enumerate(masses)
                 ],
             })
+        comparaison_duree = _comparer_duree(retour, details)
         return {
             "schema": 1,
             "retour_id": retour_id,
+            **({"comparaison_duree": comparaison_duree} if comparaison_duree is not None else {}),
             "preparation": {"id": ligne["preparation_id"], "sha256": fiche_sha},
             "envoi": {"chemin": chemin_envoi, "sha256": envoi_sha},
             "statut": "NON VÉRIFIÉ",
