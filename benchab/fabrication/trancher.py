@@ -539,7 +539,11 @@ def archiver_echec(resultat, demande, prive):
         "reglage_impression_modifie": False,
         "cause_etablie": False,
         "erreurs_archivage": erreurs,
-        "note": "La signature de pile est une observation, y compris bridge_over_infill ; aucune causalité établie.",
+        "note": (
+            "Le moteur a terminé. Le contrôle de sortie a refusé l’archive."
+            if diagnostic_incident.get("cause") == _CAUSE_CONTROLE_SORTIE
+            else "La signature de pile est une observation, y compris bridge_over_infill ; aucune causalité établie."
+        ),
         "raison_volume": "Entrées, éventuelle sortie refusée et rapport IPS conservés pour documenter l’incident.",
     }
     ecrire_json(dossier / "incident.json", resultat)
