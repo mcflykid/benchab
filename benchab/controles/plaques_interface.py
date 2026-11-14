@@ -1,6 +1,7 @@
 """Vérifie les objets 3MF sur les pas d'interface et de ligne de commande."""
 
 import argparse
+import json
 import math
 import sys
 import zipfile
@@ -149,10 +150,15 @@ def analyser(fichier, *, pas=None, plateau=None, marge=None):
 
 
 def main(argv=None):
-    """Écrit le rapport U20 en mm et retourne son code, sans modifier le 3MF."""
+    """Écrit le rapport U20 en mm et peut afficher les écarts seuls.
+
+    Renvoie le code du verdict (PASS 0, FAIL ou NON VÉRIFIÉ 2).
+    Le 3MF reste intact.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("rapport", type=Path)
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
     try:
         source, destination = chemin(args.source), chemin(args.rapport)
@@ -162,6 +168,18 @@ def main(argv=None):
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
         print(f"Contrôle refusé : {error}", file=sys.stderr)
         return 2
+    if args.resume:
+        # Les bornes hors plateau identifient la plaque et l’objet à déplacer (#35).
+        alertes = [p for p in resultat["plaques"] if not p["objets"] or
+                   any(v for k, v in p.items() if k.startswith("hors_plateau"))]
+        court = {"statut": resultat["statut"], "code": resultat["code"], "plaques": len(resultat["plaques"]),
+                 "alertes": alertes, "rapport": str(destination)}
+        if resultat.get("motif"):
+            court["motif"] = resultat["motif"]
+        elif not resultat["plaques"]:
+            court["motif"] = "Aucune plaque."
+        print(json.dumps(court, ensure_ascii=False))
+        return resultat["code"]
     for plaque in resultat["plaques"]:
         print(plaque)
     if resultat.get("motif"):

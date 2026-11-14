@@ -292,9 +292,13 @@ def main(argv=None):
     parser.add_argument("--non-applicable", nargs="*", default=[])
     parser.add_argument("--faces-max", type=int, default=300000)
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--resume", action="store_true", help="Afficher les écarts avec --json")
     parser.add_argument("--sans-cache", action="store_true")
     args = parser.parse_args(argv)
     sortie = None
+    if args.resume and args.json is None:
+        print("--resume exige --json pour conserver le rapport complet.", file=sys.stderr)
+        return 2
     if args.json is not None:
         try:
             # Refuser avant contrôle et cache pour protéger les maillages (#152, chemins-et-atelier.md).
@@ -361,12 +365,26 @@ def main(argv=None):
             print(f"Sortie JSON refusée : {erreur}", file=sys.stderr)
             return 2
     pire = 0
+    points = []
+    est_applicable = False
     for fichier, controles in resultats.items():
-        print("#", fichier)
+        if not args.resume:
+            print("#", fichier)
         for resultat in controles:
-            print(f"  {resultat['statut']:15s} {resultat['controle']} — {resultat['detail']}")
+            if not args.resume:
+                print(f"  {resultat['statut']:15s} {resultat['controle']} — {resultat['detail']}")
+            elif resultat["statut"] != "PASS":
+                # Garder la pièce et le motif exact, y compris les exclusions déclarées (#35).
+                points.append({"fichier": fichier, **{k: resultat[k] for k in ("statut", "controle", "detail")}})
             if resultat["statut"] != "NON APPLICABLE":
+                est_applicable = True
                 pire = max(pire, code_statut(resultat["statut"]))
+    if args.resume:
+        statuts = {p["statut"] for p in points}
+        statut = next((s for s in ("FAIL", "NON VÉRIFIÉ", "WARN") if s in statuts),
+                      "PASS" if est_applicable else "NON APPLICABLE")
+        print(json.dumps({"statut": statut, "code": pire, "fichiers": len(resultats),
+                          "points": points, "rapport": str(sortie)}, ensure_ascii=False))
     return pire
 
 

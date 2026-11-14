@@ -31,7 +31,14 @@ from zipfile import BadZipFile
 from benchab.archives_3mf import Archive3MF
 from benchab.controles.gcode_interpreter import Interpreter
 from benchab.gcode.lecture import lire_texte_gcode_3mf, plaques_gcode_archive
-from benchab.qualite.ecritures import PublicationNeuve, _sans_lien, remplacer_texte, sortie_privee
+from benchab.qualite.ecritures import (
+    PublicationNeuve,
+    _sans_lien,
+    destination_neuve,
+    ecrire_json_neuf,
+    remplacer_texte,
+    sortie_privee,
+)
 
 # Critères de la revue P07 (26/10/2026), seuils théoriques jusqu'aux retours d'impression ; les réviser avec date.
 CRITERES = {
@@ -322,7 +329,11 @@ def ecrire(res, revue_p, faits_p, *, sorties_neuves=False):
 
 
 def main(argv):
-    """Relit les zones en mm et applique sur demande une revue privée distincte des entrées."""
+    """Relit les zones en mm et s, avec rapport complet optionnel en lecture seule.
+
+    Retourne 0 si toutes les zones sont traitées, 1 si certaines restent à revoir,
+    2 sur refus, 64 pour un appel incomplet. Seul --appliquer modifie la revue.
+    """
     if not argv or "--envoi" not in argv:
         print(__doc__)
         return 64
@@ -331,15 +342,21 @@ def main(argv):
         return argv[argv.index(n) + 1] if n in argv else d
 
     tranche = Path(argv[0])
-    revue_p = opt("--revue", "REVUE-ZONES-LOCALES.json")
-    faits_p = opt("--faits", "preuves/revue-locale-faits.json")
     appliquer = "--appliquer" in argv
-    envoi = opt("--envoi")
+    resume = "--resume" in argv
     try:
+        revue_p = opt("--revue", "REVUE-ZONES-LOCALES.json")
+        faits_p = opt("--faits", "preuves/revue-locale-faits.json")
+        envoi = opt("--envoi")
+        if resume and (appliquer or "--json" not in argv):
+            raise ValueError("--resume exige --json et s’utilise en lecture seule.")
+        if "--json" in argv and appliquer:
+            raise ValueError("--json s’utilise en lecture seule.")
+        cible = destination_neuve(opt("--json")) if "--json" in argv else None
         if appliquer:
             revue_p, faits_p = _valider_sorties_application(tranche, envoi, revue_p, faits_p)
         res = revoir(tranche, envoi, revue_p, faits_p)
-    except (OSError, ValueError, TypeError, KeyError, BadZipFile) as erreur:
+    except (OSError, ValueError, TypeError, KeyError, IndexError, BadZipFile) as erreur:
         print(f"Revue refusée : {erreur}", file=sys.stderr)
         return 2
     sortie = {
@@ -358,8 +375,22 @@ def main(argv):
         except (OSError, ValueError) as erreur:
             print(f"Revue refusée : {erreur}", file=sys.stderr)
             return 2
+    code = 0 if not res["reste"] else 1
+    if cible is not None:
+        try:
+            # Le rapport complet inclut tous les points, même après le quinzième (#35).
+            detail = {**sortie, "a_revoir_detail": res["reste"], "faits": res["faits"],
+                      "decisions_automatiques": res["auto"], "decisions_conservees_detail": res["gardees"]}
+            ecrire_json_neuf(cible, detail,
+                            entrees=[tranche, Path(envoi), Path(revue_p), Path(faits_p)])
+        except (OSError, ValueError) as erreur:
+            print(f"Revue refusée : {erreur}", file=sys.stderr)
+            return 2
+    if resume:
+        sortie = {k: v for k, v in sortie.items() if k != "temps_couche_par_plaque"}
+        sortie.update(statut="WARN" if code else "PASS", code=code, rapport=str(cible))
     print(json.dumps(sortie, ensure_ascii=False, indent=1))
-    return 0 if not res["reste"] else 1
+    return code
 
 
 if __name__ == "__main__":

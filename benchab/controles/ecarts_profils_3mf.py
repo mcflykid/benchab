@@ -423,6 +423,7 @@ def main(argv=None, *, prive=None):
     parser.add_argument("--avant-intervention", type=Path)
     parser.add_argument("--champ-manuel", action="append", default=[])
     parser.add_argument("--rapport", type=Path, required=True)
+    parser.add_argument("--detail", action="store_true")
     parser.add_argument("--prive", type=Path, default=prive)
     args = parser.parse_args(argv)
     try:
@@ -438,9 +439,11 @@ def main(argv=None, *, prive=None):
             for heritage in profil["heritages"]
         )
         ecrire_json_neuf(cible, rapport, entrees=entrees)
-        print(json.dumps({
+        # L’affichage court reste compatible avec les lecteurs du rapport de profil (#35).
+        affiche = rapport if args.detail else {
             "statut": rapport["statut"], "coherence": rapport["coherence"]["statut"], "rapport": str(cible),
-        }, ensure_ascii=False))
+        }
+        print(json.dumps(affiche, ensure_ascii=False))
         return {"PASS": 0, "WARN": 1, "NON VÉRIFIÉ": 2}[rapport["statut"]]
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as erreur:
         parser.error(str(erreur))

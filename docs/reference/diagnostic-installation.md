@@ -1,6 +1,6 @@
 # Diagnostic d'installation
 
-Le module `benchab.qualite.installation.diagnostiquer(racine, ...)` rassemble des contrôles locaux et renvoie un rapport court avec un statut global, un code de sortie conforme à `benchab.qualite.statuts` et une ligne par contrôle. L'option `detail=True` ajoute les chemins, empreintes de profils et éléments de diagnostic. La commande `benchab controle installation` affiche ce rapport et renvoie son code sans ouvrir l’atelier en écriture, même lorsqu’un argument est refusé. Utiliser `--detail` pour les preuves, `--profil` pour un fichier à empreinter et `--espace-minimum-mio` pour le seuil d’espace ; la racine peut être fournie avec `--racine`. Aucun fichier de rapport n’est créé par la commande : stdout peut être redirigé explicitement.
+Le module `benchab.qualite.installation.diagnostiquer(racine, ...)` rassemble des contrôles locaux et renvoie un rapport court avec un statut global, un code de sortie conforme à `benchab.qualite.statuts` et une ligne par contrôle. L'option `detail=True` ajoute les chemins, empreintes de profils et éléments de diagnostic. La commande `benchab controle installation` affiche ce rapport et renvoie son code sans ouvrir la base en écriture. Utiliser `--detail` pour afficher les preuves, `--sortie RAPPORT.json` pour conserver le détail dans un nouveau fichier privé, `--profil` pour un fichier à empreinter et `--espace-minimum-mio` pour le seuil d’espace. La racine peut être fournie avec `--racine`.
 
 ## Contrôles couverts
 
@@ -16,4 +16,4 @@ Une absence d'information reste `NON VÉRIFIÉ`. Une version inconnue ou hors de
 
 ## Invariants
 
-Le parcours n'importe pas `Base`, ne migre ni n'initialise SQLite, ne crée pas de rapport ou mesure, ne contacte aucun service réseau et ne démarre aucune application. Le mode détail ne change pas ces invariants. Les sondes et valeurs de seuil peuvent être simulées à l'appel afin de tester le rapport sans toucher au système.
+Les sondes ouvrent SQLite en lecture seule. Les modes d’affichage conservent ce comportement. Seule l’option `--sortie` publie un rapport de diagnostic neuf. Les valeurs de seuil peuvent être simulées pour tester le rapport.

@@ -17,7 +17,13 @@ import json
 import sys
 from pathlib import Path
 
-from benchab.qualite.ecritures import PublicationNeuve, sortie_durable, valider_chemins
+from benchab.qualite.ecritures import (
+    PublicationNeuve,
+    destination_neuve,
+    ecrire_json_neuf,
+    sortie_durable,
+    valider_chemins,
+)
 from benchab.qualite.empreintes import sha256_fichier as sha
 
 
@@ -58,25 +64,44 @@ def figer(d, motifs, version="", note="", *, prive=None):
     print(f"{len(fichiers)} fichiers figés dans {d / 'LIVRABLES.json'}")
 
 
-def verifier(d):
-    """Compare SHA-256 et présence des livrables ; retourne 0 intact, 1 écart, ou lève si le manifeste est invalide."""
+def verifier(d, *, sortie=None, resume=False):
+    """Compare SHA-256 et présence des livrables, avec rapport complet optionnel.
+
+    Retourne 0 si intacts, 1 si écart, ou lève sur refus. Aucun livrable modifié.
+    """
     d = Path(d).resolve()
-    data = json.loads(interne(d, "LIVRABLES.json").read_text())
-    ecarts = []
+    manifest = interne(d, "LIVRABLES.json")
+    data = json.loads(manifest.read_text())
+    ecarts, fichiers, entrees = [], [], [manifest]
     if not isinstance(data, dict) or not isinstance(data.get("fichiers"), list) or not data["fichiers"]:
         raise ValueError("Manifeste de livrables absent, vide ou malformé")
     for f in data["fichiers"]:
         if not isinstance(f, dict) or not isinstance(f.get("sha256"), str):
             raise ValueError("Entrée de livrable malformée")
         p = interne(d, f.get("chemin"))
+        entrees.append(p)
         if not p.exists():
-            ecarts.append(("absent", f["chemin"]))
-        elif sha(p) != f["sha256"]:
-            ecarts.append(("modifié", f["chemin"]))
-    print(f"{data.get('version', '')} : {len(data['fichiers'])} fichiers, {len(ecarts)} écart(s)")
-    for e in ecarts:
-        print("  ", *e)
-    return 0 if not ecarts else 1
+            observe = None
+        else:
+            observe = sha(p)
+        etat = "absent" if observe is None else "intact" if observe == f["sha256"] else "modifié"
+        fichiers.append({"chemin": f["chemin"], "etat": etat, "sha256_attendu": f["sha256"],
+                         "sha256_observe": observe})
+        if etat != "intact":
+            ecarts.append((etat, f["chemin"]))
+    code = int(bool(ecarts))
+    court = {"statut": "FAIL" if code else "PASS", "code": code,
+             "version": data.get("version", ""), "ecarts": ecarts}
+    if sortie is not None:
+        # Le rapport complet relie les écarts aux empreintes réellement relues (#35).
+        ecrire_json_neuf(sortie, {**court, "fichiers": fichiers}, entrees=entrees)
+    if resume:
+        print(json.dumps({**court, "fichiers": len(fichiers), "rapport": str(sortie)}, ensure_ascii=False))
+    else:
+        print(f"{court['version']} : {len(fichiers)} fichiers, {len(ecarts)} écart(s)")
+        for e in ecarts:
+            print("  ", *e)
+    return code
 
 
 def main(argv=None):
@@ -90,10 +115,15 @@ def main(argv=None):
     p.add_argument("--note", default="")
     p = sub.add_parser("verifier")
     p.add_argument("projet", type=Path)
+    p.add_argument("--json", type=Path)
+    p.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.action == "verifier":
-            return verifier(args.projet)
+            if args.resume and args.json is None:
+                raise ValueError("--resume exige --json pour conserver le rapport complet.")
+            sortie = destination_neuve(args.json) if args.json is not None else None
+            return verifier(args.projet, sortie=sortie, resume=args.resume)
         figer(args.projet, args.motifs, args.version, args.note)
         return 0
     except (ValueError, OSError, KeyError, TypeError) as error:

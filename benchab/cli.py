@@ -220,6 +220,7 @@ def parser():
     installation.add_argument("--profil", type=Path, action="append", default=[])
     installation.add_argument("--espace-minimum-mio", type=int, default=1024)
     installation.add_argument("--detail", action="store_true", help="Inclut les preuves et chemins privés dans stdout")
+    installation.add_argument("--sortie", type=Path, help="Conserve le diagnostic complet dans un JSON neuf")
     plan_reparation = controle.add_parser(
         "plan-reparation", help="Compare les vues privées sans appliquer de réparation"
     )
@@ -1463,19 +1464,32 @@ def main(argv=None):
             print(f"BENCHAB : réparation de vue refusée : {erreur}", file=sys.stderr)
             return 1
     if arguments.commande == "controle" and arguments.controle == "installation":
+        from benchab.qualite.ecritures import destination_neuve, ecrire_json_neuf
         from benchab.qualite.installation import diagnostiquer
 
         # Le diagnostic doit rester possible sur un atelier absent ou endommagé :
         # aucun Base() ni mesure, même en cas de refus (docs/reference/diagnostic-installation.md).
         try:
+            cible = destination_neuve(arguments.sortie, prive=arguments.prive) if arguments.sortie else None
             if arguments.espace_minimum_mio < 0:
                 raise ValueError("Le seuil d'espace doit être positif ou nul, en Mio")
             rapport = diagnostiquer(
                 arguments.racine, base=atelier_prive(arguments.prive) / "benchab.sqlite",
                 profils=tuple(arguments.profil), espace_minimum_octets=arguments.espace_minimum_mio * 1024**2,
-                detail=arguments.detail,
+                detail=arguments.detail or cible is not None,
             )
-            print(json.dumps(rapport, ensure_ascii=False, indent=2 if arguments.detail else None))
+            affiche = rapport
+            if cible is not None:
+                # Les chemins privés du diagnostic complet restent dans le rapport demandé (#35).
+                chemins = [atelier_prive(arguments.prive) / "benchab.sqlite", *arguments.profil]
+                ecrire_json_neuf(cible, rapport, entrees=chemins)
+                if not arguments.detail:
+                    affiche = {k: v for k, v in rapport.items() if k != "detail"}
+                    affiche["controles"] = [
+                        {k: v for k, v in c.items() if k != "detail"} for c in rapport["controles"]
+                    ]
+                affiche = {**affiche, "rapport": str(cible)}
+            print(json.dumps(affiche, ensure_ascii=False, indent=2 if arguments.detail else None))
             return rapport["code"]
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as erreur:
             print(f"BENCHAB : {erreur}", file=sys.stderr)

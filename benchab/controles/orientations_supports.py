@@ -306,6 +306,7 @@ def trancher(cands, profil, reglages_support):
 def main(argv=None):
     """Publie une étude neuve d’orientations et de supports, sans imprimer ni remplacer une preuve."""
     a = list(sys.argv[1:] if argv is None else argv)
+    resume = "--resume" in a
     if "--profil" not in a or "--sortie" not in a:
         print(__doc__)
         return 2
@@ -321,17 +322,27 @@ def main(argv=None):
         with tempfile.TemporaryDirectory(prefix=".orientations-", dir=cible.parent) as dossier:
             sortie = Path(dossier) / "export"
             sortie.mkdir()
-            _calculer_orientations(a, stls, profil, sortie)
+            rapport = _calculer_orientations(a, stls, profil, sortie, resume=resume)
             # Un dossier complet devient visible d’un bloc, sans écraser une étude.
             valider_chemins(entrees, [cible])
             renommer_exclusif(sortie, cible)
     except (OSError, ValueError, IndexError) as erreur:
         print(f"Orientations refusées : {erreur}", file=sys.stderr)
         return 2
+    if resume:
+        # Seule une étude publiée peut être annoncée (#35).
+        pieces = [
+            {"piece": nom, "orientation_disponible": bool(p["meilleures"]),
+             **({"motif": p["resistance"]["avertissement"]} if "resistance" in p else {})}
+            for nom, p in rapport["pieces"].items()
+        ]
+        affiche = {"statut": "ESTIMATION" if pieces and all(p["orientation_disponible"] for p in pieces)
+                   else "NON VÉRIFIÉ", "code": 0, "pieces": pieces, "rapport": str(cible / "orientations.json")}
+        print(json.dumps(affiche, ensure_ascii=False))
     return 0
 
 
-def _calculer_orientations(a, stls, profil, sortie):
+def _calculer_orientations(a, stls, profil, sortie, *, resume=False):
     """Écrit dans le seul dossier temporaire ; aucun résultat physique n’est déduit."""
     n = int(a[a.index("--tranches") + 1]) if "--tranches" in a else 4
     amin = float(a[a.index("--appui-min") + 1]) if "--appui-min" in a else 150.0
@@ -359,7 +370,8 @@ def _calculer_orientations(a, stls, profil, sortie):
         if efforts:
             res = resistance(fins, efforts, seuil)
             rapport["pieces"][nom]["resistance"] = res
-            print(nom, ":", res["avertissement"])
+            if not resume:
+                print(nom, ":", res["avertissement"])
             c = next((x for x in fins if x["direction_bas"] == res["compromis_couches"]), None)
             if c is not None and c not in fins[:8]:
                 rapport["pieces"][nom]["meilleures"].append(dict(c, rang="compromis couches"))
@@ -368,22 +380,21 @@ def _calculer_orientations(a, stls, profil, sortie):
             q.apply_transform(np.array(x["matrice"]))
             q.export(sortie / f"{nom}-{i + 1}.stl")
             cands.append((f"{nom} #{i + 1}", q))
-        print(
-            nom,
-            ":",
-            len(fins),
-            "orientations sur le plateau ; meilleure estimation",
-            fins[0]["support_rayons_mm3"] if fins else None,
-            "mm³",
-        )
+        if not resume:
+            print(
+                nom, ":", len(fins), "orientations sur le plateau ; meilleure estimation",
+                fins[0]["support_rayons_mm3"] if fins else None, "mm³",
+            )
     for (lib, _), t in zip(cands, trancher(cands, profil, rs) if cands else []):
         nom, rang = lib.rsplit(" #", 1)
         rapport["pieces"][nom]["meilleures"][int(rang) - 1]["tranchage"] = t
-        print(lib, t)
+        if not resume:
+            print(lib, t)
     (sortie / "orientations.json").write_text(
         json.dumps(rapport, indent=1, ensure_ascii=False, default=float),
         encoding="utf-8",
     )
+    return rapport
 
 
 
